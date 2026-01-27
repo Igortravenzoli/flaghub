@@ -19,9 +19,19 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { Plus, Trash2, Save, Clock } from 'lucide-react';
+import { Plus, Trash2, Save, Clock, Loader2, AlertTriangle } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { 
+  useSettings, 
+  useStatusMappings, 
+  useUpdateSettings, 
+  useAddStatusMapping, 
+  useDeleteStatusMapping 
+} from '@/hooks/useSupabaseData';
 import { defaultConfiguracoes, defaultMapeamentosStatus } from '@/data/mockData';
-import { MapeamentoStatus, StatusNormalizado } from '@/types';
+import { StatusNormalizado } from '@/types';
+import type { InternalStatus } from '@/types/database';
+import { toast } from 'sonner';
 
 const statusInternoLabels: Record<StatusNormalizado, string> = {
   novo: 'Novo',
@@ -32,29 +42,116 @@ const statusInternoLabels: Record<StatusNormalizado, string> = {
   nao_mapeado: 'Não Mapeado'
 };
 
+// Mapear status interno do DB para UI
+const dbToUiStatus: Record<InternalStatus, StatusNormalizado> = {
+  novo: 'novo',
+  em_atendimento: 'em_andamento',
+  em_analise: 'aguardando',
+  finalizado: 'resolvido',
+  cancelado: 'fechado',
+};
+
+// Mapear status UI para DB
+const uiToDbStatus: Record<Exclude<StatusNormalizado, 'nao_mapeado'>, InternalStatus> = {
+  novo: 'novo',
+  em_andamento: 'em_atendimento',
+  aguardando: 'em_analise',
+  resolvido: 'finalizado',
+  fechado: 'cancelado',
+};
+
 export default function Configuracoes() {
-  const [prazoTicketSemOS, setPrazoTicketSemOS] = useState(defaultConfiguracoes.prazoTicketSemOS);
-  const [mapeamentos, setMapeamentos] = useState<MapeamentoStatus[]>(defaultMapeamentosStatus);
+  const { isAuthenticated, canManageSettings, networkId } = useAuth();
+  const { data: dbSettings, isLoading: settingsLoading } = useSettings(networkId ?? undefined);
+  const { data: dbMappings, isLoading: mappingsLoading } = useStatusMappings(networkId ?? undefined);
+  const updateSettings = useUpdateSettings();
+  const addStatusMapping = useAddStatusMapping();
+  const deleteStatusMapping = useDeleteStatusMapping();
+
+  // Estados locais (para modo mock ou antes de salvar)
+  const [prazoTicketSemOS, setPrazoTicketSemOS] = useState(
+    dbSettings?.no_os_grace_hours ?? defaultConfiguracoes.prazoTicketSemOS
+  );
   const [novoMapeamento, setNovoMapeamento] = useState({
     statusExterno: '',
     statusInterno: 'novo' as StatusNormalizado
   });
   
-  const handleAddMapeamento = () => {
-    if (novoMapeamento.statusExterno.trim()) {
-      setMapeamentos(prev => [...prev, { ...novoMapeamento }]);
-      setNovoMapeamento({ statusExterno: '', statusInterno: 'novo' });
+  // Atualizar prazo quando dados do DB chegarem
+  useState(() => {
+    if (dbSettings) {
+      setPrazoTicketSemOS(dbSettings.no_os_grace_hours);
+    }
+  });
+
+  // Usar dados do DB se disponível, senão mock
+  const mapeamentos = isAuthenticated && dbMappings ? dbMappings.map(m => ({
+    id: m.id,
+    statusExterno: m.external_status,
+    statusInterno: dbToUiStatus[m.internal_status] || 'nao_mapeado' as StatusNormalizado,
+  })) : defaultMapeamentosStatus.map((m, i) => ({ ...m, id: i }));
+  
+  const handleAddMapeamento = async () => {
+    if (!novoMapeamento.statusExterno.trim()) return;
+    
+    if (isAuthenticated && canManageSettings && networkId) {
+      try {
+        const dbStatus = novoMapeamento.statusInterno !== 'nao_mapeado' 
+          ? uiToDbStatus[novoMapeamento.statusInterno]
+          : 'novo';
+        
+        await addStatusMapping.mutateAsync({
+          networkId,
+          externalStatus: novoMapeamento.statusExterno,
+          internalStatus: dbStatus,
+        });
+        toast.success('Mapeamento adicionado!');
+      } catch (err) {
+        toast.error('Erro ao adicionar mapeamento', {
+          description: err instanceof Error ? err.message : 'Erro desconhecido'
+        });
+        return;
+      }
+    } else {
+      toast.success('Mapeamento adicionado (simulado)!');
+    }
+    
+    setNovoMapeamento({ statusExterno: '', statusInterno: 'novo' });
+  };
+  
+  const handleRemoveMapeamento = async (id: number) => {
+    if (isAuthenticated && canManageSettings && networkId) {
+      try {
+        await deleteStatusMapping.mutateAsync({ id, networkId });
+        toast.success('Mapeamento removido!');
+      } catch (err) {
+        toast.error('Erro ao remover mapeamento');
+      }
+    } else {
+      toast.success('Mapeamento removido (simulado)!');
     }
   };
   
-  const handleRemoveMapeamento = (index: number) => {
-    setMapeamentos(prev => prev.filter((_, i) => i !== index));
+  const handleSave = async () => {
+    if (isAuthenticated && canManageSettings && networkId) {
+      try {
+        await updateSettings.mutateAsync({
+          networkId,
+          noOsGraceHours: prazoTicketSemOS,
+        });
+        toast.success('Configurações salvas com sucesso!');
+      } catch (err) {
+        toast.error('Erro ao salvar configurações', {
+          description: err instanceof Error ? err.message : 'Erro desconhecido'
+        });
+      }
+    } else {
+      toast.success('Configurações salvas com sucesso! (simulado)');
+    }
   };
-  
-  const handleSave = () => {
-    // Simula salvamento
-    alert('Configurações salvas com sucesso! (simulado)');
-  };
+
+  const isLoading = settingsLoading || mappingsLoading;
+  const isSaving = updateSettings.isPending || addStatusMapping.isPending || deleteStatusMapping.isPending;
   
   return (
     <div className="p-6 space-y-6">
@@ -66,11 +163,27 @@ export default function Configuracoes() {
             Configurações do sistema (Admin)
           </p>
         </div>
-        <Button onClick={handleSave}>
-          <Save className="h-4 w-4 mr-2" />
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4 mr-2" />
+          )}
           Salvar Configurações
         </Button>
       </div>
+
+      {/* Aviso de permissão */}
+      {isAuthenticated && !canManageSettings && (
+        <Card className="bg-[hsl(var(--warning))]/10 border-[hsl(var(--warning))]/30">
+          <CardContent className="p-4 flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-[hsl(var(--warning))]" />
+            <p className="text-sm">
+              Você pode visualizar as configurações, mas não tem permissão para editá-las.
+            </p>
+          </CardContent>
+        </Card>
+      )}
       
       {/* Prazo Ticket sem OS */}
       <Card>
@@ -85,21 +198,28 @@ export default function Configuracoes() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-4 max-w-sm">
-            <div className="flex-1">
-              <Input
-                type="number"
-                min={1}
-                max={168}
-                value={prazoTicketSemOS}
-                onChange={(e) => setPrazoTicketSemOS(Number(e.target.value))}
-              />
-            </div>
-            <span className="text-muted-foreground">horas</span>
-          </div>
-          <p className="text-sm text-muted-foreground mt-2">
-            Tickets sem OS há mais de {prazoTicketSemOS} horas serão marcados como 🔴 Crítico
-          </p>
+          {isLoading ? (
+            <Loader2 className="h-6 w-6 animate-spin" />
+          ) : (
+            <>
+              <div className="flex items-center gap-4 max-w-sm">
+                <div className="flex-1">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={prazoTicketSemOS}
+                    onChange={(e) => setPrazoTicketSemOS(Number(e.target.value))}
+                    disabled={!canManageSettings && isAuthenticated}
+                  />
+                </div>
+                <span className="text-muted-foreground">horas</span>
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">
+                Tickets sem OS há mais de {prazoTicketSemOS} horas serão marcados como 🔴 Crítico
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
       
@@ -113,82 +233,102 @@ export default function Configuracoes() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Formulário de Novo Mapeamento */}
-          <div className="flex items-end gap-4 p-4 bg-muted/50 rounded-lg">
-            <div className="flex-1 space-y-2">
-              <Label>Status Externo (ServiceNow)</Label>
-              <Input
-                value={novoMapeamento.statusExterno}
-                onChange={(e) => setNovoMapeamento(prev => ({ ...prev, statusExterno: e.target.value }))}
-                placeholder="Ex: Awaiting Customer"
-              />
+          {(canManageSettings || !isAuthenticated) && (
+            <div className="flex items-end gap-4 p-4 bg-muted/50 rounded-lg">
+              <div className="flex-1 space-y-2">
+                <Label>Status Externo (ServiceNow)</Label>
+                <Input
+                  value={novoMapeamento.statusExterno}
+                  onChange={(e) => setNovoMapeamento(prev => ({ ...prev, statusExterno: e.target.value }))}
+                  placeholder="Ex: Awaiting Customer"
+                />
+              </div>
+              <div className="flex-1 space-y-2">
+                <Label>Status Interno</Label>
+                <Select
+                  value={novoMapeamento.statusInterno}
+                  onValueChange={(v) => setNovoMapeamento(prev => ({ ...prev, statusInterno: v as StatusNormalizado }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(statusInternoLabels)
+                      .filter(([key]) => key !== 'nao_mapeado')
+                      .map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleAddMapeamento} disabled={addStatusMapping.isPending}>
+                {addStatusMapping.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4 mr-2" />
+                )}
+                Adicionar
+              </Button>
             </div>
-            <div className="flex-1 space-y-2">
-              <Label>Status Interno</Label>
-              <Select
-                value={novoMapeamento.statusInterno}
-                onValueChange={(v) => setNovoMapeamento(prev => ({ ...prev, statusInterno: v as StatusNormalizado }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(statusInternoLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={handleAddMapeamento}>
-              <Plus className="h-4 w-4 mr-2" />
-              Adicionar
-            </Button>
-          </div>
+          )}
           
           {/* Tabela de Mapeamentos */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Status Externo</TableHead>
-                <TableHead>Status Interno</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mapeamentos.map((map, index) => (
-                <TableRow key={index}>
-                  <TableCell className="font-mono">{map.statusExterno}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">
-                      {statusInternoLabels[map.statusInterno]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveMapeamento(index)}
-                      className="h-8 w-8 text-[hsl(var(--critical))] hover:text-[hsl(var(--critical))]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+          {isLoading ? (
+            <div className="p-8 text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status Externo</TableHead>
+                  <TableHead>Status Interno</TableHead>
+                  {(canManageSettings || !isAuthenticated) && (
+                    <TableHead className="w-[80px]"></TableHead>
+                  )}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {mapeamentos.map((map) => (
+                  <TableRow key={map.id}>
+                    <TableCell className="font-mono">{map.statusExterno}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {statusInternoLabels[map.statusInterno]}
+                      </Badge>
+                    </TableCell>
+                    {(canManageSettings || !isAuthenticated) && (
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveMapeamento(map.id)}
+                          className="h-8 w-8 text-[hsl(var(--critical))] hover:text-[hsl(var(--critical))]"
+                          disabled={deleteStatusMapping.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
       
       {/* Info Card */}
-      <Card className="bg-muted/30">
-        <CardContent className="p-4">
-          <p className="text-sm text-muted-foreground">
-            <strong>Nota:</strong> Esta é uma interface de configuração simulada. 
-            Em produção, estas configurações seriam persistidas no banco de dados 
-            e aplicadas em tempo real na análise de tickets.
-          </p>
-        </CardContent>
-      </Card>
+      {!isAuthenticated && (
+        <Card className="bg-muted/30">
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">
+              <strong>Nota:</strong> Faça login para persistir as configurações no banco de dados.
+              No modo atual, as alterações são apenas simuladas.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

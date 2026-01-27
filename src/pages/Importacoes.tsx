@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,14 +10,37 @@ import {
   TableHeader, 
   TableRow 
 } from '@/components/ui/table';
-import { Upload, FileJson, FileSpreadsheet, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Upload, FileJson, FileSpreadsheet, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
+import { useImport } from '@/hooks/useImport';
+import { useImportsHistory } from '@/hooks/useSupabaseData';
+import { useAuth } from '@/hooks/useAuth';
 import { mockImportacoes } from '@/data/mockData';
 import { ImportacaoArquivo } from '@/types';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export default function Importacoes() {
-  const [importacoes, setImportacoes] = useState<ImportacaoArquivo[]>(mockImportacoes);
+  const { isAuthenticated, canImport, networkId } = useAuth();
+  const { importFile, isProcessing, progress, error } = useImport();
+  const { data: dbImports, isLoading: importsLoading } = useImportsHistory(networkId ?? undefined);
+  
+  // Fallback para dados mock se não autenticado
+  const [localImportacoes, setLocalImportacoes] = useState<ImportacaoArquivo[]>(mockImportacoes);
   const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Usar dados do DB se autenticado, senão mock
+  const importacoes = isAuthenticated && dbImports ? dbImports.map(imp => ({
+    id: String(imp.id),
+    dataHora: new Date(imp.created_at).toLocaleString('pt-BR'),
+    usuario: 'Usuário',
+    tipo: imp.file_type.toUpperCase() as 'CSV' | 'JSON',
+    fonte: 'nestle' as const,
+    quantidadeRegistros: imp.total_records,
+    status: imp.status === 'processing' ? 'processando' : imp.status === 'success' ? 'sucesso' : 'erro' as 'sucesso' | 'erro' | 'processando',
+    mensagemErro: imp.errors_count > 0 ? `${imp.errors_count} erros` : undefined,
+  })) : localImportacoes;
   
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -28,17 +51,49 @@ export default function Importacoes() {
     setIsDragging(false);
   };
   
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     
-    // Simula processamento
     const files = Array.from(e.dataTransfer.files);
-    files.forEach(file => {
+    await processFiles(files);
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    await processFiles(files);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const processFiles = async (files: File[]) => {
+    for (const file of files) {
       const isJson = file.name.endsWith('.json');
       const isCsv = file.name.endsWith('.csv');
       
-      if (isJson || isCsv) {
+      if (!isJson && !isCsv) {
+        toast.error('Tipo de arquivo não suportado', { 
+          description: 'Use arquivos JSON ou CSV.' 
+        });
+        continue;
+      }
+
+      if (isAuthenticated && canImport) {
+        try {
+          const result = await importFile(file);
+          if (result.success) {
+            toast.success('Importação concluída!', {
+              description: `${result.totalRecords} registros processados.`
+            });
+          }
+        } catch (err) {
+          toast.error('Erro na importação', {
+            description: err instanceof Error ? err.message : 'Erro desconhecido'
+          });
+        }
+      } else {
+        // Modo mock para não autenticados
         const novaImportacao: ImportacaoArquivo = {
           id: Date.now().toString(),
           dataHora: new Date().toLocaleString('pt-BR'),
@@ -49,20 +104,20 @@ export default function Importacoes() {
           status: 'processando'
         };
         
-        setImportacoes(prev => [novaImportacao, ...prev]);
+        setLocalImportacoes(prev => [novaImportacao, ...prev]);
         
-        // Simula finalização após 2s
         setTimeout(() => {
-          setImportacoes(prev => 
+          setLocalImportacoes(prev => 
             prev.map(imp => 
               imp.id === novaImportacao.id 
                 ? { ...imp, status: 'sucesso' as const }
                 : imp
             )
           );
+          toast.success('Importação concluída (simulada)!');
         }, 2000);
       }
-    });
+    }
   };
   
   const statusConfig = {
@@ -87,33 +142,58 @@ export default function Importacoes() {
           <CardTitle className="text-lg">Importar Arquivo</CardTitle>
         </CardHeader>
         <CardContent>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.csv"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
           <div
+            onClick={() => fileInputRef.current?.click()}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             className={cn(
-              "border-2 border-dashed rounded-lg p-12 text-center transition-colors",
+              "border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer",
               isDragging 
                 ? "border-primary bg-primary/5" 
-                : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                : "border-muted-foreground/25 hover:border-muted-foreground/50",
+              isProcessing && "pointer-events-none opacity-50"
             )}
           >
-            <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <p className="text-lg font-medium mb-2">
-              Arraste e solte arquivos aqui
-            </p>
-            <p className="text-muted-foreground mb-4">
-              ou clique para selecionar
-            </p>
-            <div className="flex items-center justify-center gap-4">
-              <Badge variant="outline" className="gap-1">
-                <FileJson className="h-3 w-3" /> JSON
-              </Badge>
-              <Badge variant="outline" className="gap-1">
-                <FileSpreadsheet className="h-3 w-3" /> CSV
-              </Badge>
-            </div>
+            {isProcessing ? (
+              <>
+                <Loader2 className="h-12 w-12 mx-auto mb-4 text-primary animate-spin" />
+                <p className="text-lg font-medium mb-2">Processando...</p>
+                <Progress value={progress} className="w-64 mx-auto" />
+              </>
+            ) : (
+              <>
+                <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-lg font-medium mb-2">
+                  Arraste e solte arquivos aqui
+                </p>
+                <p className="text-muted-foreground mb-4">
+                  ou clique para selecionar
+                </p>
+                <div className="flex items-center justify-center gap-4">
+                  <Badge variant="outline" className="gap-1">
+                    <FileJson className="h-3 w-3" /> JSON
+                  </Badge>
+                  <Badge variant="outline" className="gap-1">
+                    <FileSpreadsheet className="h-3 w-3" /> CSV
+                  </Badge>
+                </div>
+              </>
+            )}
           </div>
+          
+          {!canImport && isAuthenticated && (
+            <p className="text-sm text-muted-foreground mt-4 text-center">
+              ⚠️ Você não tem permissão para importar arquivos. Contate um administrador.
+            </p>
+          )}
           
           <div className="mt-4 grid grid-cols-2 gap-4">
             <div className="p-4 bg-muted/50 rounded-lg">
@@ -144,59 +224,65 @@ export default function Importacoes() {
           <CardTitle className="text-lg">Histórico de Importações</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Data/Hora</TableHead>
-                <TableHead>Usuário</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Fonte</TableHead>
-                <TableHead>Registros</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {importacoes.map((imp) => {
-                const StatusIcon = statusConfig[imp.status].icon;
-                
-                return (
-                  <TableRow key={imp.id}>
-                    <TableCell className="text-sm">{imp.dataHora}</TableCell>
-                    <TableCell>{imp.usuario}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="gap-1">
-                        {imp.tipo === 'JSON' ? (
-                          <FileJson className="h-3 w-3" />
-                        ) : (
-                          <FileSpreadsheet className="h-3 w-3" />
+          {importsLoading ? (
+            <div className="p-8 text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data/Hora</TableHead>
+                  <TableHead>Usuário</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Fonte</TableHead>
+                  <TableHead>Registros</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {importacoes.map((imp) => {
+                  const StatusIcon = statusConfig[imp.status].icon;
+                  
+                  return (
+                    <TableRow key={imp.id}>
+                      <TableCell className="text-sm">{imp.dataHora}</TableCell>
+                      <TableCell>{imp.usuario}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="gap-1">
+                          {imp.tipo === 'JSON' ? (
+                            <FileJson className="h-3 w-3" />
+                          ) : (
+                            <FileSpreadsheet className="h-3 w-3" />
+                          )}
+                          {imp.tipo}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          {imp.fonte === 'nestle' ? 'Nestlé' : 'VDESK'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono">{imp.quantidadeRegistros}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <StatusIcon className={cn("h-4 w-4", statusConfig[imp.status].className)} />
+                          <span className={statusConfig[imp.status].className}>
+                            {statusConfig[imp.status].label}
+                          </span>
+                        </div>
+                        {imp.mensagemErro && (
+                          <p className="text-xs text-[hsl(var(--critical))] mt-1">
+                            {imp.mensagemErro}
+                          </p>
                         )}
-                        {imp.tipo}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {imp.fonte === 'nestle' ? 'Nestlé' : 'VDESK'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono">{imp.quantidadeRegistros}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <StatusIcon className={cn("h-4 w-4", statusConfig[imp.status].className)} />
-                        <span className={statusConfig[imp.status].className}>
-                          {statusConfig[imp.status].label}
-                        </span>
-                      </div>
-                      {imp.mensagemErro && (
-                        <p className="text-xs text-[hsl(var(--critical))] mt-1">
-                          {imp.mensagemErro}
-                        </p>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -14,6 +14,8 @@ import {
   defaultMapeamentosStatus,
   defaultConfiguracoes 
 } from '@/data/mockData';
+import { useTicketAnalysisDB } from './useTicketAnalysisDB';
+import { useAuth } from './useAuth';
 
 // Calcula diferença em horas entre duas datas
 function calcularHorasDiferenca(dataInicio: string): number {
@@ -26,7 +28,7 @@ function calcularHorasDiferenca(dataInicio: string): number {
   };
   
   const inicio = parseDate(dataInicio);
-  const agora = new Date(2026, 0, 27, 15, 0); // Data simulada: 27/01/2026 15:00
+  const agora = new Date();
   const diffMs = agora.getTime() - inicio.getTime();
   return Math.floor(diffMs / (1000 * 60 * 60));
 }
@@ -102,7 +104,8 @@ function identificarInconsistencias(
   return inconsistencias;
 }
 
-export function useTicketAnalysis() {
+// Hook que usa dados mock (fallback para quando não está autenticado)
+function useTicketAnalysisMock() {
   const [tickets] = useState<TicketNestle[]>(mockTicketsNestle);
   const [ordensServico] = useState<OrdemServico[]>(mockOrdensServico);
   const [configuracoes] = useState(defaultConfiguracoes);
@@ -235,6 +238,32 @@ export function useTicketAnalysis() {
     configuracoes,
     filtros,
     atualizarFiltro,
-    limparFiltros
+    limparFiltros,
+    isLoading: false,
+    refresh: () => {},
   };
+}
+
+// Hook principal que decide entre mock e dados reais
+export function useTicketAnalysis() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const dbData = useTicketAnalysisDB();
+  const mockData = useTicketAnalysisMock();
+  
+  // Se ainda está carregando auth, usa mock temporariamente
+  if (authLoading) {
+    return mockData;
+  }
+  
+  // Se autenticado, usa dados do DB (com fallback para mock se não há dados)
+  if (isAuthenticated) {
+    // Se não há tickets no DB, usa mock como fallback
+    if (dbData.ticketsConsolidados.length === 0 && !dbData.isLoading) {
+      return mockData;
+    }
+    return dbData;
+  }
+  
+  // Se não autenticado, usa mock
+  return mockData;
 }

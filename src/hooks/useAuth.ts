@@ -1,0 +1,153 @@
+import { useEffect, useState, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { User, Session } from '@supabase/supabase-js';
+import type { AppRole, Profile } from '@/types/database';
+
+interface AuthState {
+  user: User | null;
+  session: Session | null;
+  profile: Profile | null;
+  role: AppRole | null;
+  networkId: number | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+}
+
+export function useAuth() {
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    session: null,
+    profile: null,
+    role: null,
+    networkId: null,
+    isLoading: true,
+    isAuthenticated: false,
+  });
+
+  // Buscar perfil e role do usuário
+  const fetchUserData = useCallback(async (userId: string) => {
+    try {
+      // Buscar profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      // Buscar role
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+
+      return {
+        profile: profile as Profile | null,
+        role: roleData?.role as AppRole | null,
+        networkId: profile?.network_id ?? null,
+      };
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      return { profile: null, role: null, networkId: null };
+    }
+  }, []);
+
+  useEffect(() => {
+    // Listener de auth state change (deve ser configurado ANTES de getSession)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          const userData = await fetchUserData(session.user.id);
+          setState({
+            user: session.user,
+            session,
+            profile: userData.profile,
+            role: userData.role,
+            networkId: userData.networkId,
+            isLoading: false,
+            isAuthenticated: true,
+          });
+        } else {
+          setState({
+            user: null,
+            session: null,
+            profile: null,
+            role: null,
+            networkId: null,
+            isLoading: false,
+            isAuthenticated: false,
+          });
+        }
+      }
+    );
+
+    // Verificar sessão existente
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const userData = await fetchUserData(session.user.id);
+        setState({
+          user: session.user,
+          session,
+          profile: userData.profile,
+          role: userData.role,
+          networkId: userData.networkId,
+          isLoading: false,
+          isAuthenticated: true,
+        });
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [fetchUserData]);
+
+  // Funções de autenticação
+  const signIn = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { data, error };
+  };
+
+  const signUp = async (email: string, password: string, fullName?: string) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: window.location.origin,
+        data: { full_name: fullName },
+      },
+    });
+    return { data, error };
+  };
+
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    return { error };
+  };
+
+  // Verificações de permissão
+  const isAdmin = state.role === 'admin';
+  const isGestao = state.role === 'gestao';
+  const isQualidade = state.role === 'qualidade';
+  const isOperacional = state.role === 'operacional';
+  const canImport = isAdmin || isGestao;
+  const canManageSettings = isAdmin;
+
+  return {
+    ...state,
+    signIn,
+    signUp,
+    signOut,
+    isAdmin,
+    isGestao,
+    isQualidade,
+    isOperacional,
+    canImport,
+    canManageSettings,
+  };
+}

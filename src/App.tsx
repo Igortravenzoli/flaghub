@@ -9,6 +9,7 @@ import Tickets from "@/pages/Tickets";
 import Importacoes from "@/pages/Importacoes";
 import Usuarios from "@/pages/Usuarios";
 import Configuracoes from "@/pages/Configuracoes";
+import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -20,6 +21,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          <Route path="/login" element={<Login />} />
           <Route element={<MainLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/tickets" element={<Tickets />} />

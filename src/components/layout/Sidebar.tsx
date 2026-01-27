@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { 
   LayoutDashboard, 
@@ -8,10 +8,13 @@ import {
   Settings,
   Monitor,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
 
 interface NavItem {
   label: string;
@@ -30,8 +33,18 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
-  
+  const { isAuthenticated, profile, signOut, isAdmin } = useAuth();
+
+  const handleAuthAction = async () => {
+    if (isAuthenticated) {
+      await signOut();
+      navigate('/');
+    } else {
+      navigate('/login');
+    }
+  };
   return (
     <aside 
       className={cn(
@@ -93,14 +106,37 @@ export function Sidebar() {
       </nav>
       
       {/* Footer */}
-      {!collapsed && (
-        <div className="p-4 border-t border-sidebar-border">
+      <div className="p-4 border-t border-sidebar-border space-y-3">
+        {!collapsed && isAuthenticated && profile && (
+          <div className="text-xs text-sidebar-foreground/70">
+            <p className="font-medium truncate">{profile.full_name || 'Usuário'}</p>
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          size={collapsed ? "icon" : "sm"}
+          onClick={handleAuthAction}
+          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground"
+        >
+          {isAuthenticated ? (
+            <>
+              <LogOut className="h-4 w-4" />
+              {!collapsed && <span className="ml-2">Sair</span>}
+            </>
+          ) : (
+            <>
+              <LogIn className="h-4 w-4" />
+              {!collapsed && <span className="ml-2">Entrar</span>}
+            </>
+          )}
+        </Button>
+        {!collapsed && (
           <div className="text-xs text-sidebar-foreground/50">
             <p>Tickets ↔ OS</p>
-            <p>v1.0.0 • Última sync: 15:00</p>
+            <p>v1.0.0</p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </aside>
   );
 }
