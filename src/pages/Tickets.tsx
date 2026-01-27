@@ -70,14 +70,14 @@ export default function Tickets() {
             
             {/* Severidade */}
             <Select
-              value={filtros.severidade}
-              onValueChange={(v) => atualizarFiltro('severidade', v as Severidade | '')}
+              value={filtros.severidade || 'all'}
+              onValueChange={(v) => atualizarFiltro('severidade', v === 'all' ? '' : v as Severidade)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Severidade" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todas</SelectItem>
+                <SelectItem value="all">Todas</SelectItem>
                 <SelectItem value="critical">🔴 Crítico</SelectItem>
                 <SelectItem value="warning">🟡 Atenção</SelectItem>
                 <SelectItem value="info">🔵 Informativo</SelectItem>
@@ -87,14 +87,14 @@ export default function Tickets() {
             
             {/* Status */}
             <Select
-              value={filtros.status}
-              onValueChange={(v) => atualizarFiltro('status', v as StatusNormalizado | '')}
+              value={filtros.status || 'all'}
+              onValueChange={(v) => atualizarFiltro('status', v === 'all' ? '' : v as StatusNormalizado)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
                 {Object.entries(statusLabels).map(([value, label]) => (
                   <SelectItem key={value} value={value}>{label}</SelectItem>
                 ))}
@@ -103,14 +103,14 @@ export default function Tickets() {
             
             {/* Tipo */}
             <Select
-              value={filtros.tipo}
-              onValueChange={(v) => atualizarFiltro('tipo', v as 'incident' | 'request' | '')}
+              value={filtros.tipo || 'all'}
+              onValueChange={(v) => atualizarFiltro('tipo', v === 'all' ? '' : v as 'incident' | 'request')}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Tipo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="incident">Incidente</SelectItem>
                 <SelectItem value="request">Requisição</SelectItem>
               </SelectContent>
