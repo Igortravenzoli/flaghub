@@ -81,7 +81,9 @@ export default function Importacoes() {
         continue;
       }
 
-      if (isAuthenticated && canImport) {
+      console.log('[Importacoes] Auth debug:', { isAuthenticated, canImport, networkId });
+      
+      if (isAuthenticated && canImport && networkId) {
         try {
           const result = await importFile(file);
           if (result.success) {
@@ -90,11 +92,14 @@ export default function Importacoes() {
             });
           }
         } catch (err) {
+          console.error('[Importacoes] Import error:', err);
           toast.error('Erro na importação', {
             description: err instanceof Error ? err.message : 'Erro desconhecido'
           });
         }
       } else {
+        // Modo mock para não autenticados ou sem permissão
+        console.log('[Importacoes] Usando modo mock - usuário não autenticado ou sem permissão');
         // Modo mock para não autenticados
         const novaImportacao: ImportacaoArquivo = {
           id: Date.now().toString(),
