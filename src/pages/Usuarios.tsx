@@ -28,11 +28,13 @@ import {
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, UserPlus } from 'lucide-react';
-import { mockUsuarios } from '@/data/mockData';
 import { Usuario } from '@/types';
 
+// Dados iniciais vazios - será integrado com Supabase
+const initialUsuarios: Usuario[] = [];
+
 export default function Usuarios() {
-  const [usuarios, setUsuarios] = useState<Usuario[]>(mockUsuarios);
+  const [usuarios, setUsuarios] = useState<Usuario[]>(initialUsuarios);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Usuario | null>(null);
   const [formData, setFormData] = useState<Partial<Usuario>>({

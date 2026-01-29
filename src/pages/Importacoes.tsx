@@ -15,18 +15,20 @@ import { Upload, FileJson, FileSpreadsheet, CheckCircle, XCircle, Clock, Loader2
 import { useImport } from '@/hooks/useImport';
 import { useImportsHistory } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
-import { mockImportacoes } from '@/data/mockData';
 import { ImportacaoArquivo } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+// Dados iniciais vazios - será integrado com Supabase
+const initialImportacoes: ImportacaoArquivo[] = [];
 
 export default function Importacoes() {
   const { isAuthenticated, canImport, networkId } = useAuth();
   const { importFile, isProcessing, progress, error } = useImport();
   const { data: dbImports, isLoading: importsLoading } = useImportsHistory(networkId ?? undefined);
   
-  // Fallback para dados mock se não autenticado
-  const [localImportacoes, setLocalImportacoes] = useState<ImportacaoArquivo[]>(mockImportacoes);
+  // Fallback para dados vazios se não autenticado
+  const [localImportacoes, setLocalImportacoes] = useState<ImportacaoArquivo[]>(initialImportacoes);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 

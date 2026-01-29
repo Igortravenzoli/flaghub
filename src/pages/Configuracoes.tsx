@@ -28,10 +28,18 @@ import {
   useAddStatusMapping, 
   useDeleteStatusMapping 
 } from '@/hooks/useSupabaseData';
-import { defaultConfiguracoes, defaultMapeamentosStatus } from '@/data/mockData';
 import { StatusNormalizado } from '@/types';
 import type { InternalStatus } from '@/types/database';
 import { toast } from 'sonner';
+
+// Configurações padrão
+const defaultConfiguracoes = {
+  diasAlertaOS: 7,
+  limiteTicketsSemOS: 5,
+};
+
+// Mapeamentos de status padrão
+const defaultMapeamentosStatus: Array<{ statusExterno: string; statusInterno: StatusNormalizado }> = [];
 
 const statusInternoLabels: Record<StatusNormalizado, string> = {
   novo: 'Novo',

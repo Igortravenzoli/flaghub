@@ -8,14 +8,17 @@ import {
   EstatisticasDashboard,
   MapeamentoStatus 
 } from '@/types';
-import { 
-  mockTicketsNestle, 
-  mockOrdensServico, 
-  defaultMapeamentosStatus,
-  defaultConfiguracoes 
-} from '@/data/mockData';
 import { useTicketAnalysisDB } from './useTicketAnalysisDB';
 import { useAuth } from './useAuth';
+
+// Dados iniciais vazios
+const mockTicketsNestle: TicketNestle[] = [];
+const mockOrdensServico: OrdemServico[] = [];
+const defaultMapeamentosStatus: MapeamentoStatus[] = [];
+const defaultConfiguracoes = {
+  diasAlertaOS: 7,
+  limiteTicketsSemOS: 5,
+};
 
 // Calcula diferença em horas entre duas datas
 function calcularHorasDiferenca(dataInicio: string): number {
