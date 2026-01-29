@@ -18,6 +18,8 @@ const defaultMapeamentosStatus: MapeamentoStatus[] = [];
 const defaultConfiguracoes = {
   diasAlertaOS: 7,
   limiteTicketsSemOS: 5,
+  prazoTicketSemOS: 24, // horas
+  mapeamentosStatus: defaultMapeamentosStatus,
 };
 
 // Calcula diferença em horas entre duas datas

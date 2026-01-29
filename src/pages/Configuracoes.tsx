@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 const defaultConfiguracoes = {
   diasAlertaOS: 7,
   limiteTicketsSemOS: 5,
+  prazoTicketSemOS: 24, // horas
 };
 
 // Mapeamentos de status padrão
