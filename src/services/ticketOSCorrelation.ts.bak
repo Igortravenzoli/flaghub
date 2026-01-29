@@ -1,0 +1,367 @@
+/**
+ * Serviço de Correlação entre Tickets e Ordens de Serviço (OS)
+ * 
+ * Este serviço é responsável por:
+ * - Correlacionar tickets do ServiceNow com OS do VDESK
+ * - Validar a existência de OS no sistema VDESK
+ * - Calcular métricas de correlação
+ * - Identificar inconsistências
+ */
+
+import { supabase } from '@/integrations/supabase/client';
+import type { DBTicket, TicketSeverity, InternalStatus } from '@/types/database';
+
+// Tipos para correlação
+export interface CorrelationResult {
+  ticketId: string;
+  osNumber: string | null;
+  osFound: boolean;
+  osStatus?: string;
+  correlationScore: number; // 0-100
+  issues: CorrelationIssue[];
+}
+
+export interface CorrelationIssue {
+  code: string;
+  severity: 'critical' | 'warning' | 'info';
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface CorrelationMetrics {
+  totalTickets: number;
+  ticketsWithOS: number;
+  ticketsWithoutOS: number;
+  osFoundInVDESK: number;
+  osNotFoundInVDESK: number;
+  correlationRate: number; // Percentual
+  criticalIssues: number;
+  warningIssues: number;
+}
+
+export interface OSValidationPayload {
+  os: string;
+  ticketNestle: string;
+  cliente: string;
+  sistema: string;
+  descricaoOS: string;
+  dataHistorico: string | null;
+}
+
+/**
+ * Classe principal do serviço de correlação
+ */
+export class TicketOSCorrelationService {
+  /**
+   * Correlaciona um ticket específico com sua OS
+   */
+  async correlateTicket(ticketExternalId: string): Promise<CorrelationResult> {
+    const issues: CorrelationIssue[] = [];
+    let osFound = false;
+    let osNumber: string | null = null;
+    let correlationScore = 0;
+
+    try {
+      // 1. Buscar ticket no banco
+      const { data: ticket, error } = await supabase
+        .rpc('get_ticket_detail', { p_ticket_external_id: ticketExternalId });
+
+      if (error) throw error;
+      if (!ticket || ticket.length === 0) {
+        issues.push({
+          code: 'TICKET_NOT_FOUND',
+          severity: 'critical',
+          message: `Ticket ${ticketExternalId} não encontrado`,
+        });
+        return { ticketId: ticketExternalId, osNumber: null, osFound: false, correlationScore: 0, issues };
+      }
+
+      const ticketData = ticket[0] as DBTicket;
+      osNumber = ticketData.os_number;
+
+      // 2. Verificar se ticket tem OS vinculada
+      if (!osNumber) {
+        const horasSemOS = this.calcularHorasSemOS(ticketData.opened_at);
+        
+        if (horasSemOS && horasSemOS > 24) {
+          issues.push({
+            code: 'NO_OS_CRITICAL',
+            severity: 'critical',
+            message: `Ticket sem OS há ${horasSemOS.toFixed(1)}h`,
+            details: { horasSemOS, openedAt: ticketData.opened_at },
+          });
+        } else {
+          issues.push({
+            code: 'NO_OS_WARNING',
+            severity: 'warning',
+            message: 'Ticket ainda não possui OS vinculada',
+            details: { horasSemOS, openedAt: ticketData.opened_at },
+          });
+          correlationScore = 30; // Parcial
+        }
+        return { ticketId: ticketExternalId, osNumber: null, osFound: false, correlationScore, issues };
+      }
+
+      // 3. Validar existência da OS no VDESK (via raw_payload)
+      osFound = ticketData.os_found_in_vdesk ?? false;
+      
+      if (!osFound) {
+        issues.push({
+          code: 'OS_NOT_FOUND_VDESK',
+          severity: 'critical',
+          message: `OS ${osNumber} não encontrada no sistema VDESK`,
+          details: { osNumber },
+        });
+        correlationScore = 50; // OS informada mas não validada
+      } else {
+        correlationScore = 100; // Correlação perfeita
+        
+        // 4. Verificar se OS está atualizada
+        const osEventDate = ticketData.last_os_event_at;
+        if (osEventDate) {
+          const horasDesdeUltimoEvento = this.calcularHorasSemOS(osEventDate);
+          if (horasDesdeUltimoEvento && horasDesdeUltimoEvento > 72) {
+            issues.push({
+              code: 'OS_OUTDATED',
+              severity: 'warning',
+              message: `OS sem movimentação há ${horasDesdeUltimoEvento.toFixed(1)}h`,
+              details: { lastEvent: osEventDate, horasDesdeUltimoEvento },
+            });
+            correlationScore -= 10;
+          }
+        }
+
+        // 5. Validar consistência de dados
+        const rawPayload = ticketData.raw_payload as Record<string, string>;
+        if (rawPayload.os_sistema && !rawPayload.os_sistema.includes('Visual Desk')) {
+          issues.push({
+            code: 'OS_WRONG_SYSTEM',
+            severity: 'info',
+            message: `OS registrada em sistema diferente: ${rawPayload.os_sistema}`,
+            details: { sistema: rawPayload.os_sistema },
+          });
+        }
+      }
+
+      return {
+        ticketId: ticketExternalId,
+        osNumber,
+        osFound,
+        correlationScore,
+        issues,
+      };
+
+    } catch (error) {
+      issues.push({
+        code: 'CORRELATION_ERROR',
+        severity: 'critical',
+        message: `Erro ao correlacionar ticket: ${error}`,
+      });
+      return { ticketId: ticketExternalId, osNumber: null, osFound: false, correlationScore: 0, issues };
+    }
+  }
+
+  /**
+   * Correlaciona múltiplos tickets em lote
+   */
+  async correlateTickets(ticketIds: string[]): Promise<CorrelationResult[]> {
+    const results: CorrelationResult[] = [];
+    
+    for (const ticketId of ticketIds) {
+      const result = await this.correlateTicket(ticketId);
+      results.push(result);
+    }
+    
+    return results;
+  }
+
+  /**
+   * Gera métricas gerais de correlação para uma network
+   */
+  async getCorrelationMetrics(networkId: number): Promise<CorrelationMetrics> {
+    try {
+      const { data: tickets, error } = await supabase
+        .rpc('get_tickets', {
+          p_network_id: networkId,
+          p_limit: 10000, // Buscar todos
+          p_offset: 0,
+        });
+
+      if (error) throw error;
+
+      const ticketList = (tickets as DBTicket[]) || [];
+      const totalTickets = ticketList.length;
+      const ticketsWithOS = ticketList.filter(t => t.has_os).length;
+      const ticketsWithoutOS = totalTickets - ticketsWithOS;
+      const osFoundInVDESK = ticketList.filter(t => t.os_found_in_vdesk === true).length;
+      const osNotFoundInVDESK = ticketsWithOS - osFoundInVDESK;
+      const correlationRate = totalTickets > 0 ? (osFoundInVDESK / totalTickets) * 100 : 0;
+      
+      const criticalIssues = ticketList.filter(t => t.severity === 'critico').length;
+      const warningIssues = ticketList.filter(t => t.severity === 'atencao').length;
+
+      return {
+        totalTickets,
+        ticketsWithOS,
+        ticketsWithoutOS,
+        osFoundInVDESK,
+        osNotFoundInVDESK,
+        correlationRate,
+        criticalIssues,
+        warningIssues,
+      };
+
+    } catch (error) {
+      console.error('Erro ao calcular métricas:', error);
+      return {
+        totalTickets: 0,
+        ticketsWithOS: 0,
+        ticketsWithoutOS: 0,
+        osFoundInVDESK: 0,
+        osNotFoundInVDESK: 0,
+        correlationRate: 0,
+        criticalIssues: 0,
+        warningIssues: 0,
+      };
+    }
+  }
+
+  /**
+   * Atualiza status de validação de OS no banco
+   */
+  async updateOSValidation(
+    ticketExternalId: string,
+    osValidation: OSValidationPayload
+  ): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('tickets')
+        .update({
+          os_found_in_vdesk: true,
+          last_os_event_at: osValidation.dataHistorico || new Date().toISOString(),
+          last_os_event_desc: osValidation.descricaoOS,
+          raw_payload: supabase.rpc('jsonb_merge', {
+            current: {}, // Será mesclado com o existente
+            new_data: {
+              os_cliente: osValidation.cliente,
+              os_sistema: osValidation.sistema,
+              os_descricao: osValidation.descricaoOS,
+            }
+          })
+        })
+        .eq('ticket_external_id', ticketExternalId);
+
+      if (error) throw error;
+      return true;
+
+    } catch (error) {
+      console.error('Erro ao atualizar validação de OS:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Marca OS como não encontrada
+   */
+  async markOSNotFound(ticketExternalId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('tickets')
+        .update({
+          os_found_in_vdesk: false,
+          inconsistency_code: 'OS_NOT_FOUND',
+          severity: 'critico' as TicketSeverity,
+        })
+        .eq('ticket_external_id', ticketExternalId);
+
+      if (error) throw error;
+      return true;
+
+    } catch (error) {
+      console.error('Erro ao marcar OS como não encontrada:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Calcula horas desde uma data
+   */
+  private calcularHorasSemOS(openedAt: string | null): number | null {
+    if (!openedAt) return null;
+    const opened = new Date(openedAt);
+    const now = new Date();
+    const diffMs = now.getTime() - opened.getTime();
+    return Math.floor(diffMs / (1000 * 60 * 60));
+  }
+
+  /**
+   * Busca tickets que precisam de correlação
+   */
+  async getTicketsNeedingCorrelation(networkId: number): Promise<string[]> {
+    try {
+      const { data: tickets, error } = await supabase
+        .rpc('get_tickets', {
+          p_network_id: networkId,
+          p_has_os: true, // Apenas tickets que têm OS informada
+          p_limit: 1000,
+          p_offset: 0,
+        });
+
+      if (error) throw error;
+
+      const ticketList = (tickets as DBTicket[]) || [];
+      
+      // Retornar apenas tickets que têm OS mas ainda não foram validados
+      return ticketList
+        .filter(t => t.os_found_in_vdesk === null || t.os_found_in_vdesk === false)
+        .map(t => t.ticket_external_id);
+
+    } catch (error) {
+      console.error('Erro ao buscar tickets para correlação:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Gera relatório de inconsistências
+   */
+  async generateInconsistencyReport(networkId: number): Promise<{
+    ticketId: string;
+    inconsistencyCode: string;
+    severity: TicketSeverity;
+    openedAt: string | null;
+    osNumber: string | null;
+    internalStatus: InternalStatus | null;
+  }[]> {
+    try {
+      const { data: tickets, error } = await supabase
+        .rpc('get_tickets', {
+          p_network_id: networkId,
+          p_limit: 10000,
+          p_offset: 0,
+        });
+
+      if (error) throw error;
+
+      const ticketList = (tickets as DBTicket[]) || [];
+      
+      return ticketList
+        .filter(t => t.inconsistency_code !== null)
+        .map(t => ({
+          ticketId: t.ticket_external_id,
+          inconsistencyCode: t.inconsistency_code!,
+          severity: t.severity,
+          openedAt: t.opened_at,
+          osNumber: t.os_number,
+          internalStatus: t.internal_status,
+        }));
+
+    } catch (error) {
+      console.error('Erro ao gerar relatório de inconsistências:', error);
+      return [];
+    }
+  }
+}
+
+// Exportar instância singleton
+export const correlationService = new TicketOSCorrelationService();

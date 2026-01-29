@@ -37,11 +37,29 @@ export interface StatusMapping {
   created_at: string;
 }
 
-// Import
+// Import Batch (lote de importação)
+export interface ImportBatch {
+  id: number;
+  network_id: number;
+  imported_by: string;
+  batch_name: string | null;
+  status: 'processing' | 'success' | 'partial_success' | 'error';
+  total_files: number;
+  total_records: number;
+  errors_count: number;
+  warnings_count: number;
+  clear_before_import: boolean;
+  created_at: string;
+  completed_at: string | null;
+  notes: string | null;
+}
+
+// Import (arquivo individual dentro de um lote)
 export interface Import {
   id: number;
   network_id: number;
   imported_by: string;
+  batch_id: number | null;
   file_name: string;
   file_type: 'json' | 'csv';
   file_hash: string;
@@ -81,6 +99,8 @@ export interface DBTicket {
   last_os_event_at: string | null;
   last_os_event_desc: string | null;
   last_import_id: number | null;
+  is_active: boolean;
+  last_seen_at: string | null;
   created_at: string;
   updated_at: string;
 }

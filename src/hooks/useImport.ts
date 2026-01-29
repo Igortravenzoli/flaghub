@@ -1,15 +1,24 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
+import { useCreateBatch, useUpdateBatch, useMarkTicketsInactive } from './useImportBatch';
+// Correlação automática removida - usar API REST em ticketsOSApi.ts ao invés
 
 interface ImportResult {
   success: boolean;
+  batchId?: number;
   importId?: number;
   totalRecords?: number;
   errorsCount?: number;
   warningsCount?: number;
   message?: string;
+}
+
+interface ImportOptions {
+  clearBeforeImport?: boolean;
+  batchName?: string;
+  notes?: string;
 }
 
 // Calcular hash SHA256 de um arquivo
@@ -292,6 +301,12 @@ export function useImport() {
           message: `Importação concluída: ${records.length} registros, ${errorsCount} erros, ${warningsCount} avisos`,
         };
         await supabase.from('import_events').insert([completionEvent] as never);
+
+        setProgress(95);
+
+        // NOTA: Correlação automática com VDESK foi removida
+        // Use useCorrelacionarTicket() hook para correlacionar tickets conforme necessário
+        // A API REST em localhost:5000 (VDESKProxy) agora fornece essa funcionalidade
 
         setProgress(100);
 

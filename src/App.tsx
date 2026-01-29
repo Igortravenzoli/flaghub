@@ -11,6 +11,8 @@ import Usuarios from "@/pages/Usuarios";
 import Configuracoes from "@/pages/Configuracoes";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
+import TesteSupabaseSetup from "@/pages/TesteSupabaseSetup";
+import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 
 const queryClient = new QueryClient();
 
@@ -22,12 +24,14 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/teste-setup" element={<TesteSupabaseSetup />} />
           <Route element={<MainLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/tickets" element={<Tickets />} />
             <Route path="/importacoes" element={<Importacoes />} />
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
+            <Route path="/ticket-busca" element={<TicketBuscaComponente />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
