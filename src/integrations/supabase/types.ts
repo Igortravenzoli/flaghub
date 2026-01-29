@@ -14,6 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      import_batches: {
+        Row: {
+          batch_name: string | null
+          clear_before_import: boolean | null
+          completed_at: string | null
+          created_at: string | null
+          errors_count: number | null
+          id: number
+          imported_by: string
+          network_id: number
+          notes: string | null
+          status: string | null
+          total_files: number | null
+          total_records: number | null
+          warnings_count: number | null
+        }
+        Insert: {
+          batch_name?: string | null
+          clear_before_import?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          errors_count?: number | null
+          id?: number
+          imported_by: string
+          network_id: number
+          notes?: string | null
+          status?: string | null
+          total_files?: number | null
+          total_records?: number | null
+          warnings_count?: number | null
+        }
+        Update: {
+          batch_name?: string | null
+          clear_before_import?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          errors_count?: number | null
+          id?: number
+          imported_by?: string
+          network_id?: number
+          notes?: string | null
+          status?: string | null
+          total_files?: number | null
+          total_records?: number | null
+          warnings_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_batches_network_id_fkey"
+            columns: ["network_id"]
+            isOneToOne: false
+            referencedRelation: "networks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_events: {
         Row: {
           created_at: string
@@ -51,6 +107,7 @@ export type Database = {
       }
       imports: {
         Row: {
+          batch_id: number | null
           created_at: string
           errors_count: number
           file_hash: string
@@ -64,6 +121,7 @@ export type Database = {
           warnings_count: number
         }
         Insert: {
+          batch_id?: number | null
           created_at?: string
           errors_count?: number
           file_hash: string
@@ -77,6 +135,7 @@ export type Database = {
           warnings_count?: number
         }
         Update: {
+          batch_id?: number | null
           created_at?: string
           errors_count?: number
           file_hash?: string
@@ -90,6 +149,13 @@ export type Database = {
           warnings_count?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "imports_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "imports_network_id_fkey"
             columns: ["network_id"]
@@ -219,9 +285,11 @@ export type Database = {
           id: number
           inconsistency_code: string | null
           internal_status: Database["public"]["Enums"]["internal_status"] | null
+          is_active: boolean | null
           last_import_id: number | null
           last_os_event_at: string | null
           last_os_event_desc: string | null
+          last_seen_at: string | null
           network_id: number
           opened_at: string | null
           os_found_in_vdesk: boolean | null
@@ -242,9 +310,11 @@ export type Database = {
           internal_status?:
             | Database["public"]["Enums"]["internal_status"]
             | null
+          is_active?: boolean | null
           last_import_id?: number | null
           last_os_event_at?: string | null
           last_os_event_desc?: string | null
+          last_seen_at?: string | null
           network_id: number
           opened_at?: string | null
           os_found_in_vdesk?: boolean | null
@@ -265,9 +335,11 @@ export type Database = {
           internal_status?:
             | Database["public"]["Enums"]["internal_status"]
             | null
+          is_active?: boolean | null
           last_import_id?: number | null
           last_os_event_at?: string | null
           last_os_event_desc?: string | null
+          last_seen_at?: string | null
           network_id?: number
           opened_at?: string | null
           os_found_in_vdesk?: boolean | null
@@ -342,18 +414,20 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"]
       }
-      get_dashboard_summary: {
-        Args: { p_network_id?: number }
-        Returns: {
-          last_updated: string
-          network_id: number
-          tickets_atencao: number
-          tickets_criticos: number
-          tickets_ok: number
-          tickets_sem_os: number
-          total_tickets: number
-        }[]
-      }
+      get_batch_statistics: { Args: { p_batch_id: number }; Returns: Json }
+      get_dashboard_summary:
+        | {
+            Args: { p_network_id?: number }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.get_dashboard_summary(p_network_id => int8), public.get_dashboard_summary(p_network_id => int4). Try renaming the parameters or the function itself in the database so function overloading can be resolved"[]
+          }
+        | {
+            Args: { p_network_id?: number }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.get_dashboard_summary(p_network_id => int8), public.get_dashboard_summary(p_network_id => int4). Try renaming the parameters or the function itself in the database so function overloading can be resolved"[]
+          }
       get_imports_history: {
         Args: { p_limit?: number; p_network_id?: number }
         Returns: {
@@ -365,6 +439,22 @@ export type Database = {
           imported_by: string
           network_id: number
           status: string
+          total_records: number
+          warnings_count: number
+        }[]
+      }
+      get_recent_batches: {
+        Args: { p_limit?: number; p_network_id: number }
+        Returns: {
+          batch_name: string
+          clear_before_import: boolean
+          completed_at: string
+          created_at: string
+          errors_count: number
+          id: number
+          imported_by_email: string
+          status: string
+          total_files: number
           total_records: number
           warnings_count: number
         }[]
@@ -393,36 +483,82 @@ export type Database = {
           updated_at: string
         }[]
       }
-      get_tickets: {
-        Args: {
-          p_date_from?: string
-          p_date_to?: string
-          p_has_os?: boolean
-          p_internal_status?: Database["public"]["Enums"]["internal_status"]
-          p_limit?: number
-          p_network_id?: number
-          p_offset?: number
-          p_search_text?: string
-          p_severity?: Database["public"]["Enums"]["ticket_severity"]
-        }
-        Returns: {
-          assigned_to: string
-          created_at: string
-          external_status: string
-          has_os: boolean
-          id: number
-          inconsistency_code: string
-          internal_status: Database["public"]["Enums"]["internal_status"]
-          last_import_id: number
-          network_id: number
-          opened_at: string
-          os_number: string
-          severity: Database["public"]["Enums"]["ticket_severity"]
-          ticket_external_id: string
-          ticket_type: string
-          updated_at: string
-        }[]
-      }
+      get_tickets:
+        | {
+            Args: {
+              p_date_from?: string
+              p_date_to?: string
+              p_has_os?: boolean
+              p_internal_status?: Database["public"]["Enums"]["internal_status"]
+              p_limit?: number
+              p_network_id?: number
+              p_offset?: number
+              p_search_text?: string
+              p_severity?: Database["public"]["Enums"]["ticket_severity"]
+            }
+            Returns: {
+              assigned_to: string
+              created_at: string
+              external_status: string
+              has_os: boolean
+              id: number
+              inconsistency_code: string
+              internal_status: Database["public"]["Enums"]["internal_status"]
+              last_import_id: number
+              network_id: number
+              opened_at: string
+              os_number: string
+              severity: Database["public"]["Enums"]["ticket_severity"]
+              ticket_external_id: string
+              ticket_type: string
+              updated_at: string
+            }[]
+          }
+        | {
+            Args: {
+              p_date_from?: string
+              p_date_to?: string
+              p_has_os?: boolean
+              p_include_inactive?: boolean
+              p_internal_status?: string
+              p_limit?: number
+              p_network_id?: number
+              p_offset?: number
+              p_search_text?: string
+              p_severity?: string
+            }
+            Returns: {
+              assigned_to: string | null
+              created_at: string
+              external_status: string | null
+              has_os: boolean | null
+              id: number
+              inconsistency_code: string | null
+              internal_status:
+                | Database["public"]["Enums"]["internal_status"]
+                | null
+              is_active: boolean | null
+              last_import_id: number | null
+              last_os_event_at: string | null
+              last_os_event_desc: string | null
+              last_seen_at: string | null
+              network_id: number
+              opened_at: string | null
+              os_found_in_vdesk: boolean | null
+              os_number: string | null
+              raw_payload: Json
+              severity: Database["public"]["Enums"]["ticket_severity"]
+              ticket_external_id: string
+              ticket_type: string | null
+              updated_at: string
+            }[]
+            SetofOptions: {
+              from: "*"
+              to: "tickets"
+              isOneToOne: false
+              isSetofReturn: true
+            }
+          }
       get_user_network_id: { Args: { p_user_id: string }; Returns: number }
       get_user_role: {
         Args: { p_user_id: string }
@@ -437,6 +573,11 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_gestao: { Args: never; Returns: boolean }
+      mark_tickets_inactive: { Args: { p_network_id: number }; Returns: number }
+      purge_old_inactive_tickets: {
+        Args: { p_days_threshold?: number; p_network_id: number }
+        Returns: number
+      }
     }
     Enums: {
       app_role: "operacional" | "gestao" | "qualidade" | "admin"

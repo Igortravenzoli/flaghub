@@ -99,7 +99,7 @@ serve(async (req) => {
     // 2. Criar proxy em .NET que exponha REST API
     // 3. Usar ODBC via Deno
 
-    const records = []; // Aqui virão os dados reais do VDESK
+    const records: Record<string, unknown>[] = []; // Aqui virão os dados reais do VDESK
 
     return new Response(
       JSON.stringify({ records }),
@@ -111,9 +111,10 @@ serve(async (req) => {
       }
     )
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         headers: { 
           ...corsHeaders,
