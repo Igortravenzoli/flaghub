@@ -15,11 +15,19 @@ export function useDashboardSummary(networkId?: number) {
   return useQuery({
     queryKey: ['dashboard-summary', networkId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .rpc('get_dashboard_summary', { p_network_id: networkId ?? null });
+      // Usar view diretamente para evitar problema de overload de função
+      let query = supabase
+        .from('v_dashboard_summary')
+        .select('*');
       
-      if (error) throw error;
-      return (data as DashboardSummary[])?.[0] ?? null;
+      if (networkId) {
+        query = query.eq('network_id', networkId);
+      }
+      
+      const { data, error } = await query.limit(1).single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data as DashboardSummary | null;
     },
     refetchInterval: 60000, // Auto-refresh a cada 60s
   });
