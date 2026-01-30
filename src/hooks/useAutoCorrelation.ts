@@ -1,14 +1,13 @@
 /**
  * Hook para correlação automática de tickets com VDESK
  * 
- * Usa token de sessão obtido via /api/faq/validate-client
+ * Usa Edge Function como proxy para evitar CORS
  */
 
 import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { correlacionarTicket } from '@/services/ticketsOSApi';
-import { getValidToken, withTokenRetry, clearToken } from '@/services/apiSessionToken';
+import { correlacionarTicketViaProxy } from '@/services/vdeskProxyService';
 import { useAuth } from './useAuth';
 
 interface CorrelationResult {
@@ -35,16 +34,18 @@ export function useAutoCorrelation() {
   const [summary, setSummary] = useState<CorrelationSummary | null>(null);
 
   /**
-   * Correlaciona um único ticket com a API VDESK
+   * Correlaciona um único ticket com a API VDESK via proxy
    */
   const correlateOneTicket = useCallback(async (
-    ticketExternalId: string,
-    token: string
+    ticketExternalId: string
   ): Promise<CorrelationResult> => {
     try {
-      const response = await correlacionarTicket(ticketExternalId, token);
+      console.log(`[AutoCorrelation] Correlacionando ticket: ${ticketExternalId}`);
+      const response = await correlacionarTicketViaProxy(ticketExternalId);
       
       if (response.success && response.count > 0) {
+        console.log(`[AutoCorrelation] OS encontrada para ${ticketExternalId}: ${response.osEncontradas.join(', ')}`);
+        
         // Atualizar ticket no Supabase com OS encontrada
         await supabase
           .from('tickets')
@@ -66,6 +67,8 @@ export function useAutoCorrelation() {
           osNumbers: response.osEncontradas,
         };
       } else {
+        console.log(`[AutoCorrelation] Nenhuma OS encontrada para ${ticketExternalId}`);
+        
         // Ticket não encontrado no VDESK
         await supabase
           .from('tickets')
@@ -89,11 +92,7 @@ export function useAutoCorrelation() {
     } catch (error) {
       console.error(`[AutoCorrelation] Erro ao correlacionar ${ticketExternalId}:`, error);
       
-      // Re-throw erros 401 para tratamento no nível superior
       const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
-      if (errorMsg.includes('401') || errorMsg.toLowerCase().includes('unauthorized')) {
-        throw error;
-      }
       
       return {
         ticketId: ticketExternalId,
@@ -106,54 +105,29 @@ export function useAutoCorrelation() {
   }, [networkId]);
 
   /**
-   * Processa um lote de tickets com retry em caso de 401
+   * Processa um lote de tickets
    */
-  const processBatchWithRetry = useCallback(async (
+  const processBatch = useCallback(async (
     ticketIds: string[],
     onProgress: (processed: number) => void
   ): Promise<CorrelationResult[]> => {
     const results: CorrelationResult[] = [];
     const batchSize = 5;
-    let retryCount = 0;
-    const maxRetries = 2;
 
     for (let i = 0; i < ticketIds.length; i += batchSize) {
       const batch = ticketIds.slice(i, i + batchSize);
       
-      try {
-        // Obter token válido (reutiliza ou renova)
-        const token = await getValidToken(retryCount > 0);
-        
-        const batchResults = await Promise.all(
-          batch.map(ticketId => correlateOneTicket(ticketId, token))
-        );
+      // Processar lote em paralelo
+      const batchResults = await Promise.all(
+        batch.map(ticketId => correlateOneTicket(ticketId))
+      );
 
-        results.push(...batchResults);
-        onProgress(i + batch.length);
-        retryCount = 0; // Reset retry count on success
-        
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : '';
-        const is401 = errorMsg.includes('401') || errorMsg.toLowerCase().includes('unauthorized');
-        
-        if (is401 && retryCount < maxRetries) {
-          console.warn(`[AutoCorrelation] Token inválido, renovando (tentativa ${retryCount + 1})`);
-          clearToken();
-          retryCount++;
-          i -= batchSize; // Retry this batch
-        } else {
-          // Add error results for this batch
-          for (const ticketId of batch) {
-            results.push({
-              ticketId,
-              success: false,
-              osCount: 0,
-              osNumbers: [],
-              error: errorMsg || 'Erro de autenticação',
-            });
-          }
-          onProgress(i + batch.length);
-        }
+      results.push(...batchResults);
+      onProgress(i + batch.length);
+      
+      // Pequena pausa entre lotes para não sobrecarregar a API
+      if (i + batchSize < ticketIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
@@ -197,8 +171,8 @@ export function useAutoCorrelation() {
         return emptySummary;
       }
 
-      // Processar tickets com retry automático
-      const results = await processBatchWithRetry(ticketIds, (processed) => {
+      // Processar tickets
+      const results = await processBatch(ticketIds, (processed) => {
         setProgress(Math.round((processed / ticketIds.length) * 100));
       });
 
@@ -237,7 +211,7 @@ export function useAutoCorrelation() {
       setIsCorrelating(false);
       setProgress(100);
     }
-  }, [networkId, processBatchWithRetry, queryClient]);
+  }, [networkId, processBatch, queryClient]);
 
   /**
    * Correlaciona uma lista específica de tickets
@@ -264,8 +238,8 @@ export function useAutoCorrelation() {
     setSummary(null);
 
     try {
-      // Processar tickets com retry automático
-      const results = await processBatchWithRetry(ticketIds, (processed) => {
+      // Processar tickets
+      const results = await processBatch(ticketIds, (processed) => {
         setProgress(Math.round((processed / ticketIds.length) * 100));
       });
 
@@ -303,7 +277,7 @@ export function useAutoCorrelation() {
       setIsCorrelating(false);
       setProgress(100);
     }
-  }, [networkId, processBatchWithRetry, queryClient]);
+  }, [networkId, processBatch, queryClient]);
 
   return {
     correlateAllPending,
