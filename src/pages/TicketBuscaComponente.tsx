@@ -96,7 +96,7 @@ export function TicketBuscaComponente() {
 
   const renderResultados = (dados: any, isLoading: boolean, erro: any) => {
     if (isLoading) {
-      return <p className="text-center text-gray-500 py-4">Carregando...</p>;
+      return <p className="text-center text-muted-foreground py-4">Carregando...</p>;
     }
 
     if (erro) {
@@ -109,13 +109,13 @@ export function TicketBuscaComponente() {
     }
 
     if (!dados || !Array.isArray(dados.data) || dados.data.length === 0) {
-      return <p className="text-center text-gray-500 py-4">Nenhum resultado encontrado</p>;
+      return <p className="text-center text-muted-foreground py-4">Nenhum resultado encontrado</p>;
     }
 
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="border-b">
+          <thead className="border-b border-border">
             <tr>
               <th className="text-left p-2">Ticket</th>
               <th className="text-left p-2">OS</th>
@@ -127,15 +127,15 @@ export function TicketBuscaComponente() {
           </thead>
           <tbody>
             {dados.data.map((item: any, idx: number) => (
-              <tr key={idx} className="border-b hover:bg-gray-50">
-                <td className="p-2 font-mono text-blue-600">{item.ticketNestle}</td>
+              <tr key={idx} className="border-b border-border hover:bg-accent/50">
+                <td className="p-2 font-mono text-primary">{item.ticketNestle}</td>
                 <td className="p-2 font-mono">{item.os || '-'}</td>
                 <td className="p-2">{item.cliente || '-'}</td>
                 <td className="p-2">{item.programador || '-'}</td>
                 <td className="p-2">
                   <Badge variant="outline">{item.bandeira || 'N/A'}</Badge>
                 </td>
-                <td className="p-2 text-xs text-gray-500">
+                <td className="p-2 text-xs text-muted-foreground">
                   {item.dataRegistro ? new Date(item.dataRegistro).toLocaleDateString('pt-BR') : '-'}
                 </td>
               </tr>
@@ -143,7 +143,7 @@ export function TicketBuscaComponente() {
           </tbody>
         </table>
         {dados.totalPages && dados.totalPages > 1 && (
-          <p className="text-xs text-gray-500 mt-2 text-center">
+          <p className="text-xs text-muted-foreground mt-2 text-center">
             Página {dados.currentPage} de {dados.totalPages}
           </p>
         )}
@@ -153,7 +153,7 @@ export function TicketBuscaComponente() {
 
   const renderCorrelacao = () => {
     if (loadingCorrelacao) {
-      return <p className="text-center text-gray-500 py-4">Correlacionando...</p>;
+      return <p className="text-center text-muted-foreground py-4">Correlacionando...</p>;
     }
 
     if (errorCorrelacao) {
@@ -166,12 +166,12 @@ export function TicketBuscaComponente() {
     }
 
     if (!correlacaoData) {
-      return <p className="text-center text-gray-500 py-4">Nenhuma correlação encontrada</p>;
+      return <p className="text-center text-muted-foreground py-4">Nenhuma correlação encontrada</p>;
     }
 
     return (
       <div className="space-y-4">
-        <Alert className="bg-blue-50">
+        <Alert className="bg-accent">
           <AlertTitle>OS Encontradas</AlertTitle>
           <AlertDescription>
             {correlacaoData.osEncontradas ? (
@@ -191,7 +191,7 @@ export function TicketBuscaComponente() {
         {correlacaoData.data && correlacaoData.data.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b bg-gray-50">
+              <thead className="border-b border-border bg-muted">
                 <tr>
                   <th className="text-left p-2">OS</th>
                   <th className="text-left p-2">Ticket</th>
@@ -202,12 +202,12 @@ export function TicketBuscaComponente() {
               </thead>
               <tbody>
                 {correlacaoData.data.map((item: any, idx: number) => (
-                  <tr key={idx} className="border-b">
+                  <tr key={idx} className="border-b border-border">
                     <td className="p-2 font-mono font-bold">{item.os}</td>
-                    <td className="p-2 font-mono text-blue-600">{item.ticketNestle}</td>
+                    <td className="p-2 font-mono text-primary">{item.ticketNestle}</td>
                     <td className="p-2">{item.cliente || '-'}</td>
                     <td className="p-2">{item.programador || '-'}</td>
-                    <td className="p-2 text-xs text-gray-600 max-w-xs truncate">{item.descricao || '-'}</td>
+                    <td className="p-2 text-xs text-muted-foreground max-w-xs truncate">{item.descricao || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -219,7 +219,7 @@ export function TicketBuscaComponente() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Busca de Tickets e OS</CardTitle>
@@ -340,7 +340,7 @@ export function TicketBuscaComponente() {
       </Card>
 
       {/* Info Card */}
-      <Alert className="bg-blue-50">
+      <Alert className="bg-accent">
         <AlertTitle>ℹ️ Integração em Produção</AlertTitle>
         <AlertDescription className="space-y-2 text-sm">
           <p>
@@ -355,9 +355,9 @@ export function TicketBuscaComponente() {
           <p>
             <strong>Serviços:</strong>
             <br />
-            • <code className="text-xs bg-white px-1 rounded">src/services/ticketsOSApi.ts</code> - Camada de API
+            • <code className="text-xs bg-muted px-1 rounded">src/services/ticketsOSApi.ts</code> - Camada de API
             <br />
-            • <code className="text-xs bg-white px-1 rounded">src/hooks/useTicketsOSApi.ts</code> - Hooks React Query
+            • <code className="text-xs bg-muted px-1 rounded">src/hooks/useTicketsOSApi.ts</code> - Hooks React Query
           </p>
         </AlertDescription>
       </Alert>
