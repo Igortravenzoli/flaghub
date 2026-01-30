@@ -47,11 +47,11 @@ export function useAutoCorrelation() {
         console.log(`[AutoCorrelation] OS encontrada para ${ticketExternalId}: ${response.osEncontradas.join(', ')}`);
         
         // Atualizar ticket no Supabase com OS encontrada
-        await supabase
+        // Nota: has_os é coluna gerada, atualiza automaticamente quando os_number é definido
+        const { error: updateError } = await supabase
           .from('tickets')
           .update({
             os_found_in_vdesk: true,
-            has_os: true,
             os_number: response.osEncontradas[0], // Primeira OS
             inconsistency_code: null,
             severity: 'info',
@@ -59,6 +59,10 @@ export function useAutoCorrelation() {
           })
           .eq('ticket_external_id', ticketExternalId)
           .eq('network_id', networkId);
+        
+        if (updateError) {
+          console.error(`[AutoCorrelation] Erro ao atualizar ${ticketExternalId}:`, updateError);
+        }
 
         return {
           ticketId: ticketExternalId,
@@ -70,7 +74,7 @@ export function useAutoCorrelation() {
         console.log(`[AutoCorrelation] Nenhuma OS encontrada para ${ticketExternalId}`);
         
         // Ticket não encontrado no VDESK
-        await supabase
+        const { error: updateError } = await supabase
           .from('tickets')
           .update({
             os_found_in_vdesk: false,
@@ -80,6 +84,10 @@ export function useAutoCorrelation() {
           })
           .eq('ticket_external_id', ticketExternalId)
           .eq('network_id', networkId);
+        
+        if (updateError) {
+          console.error(`[AutoCorrelation] Erro ao atualizar ${ticketExternalId}:`, updateError);
+        }
 
         return {
           ticketId: ticketExternalId,
