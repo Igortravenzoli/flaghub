@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTicketAnalysis } from '@/hooks/useTicketAnalysis';
 import { useAutoCorrelation } from '@/hooks/useAutoCorrelation';
+import { useAuth } from '@/hooks/useAuth';
 import { HeroHeader } from '@/components/dashboard/HeroHeader';
 import { ModernStatCard } from '@/components/dashboard/ModernStatCard';
 import { ActionBar } from '@/components/dashboard/ActionBar';
@@ -17,18 +18,26 @@ import {
 import { toast } from 'sonner';
 
 export default function Dashboard() {
+  const { networkId, isLoading: isAuthLoading } = useAuth();
   const { ticketsConsolidados, estatisticas } = useTicketAnalysis();
   const { correlateAllPending, isCorrelating, progress: correlationProgress } = useAutoCorrelation();
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [kioskMode, setKioskMode] = useState(false);
   
-  // Correlação automática ao carregar e a cada minuto
+  // Correlação automática ao carregar (somente quando autenticado)
   useEffect(() => {
+    // Aguardar autenticação
+    if (isAuthLoading || !networkId) {
+      console.log('[Dashboard] Aguardando autenticação...', { isAuthLoading, networkId });
+      return;
+    }
+    
     // Executa correlação ao montar
     const runInitialCorrelation = async () => {
       try {
-        console.log('[Dashboard] Executando correlação inicial...');
-        await correlateAllPending();
+        console.log('[Dashboard] Executando correlação inicial para network:', networkId);
+        const result = await correlateAllPending();
+        console.log('[Dashboard] Correlação inicial concluída:', result);
       } catch (error) {
         console.error('[Dashboard] Erro na correlação inicial:', error);
       }
@@ -47,7 +56,7 @@ export default function Dashboard() {
     }, 60000);
     
     return () => clearInterval(interval);
-  }, [correlateAllPending]);
+  }, [correlateAllPending, networkId, isAuthLoading]);
   
   // Tickets recentes (últimos 10)
   const ticketsRecentes = ticketsConsolidados.slice(0, 10);
