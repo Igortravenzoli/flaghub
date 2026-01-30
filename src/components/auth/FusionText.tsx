@@ -1,148 +1,83 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-type AnimationPhase = 'idle' | 'ticket-enter' | 'os-enter' | 'approaching' | 'colliding' | 'fusing' | 'complete';
+type Phase = 'start' | 'moving' | 'fusing' | 'done';
 
 export function FusionText() {
-  const [phase, setPhase] = useState<AnimationPhase>('idle');
+  const [phase, setPhase] = useState<Phase>('start');
 
   useEffect(() => {
-    const timings: { phase: AnimationPhase; delay: number }[] = [
-      { phase: 'ticket-enter', delay: 300 },
-      { phase: 'os-enter', delay: 900 },
-      { phase: 'approaching', delay: 1600 },
-      { phase: 'colliding', delay: 2400 },
-      { phase: 'fusing', delay: 2800 },
-      { phase: 'complete', delay: 3400 },
-    ];
+    const t1 = setTimeout(() => setPhase('moving'), 400);
+    const t2 = setTimeout(() => setPhase('fusing'), 1400);
+    const t3 = setTimeout(() => setPhase('done'), 2000);
 
-    const timers = timings.map(({ phase, delay }) =>
-      setTimeout(() => setPhase(phase), delay)
-    );
-
-    return () => timers.forEach(clearTimeout);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, []);
 
   return (
-    <div className="h-12 flex items-center justify-center overflow-hidden my-2">
-      <div className="relative w-48 h-12 flex items-center justify-center">
+    <div className="h-10 flex items-center justify-center overflow-hidden my-1">
+      <div className="relative w-40 h-10 flex items-center justify-center">
         
-        {/* TICKET - enters from left */}
+        {/* Ticket - from left */}
         <span
           className={cn(
-            "absolute font-bold text-xl tracking-tight transition-all duration-500 ease-out",
-            // Initial: off-screen left
-            phase === 'idle' && "opacity-0 -translate-x-16",
-            // Enter: slide to left position
-            phase === 'ticket-enter' && "opacity-100 -translate-x-8 text-primary",
-            // Wait for OS
-            phase === 'os-enter' && "opacity-100 -translate-x-8 text-primary",
-            // Approach: move toward center
-            phase === 'approaching' && "opacity-100 -translate-x-2 text-primary",
-            // Collide: meet at center with glow
-            phase === 'colliding' && "opacity-100 translate-x-0 text-primary scale-110",
-            // Fusing: fade out
-            phase === 'fusing' && "opacity-0 translate-x-4 blur-sm scale-95",
-            // Complete: hidden
-            phase === 'complete' && "opacity-0 hidden"
+            "absolute font-semibold text-lg text-primary",
+            "transition-all ease-[cubic-bezier(0.4,0,0.2,1)]",
+            phase === 'start' && "opacity-0 -translate-x-12 duration-500",
+            phase === 'moving' && "opacity-100 translate-x-0 duration-700",
+            phase === 'fusing' && "opacity-0 translate-x-4 blur-sm scale-95 duration-500",
+            phase === 'done' && "opacity-0 translate-x-4 blur-md duration-300"
           )}
-          style={{
-            textShadow: phase === 'colliding' ? '0 0 20px hsl(var(--primary))' : 'none',
-          }}
         >
           Ticket
         </span>
 
-        {/* OS - enters from right */}
+        {/* OS - from right */}
         <span
           className={cn(
-            "absolute font-bold text-xl tracking-tight transition-all duration-500 ease-out",
-            // Initial: hidden
-            phase === 'idle' && "opacity-0 translate-x-16",
-            phase === 'ticket-enter' && "opacity-0 translate-x-16",
-            // Enter: slide to right position
-            phase === 'os-enter' && "opacity-100 translate-x-10 text-primary",
-            // Approach: move toward center
-            phase === 'approaching' && "opacity-100 translate-x-4 text-primary",
-            // Collide: meet at center with glow
-            phase === 'colliding' && "opacity-100 translate-x-0 text-primary scale-110",
-            // Fusing: fade out
-            phase === 'fusing' && "opacity-0 -translate-x-4 blur-sm scale-95",
-            // Complete: hidden
-            phase === 'complete' && "opacity-0 hidden"
+            "absolute font-semibold text-lg text-primary",
+            "transition-all ease-[cubic-bezier(0.4,0,0.2,1)]",
+            phase === 'start' && "opacity-0 translate-x-12 duration-500",
+            phase === 'moving' && "opacity-100 translate-x-0 duration-700",
+            phase === 'fusing' && "opacity-0 -translate-x-4 blur-sm scale-95 duration-500",
+            phase === 'done' && "opacity-0 -translate-x-4 blur-md duration-300"
           )}
-          style={{
-            textShadow: phase === 'colliding' ? '0 0 20px hsl(var(--primary))' : 'none',
-          }}
         >
           OS
         </span>
 
-        {/* Plus sign - appears between them */}
-        <span
-          className={cn(
-            "absolute font-light text-lg text-muted-foreground transition-all duration-300 ease-out",
-            phase === 'idle' && "opacity-0 scale-0",
-            phase === 'ticket-enter' && "opacity-0 scale-0",
-            phase === 'os-enter' && "opacity-100 scale-100",
-            phase === 'approaching' && "opacity-60 scale-90",
-            phase === 'colliding' && "opacity-0 scale-0 rotate-180",
-            phase === 'fusing' && "opacity-0 scale-0",
-            phase === 'complete' && "opacity-0 hidden"
-          )}
-        >
-          +
-        </span>
-
-        {/* Collision burst effect */}
+        {/* Fusion glow */}
         <div
           className={cn(
-            "absolute inset-0 flex items-center justify-center transition-all duration-300",
-            phase === 'colliding' && "opacity-100",
-            phase !== 'colliding' && "opacity-0"
+            "absolute w-16 h-16 rounded-full bg-primary/30 blur-2xl",
+            "transition-all ease-out",
+            phase === 'start' && "opacity-0 scale-0 duration-300",
+            phase === 'moving' && "opacity-0 scale-0 duration-300",
+            phase === 'fusing' && "opacity-100 scale-100 duration-400",
+            phase === 'done' && "opacity-0 scale-150 duration-500"
           )}
-        >
-          <div 
-            className={cn(
-              "w-24 h-24 rounded-full bg-primary/20 blur-xl transition-all duration-500",
-              phase === 'colliding' && "scale-100 opacity-100",
-              phase === 'fusing' && "scale-150 opacity-0",
-              (phase !== 'colliding' && phase !== 'fusing') && "scale-0 opacity-0"
-            )}
-          />
-        </div>
+        />
 
-        {/* TICKETS - final result */}
+        {/* Tickets - result */}
         <span
           className={cn(
-            "absolute font-bold text-2xl tracking-tight transition-all duration-700 ease-out",
-            // Hidden during animation
-            (phase === 'idle' || phase === 'ticket-enter' || phase === 'os-enter' || phase === 'approaching') && 
-              "opacity-0 scale-0 blur-md",
-            // Start appearing during collision
-            phase === 'colliding' && "opacity-0 scale-50 blur-sm",
-            // Emerge during fusion
-            phase === 'fusing' && "opacity-70 scale-90 blur-[1px] text-primary",
-            // Complete: fully visible with gradient
-            phase === 'complete' && "opacity-100 scale-100 blur-0"
+            "absolute font-bold text-xl text-primary",
+            "transition-all ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+            phase === 'start' && "opacity-0 scale-0 blur-md duration-300",
+            phase === 'moving' && "opacity-0 scale-0 blur-md duration-300",
+            phase === 'fusing' && "opacity-50 scale-90 blur-[2px] duration-400",
+            phase === 'done' && "opacity-100 scale-100 blur-0 duration-600"
           )}
           style={{
-            background: phase === 'complete' ? 'linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.7))' : undefined,
-            WebkitBackgroundClip: phase === 'complete' ? 'text' : undefined,
-            WebkitTextFillColor: phase === 'complete' ? 'transparent' : undefined,
-            textShadow: phase === 'complete' ? '0 0 30px hsl(var(--primary) / 0.3)' : 'none',
+            textShadow: phase === 'done' ? '0 0 20px hsl(var(--primary) / 0.4)' : 'none',
           }}
         >
           Tickets
         </span>
-
-        {/* Sparkle effects on complete */}
-        {phase === 'complete' && (
-          <>
-            <span className="absolute -top-1 -right-2 text-xs animate-pulse delay-100">✨</span>
-            <span className="absolute -bottom-1 -left-2 text-xs animate-pulse delay-300">✨</span>
-          </>
-        )}
       </div>
     </div>
   );
