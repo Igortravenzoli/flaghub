@@ -1,13 +1,14 @@
 /**
  * Hook para correlação automática de tickets com VDESK
  * 
- * Chama a API externa para validar OS após importação ou ao atualizar
+ * Usa token de sessão obtido via /api/faq/validate-client
  */
 
 import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { correlacionarTicket, obterTokenSupabase } from '@/services/ticketsOSApi';
+import { correlacionarTicket } from '@/services/ticketsOSApi';
+import { getValidToken, withTokenRetry, clearToken } from '@/services/apiSessionToken';
 import { useAuth } from './useAuth';
 
 interface CorrelationResult {
@@ -87,15 +88,77 @@ export function useAutoCorrelation() {
       }
     } catch (error) {
       console.error(`[AutoCorrelation] Erro ao correlacionar ${ticketExternalId}:`, error);
+      
+      // Re-throw erros 401 para tratamento no nível superior
+      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+      if (errorMsg.includes('401') || errorMsg.toLowerCase().includes('unauthorized')) {
+        throw error;
+      }
+      
       return {
         ticketId: ticketExternalId,
         success: false,
         osCount: 0,
         osNumbers: [],
-        error: error instanceof Error ? error.message : 'Erro desconhecido',
+        error: errorMsg,
       };
     }
   }, [networkId]);
+
+  /**
+   * Processa um lote de tickets com retry em caso de 401
+   */
+  const processBatchWithRetry = useCallback(async (
+    ticketIds: string[],
+    onProgress: (processed: number) => void
+  ): Promise<CorrelationResult[]> => {
+    const results: CorrelationResult[] = [];
+    const batchSize = 5;
+    let retryCount = 0;
+    const maxRetries = 2;
+
+    for (let i = 0; i < ticketIds.length; i += batchSize) {
+      const batch = ticketIds.slice(i, i + batchSize);
+      
+      try {
+        // Obter token válido (reutiliza ou renova)
+        const token = await getValidToken(retryCount > 0);
+        
+        const batchResults = await Promise.all(
+          batch.map(ticketId => correlateOneTicket(ticketId, token))
+        );
+
+        results.push(...batchResults);
+        onProgress(i + batch.length);
+        retryCount = 0; // Reset retry count on success
+        
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : '';
+        const is401 = errorMsg.includes('401') || errorMsg.toLowerCase().includes('unauthorized');
+        
+        if (is401 && retryCount < maxRetries) {
+          console.warn(`[AutoCorrelation] Token inválido, renovando (tentativa ${retryCount + 1})`);
+          clearToken();
+          retryCount++;
+          i -= batchSize; // Retry this batch
+        } else {
+          // Add error results for this batch
+          for (const ticketId of batch) {
+            results.push({
+              ticketId,
+              success: false,
+              osCount: 0,
+              osNumbers: [],
+              error: errorMsg || 'Erro de autenticação',
+            });
+          }
+          onProgress(i + batch.length);
+        }
+      }
+    }
+
+    return results;
+  }, [correlateOneTicket]);
 
   /**
    * Correlaciona todos os tickets pendentes (que têm has_os = true mas os_found_in_vdesk = null)
@@ -110,12 +173,6 @@ export function useAutoCorrelation() {
     setSummary(null);
 
     try {
-      // Obter token JWT
-      const token = await obterTokenSupabase();
-      if (!token) {
-        throw new Error('Token de autenticação não encontrado');
-      }
-
       // Buscar tickets que precisam de correlação
       const { data: tickets, error } = await supabase
         .from('tickets')
@@ -140,31 +197,24 @@ export function useAutoCorrelation() {
         return emptySummary;
       }
 
-      const results: CorrelationResult[] = [];
+      // Processar tickets com retry automático
+      const results = await processBatchWithRetry(ticketIds, (processed) => {
+        setProgress(Math.round((processed / ticketIds.length) * 100));
+      });
+
+      // Calcular estatísticas
       let correlated = 0;
       let notFound = 0;
       let errors = 0;
 
-      // Processar tickets em paralelo (lotes de 5)
-      const batchSize = 5;
-      for (let i = 0; i < ticketIds.length; i += batchSize) {
-        const batch = ticketIds.slice(i, i + batchSize);
-        const batchResults = await Promise.all(
-          batch.map(ticketId => correlateOneTicket(ticketId, token))
-        );
-
-        for (const result of batchResults) {
-          results.push(result);
-          if (result.success) {
-            correlated++;
-          } else if (result.error?.includes('não encontrado')) {
-            notFound++;
-          } else {
-            errors++;
-          }
+      for (const result of results) {
+        if (result.success) {
+          correlated++;
+        } else if (result.error?.includes('não encontrado')) {
+          notFound++;
+        } else {
+          errors++;
         }
-
-        setProgress(Math.round(((i + batch.length) / ticketIds.length) * 100));
       }
 
       const finalSummary: CorrelationSummary = {
@@ -187,7 +237,7 @@ export function useAutoCorrelation() {
       setIsCorrelating(false);
       setProgress(100);
     }
-  }, [networkId, correlateOneTicket, queryClient]);
+  }, [networkId, processBatchWithRetry, queryClient]);
 
   /**
    * Correlaciona uma lista específica de tickets
@@ -214,35 +264,24 @@ export function useAutoCorrelation() {
     setSummary(null);
 
     try {
-      const token = await obterTokenSupabase();
-      if (!token) {
-        throw new Error('Token de autenticação não encontrado');
-      }
+      // Processar tickets com retry automático
+      const results = await processBatchWithRetry(ticketIds, (processed) => {
+        setProgress(Math.round((processed / ticketIds.length) * 100));
+      });
 
-      const results: CorrelationResult[] = [];
+      // Calcular estatísticas
       let correlated = 0;
       let notFound = 0;
       let errors = 0;
 
-      const batchSize = 5;
-      for (let i = 0; i < ticketIds.length; i += batchSize) {
-        const batch = ticketIds.slice(i, i + batchSize);
-        const batchResults = await Promise.all(
-          batch.map(ticketId => correlateOneTicket(ticketId, token))
-        );
-
-        for (const result of batchResults) {
-          results.push(result);
-          if (result.success) {
-            correlated++;
-          } else if (result.error?.includes('não encontrado')) {
-            notFound++;
-          } else {
-            errors++;
-          }
+      for (const result of results) {
+        if (result.success) {
+          correlated++;
+        } else if (result.error?.includes('não encontrado')) {
+          notFound++;
+        } else {
+          errors++;
         }
-
-        setProgress(Math.round(((i + batch.length) / ticketIds.length) * 100));
       }
 
       const finalSummary: CorrelationSummary = {
@@ -264,7 +303,7 @@ export function useAutoCorrelation() {
       setIsCorrelating(false);
       setProgress(100);
     }
-  }, [networkId, correlateOneTicket, queryClient]);
+  }, [networkId, processBatchWithRetry, queryClient]);
 
   return {
     correlateAllPending,
