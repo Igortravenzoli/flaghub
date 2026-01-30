@@ -1,9 +1,12 @@
 import { Monitor, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 
 export default function Welcome() {
+  const navigate = useNavigate();
+
   const handleAccess = () => {
-    window.location.href = 'https://flaghub.modeia.com.br/login';
+    navigate('/login');
   };
 
   return (
