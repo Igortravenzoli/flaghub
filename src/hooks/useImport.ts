@@ -3,7 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useCreateBatch, useUpdateBatch, useMarkTicketsInactive } from './useImportBatch';
-import { correlacionarTicket, obterTokenSupabase } from '@/services/ticketsOSApi';
+import { correlacionarTicket } from '@/services/ticketsOSApi';
+import { getValidToken } from '@/services/apiSessionToken';
 
 interface ImportResult {
   success: boolean;
@@ -320,59 +321,56 @@ export function useImport() {
         console.log('[Import] Iniciando correlação automática com VDESK...');
         
         try {
-          const token = await obterTokenSupabase();
-          if (token) {
-            // Correlacionar tickets importados que têm número de ticket
-            const ticketsToCorrelate = ticketsToUpsert
-              .filter(t => t.ticket_external_id)
-              .map(t => t.ticket_external_id);
+          const token = await getValidToken();
+          
+          // Correlacionar tickets importados que têm número de ticket
+          const ticketsToCorrelate = ticketsToUpsert
+            .filter(t => t.ticket_external_id)
+            .map(t => t.ticket_external_id);
 
-            let correlatedCount = 0;
-            const correlationBatchSize = 5;
+          let correlatedCount = 0;
+          const correlationBatchSize = 5;
 
-            for (let i = 0; i < ticketsToCorrelate.length; i += correlationBatchSize) {
-              const batch = ticketsToCorrelate.slice(i, i + correlationBatchSize);
-              
-              await Promise.all(batch.map(async (ticketId) => {
-                try {
-                  const response = await correlacionarTicket(ticketId, token);
-                  
-                  if (response.success && response.count > 0) {
-                    await supabase
-                      .from('tickets')
-                      .update({
-                        os_found_in_vdesk: true,
-                        has_os: true,
-                        os_number: response.osEncontradas[0],
-                        inconsistency_code: null,
-                        severity: 'info',
-                      })
-                      .eq('ticket_external_id', ticketId)
-                      .eq('network_id', networkId);
-                    correlatedCount++;
-                  } else {
-                    await supabase
-                      .from('tickets')
-                      .update({
-                        os_found_in_vdesk: false,
-                        inconsistency_code: 'OS_NOT_FOUND',
-                        severity: 'critico',
-                      })
-                      .eq('ticket_external_id', ticketId)
-                      .eq('network_id', networkId);
-                  }
-                } catch (err) {
-                  console.warn(`[Import] Falha na correlação do ticket ${ticketId}:`, err);
+          for (let i = 0; i < ticketsToCorrelate.length; i += correlationBatchSize) {
+            const batch = ticketsToCorrelate.slice(i, i + correlationBatchSize);
+            
+            await Promise.all(batch.map(async (ticketId) => {
+              try {
+                const response = await correlacionarTicket(ticketId, token);
+                
+                if (response.success && response.count > 0) {
+                  await supabase
+                    .from('tickets')
+                    .update({
+                      os_found_in_vdesk: true,
+                      has_os: true,
+                      os_number: response.osEncontradas[0],
+                      inconsistency_code: null,
+                      severity: 'info',
+                    })
+                    .eq('ticket_external_id', ticketId)
+                    .eq('network_id', networkId);
+                  correlatedCount++;
+                } else {
+                  await supabase
+                    .from('tickets')
+                    .update({
+                      os_found_in_vdesk: false,
+                      inconsistency_code: 'OS_NOT_FOUND',
+                      severity: 'critico',
+                    })
+                    .eq('ticket_external_id', ticketId)
+                    .eq('network_id', networkId);
                 }
-              }));
+              } catch (err) {
+                console.warn(`[Import] Falha na correlação do ticket ${ticketId}:`, err);
+              }
+            }));
 
-              setProgress(92 + Math.floor((i / ticketsToCorrelate.length) * 6));
-            }
-
-            console.log(`[Import] Correlação concluída: ${correlatedCount}/${ticketsToCorrelate.length} tickets com OS encontrada`);
-          } else {
-            console.warn('[Import] Token não disponível, correlação ignorada');
+            setProgress(92 + Math.floor((i / ticketsToCorrelate.length) * 6));
           }
+
+          console.log(`[Import] Correlação concluída: ${correlatedCount}/${ticketsToCorrelate.length} tickets com OS encontrada`);
         } catch (correlationError) {
           console.error('[Import] Erro na correlação automática:', correlationError);
           // Não falhar a importação por causa da correlação
