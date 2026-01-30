@@ -55,15 +55,15 @@
     --glow-warning: 43 85% 46%;
     --glow-success: 142 71% 45%;
 
-    /* Sidebar - Light elegant */
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 43 85% 46%;
+    /* Sidebar - Light theme: Navy background, always visible */
+    --sidebar-background: 222 47% 15%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 43 85% 50%;
     --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 222 47% 18%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 222 47% 18%;
-    --sidebar-ring: 43 85% 46%;
+    --sidebar-accent: 222 47% 22%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 47% 25%;
+    --sidebar-ring: 43 85% 50%;
 
     /* FLAG Brand Color */
     --flag-gold: 43 85% 46%;
