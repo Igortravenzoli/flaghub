@@ -418,19 +418,18 @@ export type Database = {
         Returns: Database["public"]["Enums"]["app_role"]
       }
       get_batch_statistics: { Args: { p_batch_id: number }; Returns: Json }
-      get_dashboard_summary:
-        | {
-            Args: { p_network_id?: number }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.get_dashboard_summary(p_network_id => int8), public.get_dashboard_summary(p_network_id => int4). Try renaming the parameters or the function itself in the database so function overloading can be resolved"[]
-          }
-        | {
-            Args: { p_network_id?: number }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.get_dashboard_summary(p_network_id => int8), public.get_dashboard_summary(p_network_id => int4). Try renaming the parameters or the function itself in the database so function overloading can be resolved"[]
-          }
+      get_dashboard_summary: {
+        Args: { p_network_id?: number }
+        Returns: {
+          last_updated: string
+          network_id: number
+          tickets_atencao: number
+          tickets_criticos: number
+          tickets_ok: number
+          tickets_sem_os: number
+          total_tickets: number
+        }[]
+      }
       get_imports_history: {
         Args: { p_limit?: number; p_network_id?: number }
         Returns: {
@@ -486,82 +485,36 @@ export type Database = {
           updated_at: string
         }[]
       }
-      get_tickets:
-        | {
-            Args: {
-              p_date_from?: string
-              p_date_to?: string
-              p_has_os?: boolean
-              p_internal_status?: Database["public"]["Enums"]["internal_status"]
-              p_limit?: number
-              p_network_id?: number
-              p_offset?: number
-              p_search_text?: string
-              p_severity?: Database["public"]["Enums"]["ticket_severity"]
-            }
-            Returns: {
-              assigned_to: string
-              created_at: string
-              external_status: string
-              has_os: boolean
-              id: number
-              inconsistency_code: string
-              internal_status: Database["public"]["Enums"]["internal_status"]
-              last_import_id: number
-              network_id: number
-              opened_at: string
-              os_number: string
-              severity: Database["public"]["Enums"]["ticket_severity"]
-              ticket_external_id: string
-              ticket_type: string
-              updated_at: string
-            }[]
-          }
-        | {
-            Args: {
-              p_date_from?: string
-              p_date_to?: string
-              p_has_os?: boolean
-              p_include_inactive?: boolean
-              p_internal_status?: string
-              p_limit?: number
-              p_network_id?: number
-              p_offset?: number
-              p_search_text?: string
-              p_severity?: string
-            }
-            Returns: {
-              assigned_to: string | null
-              created_at: string
-              external_status: string | null
-              has_os: boolean | null
-              id: number
-              inconsistency_code: string | null
-              internal_status:
-                | Database["public"]["Enums"]["internal_status"]
-                | null
-              is_active: boolean | null
-              last_import_id: number | null
-              last_os_event_at: string | null
-              last_os_event_desc: string | null
-              last_seen_at: string | null
-              network_id: number
-              opened_at: string | null
-              os_found_in_vdesk: boolean | null
-              os_number: string | null
-              raw_payload: Json
-              severity: Database["public"]["Enums"]["ticket_severity"]
-              ticket_external_id: string
-              ticket_type: string | null
-              updated_at: string
-            }[]
-            SetofOptions: {
-              from: "*"
-              to: "tickets"
-              isOneToOne: false
-              isSetofReturn: true
-            }
-          }
+      get_tickets: {
+        Args: {
+          p_date_from?: string
+          p_date_to?: string
+          p_has_os?: boolean
+          p_internal_status?: Database["public"]["Enums"]["internal_status"]
+          p_limit?: number
+          p_network_id?: number
+          p_offset?: number
+          p_search_text?: string
+          p_severity?: Database["public"]["Enums"]["ticket_severity"]
+        }
+        Returns: {
+          assigned_to: string
+          created_at: string
+          external_status: string
+          has_os: boolean
+          id: number
+          inconsistency_code: string
+          internal_status: Database["public"]["Enums"]["internal_status"]
+          last_import_id: number
+          network_id: number
+          opened_at: string
+          os_number: string
+          severity: Database["public"]["Enums"]["ticket_severity"]
+          ticket_external_id: string
+          ticket_type: string
+          updated_at: string
+        }[]
+      }
       get_user_network_id: { Args: { p_user_id: string }; Returns: number }
       get_user_role: {
         Args: { p_user_id: string }
