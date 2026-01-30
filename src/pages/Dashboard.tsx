@@ -22,14 +22,32 @@ export default function Dashboard() {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [kioskMode, setKioskMode] = useState(false);
   
-  // Auto-refresh cada minuto
+  // Correlação automática ao carregar e a cada minuto
   useEffect(() => {
-    const interval = setInterval(() => {
+    // Executa correlação ao montar
+    const runInitialCorrelation = async () => {
+      try {
+        console.log('[Dashboard] Executando correlação inicial...');
+        await correlateAllPending();
+      } catch (error) {
+        console.error('[Dashboard] Erro na correlação inicial:', error);
+      }
+    };
+    
+    runInitialCorrelation();
+    
+    // Auto-refresh e correlação a cada 60 segundos
+    const interval = setInterval(async () => {
       setLastUpdate(new Date());
+      try {
+        await correlateAllPending();
+      } catch (error) {
+        console.error('[Dashboard] Erro na correlação automática:', error);
+      }
     }, 60000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [correlateAllPending]);
   
   // Tickets recentes (últimos 10)
   const ticketsRecentes = ticketsConsolidados.slice(0, 10);
