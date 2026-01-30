@@ -11,9 +11,21 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import { Upload, FileJson, FileSpreadsheet, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Upload, FileJson, FileSpreadsheet, CheckCircle, XCircle, Clock, Loader2, Trash2 } from 'lucide-react';
 import { useImport } from '@/hooks/useImport';
 import { useImportsHistory } from '@/hooks/useSupabaseData';
+import { useClearImports } from '@/hooks/useClearImports';
 import { useAuth } from '@/hooks/useAuth';
 import { ImportacaoArquivo } from '@/types';
 import { cn } from '@/lib/utils';
@@ -26,6 +38,7 @@ export default function Importacoes() {
   const { isAuthenticated, canImport, networkId } = useAuth();
   const { importFile, isProcessing, progress, error } = useImport();
   const { data: dbImports, isLoading: importsLoading } = useImportsHistory(networkId ?? undefined);
+  const clearImportsMutation = useClearImports();
   
   // Fallback para dados vazios se não autenticado
   const [localImportacoes, setLocalImportacoes] = useState<ImportacaoArquivo[]>(initialImportacoes);
@@ -43,6 +56,23 @@ export default function Importacoes() {
     status: imp.status === 'processing' ? 'processando' : imp.status === 'success' ? 'sucesso' : 'erro' as 'sucesso' | 'erro' | 'processando',
     mensagemErro: imp.errors_count > 0 ? `${imp.errors_count} erros` : undefined,
   })) : localImportacoes;
+
+  const handleClearImports = async () => {
+    if (!networkId) {
+      toast.error('Erro', { description: 'Network não identificada' });
+      return;
+    }
+    try {
+      const count = await clearImportsMutation.mutateAsync(networkId);
+      toast.success('Histórico limpo', { 
+        description: `${count} importação(ões) removida(s) da visualização.` 
+      });
+    } catch (err) {
+      toast.error('Erro ao limpar histórico', {
+        description: err instanceof Error ? err.message : 'Erro desconhecido'
+      });
+    }
+  };
   
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -227,8 +257,42 @@ export default function Importacoes() {
       
       {/* Histórico de Importações */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Histórico de Importações</CardTitle>
+          {canImport && importacoes.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-destructive hover:text-destructive"
+                  disabled={clearImportsMutation.isPending}
+                >
+                  {clearImportsMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-1" />
+                  )}
+                  Limpar Histórico
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Limpar histórico de importações?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta ação irá ocultar todas as importações do histórico. 
+                    Os dados dos tickets não serão afetados e a ação pode ser desfeita pelo administrador do banco.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearImports}>
+                    Confirmar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           {importsLoading ? (
