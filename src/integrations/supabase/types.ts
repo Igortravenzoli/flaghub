@@ -115,6 +115,7 @@ export type Database = {
           file_type: string
           id: number
           imported_by: string
+          is_hidden: boolean
           network_id: number
           status: string
           total_records: number
@@ -129,6 +130,7 @@ export type Database = {
           file_type: string
           id?: never
           imported_by: string
+          is_hidden?: boolean
           network_id: number
           status?: string
           total_records?: number
@@ -143,6 +145,7 @@ export type Database = {
           file_type?: string
           id?: never
           imported_by?: string
+          is_hidden?: boolean
           network_id?: number
           status?: string
           total_records?: number
@@ -571,6 +574,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      hide_imports: { Args: { p_network_id: number }; Returns: number }
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_gestao: { Args: never; Returns: boolean }
       mark_tickets_inactive: { Args: { p_network_id: number }; Returns: number }
