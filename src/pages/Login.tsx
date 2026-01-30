@@ -19,7 +19,7 @@ export default function Login() {
   const [signupData, setSignupData] = useState({ email: '', password: '', fullName: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const from = (location.state as { from?: string })?.from || '/';
+  const from = (location.state as { from?: string })?.from || '/dashboard';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
