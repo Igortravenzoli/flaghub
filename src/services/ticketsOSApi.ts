@@ -2,8 +2,10 @@
  * Serviço de Integração com API Tickets-OS Backend
  * 
  * Consome endpoints da API .NET que se conecta ao banco VDESK
- * URL Base: http://localhost:5000
+ * Usa token de sessão obtido via /api/faq/validate-client
  */
+
+import { getValidToken, withTokenRetry } from './apiSessionToken';
 
 const API_BASE_URL = 'https://clientes.flag.com.br/Flag.Ai.Gateway';
 
@@ -75,13 +77,38 @@ export interface ConsultaTicketsOSParams {
 }
 
 /**
+ * Executa requisição GET com token Bearer
+ */
+async function fetchWithToken(url: string, token: string): Promise<Response> {
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(
+      (errorData.message as string) || `HTTP ${response.status}: ${response.statusText}`
+    );
+  }
+
+  return response;
+}
+
+/**
  * Consulta tickets e OS no banco VDESK com filtros opcionais
  * 
  * GET /api/tickets-os/consultar
+ * 
+ * @param params - Filtros de consulta
+ * @param token - Token de sessão (opcional, obtido automaticamente se não fornecido)
  */
 export async function consultarTicketsOS(
   params: ConsultaTicketsOSParams,
-  token: string
+  token?: string
 ): Promise<TicketOSResponse> {
   const queryParams = new URLSearchParams();
   
@@ -95,63 +122,64 @@ export async function consultarTicketsOS(
   if (params.pageNumber) queryParams.append('pageNumber', params.pageNumber.toString());
   if (params.pageSize) queryParams.append('pageSize', params.pageSize.toString());
 
-  const response = await fetch(
-    `${API_BASE_URL}/api/tickets-os/consultar?${queryParams}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    }
-  );
+  const url = `${API_BASE_URL}/api/tickets-os/consultar?${queryParams}`;
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({})) as any;
-    throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+  // Se token foi fornecido, usar diretamente
+  if (token) {
+    const response = await fetchWithToken(url, token);
+    return await response.json();
   }
 
-  return await response.json();
+  // Senão, usar withTokenRetry para obter e renovar automaticamente
+  return withTokenRetry(async (sessionToken) => {
+    const response = await fetchWithToken(url, sessionToken);
+    return await response.json();
+  });
 }
 
 /**
  * Correlaciona um ticket com todas as OS atreladas
  * 
  * GET /api/tickets-os/correlacao?ticketNestle=INC22838782
+ * 
+ * @param ticketNestle - Número do ticket
+ * @param token - Token de sessão (opcional, obtido automaticamente se não fornecido)
  */
 export async function correlacionarTicket(
   ticketNestle: string,
-  token: string
+  token?: string
 ): Promise<CorrelacaoTicketResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/tickets-os/correlacao?ticketNestle=${encodeURIComponent(ticketNestle)}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    }
-  );
+  const url = `${API_BASE_URL}/api/tickets-os/correlacao?ticketNestle=${encodeURIComponent(ticketNestle)}`;
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({})) as any;
-    throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+  // Se token foi fornecido, usar diretamente
+  if (token) {
+    const response = await fetchWithToken(url, token);
+    return await response.json();
   }
 
-  return await response.json();
+  // Senão, usar withTokenRetry para obter e renovar automaticamente
+  return withTokenRetry(async (sessionToken) => {
+    const response = await fetchWithToken(url, sessionToken);
+    return await response.json();
+  });
 }
 
 /**
- * Função auxiliar para obter token Supabase
+ * Obtém token de sessão válido para a API
+ * (Substitui obterTokenSupabase - agora usa validate-client)
+ */
+export async function obterTokenAPI(): Promise<string> {
+  return getValidToken();
+}
+
+/**
+ * @deprecated Use obterTokenAPI() ao invés. Mantido para compatibilidade.
  */
 export async function obterTokenSupabase(): Promise<string | null> {
   try {
-    const { supabase } = await import('@/integrations/supabase/client');
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token || null;
+    return await getValidToken();
   } catch {
-    console.warn('Falha ao obter token Supabase');
+    console.warn('Falha ao obter token da API');
     return null;
   }
 }
@@ -163,7 +191,7 @@ export async function validarConexaoAPI(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE_URL}/health`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
     });
     return response.ok;
   } catch {
