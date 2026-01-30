@@ -2,68 +2,75 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design System - Painel Operacional Tickets ↔ OS */
-/* Modern Hero Style */
+/* Design System - FLAG Painel Operacional */
+/* Brand Colors: Golden Yellow + Navy/White themes */
 
 @layer base {
+  /* LIGHT THEME - Clean, professional */
   :root {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
 
-    --card: 222 47% 14%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
 
-    --popover: 222 47% 14%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 217 91% 60%;
+    /* FLAG Gold as primary */
+    --primary: 43 85% 46%;
     --primary-foreground: 222 47% 11%;
 
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 215 28% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 215 28% 20%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 43 85% 95%;
+    --accent-foreground: 222 47% 11%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 215 28% 20%;
-    --input: 215 28% 20%;
-    --ring: 217 91% 60%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 43 85% 46%;
 
     --radius: 0.75rem;
 
-    /* Severidade - Neon-inspired */
+    /* Severidade */
     --critical: 0 84% 60%;
     --critical-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 38 100% 10%;
+    --warning: 43 85% 46%;
+    --warning-foreground: 222 47% 11%;
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
 
     /* Glow effects */
-    --glow-primary: 217 91% 60%;
+    --glow-primary: 43 85% 46%;
     --glow-critical: 0 84% 60%;
-    --glow-warning: 38 92% 50%;
+    --glow-warning: 43 85% 46%;
     --glow-success: 142 71% 45%;
 
-    /* Sidebar - Dark elegant */
-    --sidebar-background: 222 47% 8%;
-    --sidebar-foreground: 210 40% 92%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 47% 14%;
-    --sidebar-accent-foreground: 210 40% 92%;
-    --sidebar-border: 215 28% 16%;
-    --sidebar-ring: 217 91% 60%;
+    /* Sidebar - Light elegant */
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 43 85% 46%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 222 47% 18%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 222 47% 18%;
+    --sidebar-ring: 43 85% 46%;
+
+    /* FLAG Brand Color */
+    --flag-gold: 43 85% 46%;
+    --flag-navy: 222 47% 11%;
   }
 
+  /* DARK THEME - Modern, immersive */
   .dark {
     --background: 222 47% 11%;
     --foreground: 210 40% 98%;
@@ -74,7 +81,8 @@
     --popover: 222 47% 14%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 217 91% 60%;
+    /* FLAG Gold as primary */
+    --primary: 43 85% 50%;
     --primary-foreground: 222 47% 11%;
 
     --secondary: 215 28% 17%;
@@ -91,27 +99,37 @@
 
     --border: 215 28% 20%;
     --input: 215 28% 20%;
-    --ring: 217 91% 60%;
+    --ring: 43 85% 50%;
 
     /* Severidade */
     --critical: 0 84% 60%;
     --critical-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 38 100% 10%;
+    --warning: 43 85% 50%;
+    --warning-foreground: 222 47% 11%;
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
 
-    /* Sidebar */
+    /* Glow effects */
+    --glow-primary: 43 85% 50%;
+    --glow-critical: 0 84% 60%;
+    --glow-warning: 43 85% 50%;
+    --glow-success: 142 71% 45%;
+
+    /* Sidebar - Dark elegant */
     --sidebar-background: 222 47% 8%;
     --sidebar-foreground: 210 40% 92%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-primary: 43 85% 50%;
+    --sidebar-primary-foreground: 222 47% 11%;
     --sidebar-accent: 222 47% 14%;
     --sidebar-accent-foreground: 210 40% 92%;
     --sidebar-border: 215 28% 16%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-ring: 43 85% 50%;
+
+    /* FLAG Brand Color */
+    --flag-gold: 43 85% 50%;
+    --flag-navy: 222 47% 11%;
   }
 }
 
