@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Monitor, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { FusionText } from '@/components/auth/FusionText';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -78,10 +79,16 @@ export default function Login() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <Monitor className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold">FLAG</span>
+            <div className="p-2 rounded-lg bg-primary">
+              <Monitor className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <span className="text-2xl font-bold text-primary">FLAG</span>
           </div>
           <CardTitle>Painel Operacional</CardTitle>
+          
+          {/* Animated Fusion Text */}
+          <FusionText />
+          
           <CardDescription>
             Acesse sua conta para gerenciar tickets e ordens de serviço
           </CardDescription>
