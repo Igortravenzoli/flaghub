@@ -80,43 +80,54 @@ export function useImport() {
       setIsProcessing(true);
       setProgress(10);
 
-      // Calcular hash do arquivo
-      const fileHash = await calculateFileHash(file);
-      setProgress(20);
-
-      // Verificar duplicidade
-      const { data: existingImport } = await supabase
-        .from('imports')
-        .select('id')
-        .eq('network_id', networkId)
-        .eq('file_hash', fileHash)
-        .maybeSingle();
-
-      if (existingImport) {
-        throw new Error('Este arquivo já foi importado anteriormente.');
-      }
-
-      setProgress(30);
-
-      // Criar registro de importação
-      const { data: importRecord, error: importError } = await supabase
-        .from('imports')
-        .insert({
-          network_id: networkId,
-          imported_by: user.id,
-          file_name: file.name,
-          file_type: fileType,
-          file_hash: fileHash,
-          status: 'processing',
-        })
-        .select()
-        .single();
-
-      if (importError) throw importError;
-
-      setProgress(40);
+      let createdImportId: number | null = null;
 
       try {
+        // Calcular hash do arquivo
+        const fileHash = await calculateFileHash(file);
+        setProgress(20);
+
+        // Verificar duplicidade APENAS para imports concluídos com sucesso
+        // (se a tentativa anterior falhou ou ficou travada, permitir retry)
+        const { data: existingImport, error: existingImportError } = await supabase
+          .from('imports')
+          .select('id')
+          .eq('network_id', networkId)
+          .eq('file_hash', fileHash)
+          .eq('status', 'success')
+          .maybeSingle();
+
+        if (existingImportError) throw existingImportError;
+
+        if (existingImport) {
+          throw new Error('Este arquivo já foi importado anteriormente.');
+        }
+
+        setProgress(30);
+
+        // Criar registro de importação (usar maybeSingle para evitar PGRST116 quando não há retorno)
+        const { data: importRecord, error: importError } = await supabase
+          .from('imports')
+          .insert({
+            network_id: networkId,
+            imported_by: user.id,
+            file_name: file.name,
+            file_type: fileType,
+            file_hash: fileHash,
+            status: 'processing',
+          })
+          .select('id')
+          .maybeSingle();
+
+        if (importError) throw importError;
+        if (!importRecord?.id) {
+          throw new Error('Falha ao criar registro de importação (sem retorno do banco).');
+        }
+
+        createdImportId = importRecord.id;
+
+        setProgress(40);
+
         // Ler conteúdo do arquivo
         const content = await file.text();
         let records: Record<string, unknown>[];
@@ -185,7 +196,7 @@ export function useImport() {
             errorsCount++;
             // Use direct insert for import_events
             const eventData = {
-              import_id: importRecord.id,
+              import_id: createdImportId,
               level: 'error' as const,
               message: 'Registro sem ID de ticket',
               meta: record as Record<string, unknown>,
@@ -265,7 +276,7 @@ export function useImport() {
             inconsistency_code: inconsistencyCode,
             severity,
             raw_payload: record as Record<string, unknown>,
-            last_import_id: importRecord.id,
+            last_import_id: createdImportId,
             updated_at: new Date().toISOString(),
           });
         }
@@ -299,11 +310,11 @@ export function useImport() {
             errors_count: errorsCount,
             warnings_count: warningsCount,
           })
-          .eq('id', importRecord.id);
+          .eq('id', createdImportId);
 
         // Log de conclusão
         const completionEvent = {
-          import_id: importRecord.id,
+          import_id: createdImportId,
           level: 'info' as const,
           message: `Importação concluída: ${records.length} registros, ${errorsCount} erros, ${warningsCount} avisos`,
         };
@@ -319,25 +330,27 @@ export function useImport() {
 
         return {
           success: true,
-          importId: importRecord.id,
+          importId: createdImportId,
           totalRecords: records.length,
           errorsCount,
           warningsCount,
         };
 
       } catch (error) {
-        // Marcar importação como erro
-        await supabase
-          .from('imports')
-          .update({ status: 'error' })
-          .eq('id', importRecord.id);
+        // Marcar importação como erro (se já existir registro criado)
+        if (createdImportId) {
+          await supabase
+            .from('imports')
+            .update({ status: 'error' })
+            .eq('id', createdImportId);
 
-        const errorEvent = {
-          import_id: importRecord.id,
-          level: 'error' as const,
-          message: `Erro durante processamento: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
-        };
-        await supabase.from('import_events').insert([errorEvent] as never);
+          const errorEvent = {
+            import_id: createdImportId,
+            level: 'error' as const,
+            message: `Erro durante processamento: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+          };
+          await supabase.from('import_events').insert([errorEvent] as never);
+        }
 
         throw error;
       } finally {

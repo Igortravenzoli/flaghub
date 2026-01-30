@@ -28,18 +28,22 @@ export function useAuth() {
   const fetchUserData = useCallback(async (userId: string) => {
     try {
       // Buscar profile
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
+
+      if (profileError) throw profileError;
 
       // Buscar role
-      const { data: roleData } = await supabase
+      const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
+
+      if (roleError) throw roleError;
 
       return {
         profile: profile as Profile | null,
