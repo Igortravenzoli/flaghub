@@ -90,7 +90,7 @@ export function useImport() {
         .select('id')
         .eq('network_id', networkId)
         .eq('file_hash', fileHash)
-        .single();
+        .maybeSingle();
 
       if (existingImport) {
         throw new Error('Este arquivo já foi importado anteriormente.');
@@ -123,7 +123,14 @@ export function useImport() {
 
         if (fileType === 'json') {
           const parsed = JSON.parse(content);
-          records = Array.isArray(parsed) ? parsed : [parsed];
+          // Suporta formato { records: [...] } ou array direto ou objeto único
+          if (parsed.records && Array.isArray(parsed.records)) {
+            records = parsed.records;
+          } else if (Array.isArray(parsed)) {
+            records = parsed;
+          } else {
+            records = [parsed];
+          }
         } else {
           records = parseCSV(content);
         }
@@ -146,7 +153,7 @@ export function useImport() {
           .from('settings')
           .select('no_os_grace_hours')
           .eq('network_id', networkId)
-          .single();
+          .maybeSingle();
 
         const noOsGraceHours = settings?.no_os_grace_hours ?? 24;
 
