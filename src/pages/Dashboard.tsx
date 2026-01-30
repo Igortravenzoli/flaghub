@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useTicketAnalysis } from '@/hooks/useTicketAnalysis';
+import { useAutoCorrelation } from '@/hooks/useAutoCorrelation';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { TicketsTable } from '@/components/dashboard/TicketsTable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { 
   Ticket, 
   CheckCircle, 
@@ -12,12 +14,16 @@ import {
   RefreshCw,
   Monitor,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Loader2,
+  Link2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export default function Dashboard() {
   const { ticketsConsolidados, estatisticas } = useTicketAnalysis();
+  const { correlateAllPending, isCorrelating, progress: correlationProgress, summary } = useAutoCorrelation();
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [kioskMode, setKioskMode] = useState(false);
   
@@ -36,8 +42,26 @@ export default function Dashboard() {
   // Tickets críticos
   const ticketsCriticos = ticketsConsolidados.filter(t => t.severidade === 'critical');
   
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setLastUpdate(new Date());
+    
+    // Executar correlação automática com VDESK
+    try {
+      toast.info('Atualizando...', { description: 'Consultando VDESK para correlação de tickets' });
+      const result = await correlateAllPending();
+      
+      if (result.total === 0) {
+        toast.success('Atualizado!', { description: 'Nenhum ticket pendente de correlação' });
+      } else {
+        toast.success('Correlação concluída!', { 
+          description: `${result.correlated} tickets com OS, ${result.notFound} sem OS no VDESK` 
+        });
+      }
+    } catch (error) {
+      toast.error('Erro na correlação', { 
+        description: error instanceof Error ? error.message : 'Erro desconhecido' 
+      });
+    }
   };
   
   if (kioskMode) {
@@ -141,9 +165,18 @@ export default function Dashboard() {
           <span className="text-sm text-muted-foreground">
             Atualizado: {lastUpdate.toLocaleTimeString('pt-BR')}
           </span>
-          <Button variant="outline" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Atualizar
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh}
+            disabled={isCorrelating}
+          >
+            {isCorrelating ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-1" />
+            )}
+            {isCorrelating ? 'Correlacionando...' : 'Atualizar'}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setKioskMode(true)}>
             <Maximize2 className="h-4 w-4 mr-1" />
@@ -151,6 +184,24 @@ export default function Dashboard() {
           </Button>
         </div>
       </div>
+      
+      {/* Barra de progresso da correlação */}
+      {isCorrelating && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-4">
+              <Link2 className="h-5 w-5 text-primary animate-pulse" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Correlacionando tickets com VDESK...</span>
+                  <span className="text-sm text-muted-foreground">{correlationProgress}%</span>
+                </div>
+                <Progress value={correlationProgress} className="h-2" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
