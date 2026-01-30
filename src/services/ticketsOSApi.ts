@@ -5,7 +5,7 @@
  * URL Base: http://localhost:5000
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = 'https://clientes.flag.com.br/Flag.Ai.Gateway';
 
 /**
  * Record de Ticket/OS retornado pela API
