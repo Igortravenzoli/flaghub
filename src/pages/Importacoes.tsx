@@ -23,7 +23,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Upload, FileJson, FileSpreadsheet, CheckCircle, XCircle, Clock, Loader2, Trash2 } from 'lucide-react';
-import { useImport } from '@/hooks/useImport';
+import { useImport, ImportStatus } from '@/hooks/useImport';
 import { useImportsHistory } from '@/hooks/useSupabaseData';
 import { useClearImports } from '@/hooks/useClearImports';
 import { useAuth } from '@/hooks/useAuth';
@@ -36,7 +36,7 @@ const initialImportacoes: ImportacaoArquivo[] = [];
 
 export default function Importacoes() {
   const { isAuthenticated, canImport, networkId } = useAuth();
-  const { importFile, isProcessing, progress, error } = useImport();
+  const { importFile, isProcessing, progress, status, error } = useImport();
   const { data: dbImports, isLoading: importsLoading } = useImportsHistory(networkId ?? undefined);
   const clearImportsMutation = useClearImports();
   
@@ -201,11 +201,44 @@ export default function Importacoes() {
             )}
           >
             {isProcessing ? (
-              <>
-                <Loader2 className="h-12 w-12 mx-auto mb-4 text-primary animate-spin" />
-                <p className="text-lg font-medium mb-2">Processando...</p>
+              <div className="space-y-4">
+                <Loader2 className="h-12 w-12 mx-auto text-primary animate-spin" />
+                
+                {/* Status dinâmico */}
+                <div className="text-center space-y-2">
+                  {status.phase === 'validating' && (
+                    <p className="text-lg font-medium">Validando arquivo...</p>
+                  )}
+                  {status.phase === 'importing' && (
+                    <>
+                      <p className="text-lg font-medium">
+                        Importando: {status.fileName}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {status.totalRecords} registros
+                        {status.processedRecords !== undefined && 
+                          ` • ${status.processedRecords} processados`}
+                      </p>
+                    </>
+                  )}
+                  {status.phase === 'correlating' && (
+                    <>
+                      <p className="text-lg font-medium text-primary">
+                        Correlacionando com VDESK
+                      </p>
+                      <p className="text-muted-foreground">
+                        {status.correlatedTickets}/{status.totalToCorrelate} tickets processados
+                      </p>
+                    </>
+                  )}
+                  {status.message && status.phase !== 'correlating' && status.phase !== 'importing' && (
+                    <p className="text-muted-foreground">{status.message}</p>
+                  )}
+                </div>
+
                 <Progress value={progress} className="w-64 mx-auto" />
-              </>
+                <p className="text-xs text-muted-foreground">{progress}% concluído</p>
+              </div>
             ) : (
               <>
                 <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />

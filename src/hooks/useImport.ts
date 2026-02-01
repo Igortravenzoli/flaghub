@@ -22,6 +22,17 @@ interface ImportOptions {
   notes?: string;
 }
 
+// Status detalhado da importação
+export interface ImportStatus {
+  phase: 'idle' | 'validating' | 'importing' | 'correlating' | 'completed' | 'error';
+  fileName?: string;
+  totalRecords?: number;
+  processedRecords?: number;
+  correlatedTickets?: number;
+  totalToCorrelate?: number;
+  message?: string;
+}
+
 // Calcular hash SHA256 de um arquivo
 async function calculateFileHash(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -62,6 +73,7 @@ export function useImport() {
   const queryClient = useQueryClient();
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState<ImportStatus>({ phase: 'idle' });
 
   const importMutation = useMutation({
     mutationFn: async (file: File): Promise<ImportResult> => {
@@ -80,6 +92,11 @@ export function useImport() {
 
       setIsProcessing(true);
       setProgress(10);
+      setStatus({ 
+        phase: 'validating', 
+        fileName: file.name, 
+        message: `Validando arquivo ${file.name}...` 
+      });
 
       let createdImportId: number | null = null;
 
@@ -148,6 +165,13 @@ export function useImport() {
         }
 
         setProgress(50);
+        setStatus({
+          phase: 'importing',
+          fileName: file.name,
+          totalRecords: records.length,
+          processedRecords: 0,
+          message: `Importando ${file.name}: ${records.length} registros`,
+        });
 
         // Buscar mapeamentos de status
         const { data: statusMappings } = await supabase
@@ -314,6 +338,13 @@ export function useImport() {
           .eq('id', createdImportId);
 
         setProgress(92);
+        setStatus({
+          phase: 'importing',
+          fileName: file.name,
+          totalRecords: records.length,
+          processedRecords: records.length,
+          message: `${file.name}: ${records.length} registros importados`,
+        });
 
         // ========================================
         // CORRELAÇÃO AUTOMÁTICA COM VDESK
@@ -331,6 +362,15 @@ export function useImport() {
           let correlatedCount = 0;
           const correlationBatchSize = 5;
 
+          setStatus({
+            phase: 'correlating',
+            fileName: file.name,
+            totalRecords: records.length,
+            totalToCorrelate: ticketsToCorrelate.length,
+            correlatedTickets: 0,
+            message: `Correlacionando tickets com VDESK: 0/${ticketsToCorrelate.length}`,
+          });
+
           for (let i = 0; i < ticketsToCorrelate.length; i += correlationBatchSize) {
             const batch = ticketsToCorrelate.slice(i, i + correlationBatchSize);
             
@@ -339,35 +379,57 @@ export function useImport() {
                 const response = await correlacionarTicket(ticketId, token);
                 
                 if (response.success && response.count > 0) {
-                  await supabase
+                  // NOTA: has_os é coluna gerada (computed), não atualizar diretamente
+                  const { error: updateError } = await supabase
                     .from('tickets')
                     .update({
                       os_found_in_vdesk: true,
-                      has_os: true,
                       os_number: response.osEncontradas[0],
                       inconsistency_code: null,
                       severity: 'info',
+                      updated_at: new Date().toISOString(),
                     })
                     .eq('ticket_external_id', ticketId)
                     .eq('network_id', networkId);
-                  correlatedCount++;
+                  
+                  if (updateError) {
+                    console.error(`[Import] Erro ao atualizar ticket ${ticketId}:`, updateError);
+                  } else {
+                    correlatedCount++;
+                  }
                 } else {
-                  await supabase
+                  const { error: updateError } = await supabase
                     .from('tickets')
                     .update({
                       os_found_in_vdesk: false,
                       inconsistency_code: 'OS_NOT_FOUND',
                       severity: 'critico',
+                      updated_at: new Date().toISOString(),
                     })
                     .eq('ticket_external_id', ticketId)
                     .eq('network_id', networkId);
+                  
+                  if (updateError) {
+                    console.error(`[Import] Erro ao atualizar ticket ${ticketId}:`, updateError);
+                  }
                 }
               } catch (err) {
                 console.warn(`[Import] Falha na correlação do ticket ${ticketId}:`, err);
               }
             }));
 
-            setProgress(92 + Math.floor((i / ticketsToCorrelate.length) * 6));
+            // Atualizar progresso da correlação
+            const processed = Math.min(i + correlationBatchSize, ticketsToCorrelate.length);
+            setStatus({
+              phase: 'correlating',
+              fileName: file.name,
+              totalRecords: records.length,
+              totalToCorrelate: ticketsToCorrelate.length,
+              correlatedTickets: processed,
+              message: `Correlacionando tickets com VDESK: ${processed}/${ticketsToCorrelate.length}`,
+            });
+
+            setProgress(92 + Math.floor((processed / ticketsToCorrelate.length) * 6));
           }
 
           console.log(`[Import] Correlação concluída: ${correlatedCount}/${ticketsToCorrelate.length} tickets com OS encontrada`);
@@ -385,6 +447,12 @@ export function useImport() {
         await supabase.from('import_events').insert([completionEvent] as never);
 
         setProgress(100);
+        setStatus({
+          phase: 'completed',
+          fileName: file.name,
+          totalRecords: records.length,
+          message: `Concluído: ${records.length} registros importados`,
+        });
 
         return {
           success: true,
@@ -410,6 +478,10 @@ export function useImport() {
           await supabase.from('import_events').insert([errorEvent] as never);
         }
 
+        setStatus({
+          phase: 'error',
+          message: error instanceof Error ? error.message : 'Erro desconhecido',
+        });
         throw error;
       } finally {
         setIsProcessing(false);
@@ -431,6 +503,7 @@ export function useImport() {
     importFile,
     isProcessing,
     progress,
+    status,
     error: importMutation.error,
     isError: importMutation.isError,
   };
