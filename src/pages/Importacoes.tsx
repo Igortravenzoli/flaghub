@@ -183,6 +183,7 @@ export default function Importacoes() {
             ref={fileInputRef}
             type="file"
             accept=".json,.csv"
+            multiple
             onChange={handleFileSelect}
             className="hidden"
           />
