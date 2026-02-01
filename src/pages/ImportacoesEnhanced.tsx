@@ -6,6 +6,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { 
   Table, 
   TableBody, 
@@ -44,6 +54,7 @@ export default function ImportacoesEnhanced() {
   const [clearBeforeImport, setClearBeforeImport] = useState(false);
   const [batchName, setBatchName] = useState('');
   const [notes, setNotes] = useState('');
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -78,11 +89,16 @@ export default function ImportacoesEnhanced() {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleImport = async () => {
+  const handleImportClick = () => {
     if (selectedFiles.length === 0) {
       toast.error('Nenhum arquivo selecionado');
       return;
     }
+    setShowConfirmDialog(true);
+  };
+
+  const handleImport = async () => {
+    setShowConfirmDialog(false);
 
     try {
       const result = await importBatch({
@@ -158,6 +174,7 @@ export default function ImportacoesEnhanced() {
           </CardTitle>
           <CardDescription>
             Selecione um ou mais arquivos JSON/CSV para importar. Os arquivos serão processados em lote.
+            Arquivos duplicados (mesmo conteúdo) serão automaticamente identificados e ignorados.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -265,12 +282,13 @@ export default function ImportacoesEnhanced() {
                     htmlFor="clear-before"
                     className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                   >
-                    Limpar dados anteriores antes de importar
+                    Descontinuar todos os dados anteriores
                   </Label>
                 </div>
                 <p className="text-xs text-muted-foreground ml-6">
-                  Ao ativar, todos os tickets existentes serão marcados como inativos e apenas os tickets 
-                  dos arquivos importados ficarão ativos. Tickets inativos por mais de 7 dias podem ser expurgados.
+                  <strong>ATENÇÃO:</strong> Ao marcar esta opção, todos os tickets existentes serão marcados como inativos 
+                  antes de processar os novos arquivos. Apenas os tickets nos arquivos importados ficarão ativos. 
+                  Esta ação é recomendada quando você deseja substituir completamente a base de dados.
                 </p>
               </div>
             </div>
@@ -298,7 +316,7 @@ export default function ImportacoesEnhanced() {
           {/* Botões */}
           <div className="flex gap-2">
             <Button
-              onClick={handleImport}
+              onClick={handleImportClick}
               disabled={selectedFiles.length === 0 || isProcessing}
               className="flex-1"
             >
@@ -411,6 +429,79 @@ export default function ImportacoesEnhanced() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de Confirmação */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              {clearBeforeImport ? (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                  Confirmar Substituição de Dados
+                </>
+              ) : (
+                <>
+                  <Upload className="h-5 w-5" />
+                  Confirmar Importação
+                </>
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              {clearBeforeImport ? (
+                <>
+                  <p className="font-medium text-amber-700 dark:text-amber-400">
+                    ⚠️ ATENÇÃO: Esta ação irá descontinuar todos os dados anteriores!
+                  </p>
+                  <p>
+                    Você está prestes a importar <strong>{selectedFiles.length} arquivo(s)</strong>.
+                    Todos os tickets existentes serão marcados como inativos antes do processamento.
+                  </p>
+                  <p>
+                    Apenas os tickets contidos nos arquivos selecionados ficarão ativos após a importação.
+                  </p>
+                  <p className="text-sm">
+                    Arquivos a importar:
+                  </p>
+                  <ul className="text-sm list-disc list-inside space-y-1 max-h-32 overflow-y-auto">
+                    {selectedFiles.map((file, i) => (
+                      <li key={i}>{file.name}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Você está prestes a importar <strong>{selectedFiles.length} arquivo(s)</strong>.
+                    Os dados serão adicionados ou atualizados sem descartar os registros existentes.
+                  </p>
+                  <p className="text-sm">
+                    Arquivos a importar:
+                  </p>
+                  <ul className="text-sm list-disc list-inside space-y-1 max-h-32 overflow-y-auto">
+                    {selectedFiles.map((file, i) => (
+                      <li key={i}>{file.name}</li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted-foreground">
+                    Nota: Arquivos duplicados (mesmo conteúdo) serão automaticamente ignorados.
+                  </p>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleImport}
+              disabled={isProcessing}
+              className={cn(clearBeforeImport && "bg-amber-600 hover:bg-amber-700")}
+            >
+              {clearBeforeImport ? 'Substituir Dados' : 'Importar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

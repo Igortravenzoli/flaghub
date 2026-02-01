@@ -137,6 +137,32 @@ export function useImportBatch() {
           // Calcular hash
           const fileHash = await calculateFileHash(file);
 
+          // Verificar se arquivo já foi importado (validação de duplicação)
+          const { data: existingImport } = await supabase
+            .from('imports')
+            .select('id, file_name, created_at')
+            .eq('network_id', networkId)
+            .eq('file_hash', fileHash)
+            .maybeSingle();
+
+          if (existingImport) {
+            const importDate = new Date(existingImport.created_at).toLocaleString('pt-BR');
+            console.warn(`Arquivo ${file.name} já foi importado anteriormente em ${importDate}`);
+            
+            await supabase.from('import_events').insert([{
+              import_id: existingImport.id,
+              level: 'warning',
+              message: `Tentativa de reimportação do arquivo ${file.name} detectada (hash duplicado)`,
+              meta: { 
+                batch_id: batchId,
+                attempted_at: new Date().toISOString() 
+              },
+            }] as never);
+            
+            totalWarningsAll++;
+            continue;
+          }
+
           // Criar registro de importação para este arquivo
           const { data: importRecord, error: importError } = await supabase
             .from('imports')
@@ -154,6 +180,7 @@ export function useImportBatch() {
 
           if (importError) {
             console.error('Erro ao criar import record:', importError);
+            totalErrorsAll++;
             continue;
           }
 
