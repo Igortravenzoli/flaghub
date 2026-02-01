@@ -379,12 +379,15 @@ export function useImport() {
                 const response = await correlacionarTicket(ticketId, token);
                 
                 if (response.success && response.count > 0) {
+                  // Juntar todas as OS encontradas separadas por vírgula
+                  const allOsNumbers = response.osEncontradas.join(', ');
+                  
                   // NOTA: has_os é coluna gerada (computed), não atualizar diretamente
                   const { error: updateError } = await supabase
                     .from('tickets')
                     .update({
                       os_found_in_vdesk: true,
-                      os_number: response.osEncontradas[0],
+                      os_number: allOsNumbers, // Todas as OS separadas por vírgula
                       inconsistency_code: null,
                       severity: 'info',
                       updated_at: new Date().toISOString(),
