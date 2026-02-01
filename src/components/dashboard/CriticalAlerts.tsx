@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TicketsTable } from '@/components/dashboard/TicketsTable';
-import { AlertTriangle, ShieldAlert, Clock } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { AlertTriangle, ShieldAlert, Clock, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CriticalAlertsProps {
@@ -8,7 +10,13 @@ interface CriticalAlertsProps {
 }
 
 export function CriticalAlerts({ tickets }: CriticalAlertsProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (tickets.length === 0) return null;
+
+  const visibleTickets = tickets.slice(0, 5);
+  const hiddenTickets = tickets.slice(5);
+  const hasMore = hiddenTickets.length > 0;
 
   return (
     <Card className={cn(
@@ -59,14 +67,34 @@ export function CriticalAlerts({ tickets }: CriticalAlertsProps) {
           <span>Tickets aguardando vinculação de OS há mais de 4 horas</span>
         </div>
 
-        <TicketsTable tickets={tickets.slice(0, 5)} compact />
+        {/* First 5 tickets always visible */}
+        <TicketsTable tickets={visibleTickets} compact />
 
-        {tickets.length > 5 && (
-          <div className="mt-4 pt-4 border-t border-border/50 text-center">
-            <span className="text-sm text-muted-foreground">
-              +{tickets.length - 5} tickets adicionais
-            </span>
-          </div>
+        {/* Expandable section for additional tickets */}
+        {hasMore && (
+          <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+            <CollapsibleTrigger asChild>
+              <button className={cn(
+                "w-full mt-4 pt-4 border-t border-border/50",
+                "flex items-center justify-center gap-2",
+                "text-sm text-muted-foreground hover:text-foreground",
+                "transition-colors cursor-pointer group"
+              )}>
+                <span className="group-hover:text-[hsl(var(--critical))]">
+                  {isExpanded ? 'Ocultar' : `+${hiddenTickets.length} tickets adicionais`}
+                </span>
+                <ChevronDown className={cn(
+                  "h-4 w-4 transition-transform duration-200",
+                  "group-hover:text-[hsl(var(--critical))]",
+                  isExpanded && "rotate-180"
+                )} />
+              </button>
+            </CollapsibleTrigger>
+            
+            <CollapsibleContent className="pt-4 animate-accordion-down">
+              <TicketsTable tickets={hiddenTickets} compact />
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </CardContent>
     </Card>

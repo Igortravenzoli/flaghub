@@ -44,15 +44,17 @@ export function useAutoCorrelation() {
       const response = await correlacionarTicketViaProxy(ticketExternalId);
       
       if (response.success && response.count > 0) {
-        console.log(`[AutoCorrelation] OS encontrada para ${ticketExternalId}: ${response.osEncontradas.join(', ')}`);
+        // Juntar todas as OS encontradas separadas por vírgula
+        const allOsNumbers = response.osEncontradas.join(', ');
+        console.log(`[AutoCorrelation] OS encontrada para ${ticketExternalId}: ${allOsNumbers}`);
         
-        // Atualizar ticket no Supabase com OS encontrada
+        // Atualizar ticket no Supabase com TODAS as OS encontradas
         // Nota: has_os é coluna gerada, atualiza automaticamente quando os_number é definido
         const { error: updateError } = await supabase
           .from('tickets')
           .update({
             os_found_in_vdesk: true,
-            os_number: response.osEncontradas[0], // Primeira OS
+            os_number: allOsNumbers, // Todas as OS separadas por vírgula
             inconsistency_code: null,
             severity: 'info',
             updated_at: new Date().toISOString(),
