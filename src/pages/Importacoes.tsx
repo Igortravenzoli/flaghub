@@ -22,10 +22,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Upload, FileJson, FileSpreadsheet, CheckCircle, XCircle, Clock, Loader2, Trash2 } from 'lucide-react';
+import { Upload, FileJson, FileSpreadsheet, CheckCircle, XCircle, Clock, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { useImport, ImportStatus } from '@/hooks/useImport';
 import { useImportsHistory } from '@/hooks/useSupabaseData';
 import { useClearImports } from '@/hooks/useClearImports';
+import { usePurgeData } from '@/hooks/usePurgeData';
 import { useAuth } from '@/hooks/useAuth';
 import { ImportacaoArquivo } from '@/types';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,7 @@ export default function Importacoes() {
   const { importFile, isProcessing, progress, status, error } = useImport();
   const { data: dbImports, isLoading: importsLoading } = useImportsHistory(networkId ?? undefined);
   const clearImportsMutation = useClearImports();
+  const purgeDataMutation = usePurgeData();
   
   // Fallback para dados vazios se não autenticado
   const [localImportacoes, setLocalImportacoes] = useState<ImportacaoArquivo[]>(initialImportacoes);
@@ -69,6 +71,23 @@ export default function Importacoes() {
       });
     } catch (err) {
       toast.error('Erro ao limpar histórico', {
+        description: err instanceof Error ? err.message : 'Erro desconhecido'
+      });
+    }
+  };
+
+  const handlePurgeData = async () => {
+    if (!networkId) {
+      toast.error('Erro', { description: 'Network não identificada' });
+      return;
+    }
+    try {
+      await purgeDataMutation.mutateAsync(networkId);
+      toast.success('Dados expurgados', { 
+        description: 'Todas as importações e tickets foram removidos permanentemente.' 
+      });
+    } catch (err) {
+      toast.error('Erro ao expurgar dados', {
         description: err instanceof Error ? err.message : 'Erro desconhecido'
       });
     }
@@ -293,40 +312,92 @@ export default function Importacoes() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Histórico de Importações</CardTitle>
-          {canImport && importacoes.length > 0 && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="text-destructive hover:text-destructive"
-                  disabled={clearImportsMutation.isPending}
-                >
-                  {clearImportsMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                  ) : (
-                    <Trash2 className="h-4 w-4 mr-1" />
-                  )}
-                  Limpar Histórico
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Limpar histórico de importações?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Esta ação irá ocultar todas as importações do histórico. 
-                    Os dados dos tickets não serão afetados e a ação pode ser desfeita pelo administrador do banco.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleClearImports}>
-                    Confirmar
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
+          <div className="flex items-center gap-2">
+            {canImport && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    disabled={purgeDataMutation.isPending}
+                  >
+                    {purgeDataMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 mr-1" />
+                    )}
+                    Expurgar Dados
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                      <AlertTriangle className="h-5 w-5" />
+                      Expurgar todos os dados?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="space-y-2">
+                      <p className="font-semibold text-destructive">⚠️ ATENÇÃO: Esta ação é IRREVERSÍVEL!</p>
+                      <p>
+                        Esta operação irá remover permanentemente:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 ml-2">
+                        <li>Todos os tickets importados</li>
+                        <li>Todo o histórico de importações</li>
+                        <li>Todos os logs e eventos</li>
+                        <li>O dashboard será zerado</li>
+                      </ul>
+                      <p className="mt-2">
+                        Os dados não poderão ser recuperados após a confirmação.
+                      </p>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={handlePurgeData}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Sim, expurgar tudo
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+            {canImport && importacoes.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-destructive hover:text-destructive"
+                    disabled={clearImportsMutation.isPending}
+                  >
+                    {clearImportsMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 mr-1" />
+                    )}
+                    Limpar Histórico
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Limpar histórico de importações?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta ação irá ocultar todas as importações do histórico. 
+                      Os dados dos tickets não serão afetados e a ação pode ser desfeita pelo administrador do banco.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleClearImports}>
+                      Confirmar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {importsLoading ? (
