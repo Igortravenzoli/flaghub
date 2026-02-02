@@ -1,132 +1,230 @@
 
-# Plano: Autenticação Segura com Token de Sessão para API Tickets-OS
+# Plano: SSO com Microsoft Entra ID (Azure AD)
 
 ## Resumo
 
-Implementar um sistema de autenticação em duas etapas onde:
-1. A aplicação obtém um token de sessão ao carregar (via `/api/faq/validate-client`)
-2. Usa esse token para autenticar nas chamadas subsequentes (`/api/tickets-os/correlacao`)
-3. Renova automaticamente o token quando expirado
+Implementar login com Single Sign-On usando Microsoft Entra ID (Azure AD), permitindo que colaboradores façam login com suas credenciais corporativas Microsoft.
 
-## Fluxo Visual
+---
+
+## Esforço Estimado
+
+| Etapa | Tempo |
+|-------|-------|
+| Configuração Azure Portal | 30-60 min |
+| Configuração Supabase Dashboard | 15 min |
+| Alterações no código | 2-3 horas |
+| Trigger para auto-provisioning | 30 min |
+| Testes | 1-2 horas |
+| **Total** | **4-7 horas** |
+
+---
+
+## Pré-requisitos
+
+1. **Acesso ao Azure Portal** com permissões para registrar aplicativos
+2. **Tenant ID** do Azure AD da organização
+
+---
+
+## Etapa 1: Configuração no Azure Portal (Manual)
+
+Acesse: https://portal.azure.com
+
+### 1.1 Registrar Aplicativo
+
+1. Navegue até **Microsoft Entra ID** > **App registrations**
+2. Clique em **New registration**
+3. Configure:
+   - **Name**: `FLAG Painel Operacional`
+   - **Supported account types**: Escolha conforme sua necessidade
+   - **Redirect URI**: `https://nxmgppfyltwsqryfxkbm.supabase.co/auth/v1/callback`
+4. Clique em **Register**
+
+### 1.2 Obter Credenciais
+
+1. Copie o **Application (client) ID**
+2. Vá em **Certificates & secrets** > **New client secret**
+3. Defina uma descrição e validade
+4. Copie o **Value** do secret (não será exibido novamente!)
+
+### 1.3 Configurar URL do Issuer
+
+O formato da URL é:
+```text
+https://login.microsoftonline.com/{tenant-id}/v2.0
+```
+
+---
+
+## Etapa 2: Configuração no Supabase Dashboard
+
+Acesse: https://supabase.com/dashboard/project/nxmgppfyltwsqryfxkbm/auth/providers
+
+1. Localize **Azure (Microsoft)** na lista de providers
+2. Habilite o toggle
+3. Preencha:
+   - **Azure Client ID**: `(Application ID do passo 1.2)`
+   - **Azure Client Secret**: `(Secret do passo 1.2)`
+   - **Azure Tenant URL**: `https://login.microsoftonline.com/{tenant-id}/v2.0`
+4. Salve
+
+---
+
+## Etapa 3: Alterações no Código
+
+### 3.1 Atualizar Hook de Autenticação
+
+Adicionar função `signInWithAzure` no `useAuth.ts`:
+
+```typescript
+const signInWithAzure = async () => {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'azure',
+    options: {
+      scopes: 'email profile openid',
+      redirectTo: window.location.origin + '/dashboard',
+    }
+  });
+  return { data, error };
+};
+```
+
+### 3.2 Atualizar Página de Login
+
+Adicionar botão "Entrar com Microsoft" no `Login.tsx`:
+
+- Botão com ícone Microsoft acima do formulário de email/senha
+- Separador visual "ou" entre as opções
+- Handler que chama `signInWithAzure()`
+
+### 3.3 Layout Proposto
 
 ```text
-+------------------+     +------------------+     +------------------+
-|   Página carrega |---->| POST validate-   |---->| Armazena token   |
-|   (refresh)      |     | client           |     | localStorage     |
-+------------------+     +------------------+     +------------------+
-                                                          |
-                                                          v
-+------------------+     +------------------+     +------------------+
-|   Usuário clica  |---->| Token válido?    |---->| GET correlacao   |
-|   "Consultar"    |     |                  |     | com Bearer       |
-+------------------+     +------------------+     +------------------+
-                                |
-                                | Token expirado?
-                                v
-                         +------------------+
-                         | Renova token     |
-                         | e tenta de novo  |
-                         +------------------+
+┌─────────────────────────────────┐
+│         FLAG Painel             │
+│     Operacional                 │
+├─────────────────────────────────┤
+│  ┌───────────────────────────┐  │
+│  │ 🪟  Entrar com Microsoft  │  │
+│  └───────────────────────────┘  │
+│                                 │
+│  ────────── ou ──────────       │
+│                                 │
+│  [Entrar] [Cadastrar]           │
+│                                 │
+│  Email: ___________             │
+│  Senha: ___________             │
+│                                 │
+│  [ Entrar ]                     │
+└─────────────────────────────────┘
 ```
 
-## Etapas de Implementação
+---
 
-### 1. Criar serviço de gerenciamento de token de sessão
+## Etapa 4: Auto-provisioning de Usuários SSO
 
-**Arquivo:** `src/services/apiSessionToken.ts`
+Criar trigger no banco para criar automaticamente profile e role quando usuário fizer primeiro login via SSO.
 
-Funções:
-- `validateClient()`: Chama `POST /api/faq/validate-client` com `{codigoPuxada: "1"}`
-- `getStoredToken()`: Recupera token do localStorage
-- `isTokenValid()`: Verifica se o token não expirou
-- `getValidToken()`: Obtém token válido (reutiliza ou renova)
-- `clearToken()`: Limpa token armazenado
+### 4.1 Tabela de Mapeamento de Domínios
 
-Estrutura do localStorage:
-```typescript
-interface StoredSessionToken {
-  token: string;
-  expiresAt: string; // ISO date
-  createdAt: string;
-}
+```sql
+CREATE TABLE IF NOT EXISTS domain_network_mapping (
+  id SERIAL PRIMARY KEY,
+  email_domain VARCHAR(255) NOT NULL UNIQUE,
+  network_id BIGINT REFERENCES networks(id),
+  default_role app_role DEFAULT 'operacional',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 ```
 
-### 2. Criar hook para gerenciamento automático do token
+### 4.2 Função de Auto-provisioning
 
-**Arquivo:** `src/hooks/useApiSessionToken.ts`
-
-- Inicializa token ao montar o componente
-- Expõe estado de carregamento e erro
-- Função para obter token válido com retry automático
-- Renovação proativa antes da expiração
-
-### 3. Atualizar serviço de API Tickets-OS
-
-**Arquivo:** `src/services/ticketsOSApi.ts`
-
-Modificações:
-- Substituir `obterTokenSupabase()` por `getValidToken()` do novo serviço
-- Adicionar lógica de retry com renovação de token em caso de 401
-- Manter compatibilidade com código existente
-
-### 4. Atualizar hooks de consumo da API
-
-**Arquivo:** `src/hooks/useTicketsOSApi.ts`
-
-Modificações:
-- Usar o novo hook `useApiSessionToken`
-- Garantir que o token seja obtido antes das requisições
-- Adicionar retry automático com renovação de token
-
-### 5. Atualizar hook de auto-correlação
-
-**Arquivo:** `src/hooks/useAutoCorrelation.ts`
-
-Modificações:
-- Usar `getValidToken()` do novo serviço
-- Adicionar tratamento de erro 401 com retry
-
-## Detalhes Técnicos
-
-### Interface de Response do validate-client
-
-```typescript
-interface ValidateClientResponse {
-  sessionToken: string;
-  expiresAt: string; // ISO 8601
-  // outros campos opcionais da API
-}
+```sql
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_domain TEXT;
+  v_mapping RECORD;
+BEGIN
+  -- Extrair domínio do email
+  v_domain := SPLIT_PART(NEW.email, '@', 2);
+  
+  -- Buscar mapeamento
+  SELECT * INTO v_mapping 
+  FROM domain_network_mapping 
+  WHERE email_domain = v_domain;
+  
+  -- Criar profile
+  INSERT INTO profiles (user_id, full_name, network_id)
+  VALUES (
+    NEW.id,
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name',
+      SPLIT_PART(NEW.email, '@', 1)
+    ),
+    v_mapping.network_id
+  )
+  ON CONFLICT (user_id) DO UPDATE
+  SET full_name = EXCLUDED.full_name,
+      network_id = COALESCE(profiles.network_id, EXCLUDED.network_id);
+  
+  -- Criar role padrão
+  INSERT INTO user_roles (user_id, role)
+  VALUES (NEW.id, COALESCE(v_mapping.default_role, 'operacional'))
+  ON CONFLICT (user_id, role) DO NOTHING;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 ```
 
-### Chave do localStorage
+### 4.3 Trigger
 
-```typescript
-const STORAGE_KEY = 'flag_api_session_token';
+```sql
+CREATE TRIGGER on_auth_user_created
+AFTER INSERT ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION handle_new_user();
 ```
 
-### Margem de segurança para expiração
+---
 
-Token será considerado expirado 60 segundos antes do tempo real para evitar race conditions.
+## Etapa 5: Configurar Mapeamento de Domínios
 
-### Tratamento de erros
+Exemplo de inserção inicial:
 
-- Se `validate-client` falhar: exibe toast de erro e permite retry
-- Se token expirar durante requisição: renova automaticamente e retenta
-- Limite de 2 tentativas de renovação por requisição
+```sql
+INSERT INTO domain_network_mapping (email_domain, network_id, default_role)
+VALUES 
+  ('flag.com.br', 1, 'operacional'),
+  ('empresa-cliente.com.br', 2, 'operacional');
+```
 
-## Arquivos Afetados
+---
 
-| Arquivo | Ação |
-|---------|------|
-| `src/services/apiSessionToken.ts` | **Criar** - Serviço de gerenciamento de token |
-| `src/hooks/useApiSessionToken.ts` | **Criar** - Hook React para token |
-| `src/services/ticketsOSApi.ts` | **Modificar** - Usar novo serviço de token |
-| `src/hooks/useTicketsOSApi.ts` | **Modificar** - Integrar com novo hook |
-| `src/hooks/useAutoCorrelation.ts` | **Modificar** - Usar novo serviço de token |
+## Arquivos a Modificar
 
-## Observações
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/hooks/useAuth.ts` | Adicionar `signInWithAzure()` |
+| `src/pages/Login.tsx` | Adicionar botão Microsoft + separador |
+| Migração SQL | Trigger + tabela de mapeamento |
 
-- O token Supabase ainda será usado para autenticação interna do app (profiles, RLS)
-- O token da API externa (`sessionToken`) é específico para chamadas ao VDESK
-- Os dois sistemas de autenticação coexistem sem conflitos
+---
+
+## Considerações de Segurança
+
+1. **Roles são atribuídas como 'operacional' por padrão** - admins precisam ser promovidos manualmente via SQL
+2. **O login por email/senha continuará funcionando** durante a transição
+3. **Usuários SSO terão contas separadas** de usuários email/senha existentes
+4. Considerar desabilitar auto-cadastro após migração completa
+
+---
+
+## Próximos Passos Opcionais
+
+- Sincronizar grupos do Azure AD com roles do sistema
+- Desabilitar login email/senha após migração
+- Configurar logout único (Single Logout)
