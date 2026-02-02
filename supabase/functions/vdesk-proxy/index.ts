@@ -8,8 +8,8 @@ const corsHeaders = {
 
 // Endpoints disponíveis (ordem de prioridade)
 const VDESK_ENDPOINTS = [
-  { url: 'https://clientes.flag.com.br/Flag.Ai.Gateway', name: 'externo (HTTPS)' },
-  { url: 'http://192.168.1.32/Flag.Ai.Gateway', name: 'interno (HTTP)' },
+  { url: 'https://clientes.flag.com.br/Flag.AI.Gateway', name: 'externo (HTTPS)' },
+  { url: 'http://clientes.flag.com.br/Flag.AI.Gateway', name: 'fallback (HTTP)' },
 ]
 
 const FALLBACK_TIMEOUT_MS = 5000 // 5 segundos para timeout
