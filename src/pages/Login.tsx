@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import { Monitor, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { FusionText } from '@/components/auth/FusionText';
@@ -13,13 +14,29 @@ import { FusionText } from '@/components/auth/FusionText';
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signUp, isLoading } = useAuth();
+  const { signIn, signUp, signInWithAzure, isLoading } = useAuth();
   
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [signupData, setSignupData] = useState({ email: '', password: '', fullName: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAzureLoading, setIsAzureLoading] = useState(false);
 
   const from = (location.state as { from?: string })?.from || '/dashboard';
+
+  const handleAzureLogin = async () => {
+    setIsAzureLoading(true);
+    try {
+      const { error } = await signInWithAzure();
+      if (error) {
+        toast.error('Erro ao conectar com Microsoft', { description: error.message });
+        setIsAzureLoading(false);
+      }
+      // Se não houver erro, o usuário será redirecionado para o Azure
+    } catch (err) {
+      toast.error('Erro inesperado ao conectar com Microsoft');
+      setIsAzureLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,6 +111,36 @@ export default function Login() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Botão SSO Microsoft */}
+          <Button 
+            variant="outline" 
+            className="w-full mb-4 h-11"
+            onClick={handleAzureLogin}
+            disabled={isAzureLoading}
+          >
+            {isAzureLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <svg className="h-5 w-5 mr-2" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+                <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+                <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+                <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+              </svg>
+            )}
+            Entrar com Microsoft
+          </Button>
+          
+          {/* Separador */}
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <Separator className="w-full" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">ou</span>
+            </div>
+          </div>
+
           <Tabs defaultValue="login" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Entrar</TabsTrigger>

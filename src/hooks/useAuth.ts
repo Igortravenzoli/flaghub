@@ -134,6 +134,17 @@ export function useAuth() {
     return { error };
   };
 
+  const signInWithAzure = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        scopes: 'email profile openid',
+        redirectTo: window.location.origin + '/dashboard',
+      }
+    });
+    return { data, error };
+  };
+
   // Verificações de permissão
   const isAdmin = state.role === 'admin';
   const isGestao = state.role === 'gestao';
@@ -147,6 +158,7 @@ export function useAuth() {
     signIn,
     signUp,
     signOut,
+    signInWithAzure,
     isAdmin,
     isGestao,
     isQualidade,
