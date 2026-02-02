@@ -36,21 +36,62 @@ function getFileType(file: File): 'json' | 'csv' | null {
   return null;
 }
 
-// Parser CSV simples
+// Parser CSV robusto que trata campos com vírgulas e aspas
 function parseCSV(content: string): Record<string, string>[] {
-  const lines = content.trim().split('\n');
+  const lines = content.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  // Função para parsear uma linha CSV respeitando aspas
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          // Aspas escapadas ("") dentro de campo
+          current += '"';
+          i++;
+        } else {
+          // Toggle estado de aspas
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        // Fim do campo
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    // Adicionar último campo
+    result.push(current.trim());
+    return result;
+  };
+  
+  const headers = parseCSVLine(lines[0]);
   const records: Record<string, string>[] = [];
   
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    const line = lines[i].trim();
+    if (!line) continue; // Ignorar linhas vazias
+    
+    const values = parseCSVLine(line);
     const record: Record<string, string> = {};
+    
     headers.forEach((header, index) => {
       record[header] = values[index] || '';
     });
-    records.push(record);
+    
+    // Só adicionar se tiver pelo menos um valor
+    if (Object.values(record).some(v => v !== '')) {
+      records.push(record);
+    }
   }
   
   return records;
