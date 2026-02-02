@@ -6,61 +6,198 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
-const VDESK_API_BASE = 'https://clientes.flag.com.br/Flag.Ai.Gateway'
+// Endpoints disponíveis (ordem de prioridade)
+const VDESK_ENDPOINTS = [
+  { url: 'https://clientes.flag.com.br/Flag.Ai.Gateway', name: 'externo (HTTPS)' },
+  { url: 'http://192.168.1.32/Flag.Ai.Gateway', name: 'interno (HTTP)' },
+]
+
+const FALLBACK_TIMEOUT_MS = 5000 // 5 segundos para timeout
+
+// Cache do endpoint ativo (válido por instância)
+let activeEndpoint: { url: string; name: string; testedAt: Date } | null = null
 
 // Cache do token em memória (válido por instância)
-let cachedToken: { token: string; expiresAt: Date } | null = null
+let cachedToken: { token: string; expiresAt: Date; endpointUrl: string } | null = null
+
+/**
+ * Testa conectividade com um endpoint
+ */
+async function testEndpoint(baseUrl: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FALLBACK_TIMEOUT_MS)
+  
+  try {
+    // Tenta um endpoint simples para validar conectividade
+    const response = await fetch(`${baseUrl}/api/faq/validate-client`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigoPuxada: '1' }),
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
+    return response.ok || response.status === 401 // 401 também indica que o servidor está respondendo
+  } catch (err: unknown) {
+    clearTimeout(timeoutId)
+    const error = err as Error
+    console.log(`[VdeskProxy] Endpoint ${baseUrl} não respondeu:`, error.message)
+    return false
+  }
+}
+
+/**
+ * Detecta e retorna o endpoint ativo com fallback
+ */
+async function getActiveEndpoint(): Promise<{ url: string; name: string }> {
+  // Se já temos um endpoint ativo testado há menos de 5 minutos, reutilizar
+  if (activeEndpoint && (new Date().getTime() - activeEndpoint.testedAt.getTime()) < 5 * 60 * 1000) {
+    console.log(`[VdeskProxy] Reutilizando endpoint em cache: ${activeEndpoint.name}`)
+    return activeEndpoint
+  }
+
+  console.log('[VdeskProxy] Testando endpoints disponíveis...')
+  
+  for (const endpoint of VDESK_ENDPOINTS) {
+    console.log(`[VdeskProxy] Testando ${endpoint.name}: ${endpoint.url}`)
+    const isAvailable = await testEndpoint(endpoint.url)
+    
+    if (isAvailable) {
+      console.log(`[VdeskProxy] ✓ Endpoint ativo: ${endpoint.name}`)
+      activeEndpoint = {
+        url: endpoint.url,
+        name: endpoint.name,
+        testedAt: new Date(),
+      }
+      return activeEndpoint
+    }
+  }
+
+  // Se nenhum endpoint respondeu, usar o primeiro como fallback
+  console.warn('[VdeskProxy] ⚠ Nenhum endpoint respondeu, usando fallback para o externo')
+  activeEndpoint = {
+    url: VDESK_ENDPOINTS[0].url,
+    name: VDESK_ENDPOINTS[0].name,
+    testedAt: new Date(),
+  }
+  return activeEndpoint
+}
+
+/**
+ * Força reset do endpoint ativo (útil para testes)
+ */
+function resetActiveEndpoint(): void {
+  console.log('[VdeskProxy] Reset do endpoint ativo')
+  activeEndpoint = null
+  cachedToken = null
+}
 
 async function getVdeskToken(): Promise<string> {
-  // Verificar cache
-  if (cachedToken && new Date() < cachedToken.expiresAt) {
-    console.log('[VdeskProxy] Reutilizando token em cache')
+  const endpoint = await getActiveEndpoint()
+  
+  // Verificar cache (também verifica se o endpoint mudou)
+  if (cachedToken && 
+      cachedToken.endpointUrl === endpoint.url && 
+      new Date() < cachedToken.expiresAt) {
+    console.log(`[VdeskProxy] Reutilizando token em cache (${endpoint.name})`)
     return cachedToken.token
   }
 
-  console.log('[VdeskProxy] Obtendo novo token via validate-client')
+  console.log(`[VdeskProxy] Obtendo novo token via ${endpoint.name}`)
   
-  const response = await fetch(`${VDESK_API_BASE}/api/faq/validate-client`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ codigoPuxada: '1' }),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FALLBACK_TIMEOUT_MS)
+  
+  try {
+    const response = await fetch(`${endpoint.url}/api/faq/validate-client`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigoPuxada: '1' }),
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
 
-  if (!response.ok) {
-    throw new Error(`Falha na autenticação VDESK: ${response.status}`)
+    if (!response.ok) {
+      // Se falhar, tentar resetar e usar próximo endpoint
+      console.warn(`[VdeskProxy] Falha na autenticação via ${endpoint.name}: ${response.status}`)
+      resetActiveEndpoint()
+      throw new Error(`Falha na autenticação VDESK: ${response.status}`)
+    }
+
+    const data = await response.json()
+    
+    // Cachear token com margem de 60s
+    const expiresAt = new Date(data.expiresAt)
+    expiresAt.setSeconds(expiresAt.getSeconds() - 60)
+    
+    cachedToken = {
+      token: data.sessionToken,
+      expiresAt,
+      endpointUrl: endpoint.url,
+    }
+
+    return data.sessionToken
+  } catch (err: unknown) {
+    clearTimeout(timeoutId)
+    const error = err as Error
+    
+    // Se deu timeout ou erro de rede, resetar endpoint para tentar outro na próxima
+    if (error.name === 'AbortError' || error.message?.includes('network')) {
+      console.warn(`[VdeskProxy] Timeout/erro de rede em ${endpoint.name}, resetando...`)
+      resetActiveEndpoint()
+    }
+    
+    throw error
   }
-
-  const data = await response.json()
-  
-  // Cachear token com margem de 60s
-  const expiresAt = new Date(data.expiresAt)
-  expiresAt.setSeconds(expiresAt.getSeconds() - 60)
-  
-  cachedToken = {
-    token: data.sessionToken,
-    expiresAt,
-  }
-
-  return data.sessionToken
 }
 
-async function proxyToVdesk(endpoint: string, token: string): Promise<Response> {
-  console.log(`[VdeskProxy] Chamando: ${endpoint}`)
+async function proxyToVdesk(path: string, token: string): Promise<Response> {
+  const endpoint = await getActiveEndpoint()
+  const fullUrl = `${endpoint.url}${path}`
   
-  const response = await fetch(`${VDESK_API_BASE}${endpoint}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-  })
+  console.log(`[VdeskProxy] Chamando ${endpoint.name}: ${path}`)
+  
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s para operações
+  
+  try {
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
 
-  const data = await response.json()
-  
-  return new Response(JSON.stringify(data), {
-    status: response.status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  })
+    const data = await response.json()
+    
+    // Adicionar informação do endpoint usado na resposta
+    const enrichedData = {
+      ...data,
+      _meta: {
+        endpoint: endpoint.name,
+        endpointUrl: endpoint.url,
+        timestamp: new Date().toISOString(),
+      }
+    }
+    
+    return new Response(JSON.stringify(enrichedData), {
+      status: response.status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  } catch (err: unknown) {
+    clearTimeout(timeoutId)
+    const error = err as Error
+    
+    // Se falhar por timeout/rede, resetar endpoint
+    if (error.name === 'AbortError') {
+      console.warn(`[VdeskProxy] Timeout na requisição para ${endpoint.name}`)
+      resetActiveEndpoint()
+    }
+    
+    throw error
+  }
 }
 
 serve(async (req) => {
@@ -73,6 +210,37 @@ serve(async (req) => {
     const url = new URL(req.url)
     const action = url.searchParams.get('action')
     
+    // Ação especial: reset do endpoint
+    if (action === 'reset') {
+      resetActiveEndpoint()
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Endpoint resetado. Próxima requisição irá testar novamente.' 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    
+    // Ação especial: status do endpoint
+    if (action === 'status') {
+      const endpoint = await getActiveEndpoint()
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          activeEndpoint: {
+            name: endpoint.name,
+            url: endpoint.url,
+            testedAt: activeEndpoint?.testedAt?.toISOString() || null,
+          },
+          hasToken: !!cachedToken,
+          tokenExpiresAt: cachedToken?.expiresAt?.toISOString() || null,
+          availableEndpoints: VDESK_ENDPOINTS.map(e => ({ name: e.name, url: e.url })),
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Obter token válido
     const token = await getVdeskToken()
 
@@ -103,7 +271,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: 'Ação inválida. Use action=correlacao ou action=consultar' 
+        error: 'Ação inválida. Use action=correlacao, action=consultar, action=status ou action=reset' 
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
@@ -120,7 +288,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error.message || 'Erro interno no proxy' 
+        error: error.message || 'Erro interno no proxy',
+        activeEndpoint: activeEndpoint?.name || 'não determinado',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
