@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      domain_network_mapping: {
+        Row: {
+          created_at: string | null
+          default_role: Database["public"]["Enums"]["app_role"] | null
+          email_domain: string
+          id: number
+          network_id: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          default_role?: Database["public"]["Enums"]["app_role"] | null
+          email_domain: string
+          id?: number
+          network_id?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          default_role?: Database["public"]["Enums"]["app_role"] | null
+          email_domain?: string
+          id?: number
+          network_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "domain_network_mapping_network_id_fkey"
+            columns: ["network_id"]
+            isOneToOne: false
+            referencedRelation: "networks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_batches: {
         Row: {
           batch_name: string | null
