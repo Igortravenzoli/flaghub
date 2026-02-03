@@ -1,205 +1,89 @@
 
-# Plano: SSO com Microsoft Entra ID (Azure AD)
+# Plano: Correção da Integração VDESK
 
-## Resumo
+## Problema Identificado
 
-Implementar login com Single Sign-On usando Microsoft Entra ID (Azure AD), permitindo que colaboradores façam login com suas credenciais corporativas Microsoft.
+A página de Busca VDESK está apresentando "Failed to fetch" porque:
 
----
-
-## Esforço Estimado
-
-| Etapa | Tempo |
-|-------|-------|
-| Configuração Azure Portal | 30-60 min |
-| Configuração Supabase Dashboard | 15 min |
-| Alterações no código | 2-3 horas |
-| Trigger para auto-provisioning | 30 min |
-| Testes | 1-2 horas |
-| **Total** | **4-7 horas** |
+1. **Os hooks (`useTicketsOSApi.ts`) chamam `ticketsOSApi.ts` que faz requisições diretas** à API externa `https://clientes.flag.com.br/Flag.Ai.Gateway`
+2. **O navegador bloqueia essas requisições por CORS** (Cross-Origin Resource Sharing)
+3. **A Edge Function `vdesk-proxy` existe e suporta a ação `consultar`**, mas não está sendo utilizada pelos hooks de consulta
+4. **A Edge Function precisa ser re-deployada** para garantir disponibilidade
 
 ---
 
-## Pré-requisitos
+## Solução
 
-1. **Acesso ao Azure Portal** com permissões para registrar aplicativos
-2. **Tenant ID** do Azure AD da organização
-
----
-
-## Etapa 1: Configuração no Azure Portal (Manual)
-
-Acesse: https://portal.azure.com
-
-### 1.1 Registrar Aplicativo
-
-1. Navegue até **Microsoft Entra ID** > **App registrations**
-2. Clique em **New registration**
-3. Configure:
-   - **Name**: `FLAG Painel Operacional`
-   - **Supported account types**: Escolha conforme sua necessidade
-   - **Redirect URI**: `https://nxmgppfyltwsqryfxkbm.supabase.co/auth/v1/callback`
-4. Clique em **Register**
-
-### 1.2 Obter Credenciais
-
-1. Copie o **Application (client) ID**
-2. Vá em **Certificates & secrets** > **New client secret**
-3. Defina uma descrição e validade
-4. Copie o **Value** do secret (não será exibido novamente!)
-
-### 1.3 Configurar URL do Issuer
-
-O formato da URL é:
-```text
-https://login.microsoftonline.com/{tenant-id}/v2.0
-```
+Migrar os hooks de consulta para usar o serviço proxy (`vdeskProxyService.ts`) que roteia as requisições através da Edge Function, contornando as restrições de CORS.
 
 ---
 
-## Etapa 2: Configuração no Supabase Dashboard
+## Alterações Necessárias
 
-Acesse: https://supabase.com/dashboard/project/nxmgppfyltwsqryfxkbm/auth/providers
+### 1. Atualizar hooks para usar o Proxy
 
-1. Localize **Azure (Microsoft)** na lista de providers
-2. Habilite o toggle
-3. Preencha:
-   - **Azure Client ID**: `(Application ID do passo 1.2)`
-   - **Azure Client Secret**: `(Secret do passo 1.2)`
-   - **Azure Tenant URL**: `https://login.microsoftonline.com/{tenant-id}/v2.0`
-4. Salve
+Modificar `src/hooks/useTicketsOSApi.ts` para importar e utilizar as funções do `vdeskProxyService.ts`:
+
+- Substituir `consultarTicketsOS` por `consultarTicketsViaProxy`
+- Substituir `correlacionarTicket` por `correlacionarTicketViaProxy`
+- Remover dependência do `useApiSessionToken` (o proxy gerencia tokens internamente)
+
+### 2. Re-deploy da Edge Function
+
+Garantir que a função `vdesk-proxy` esteja corretamente deployada e respondendo.
+
+### 3. Atualizar Headers CORS (se necessário)
+
+Verificar se os headers CORS da Edge Function incluem todos os headers necessários do Supabase client.
 
 ---
 
-## Etapa 3: Alterações no Código
+## Detalhes Técnicos
 
-### 3.1 Atualizar Hook de Autenticação
+### Arquivo: `src/hooks/useTicketsOSApi.ts`
 
-Adicionar função `signInWithAzure` no `useAuth.ts`:
+Mudanças principais:
 
 ```typescript
-const signInWithAzure = async () => {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'azure',
-    options: {
-      scopes: 'email profile openid',
-      redirectTo: window.location.origin + '/dashboard',
-    }
+// ANTES
+import { 
+  consultarTicketsOS, 
+  correlacionarTicket, 
+} from '@/services/ticketsOSApi';
+import { useApiSessionToken } from './useApiSessionToken';
+
+// DEPOIS
+import { 
+  consultarTicketsViaProxy, 
+  correlacionarTicketViaProxy,
+  ConsultaResponse,
+  CorrelacaoResponse,
+} from '@/services/vdeskProxyService';
+```
+
+Cada hook será simplificado para chamar diretamente o proxy:
+
+```typescript
+export function useConsultarTicketsOS(params, enabled = true) {
+  return useQuery({
+    queryKey: ['tickets-os', 'consultar', params],
+    queryFn: () => consultarTicketsViaProxy(params),
+    enabled: enabled && (!!params.ticketNestle || !!params.osNumber || ...),
+    // ...
   });
-  return { data, error };
-};
+}
 ```
 
-### 3.2 Atualizar Página de Login
+### Arquivo: `supabase/functions/vdesk-proxy/index.ts`
 
-Adicionar botão "Entrar com Microsoft" no `Login.tsx`:
+Atualizar headers CORS para incluir todos os headers do Supabase:
 
-- Botão com ícone Microsoft acima do formulário de email/senha
-- Separador visual "ou" entre as opções
-- Handler que chama `signInWithAzure()`
-
-### 3.3 Layout Proposto
-
-```text
-┌─────────────────────────────────┐
-│         FLAG Painel             │
-│     Operacional                 │
-├─────────────────────────────────┤
-│  ┌───────────────────────────┐  │
-│  │ 🪟  Entrar com Microsoft  │  │
-│  └───────────────────────────┘  │
-│                                 │
-│  ────────── ou ──────────       │
-│                                 │
-│  [Entrar] [Cadastrar]           │
-│                                 │
-│  Email: ___________             │
-│  Senha: ___________             │
-│                                 │
-│  [ Entrar ]                     │
-└─────────────────────────────────┘
-```
-
----
-
-## Etapa 4: Auto-provisioning de Usuários SSO
-
-Criar trigger no banco para criar automaticamente profile e role quando usuário fizer primeiro login via SSO.
-
-### 4.1 Tabela de Mapeamento de Domínios
-
-```sql
-CREATE TABLE IF NOT EXISTS domain_network_mapping (
-  id SERIAL PRIMARY KEY,
-  email_domain VARCHAR(255) NOT NULL UNIQUE,
-  network_id BIGINT REFERENCES networks(id),
-  default_role app_role DEFAULT 'operacional',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-### 4.2 Função de Auto-provisioning
-
-```sql
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_domain TEXT;
-  v_mapping RECORD;
-BEGIN
-  -- Extrair domínio do email
-  v_domain := SPLIT_PART(NEW.email, '@', 2);
-  
-  -- Buscar mapeamento
-  SELECT * INTO v_mapping 
-  FROM domain_network_mapping 
-  WHERE email_domain = v_domain;
-  
-  -- Criar profile
-  INSERT INTO profiles (user_id, full_name, network_id)
-  VALUES (
-    NEW.id,
-    COALESCE(
-      NEW.raw_user_meta_data->>'full_name',
-      NEW.raw_user_meta_data->>'name',
-      SPLIT_PART(NEW.email, '@', 1)
-    ),
-    v_mapping.network_id
-  )
-  ON CONFLICT (user_id) DO UPDATE
-  SET full_name = EXCLUDED.full_name,
-      network_id = COALESCE(profiles.network_id, EXCLUDED.network_id);
-  
-  -- Criar role padrão
-  INSERT INTO user_roles (user_id, role)
-  VALUES (NEW.id, COALESCE(v_mapping.default_role, 'operacional'))
-  ON CONFLICT (user_id, role) DO NOTHING;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-```
-
-### 4.3 Trigger
-
-```sql
-CREATE TRIGGER on_auth_user_created
-AFTER INSERT ON auth.users
-FOR EACH ROW
-EXECUTE FUNCTION handle_new_user();
-```
-
----
-
-## Etapa 5: Configurar Mapeamento de Domínios
-
-Exemplo de inserção inicial:
-
-```sql
-INSERT INTO domain_network_mapping (email_domain, network_id, default_role)
-VALUES 
-  ('flag.com.br', 1, 'operacional'),
-  ('empresa-cliente.com.br', 2, 'operacional');
+```typescript
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+}
 ```
 
 ---
@@ -208,23 +92,43 @@ VALUES
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useAuth.ts` | Adicionar `signInWithAzure()` |
-| `src/pages/Login.tsx` | Adicionar botão Microsoft + separador |
-| Migração SQL | Trigger + tabela de mapeamento |
+| `src/hooks/useTicketsOSApi.ts` | Usar `vdeskProxyService` ao invés de `ticketsOSApi` |
+| `supabase/functions/vdesk-proxy/index.ts` | Atualizar headers CORS |
 
 ---
 
-## Considerações de Segurança
+## Benefícios da Mudança
 
-1. **Roles são atribuídas como 'operacional' por padrão** - admins precisam ser promovidos manualmente via SQL
-2. **O login por email/senha continuará funcionando** durante a transição
-3. **Usuários SSO terão contas separadas** de usuários email/senha existentes
-4. Considerar desabilitar auto-cadastro após migração completa
+1. **Resolve CORS**: Todas as requisições passam pelo backend (Edge Function)
+2. **Gerenciamento de Token Centralizado**: O proxy gerencia autenticação com a API externa
+3. **Fallback Automático**: O proxy já implementa fallback entre endpoints HTTPS/HTTP
+4. **Logs Centralizados**: Facilita debug e monitoramento
 
 ---
 
-## Próximos Passos Opcionais
+## Fluxo Após a Correção
 
-- Sincronizar grupos do Azure AD com roles do sistema
-- Desabilitar login email/senha após migração
-- Configurar logout único (Single Logout)
+```text
+Usuário digita ticket
+       ↓
+Frontend (useConsultarTicketsOS)
+       ↓
+consultarTicketsViaProxy()
+       ↓
+fetch() → Edge Function (vdesk-proxy)
+       ↓
+Edge Function → API Externa (clientes.flag.com.br)
+       ↓
+Resposta JSON → Frontend
+```
+
+---
+
+## Estimativa
+
+| Tarefa | Tempo |
+|--------|-------|
+| Atualizar hooks | 15 min |
+| Atualizar CORS da Edge Function | 5 min |
+| Re-deploy e teste | 10 min |
+| **Total** | **30 min** |
