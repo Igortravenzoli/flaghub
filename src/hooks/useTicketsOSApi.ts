@@ -1,18 +1,32 @@
 /**
- * Hooks React Query para integração com API Tickets-OS
+ * Hooks React Query para integração com API Tickets-OS via Proxy
  * 
- * Usa token de sessão obtido via /api/faq/validate-client
+ * Todas as requisições passam pela Edge Function vdesk-proxy
+ * que gerencia autenticação e contorna restrições de CORS
  */
 
 import { useQuery } from '@tanstack/react-query';
 import { 
-  consultarTicketsOS, 
-  correlacionarTicket, 
-  ConsultaTicketsOSParams,
-  TicketOSResponse,
-  CorrelacaoTicketResponse
-} from '@/services/ticketsOSApi';
-import { useApiSessionToken } from './useApiSessionToken';
+  consultarTicketsViaProxy, 
+  correlacionarTicketViaProxy,
+  ConsultaResponse,
+  CorrelacaoResponse,
+} from '@/services/vdeskProxyService';
+
+/**
+ * Parâmetros de consulta compatíveis com o proxy
+ */
+export interface ConsultaTicketsParams {
+  ticketNestle?: string;
+  osNumber?: string;
+  programador?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  cliente?: string;
+  bandeira?: string;
+  pageNumber?: number;
+  pageSize?: number;
+}
 
 /**
  * Hook para consultar tickets/OS com filtros dinâmicos
@@ -26,21 +40,18 @@ import { useApiSessionToken } from './useApiSessionToken';
  * });
  */
 export function useConsultarTicketsOS(
-  params: ConsultaTicketsOSParams,
+  params: ConsultaTicketsParams,
   enabled = true
 ) {
-  const { isInitialized, executeWithRetry } = useApiSessionToken();
-
-  return useQuery<TicketOSResponse, Error>({
+  return useQuery<ConsultaResponse, Error>({
     queryKey: ['tickets-os', 'consultar', params],
-    queryFn: async () => {
-      return executeWithRetry((token) => consultarTicketsOS(params, token));
-    },
-    enabled: enabled && isInitialized && (
+    queryFn: () => consultarTicketsViaProxy(params),
+    enabled: enabled && (
       !!params.ticketNestle || 
       !!params.osNumber || 
       !!params.dateFrom || 
-      !!params.cliente
+      !!params.cliente ||
+      !!params.programador
     ),
     refetchOnWindowFocus: false,
     retry: 1,
@@ -61,17 +72,15 @@ export function useCorrelacionarTicket(
   ticketNestle: string | null,
   enabled = true
 ) {
-  const { isInitialized, executeWithRetry } = useApiSessionToken();
-
-  return useQuery<CorrelacaoTicketResponse, Error>({
+  return useQuery<CorrelacaoResponse, Error>({
     queryKey: ['tickets-os', 'correlacao', ticketNestle],
     queryFn: async () => {
       if (!ticketNestle) {
         throw new Error('Ticket Nestlé é obrigatório');
       }
-      return executeWithRetry((token) => correlacionarTicket(ticketNestle, token));
+      return correlacionarTicketViaProxy(ticketNestle);
     },
-    enabled: enabled && isInitialized && !!ticketNestle,
+    enabled: enabled && !!ticketNestle,
     refetchOnWindowFocus: false,
     retry: 1,
     staleTime: 1000 * 60 * 5, // 5 minutos
@@ -92,23 +101,15 @@ export function useBuscarPorPeriodo(
   dateTo: string | null,
   pageSize = 50
 ) {
-  const { isInitialized, executeWithRetry } = useApiSessionToken();
-
-  return useQuery<TicketOSResponse, Error>({
+  return useQuery<ConsultaResponse, Error>({
     queryKey: ['tickets-os', 'periodo', dateFrom, dateTo],
-    queryFn: async () => {
-      return executeWithRetry((token) => 
-        consultarTicketsOS(
-          {
-            dateFrom: dateFrom || undefined,
-            dateTo: dateTo || undefined,
-            pageSize,
-          },
-          token
-        )
-      );
-    },
-    enabled: isInitialized && !!dateFrom && !!dateTo,
+    queryFn: () => 
+      consultarTicketsViaProxy({
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        pageSize,
+      }),
+    enabled: !!dateFrom && !!dateTo,
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 5,
   });
@@ -126,22 +127,14 @@ export function useBuscarPorProgramador(
   programador: string | null,
   pageSize = 50
 ) {
-  const { isInitialized, executeWithRetry } = useApiSessionToken();
-
-  return useQuery<TicketOSResponse, Error>({
+  return useQuery<ConsultaResponse, Error>({
     queryKey: ['tickets-os', 'programador', programador],
-    queryFn: async () => {
-      return executeWithRetry((token) =>
-        consultarTicketsOS(
-          {
-            programador: programador || undefined,
-            pageSize,
-          },
-          token
-        )
-      );
-    },
-    enabled: isInitialized && !!programador,
+    queryFn: () =>
+      consultarTicketsViaProxy({
+        programador: programador || undefined,
+        pageSize,
+      }),
+    enabled: !!programador,
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 5,
   });
@@ -156,21 +149,13 @@ export function useBuscarPorProgramador(
  * const { data } = useBuscarPorOS('OS753456');
  */
 export function useBuscarPorOS(osNumber: string | null) {
-  const { isInitialized, executeWithRetry } = useApiSessionToken();
-
-  return useQuery<TicketOSResponse, Error>({
+  return useQuery<ConsultaResponse, Error>({
     queryKey: ['tickets-os', 'os', osNumber],
-    queryFn: async () => {
-      return executeWithRetry((token) =>
-        consultarTicketsOS(
-          {
-            osNumber: osNumber || undefined,
-          },
-          token
-        )
-      );
-    },
-    enabled: isInitialized && !!osNumber,
+    queryFn: () =>
+      consultarTicketsViaProxy({
+        osNumber: osNumber || undefined,
+      }),
+    enabled: !!osNumber,
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 5,
   });
@@ -185,22 +170,14 @@ export function useBuscarPorOS(osNumber: string | null) {
  * const { data } = useBuscarPorCliente('GDBroker');
  */
 export function useBuscarPorCliente(cliente: string | null, pageSize = 50) {
-  const { isInitialized, executeWithRetry } = useApiSessionToken();
-
-  return useQuery<TicketOSResponse, Error>({
+  return useQuery<ConsultaResponse, Error>({
     queryKey: ['tickets-os', 'cliente', cliente],
-    queryFn: async () => {
-      return executeWithRetry((token) =>
-        consultarTicketsOS(
-          {
-            cliente: cliente || undefined,
-            pageSize,
-          },
-          token
-        )
-      );
-    },
-    enabled: isInitialized && !!cliente,
+    queryFn: () =>
+      consultarTicketsViaProxy({
+        cliente: cliente || undefined,
+        pageSize,
+      }),
+    enabled: !!cliente,
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 5,
   });

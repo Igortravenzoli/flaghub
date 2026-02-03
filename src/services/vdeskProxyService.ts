@@ -6,6 +6,9 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
+// URL base do Supabase (extraída do client)
+const SUPABASE_URL = 'https://nxmgppfyltwsqryfxkbm.supabase.co';
+
 export interface TicketOSRecord {
   cliente: string;
   bandeira: string;
@@ -55,16 +58,9 @@ export interface ConsultaResponse {
 export async function correlacionarTicketViaProxy(
   ticketNestle: string
 ): Promise<CorrelacaoResponse> {
-  const { data, error } = await supabase.functions.invoke('vdesk-proxy', {
-    body: null,
-    method: 'GET',
-  });
-
-  // Supabase functions.invoke não suporta query params nativamente,
-  // então usamos fetch direto
   const { data: { session } } = await supabase.auth.getSession();
   
-  const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vdesk-proxy?action=correlacao&ticketNestle=${encodeURIComponent(ticketNestle)}`;
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?action=correlacao&ticketNestle=${encodeURIComponent(ticketNestle)}`;
   
   const response = await fetch(functionUrl, {
     method: 'GET',
@@ -110,7 +106,7 @@ export async function consultarTicketsViaProxy(params: {
   if (params.pageNumber) queryParams.append('pageNumber', params.pageNumber.toString());
   if (params.pageSize) queryParams.append('pageSize', params.pageSize.toString());
 
-  const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vdesk-proxy?${queryParams}`;
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?${queryParams}`;
   
   const response = await fetch(functionUrl, {
     method: 'GET',
