@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Monitor, Loader2 } from 'lucide-react';
@@ -16,7 +17,7 @@ export default function Login() {
   const location = useLocation();
   const { signIn, signUp, signInWithAzure, isLoading } = useAuth();
   
-  const [loginData, setLoginData] = useState({ email: '', password: '' });
+  const [loginData, setLoginData] = useState({ email: '', password: '', rememberMe: false });
   const [signupData, setSignupData] = useState({ email: '', password: '', fullName: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAzureLoading, setIsAzureLoading] = useState(false);
@@ -170,6 +171,18 @@ export default function Login() {
                     onChange={(e) => setLoginData(prev => ({ ...prev, password: e.target.value }))}
                     required
                   />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="remember-me"
+                    checked={loginData.rememberMe}
+                    onCheckedChange={(checked) => 
+                      setLoginData(prev => ({ ...prev, rememberMe: checked === true }))
+                    }
+                  />
+                  <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
+                    Manter conectado por 15 dias
+                  </Label>
                 </div>
                 <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting ? (
