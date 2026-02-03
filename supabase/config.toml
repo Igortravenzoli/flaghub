@@ -2,3 +2,6 @@ project_id = "nxmgppfyltwsqryfxkbm"
 
 [functions.vdesk-proxy]
 verify_jwt = false
+
+[functions.consultar-vdesk]
+verify_jwt = false
