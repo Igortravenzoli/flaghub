@@ -14,7 +14,7 @@
  * - Correlação de tickets com OS
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ import {
   useBuscarPorOS,
   useBuscarPorCliente,
 } from '@/hooks/useTicketsOSApi';
+import { VpnWarningAlert, useVpnWarning } from '@/components/VpnWarningAlert';
 
 interface SearchParams {
   ticketNestle: string;
@@ -48,6 +49,8 @@ export function TicketBuscaComponente() {
     dateFrom: '',
     dateTo: '',
   });
+  
+  const { showWarning: showVpnWarning, checkVpnError, dismissWarning } = useVpnWarning();
 
   // Hook para busca geral com filtros
   const { data: consultaData, isLoading: loadingConsulta, error: errorConsulta } = useConsultarTicketsOS(
@@ -94,16 +97,32 @@ export function TicketBuscaComponente() {
     }
   };
 
+  // Detectar erros de VPN em qualquer busca
+  useEffect(() => {
+    const errors = [errorConsulta, errorPeriodo, errorProgramador, errorCliente, errorOS, errorCorrelacao];
+    errors.forEach(err => {
+      if (err) checkVpnError(err);
+    });
+  }, [errorConsulta, errorPeriodo, errorProgramador, errorCliente, errorOS, errorCorrelacao]);
+
   const renderResultados = (dados: any, isLoading: boolean, erro: any) => {
     if (isLoading) {
       return <p className="text-center text-muted-foreground py-4">Carregando...</p>;
     }
 
     if (erro) {
+      // Verificar se é erro de VPN para mostrar mensagem mais amigável
+      const isVpnError = erro.message?.toLowerCase().includes('vpn') || 
+                         erro.message?.toLowerCase().includes('timeout') ||
+                         erro.message?.toLowerCase().includes('aborted');
       return (
         <Alert variant="destructive">
           <AlertTitle>Erro na Busca</AlertTitle>
-          <AlertDescription>{erro.message || 'Erro ao buscar dados'}</AlertDescription>
+          <AlertDescription>
+            {isVpnError 
+              ? 'Conexão lenta ou indisponível. Verifique se a VPN Flag está ativa.' 
+              : (erro.message || 'Erro ao buscar dados')}
+          </AlertDescription>
         </Alert>
       );
     }
@@ -220,6 +239,11 @@ export function TicketBuscaComponente() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* VPN Warning Alert */}
+      {showVpnWarning && (
+        <VpnWarningAlert onDismiss={dismissWarning} />
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Busca de Tickets e OS</CardTitle>

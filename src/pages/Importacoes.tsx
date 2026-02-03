@@ -31,6 +31,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ImportacaoArquivo } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { VpnWarningAlert, useVpnWarning } from '@/components/VpnWarningAlert';
 
 // Dados iniciais vazios - será integrado com Supabase
 const initialImportacoes: ImportacaoArquivo[] = [];
@@ -41,6 +42,7 @@ export default function Importacoes() {
   const { data: dbImports, isLoading: importsLoading } = useImportsHistory(networkId ?? undefined);
   const clearImportsMutation = useClearImports();
   const purgeDataMutation = usePurgeData();
+  const { showWarning: showVpnWarning, checkVpnError, dismissWarning } = useVpnWarning();
   
   // Fallback para dados vazios se não autenticado
   const [localImportacoes, setLocalImportacoes] = useState<ImportacaoArquivo[]>(initialImportacoes);
@@ -142,8 +144,12 @@ export default function Importacoes() {
           }
         } catch (err) {
           console.error('[Importacoes] Import error:', err);
+          // Verificar se é erro de VPN
+          const isVpnError = checkVpnError(err);
           toast.error('Erro na importação', {
-            description: err instanceof Error ? err.message : 'Erro desconhecido'
+            description: isVpnError 
+              ? 'Conexão lenta. Verifique se a VPN Flag está ativa.' 
+              : (err instanceof Error ? err.message : 'Erro desconhecido')
           });
         }
       } else {
@@ -184,6 +190,11 @@ export default function Importacoes() {
   
   return (
     <div className="p-6 space-y-6">
+      {/* VPN Warning Alert */}
+      {showVpnWarning && (
+        <VpnWarningAlert onDismiss={dismissWarning} />
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold">Importações</h1>
