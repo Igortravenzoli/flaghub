@@ -15,6 +15,7 @@ import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
 import TesteSupabaseSetup from "@/pages/TesteSupabaseSetup";
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
+import Acompanhamento from "@/pages/Acompanhamento";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
               <Route path="/usuarios" element={<Usuarios />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
               <Route path="/ticket-busca" element={<TicketBuscaComponente />} />
+              <Route path="/acompanhamento" element={<Acompanhamento />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
