@@ -114,44 +114,38 @@ export default function Acompanhamento() {
 
       {/* Content */}
       <div className="container mx-auto px-4 py-6 space-y-6">
-        {/* Blocos superiores - 2 colunas em desktop */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* Bloco 1 - Agentes (Telefonia) */}
-          {showTelephony && (
-            <AgentsTable 
-              agents={mockAgentsTelephony} 
-              isLoading={isLoading}
-              isAvailable={integrationHealth.telephony}
-            />
-          )}
-
-          {/* Bloco 2 - Atendimentos em Andamento */}
-          <ActiveAttendancesTable 
-            attendances={mode === 'vdesk' ? mockActiveAttendancesVdesk : mergedAttendances}
+        {/* Bloco 1 - Agentes (Telefonia) */}
+        {showTelephony && (
+          <AgentsTable 
+            agents={mockAgentsTelephony} 
             isLoading={isLoading}
-            mode={mode}
+            isAvailable={integrationHealth.telephony}
           />
-        </div>
+        )}
 
-        {/* Blocos inferiores */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* Bloco 3 - Fila de Espera (Telefonia) */}
-          {showTelephony && (
-            <QueueTable 
-              queue={mockQueueTelephony} 
-              isLoading={isLoading}
-              isAvailable={integrationHealth.telephony}
-            />
-          )}
+        {/* Bloco 2 - Atendimentos em Andamento */}
+        <ActiveAttendancesTable 
+          attendances={mode === 'vdesk' ? mockActiveAttendancesVdesk : mergedAttendances}
+          isLoading={isLoading}
+          mode={mode}
+        />
 
-          {/* Bloco 4 - Atendimentos Encerrados (Vdesk) */}
-          {showVdesk && (
-            <ClosedAttendancesTable 
-              attendances={mockClosedAttendancesVdesk}
-              isLoading={isLoading}
-            />
-          )}
-        </div>
+        {/* Bloco 3 - Fila de Espera (Telefonia) */}
+        {showTelephony && (
+          <QueueTable 
+            queue={mockQueueTelephony} 
+            isLoading={isLoading}
+            isAvailable={integrationHealth.telephony}
+          />
+        )}
+
+        {/* Bloco 4 - Atendimentos Encerrados (Vdesk) */}
+        {showVdesk && (
+          <ClosedAttendancesTable 
+            attendances={mockClosedAttendancesVdesk}
+            isLoading={isLoading}
+          />
+        )}
       </div>
     </div>
   );
