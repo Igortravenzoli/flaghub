@@ -333,14 +333,22 @@ serve(async (req) => {
     }
     
     const endpointForError = lastKnownEndpoint || (activeEndpoint ? { name: activeEndpoint.name, url: activeEndpoint.url } : null)
-    const isTimeout = error?.name === 'TimeoutError'
+    const isTimeout = error?.name === 'TimeoutError' || error?.message?.includes('signal has been aborted')
+    const isAbort = error?.name === 'AbortError' || error?.message?.includes('aborted')
+
+    // Se é timeout/abort, provavelmente é problema de VPN
+    const errorCode = (isTimeout || isAbort) ? 'VPN_SUSPECTED' : undefined
+    const userMessage = (isTimeout || isAbort) 
+      ? 'Conexão lenta ou indisponível. Se você está fora da rede Flag com VPN ativa, desconecte a VPN ou use o sistema internamente.'
+      : undefined
 
     return new Response(
       JSON.stringify({
         success: false,
         error: error.message || 'Erro interno no proxy',
-        errorCode: isTimeout ? 'TIMEOUT' : undefined,
-        message: isTimeout ? 'Timeout ao chamar o VDESK. Tente novamente.' : undefined,
+        errorCode,
+        message: userMessage,
+        vpnWarning: (isTimeout || isAbort),
         activeEndpoint: endpointForError?.name || 'não determinado',
         _meta: {
           endpoint: endpointForError?.name || null,
@@ -348,7 +356,7 @@ serve(async (req) => {
           timestamp: new Date().toISOString(),
         },
       }),
-      { status: isTimeout ? 504 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: (isTimeout || isAbort) ? 504 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
 })
