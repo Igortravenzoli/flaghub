@@ -1,6 +1,14 @@
+import { useState, useEffect } from 'react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { 
   Ticket, 
   CheckCircle, 
@@ -14,7 +22,10 @@ import {
   PhoneCall,
   UserCheck,
   Pause,
-  PhoneOff
+  PhoneOff,
+  Settings,
+  Bell,
+  BellRing
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -35,7 +46,13 @@ interface KioskModeProps {
   onExit: () => void;
 }
 
+// Limite padrão para alerta de fila
+const DEFAULT_QUEUE_ALERT_THRESHOLD = 3;
+
 export function KioskMode({ estatisticas, ticketsCriticos, lastUpdate, onExit }: KioskModeProps) {
+  const [queueAlertThreshold, setQueueAlertThreshold] = useState(DEFAULT_QUEUE_ALERT_THRESHOLD);
+  const [showQueueAlert, setShowQueueAlert] = useState(false);
+
   // Calcular estatísticas de atendimento a partir dos dados mock
   const agentesLogados = mockAgentsTelephony.length;
   const agentesEmChamada = mockAgentsTelephony.filter(a => a.state === 'EM_CHAMADA').length;
@@ -44,6 +61,18 @@ export function KioskMode({ estatisticas, ticketsCriticos, lastUpdate, onExit }:
   const agentesNaoAtendeu = mockAgentsTelephony.filter(a => a.state === 'NAO_ATENDIDA').length;
   const clientesNaFila = mockQueueTelephony.length;
   const atendimentosAtivos = mockActiveAttendancesVdesk.length;
+  
+  // Verificar se fila excede o limite
+  const isQueueOverThreshold = clientesNaFila >= queueAlertThreshold;
+
+  // Efeito para controlar animação do alerta
+  useEffect(() => {
+    if (isQueueOverThreshold) {
+      setShowQueueAlert(true);
+    } else {
+      setShowQueueAlert(false);
+    }
+  }, [isQueueOverThreshold]);
   
   // Calcular TMA médio (avgTalkTime está em segundos)
   const tmaTotal = mockAgentsTelephony.reduce((sum, a) => sum + a.avgTalkTime, 0);
@@ -59,9 +88,37 @@ export function KioskMode({ estatisticas, ticketsCriticos, lastUpdate, onExit }:
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-1/4 -right-1/4 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[100px]" />
         <div className="absolute -bottom-1/4 -left-1/4 w-[500px] h-[500px] bg-[hsl(var(--info))]/10 rounded-full blur-[100px]" />
+        
+        {/* Alerta visual de fila - efeito de borda pulsante */}
+        {showQueueAlert && (
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute inset-0 border-4 border-[hsl(var(--warning))] animate-pulse opacity-50" />
+          </div>
+        )}
       </div>
 
-      <div className="relative z-10 max-w-[1800px] mx-auto">
+      {/* Banner de alerta de fila */}
+      {showQueueAlert && (
+        <div className={cn(
+          "fixed top-0 left-0 right-0 z-50",
+          "bg-gradient-to-r from-[hsl(var(--warning))] to-[hsl(var(--critical))]",
+          "py-3 px-6 flex items-center justify-center gap-3",
+          "animate-pulse shadow-lg"
+        )}>
+          <BellRing className="h-6 w-6 text-white animate-bounce" />
+          <span className="text-white font-bold text-lg">
+            ATENÇÃO: {clientesNaFila} cliente{clientesNaFila !== 1 ? 's' : ''} na fila de espera!
+          </span>
+          <span className="text-white/80 text-sm">
+            (Limite: {queueAlertThreshold})
+          </span>
+        </div>
+      )}
+
+      <div className={cn(
+        "relative z-10 max-w-[1800px] mx-auto",
+        showQueueAlert && "pt-12" // Espaço para o banner
+      )}>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -95,15 +152,82 @@ export function KioskMode({ estatisticas, ticketsCriticos, lastUpdate, onExit }:
             </div>
           </div>
           
-          <Button 
-            variant="outline" 
-            size="default"
-            onClick={onExit}
-            className="bg-card/50 border-border/50 hover:bg-primary/10 hover:border-primary/50"
-          >
-            <Minimize2 className="h-4 w-4 mr-2" />
-            Sair do Modo TV
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Configuração de alerta */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  className={cn(
+                    "bg-card/50 border-border/50 hover:bg-primary/10 hover:border-primary/50",
+                    showQueueAlert && "border-[hsl(var(--warning))] text-[hsl(var(--warning))]"
+                  )}
+                >
+                  {showQueueAlert ? (
+                    <BellRing className="h-4 w-4 animate-bounce" />
+                  ) : (
+                    <Bell className="h-4 w-4" />
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72" align="end">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <Settings className="h-4 w-4" />
+                      Configuração de Alertas
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Defina o limite para alertas de fila de espera.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="queue-threshold">Limite de clientes na fila</Label>
+                    <Input
+                      id="queue-threshold"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={queueAlertThreshold}
+                      onChange={(e) => setQueueAlertThreshold(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Alerta será exibido quando houver {queueAlertThreshold} ou mais clientes aguardando.
+                    </p>
+                  </div>
+                  <div className={cn(
+                    "p-3 rounded-lg text-sm",
+                    isQueueOverThreshold 
+                      ? "bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))]"
+                      : "bg-muted text-muted-foreground"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      {isQueueOverThreshold ? (
+                        <BellRing className="h-4 w-4" />
+                      ) : (
+                        <Bell className="h-4 w-4" />
+                      )}
+                      <span>
+                        Fila atual: <strong>{clientesNaFila}</strong> cliente{clientesNaFila !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <Button 
+              variant="outline" 
+              size="default"
+              onClick={onExit}
+              className="bg-card/50 border-border/50 hover:bg-primary/10 hover:border-primary/50"
+            >
+              <Minimize2 className="h-4 w-4 mr-2" />
+              Sair do Modo TV
+            </Button>
+          </div>
         </div>
         
         {/* Grid principal - 2 seções lado a lado */}
