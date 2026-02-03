@@ -12,6 +12,7 @@ import {
   ChevronRight,
   LogIn,
   LogOut,
+  Headphones,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { label: 'Tickets', path: '/tickets', icon: Ticket },
   { label: 'Busca VDESK', path: '/ticket-busca', icon: Search },
+  { label: 'Acompanhamento', path: '/acompanhamento', icon: Headphones },
   { label: 'Importações', path: '/importacoes', icon: Upload },
   { label: 'Usuários', path: '/usuarios', icon: Users, adminOnly: true },
   { label: 'Configurações', path: '/configuracoes', icon: Settings, adminOnly: true },
