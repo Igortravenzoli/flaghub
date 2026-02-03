@@ -223,16 +223,13 @@ export function TicketBuscaComponente() {
       <Card>
         <CardHeader>
           <CardTitle>Busca de Tickets e OS</CardTitle>
-          <CardDescription>
-            Integração com API REST (localhost:5000) - VDESKProxy
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="ticket" className="w-full">
             <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="ticket">Por Ticket</TabsTrigger>
               <TabsTrigger value="periodo">Por Período</TabsTrigger>
-              <TabsTrigger value="programador">Por Programador</TabsTrigger>
+              <TabsTrigger value="programador">Colaborador</TabsTrigger>
               <TabsTrigger value="cliente">Por Cliente</TabsTrigger>
               <TabsTrigger value="os">Por OS</TabsTrigger>
             </TabsList>
@@ -339,28 +336,6 @@ export function TicketBuscaComponente() {
         </CardContent>
       </Card>
 
-      {/* Info Card */}
-      <Alert className="bg-accent">
-        <AlertTitle>ℹ️ Integração em Produção</AlertTitle>
-        <AlertDescription className="space-y-2 text-sm">
-          <p>
-            Este componente demonstra o uso dos novos hooks de integração com API REST.
-          </p>
-          <p>
-            <strong>Arquitetura:</strong> Frontend (React) → API REST (VDESKProxy @localhost:5000) → SQL Server VDESK
-          </p>
-          <p>
-            <strong>Autenticação:</strong> JWT Bearer token (Supabase Auth)
-          </p>
-          <p>
-            <strong>Serviços:</strong>
-            <br />
-            • <code className="text-xs bg-muted px-1 rounded">src/services/ticketsOSApi.ts</code> - Camada de API
-            <br />
-            • <code className="text-xs bg-muted px-1 rounded">src/hooks/useTicketsOSApi.ts</code> - Hooks React Query
-          </p>
-        </AlertDescription>
-      </Alert>
     </div>
   );
 }
