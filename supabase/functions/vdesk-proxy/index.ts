@@ -13,7 +13,7 @@ const VDESK_ENDPOINTS = [
   { url: 'http://clientes.flag.com.br/Flag.AI.Gateway', name: 'fallback (HTTP)' },
 ]
 
-const FALLBACK_TIMEOUT_MS = 5000 // 5 segundos para timeout
+const FALLBACK_TIMEOUT_MS = 10000 // 10 segundos para timeout de conectividade
 
 // Cache do endpoint ativo (válido por instância)
 let activeEndpoint: { url: string; name: string; testedAt: Date } | null = null
