@@ -1,5 +1,7 @@
-// vdesk-proxy v1.1 - Edge Function para proxy de requisições ao VDESK
+// vdesk-proxy v1.2 - Edge Function para proxy de requisições ao VDESK
+// Agora com autenticação obrigatória via JWT
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,7 +15,7 @@ const VDESK_ENDPOINTS = [
   { url: 'http://clientes.flag.com.br/Flag.AI.Gateway', name: 'fallback (HTTP)' },
 ]
 
-// Timeouts por etapa (evita aborts “genéricos” e facilita diagnóstico)
+// Timeouts por etapa (evita aborts "genéricos" e facilita diagnóstico)
 const ENDPOINT_TEST_TIMEOUT_MS = 8000 // teste rápido de conectividade
 const TOKEN_TIMEOUT_MS = 20000 // obter token pode ser mais lento
 const REQUEST_TIMEOUT_MS = 45000 // consultas podem demorar
@@ -61,6 +63,62 @@ async function fetchWithTimeout(
     throw err
   } finally {
     clearTimeout(timeoutId)
+  }
+}
+
+/**
+ * Valida autenticação do usuário via JWT
+ * Retorna o user_id se autenticado, ou null se falhar
+ */
+async function validateAuthentication(req: Request): Promise<{ userId: string; userRole: string | null } | null> {
+  const authHeader = req.headers.get('authorization')
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[VdeskProxy] Requisição sem header de autorização')
+    return null
+  }
+
+  const token = authHeader.replace('Bearer ', '')
+  
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('[VdeskProxy] Variáveis de ambiente SUPABASE não configuradas')
+    return null
+  }
+
+  const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } }
+  })
+
+  try {
+    // Usar getClaims para validar o JWT
+    const { data: claimsData, error: claimsError } = await supabaseClient.auth.getClaims(token)
+    
+    if (claimsError || !claimsData?.claims) {
+      console.log('[VdeskProxy] Token inválido ou expirado:', claimsError?.message)
+      return null
+    }
+
+    const userId = claimsData.claims.sub as string
+    
+    // Buscar role do usuário para log/auditoria
+    const { data: roleData } = await supabaseClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .single()
+
+    console.log(`[VdeskProxy] Usuário autenticado: ${userId}, role: ${roleData?.role || 'sem role'}`)
+    
+    return { 
+      userId, 
+      userRole: roleData?.role || null 
+    }
+  } catch (err) {
+    console.error('[VdeskProxy] Erro ao validar autenticação:', err)
+    return null
   }
 }
 
@@ -260,8 +318,16 @@ serve(async (req) => {
     const url = new URL(req.url)
     const action = url.searchParams.get('action')
     
-    // Ação especial: reset do endpoint
+    // Ação especial: reset do endpoint (requer autenticação)
     if (action === 'reset') {
+      const auth = await validateAuthentication(req)
+      if (!auth) {
+        return new Response(
+          JSON.stringify({ error: 'Autenticação obrigatória' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      
       resetActiveEndpoint()
       return new Response(
         JSON.stringify({ 
@@ -272,8 +338,16 @@ serve(async (req) => {
       )
     }
     
-    // Ação especial: status do endpoint
+    // Ação especial: status do endpoint (requer autenticação)
     if (action === 'status') {
+      const auth = await validateAuthentication(req)
+      if (!auth) {
+        return new Response(
+          JSON.stringify({ error: 'Autenticação obrigatória' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      
       const endpoint = await getActiveEndpoint()
       return new Response(
         JSON.stringify({ 
@@ -288,6 +362,20 @@ serve(async (req) => {
           availableEndpoints: VDESK_ENDPOINTS.map(e => ({ name: e.name, url: e.url })),
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // =========================================
+    // AUTENTICAÇÃO OBRIGATÓRIA PARA AÇÕES PRINCIPAIS
+    // =========================================
+    const auth = await validateAuthentication(req)
+    if (!auth) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Autenticação obrigatória',
+          message: 'Você precisa estar logado para acessar o proxy VDESK.'
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
