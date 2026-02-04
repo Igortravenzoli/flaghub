@@ -191,6 +191,38 @@ export function useUsers() {
     }
   };
 
+  // Excluir usuário (remove profile e role, não o auth.user)
+  const deleteUser = async (userId: string) => {
+    try {
+      // Deletar role primeiro (se existir)
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId);
+
+      if (roleError) throw roleError;
+
+      // Deletar profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('user_id', userId);
+
+      if (profileError) throw profileError;
+
+      // Remover do estado local
+      setUsers(prev => prev.filter(u => u.user_id !== userId));
+
+      return { success: true };
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      return { 
+        success: false, 
+        error: err instanceof Error ? err.message : 'Erro ao excluir usuário' 
+      };
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     fetchNetworks();
@@ -205,5 +237,6 @@ export function useUsers() {
     updateUserRole,
     updateUserNetwork,
     updateUserName,
+    deleteUser,
   };
 }
