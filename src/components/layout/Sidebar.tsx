@@ -40,7 +40,7 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
-  const { isAuthenticated, profile, signOut, isAdmin } = useAuth();
+  const { isAuthenticated, isLoading, profile, signOut, isAdmin } = useAuth();
 
   const handleAuthAction = async () => {
     if (isAuthenticated) {
@@ -139,24 +139,27 @@ export function Sidebar() {
             <p className="font-medium truncate">{profile.full_name || 'Usuário'}</p>
           </div>
         )}
-        <Button
-          variant="ghost"
-          size={collapsed ? "icon" : "sm"}
-          onClick={handleAuthAction}
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-        >
-          {isAuthenticated ? (
-            <>
-              <LogOut className="h-4 w-4" />
-              {!collapsed && <span className="ml-2">Sair</span>}
-            </>
-          ) : (
-            <>
-              <LogIn className="h-4 w-4" />
-              {!collapsed && <span className="ml-2">Entrar</span>}
-            </>
-          )}
-        </Button>
+        {/* Só mostra o botão de auth depois que o loading terminar */}
+        {!isLoading && (
+          <Button
+            variant="ghost"
+            size={collapsed ? "icon" : "sm"}
+            onClick={handleAuthAction}
+            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+          >
+            {isAuthenticated ? (
+              <>
+                <LogOut className="h-4 w-4" />
+                {!collapsed && <span className="ml-2">Sair</span>}
+              </>
+            ) : (
+              <>
+                <LogIn className="h-4 w-4" />
+                {!collapsed && <span className="ml-2">Entrar</span>}
+              </>
+            )}
+          </Button>
+        )}
         {!collapsed && (
           <div className="text-xs text-sidebar-foreground/50">
             <p>Tickets ↔ OS</p>
