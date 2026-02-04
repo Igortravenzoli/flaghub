@@ -5,6 +5,7 @@ import { useAuth } from './useAuth';
 import { useCreateBatch, useUpdateBatch, useMarkTicketsInactive } from './useImportBatch';
 import { correlacionarTicket } from '@/services/ticketsOSApi';
 import { getValidToken } from '@/services/apiSessionToken';
+import Papa from 'papaparse';
 
 interface ImportResult {
   success: boolean;
@@ -48,24 +49,49 @@ function getFileType(file: File): 'json' | 'csv' | null {
   return null;
 }
 
-// Parser CSV simples
+// Maximum file size: 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+// Required CSV headers for validation
+const REQUIRED_CSV_HEADERS = ['number', 'state'];
+
+// Robust CSV parser using papaparse - handles quoted fields, multi-line, escaped quotes
 function parseCSV(content: string): Record<string, string>[] {
-  const lines = content.trim().split('\n');
-  if (lines.length < 2) return [];
+  const result = Papa.parse<Record<string, string>>(content, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim(),
+    transform: (value) => value.trim(),
+  });
   
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-  const records: Record<string, string>[] = [];
-  
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-    const record: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      record[header] = values[index] || '';
-    });
-    records.push(record);
+  if (result.errors.length > 0) {
+    const criticalErrors = result.errors.filter(e => e.type === 'Quotes' || e.type === 'FieldMismatch');
+    if (criticalErrors.length > 0) {
+      const errorMessages = criticalErrors.slice(0, 3).map(e => 
+        `Linha ${(e.row ?? 0) + 2}: ${e.message}`
+      ).join('; ');
+      throw new Error(`Erros no CSV: ${errorMessages}`);
+    }
   }
   
-  return records;
+  return result.data;
+}
+
+// Validate CSV has required headers
+function validateCSVHeaders(records: Record<string, string>[]): void {
+  if (records.length === 0) {
+    throw new Error('Arquivo CSV vazio ou sem dados válidos.');
+  }
+  
+  const firstRecord = records[0];
+  const availableHeaders = Object.keys(firstRecord).map(h => h.toLowerCase());
+  const missingHeaders = REQUIRED_CSV_HEADERS.filter(
+    required => !availableHeaders.some(h => h === required.toLowerCase())
+  );
+  
+  if (missingHeaders.length > 0) {
+    throw new Error(`Colunas obrigatórias ausentes no CSV: ${missingHeaders.join(', ')}`);
+  }
 }
 
 export function useImport() {
@@ -88,6 +114,11 @@ export function useImport() {
       const fileType = getFileType(file);
       if (!fileType) {
         throw new Error('Tipo de arquivo não suportado. Use JSON ou CSV.');
+      }
+
+      // Validate file size
+      if (file.size > MAX_FILE_SIZE) {
+        throw new Error('Arquivo muito grande. O tamanho máximo é 10MB.');
       }
 
       setIsProcessing(true);
@@ -161,7 +192,10 @@ export function useImport() {
             records = [parsed];
           }
         } else {
-          records = parseCSV(content);
+          // Use robust CSV parser with validation
+          const csvRecords = parseCSV(content);
+          validateCSVHeaders(csvRecords);
+          records = csvRecords;
         }
 
         setProgress(50);
