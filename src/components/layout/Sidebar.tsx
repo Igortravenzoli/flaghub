@@ -44,8 +44,16 @@ export function Sidebar() {
 
   const handleAuthAction = async () => {
     if (isAuthenticated) {
-      await signOut();
-      navigate('/');
+      try {
+        const { error } = await signOut();
+        if (error) {
+          console.error('Erro ao sair:', error);
+          return;
+        }
+        navigate('/');
+      } catch (err) {
+        console.error('Erro ao sair:', err);
+      }
     } else {
       navigate('/login');
     }
