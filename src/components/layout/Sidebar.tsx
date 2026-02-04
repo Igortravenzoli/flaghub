@@ -13,6 +13,7 @@ import {
   LogIn,
   LogOut,
   Headphones,
+  Loader2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -40,9 +41,10 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
-  const { isAuthenticated, isLoading, profile, signOut, isAdmin } = useAuth();
+  const { isAuthenticated, isLoading, profile, signOut } = useAuth();
 
   const handleAuthAction = async () => {
+    if (isLoading) return;
     if (isAuthenticated) {
       try {
         const { error } = await signOut();
@@ -139,27 +141,30 @@ export function Sidebar() {
             <p className="font-medium truncate">{profile.full_name || 'Usuário'}</p>
           </div>
         )}
-        {/* Só mostra o botão de auth depois que o loading terminar */}
-        {!isLoading && (
-          <Button
-            variant="ghost"
-            size={collapsed ? "icon" : "sm"}
-            onClick={handleAuthAction}
-            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-          >
-            {isAuthenticated ? (
-              <>
-                <LogOut className="h-4 w-4" />
-                {!collapsed && <span className="ml-2">Sair</span>}
-              </>
-            ) : (
-              <>
-                <LogIn className="h-4 w-4" />
-                {!collapsed && <span className="ml-2">Entrar</span>}
-              </>
-            )}
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size={collapsed ? "icon" : "sm"}
+          onClick={handleAuthAction}
+          disabled={isLoading}
+          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent disabled:opacity-70"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {!collapsed && <span className="ml-2">Validando...</span>}
+            </>
+          ) : isAuthenticated ? (
+            <>
+              <LogOut className="h-4 w-4" />
+              {!collapsed && <span className="ml-2">Sair</span>}
+            </>
+          ) : (
+            <>
+              <LogIn className="h-4 w-4" />
+              {!collapsed && <span className="ml-2">Entrar</span>}
+            </>
+          )}
+        </Button>
         {!collapsed && (
           <div className="text-xs text-sidebar-foreground/50">
             <p>Tickets ↔ OS</p>

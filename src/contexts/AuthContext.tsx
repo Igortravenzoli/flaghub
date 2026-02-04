@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 
@@ -50,6 +50,22 @@ function clearPossiblyCorruptedAuthStorage() {
   } catch {
     // ignore
   }
+}
+
+function shouldClearAuthStorageForError(error: unknown) {
+  const message =
+    typeof (error as { message?: unknown })?.message === "string"
+      ? ((error as { message?: string }).message ?? "")
+      : String(error ?? "");
+
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("invalid refresh token") ||
+    normalized.includes("refresh token") ||
+    normalized.includes("token refresh") ||
+    normalized.includes("jwt expired") ||
+    normalized.includes("session_not_found")
+  );
 }
 
 async function provisionUser(userId: string) {
@@ -129,7 +145,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: false,
   });
 
+  // Garante que apenas a última operação async de auth pode aplicar state
+  const opIdRef = useRef(0);
+
   const setSignedOut = useCallback(() => {
+    opIdRef.current += 1;
     setState({
       user: null,
       session: null,
@@ -142,7 +162,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSignedIn = useCallback(async (session: Session) => {
+    const opId = (opIdRef.current += 1);
     const userData = await fetchUserData(session.user.id);
+    if (opId !== opIdRef.current) return;
     setState({
       user: session.user,
       session,
@@ -156,75 +178,90 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    let initialized = false;
+    const AUTH_INIT_TIMEOUT_MS = 8000;
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled) return;
+      console.warn("[Auth] Init timeout; forcing clean logout");
+      clearPossiblyCorruptedAuthStorage();
+      setSignedOut();
+    }, AUTH_INIT_TIMEOUT_MS);
 
-    // Primeiro: buscar sessão existente ANTES de registrar o listener
-    // Isso evita race conditions onde o listener dispara antes de getSession
-    const initSession = async () => {
+    const clearInitTimeout = () => window.clearTimeout(timeoutId);
+
+    const safeSignedOut = () => {
+      if (cancelled) return;
+      clearInitTimeout();
+      setSignedOut();
+    };
+
+    const safeSignedIn = async (session: Session) => {
+      if (cancelled) return;
+      try {
+        await setSignedIn(session);
+      } finally {
+        clearInitTimeout();
+      }
+    };
+
+    // Listener primeiro (padrão recomendado pelo Supabase)
+    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (cancelled) return;
+
+      const eventName = event as unknown as string;
+      console.debug("[Auth] onAuthStateChange:", eventName);
+
+      if (eventName === "TOKEN_REFRESH_FAILED") {
+        clearPossiblyCorruptedAuthStorage();
+        safeSignedOut();
+        return;
+      }
+
+      if (eventName === "SIGNED_OUT") {
+        safeSignedOut();
+        return;
+      }
+
+      if (session?.user) {
+        await safeSignedIn(session);
+      } else {
+        safeSignedOut();
+      }
+    });
+
+    // Depois, tenta restaurar a sessão persistida
+    (async () => {
       try {
         const { data: sessionData, error } = await supabase.auth.getSession();
-        
         if (cancelled) return;
-        
+
         if (error) {
           console.warn("[Auth] getSession error:", error);
-          // Não limpar storage automaticamente - pode ser erro de rede temporário
-          setSignedOut();
+          if (shouldClearAuthStorageForError(error)) {
+            clearPossiblyCorruptedAuthStorage();
+          }
+          safeSignedOut();
           return;
         }
 
         const session = sessionData.session;
         if (session?.user) {
-          await setSignedIn(session);
+          await safeSignedIn(session);
         } else {
+          clearInitTimeout();
           setState((prev) => ({ ...prev, isLoading: false }));
         }
       } catch (error) {
         console.warn("[Auth] getSession threw:", error);
-        if (!cancelled) setSignedOut();
-      } finally {
-        initialized = true;
+        if (shouldClearAuthStorageForError(error)) {
+          clearPossiblyCorruptedAuthStorage();
+        }
+        safeSignedOut();
       }
-    };
-
-    // Iniciar busca da sessão
-    initSession();
-
-    // Registrar listener DEPOIS de iniciar a busca
-    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (cancelled) return;
-      
-      // Ignorar eventos durante a inicialização para evitar duplicação
-      if (!initialized && event === "INITIAL_SESSION") {
-        return;
-      }
-
-      console.debug("[Auth] Event:", event);
-
-      // Quando o refresh token fica inválido
-      const eventName = event as unknown as string;
-      if (eventName === "TOKEN_REFRESH_FAILED") {
-        console.warn("[Auth] Token refresh failed, cleaning up");
-        clearPossiblyCorruptedAuthStorage();
-        setSignedOut();
-        return;
-      }
-
-      if (event === "SIGNED_OUT") {
-        setSignedOut();
-        return;
-      }
-
-      if (session?.user) {
-        await setSignedIn(session);
-      } else if (initialized) {
-        // Só fazer signOut se já inicializou (evita flash do botão "Entrar")
-        setSignedOut();
-      }
-    });
+    })();
 
     return () => {
       cancelled = true;
+      clearInitTimeout();
       data.subscription.unsubscribe();
     };
   }, [setSignedIn, setSignedOut]);

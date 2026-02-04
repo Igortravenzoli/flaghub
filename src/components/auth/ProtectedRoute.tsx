@@ -26,8 +26,8 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   }
 
   // Verificar roles se especificados
-  if (requiredRoles && requiredRoles.length > 0 && role) {
-    if (!requiredRoles.includes(role)) {
+  if (requiredRoles && requiredRoles.length > 0) {
+    if (!role || !requiredRoles.includes(role)) {
       return <Navigate to="/" replace />;
     }
   }
