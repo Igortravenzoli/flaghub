@@ -1,13 +1,32 @@
-import { Monitor, ArrowRight } from 'lucide-react';
+import { useEffect } from 'react';
+import { Monitor, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Welcome() {
   const navigate = useNavigate();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Redirecionar para dashboard se já estiver autenticado
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate]);
 
   const handleAccess = () => {
     navigate('/login');
   };
+
+  // Mostrar loading enquanto verifica autenticação
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-flag-navy via-flag-navy-light to-flag-navy flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-flag-gold" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-flag-navy via-flag-navy-light to-flag-navy flex flex-col items-center justify-center p-6">

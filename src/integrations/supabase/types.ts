@@ -563,6 +563,7 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_gestao: { Args: never; Returns: boolean }
       mark_tickets_inactive: { Args: { p_network_id: number }; Returns: number }
+      provision_user: { Args: { p_user_id: string }; Returns: Json }
       purge_network_data: { Args: { p_network_id: number }; Returns: Json }
       purge_old_inactive_tickets: {
         Args: { p_days_threshold?: number; p_network_id: number }

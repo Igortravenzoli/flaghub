@@ -24,17 +24,53 @@ export function useAuth() {
     isAuthenticated: false,
   });
 
+  // Provisionar usuário automaticamente (para SSO)
+  const provisionUser = useCallback(async (userId: string) => {
+    try {
+      const { data, error } = await supabase.rpc('provision_user', {
+        p_user_id: userId
+      });
+      
+      if (error) {
+        console.error('Error provisioning user:', error);
+        return null;
+      }
+      
+      console.log('User provisioned:', data);
+      return data;
+    } catch (error) {
+      console.error('Error provisioning user:', error);
+      return null;
+    }
+  }, []);
+
   // Buscar perfil e role do usuário
   const fetchUserData = useCallback(async (userId: string) => {
     try {
       // Buscar profile
-      const { data: profile, error: profileError } = await supabase
+      let { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
 
       if (profileError) throw profileError;
+
+      // Se não existe profile, provisionar automaticamente
+      if (!profile) {
+        console.log('Profile not found, provisioning user...');
+        await provisionUser(userId);
+        
+        // Buscar profile novamente após provisioning
+        const { data: newProfile, error: newProfileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        if (newProfileError) throw newProfileError;
+        profile = newProfile;
+      }
 
       // Buscar role
       const { data: roleData, error: roleError } = await supabase
@@ -54,7 +90,7 @@ export function useAuth() {
       console.error('Error fetching user data:', error);
       return { profile: null, role: null, networkId: null };
     }
-  }, []);
+  }, [provisionUser]);
 
   useEffect(() => {
     // Listener de auth state change (deve ser configurado ANTES de getSession)
