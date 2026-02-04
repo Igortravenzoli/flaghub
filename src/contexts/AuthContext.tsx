@@ -38,8 +38,6 @@ export interface AuthContextValue extends AuthState {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 function clearPossiblyCorruptedAuthStorage() {
-  // Evita ficar preso em loading quando existir refresh_token inválido/corrompido no storage.
-  // Supabase usa chaves do tipo: sb-<project-ref>-auth-token
   try {
     const keys = Object.keys(localStorage);
     for (const key of keys) {
@@ -75,21 +73,24 @@ async function provisionUser(userId: string) {
     });
 
     if (error) {
-      console.error("Error provisioning user:", error);
+      console.error("[Auth] Error provisioning user:", error);
       return null;
     }
 
-    console.log("User provisioned:", data);
+    console.log("[Auth] User provisioned:", data);
     return data;
   } catch (error) {
-    console.error("Error provisioning user:", error);
+    console.error("[Auth] Error provisioning user:", error);
     return null;
   }
 }
 
-async function fetchUserData(userId: string) {
+async function fetchUserData(userId: string): Promise<{
+  profile: Profile | null;
+  role: AppRole | null;
+  networkId: number | null;
+}> {
   try {
-    // Buscar profile
     let { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
@@ -98,12 +99,10 @@ async function fetchUserData(userId: string) {
 
     if (profileError) throw profileError;
 
-    // Se não existe profile, provisionar automaticamente
     if (!profile) {
-      console.log("Profile not found, provisioning user...");
+      console.log("[Auth] Profile not found, provisioning user...");
       await provisionUser(userId);
 
-      // Buscar profile novamente após provisioning
       const { data: newProfile, error: newProfileError } = await supabase
         .from("profiles")
         .select("*")
@@ -114,7 +113,6 @@ async function fetchUserData(userId: string) {
       profile = newProfile;
     }
 
-    // Buscar role
     const { data: roleData, error: roleError } = await supabase
       .from("user_roles")
       .select("role")
@@ -129,7 +127,7 @@ async function fetchUserData(userId: string) {
       networkId: profile?.network_id ?? null,
     };
   } catch (error) {
-    console.error("Error fetching user data:", error);
+    console.error("[Auth] Error fetching user data:", error);
     return { profile: null, role: null, networkId: null };
   }
 }
@@ -145,11 +143,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: false,
   });
 
+  // Ref para garantir que o estado inicial só seja definido uma vez
+  const initializedRef = useRef(false);
   // Garante que apenas a última operação async de auth pode aplicar state
   const opIdRef = useRef(0);
 
   const setSignedOut = useCallback(() => {
+    console.log("[Auth] setSignedOut called");
     opIdRef.current += 1;
+    initializedRef.current = true;
     setState({
       user: null,
       session: null,
@@ -162,44 +164,90 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSignedIn = useCallback(async (session: Session) => {
+    console.log("[Auth] setSignedIn called for user:", session.user.email);
     const opId = (opIdRef.current += 1);
-    const userData = await fetchUserData(session.user.id);
-    if (opId !== opIdRef.current) return;
-    setState({
-      user: session.user,
-      session,
-      profile: userData.profile,
-      role: userData.role,
-      networkId: userData.networkId,
-      isLoading: false,
-      isAuthenticated: true,
-    });
+    
+    try {
+      const userData = await fetchUserData(session.user.id);
+      
+      // Se outra operação começou, ignorar este resultado
+      if (opId !== opIdRef.current) {
+        console.log("[Auth] setSignedIn aborted - newer operation in progress");
+        return;
+      }
+      
+      initializedRef.current = true;
+      setState({
+        user: session.user,
+        session,
+        profile: userData.profile,
+        role: userData.role,
+        networkId: userData.networkId,
+        isLoading: false,
+        isAuthenticated: true,
+      });
+      console.log("[Auth] User signed in successfully:", session.user.email);
+    } catch (error) {
+      console.error("[Auth] Error in setSignedIn:", error);
+      // Em caso de erro, ainda marcar como inicializado para não ficar travado
+      if (opId === opIdRef.current) {
+        initializedRef.current = true;
+        setState({
+          user: session.user,
+          session,
+          profile: null,
+          role: null,
+          networkId: null,
+          isLoading: false,
+          isAuthenticated: true,
+        });
+      }
+    }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    const AUTH_INIT_TIMEOUT_MS = 8000;
+    const AUTH_INIT_TIMEOUT_MS = 6000; // Reduzido para 6s para feedback mais rápido
+    
+    console.log("[Auth] Initializing auth state...");
+    
     const timeoutId = window.setTimeout(() => {
       if (cancelled) return;
-      console.warn("[Auth] Init timeout; forcing clean logout");
+      
+      // Se já inicializou, não fazer nada
+      if (initializedRef.current) {
+        console.log("[Auth] Timeout fired but already initialized");
+        return;
+      }
+      
+      console.warn("[Auth] Init timeout (6s); forcing clean logout");
       clearPossiblyCorruptedAuthStorage();
       setSignedOut();
     }, AUTH_INIT_TIMEOUT_MS);
 
     const clearInitTimeout = () => window.clearTimeout(timeoutId);
 
-    const safeSignedOut = () => {
+    // Handler para sessão válida
+    const handleSession = async (session: Session | null, source: string) => {
       if (cancelled) return;
+      
+      // Se já inicializou por outra fonte, ignorar
+      if (initializedRef.current) {
+        console.log(`[Auth] ${source}: Already initialized, ignoring`);
+        // Mas ainda atualizar se for uma mudança de sessão real (não inicial)
+        if (session?.user && source !== "getSession" && source !== "INITIAL_SESSION") {
+          await setSignedIn(session);
+        }
+        return;
+      }
+      
+      console.log(`[Auth] ${source}: Processing session...`);
       clearInitTimeout();
-      setSignedOut();
-    };
-
-    const safeSignedIn = async (session: Session) => {
-      if (cancelled) return;
-      try {
+      
+      if (session?.user) {
         await setSignedIn(session);
-      } finally {
-        clearInitTimeout();
+      } else {
+        setSignedOut();
       }
     };
 
@@ -207,61 +255,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return;
 
-      const eventName = event as unknown as string;
-      console.debug("[Auth] onAuthStateChange:", eventName);
+      console.log("[Auth] onAuthStateChange:", event);
 
+      // Eventos de erro
+      // TOKEN_REFRESH_FAILED não é um AuthChangeEvent oficial, mas pode aparecer
+      const eventName = event as string;
       if (eventName === "TOKEN_REFRESH_FAILED") {
+        console.warn("[Auth] Token refresh failed");
         clearPossiblyCorruptedAuthStorage();
-        safeSignedOut();
+        clearInitTimeout();
+        setSignedOut();
         return;
       }
 
-      if (eventName === "SIGNED_OUT") {
-        safeSignedOut();
+      if (event === "SIGNED_OUT") {
+        clearInitTimeout();
+        setSignedOut();
         return;
       }
 
+      // INITIAL_SESSION é o evento que indica restauração de sessão
+      if (event === "INITIAL_SESSION") {
+        await handleSession(session, "INITIAL_SESSION");
+        return;
+      }
+
+      // Outros eventos (SIGNED_IN, TOKEN_REFRESHED, etc.)
       if (session?.user) {
-        await safeSignedIn(session);
-      } else {
-        safeSignedOut();
+        // Se já inicializou, atualizar sessão normalmente
+        if (initializedRef.current) {
+          await setSignedIn(session);
+        } else {
+          await handleSession(session, event);
+        }
       }
     });
 
-    // Depois, tenta restaurar a sessão persistida
-    (async () => {
+    // Fallback: getSession() para casos onde INITIAL_SESSION não dispara
+    // Aguardar um pequeno delay para dar prioridade ao listener
+    const getSessionTimeout = window.setTimeout(async () => {
+      if (cancelled || initializedRef.current) return;
+      
+      console.log("[Auth] getSession fallback triggered");
+      
       try {
         const { data: sessionData, error } = await supabase.auth.getSession();
-        if (cancelled) return;
+        
+        if (cancelled || initializedRef.current) return;
 
         if (error) {
           console.warn("[Auth] getSession error:", error);
           if (shouldClearAuthStorageForError(error)) {
             clearPossiblyCorruptedAuthStorage();
           }
-          safeSignedOut();
+          clearInitTimeout();
+          setSignedOut();
           return;
         }
 
-        const session = sessionData.session;
-        if (session?.user) {
-          await safeSignedIn(session);
-        } else {
-          clearInitTimeout();
-          setState((prev) => ({ ...prev, isLoading: false }));
-        }
+        await handleSession(sessionData.session, "getSession");
       } catch (error) {
+        if (cancelled || initializedRef.current) return;
+        
         console.warn("[Auth] getSession threw:", error);
         if (shouldClearAuthStorageForError(error)) {
           clearPossiblyCorruptedAuthStorage();
         }
-        safeSignedOut();
+        clearInitTimeout();
+        setSignedOut();
       }
-    })();
+    }, 100); // Pequeno delay para dar prioridade ao listener
 
     return () => {
       cancelled = true;
       clearInitTimeout();
+      window.clearTimeout(getSessionTimeout);
       data.subscription.unsubscribe();
     };
   }, [setSignedIn, setSignedOut]);
@@ -287,7 +355,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     try {
       const { error } = await supabase.auth.signOut();
-      // Mesmo que a API falhe, garantir que a sessão local não fique corrompida
       clearPossiblyCorruptedAuthStorage();
       setSignedOut();
       return { error };
