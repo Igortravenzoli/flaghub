@@ -16,8 +16,19 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -26,7 +37,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Pencil, RefreshCw, Users, AlertCircle, Loader2 } from 'lucide-react';
+import { Pencil, RefreshCw, Users, AlertCircle, Loader2, Trash2 } from 'lucide-react';
 import { useUsers, type UserWithProfile } from '@/hooks/useUsers';
 import type { AppRole } from '@/types/database';
 import { toast } from 'sonner';
@@ -46,9 +57,11 @@ const roleColors: Record<AppRole, string> = {
 };
 
 export default function Usuarios() {
-  const { users, networks, isLoading, error, refetch, updateUserRole, updateUserNetwork, updateUserName } = useUsers();
+  const { users, networks, isLoading, error, refetch, updateUserRole, updateUserNetwork, updateUserName, deleteUser } = useUsers();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithProfile | null>(null);
+  const [userToDelete, setUserToDelete] = useState<UserWithProfile | null>(null);
   const [formData, setFormData] = useState<{
     full_name: string;
     role: AppRole | '';
@@ -59,6 +72,7 @@ export default function Usuarios() {
     network_id: null
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const handleOpenEdit = (user: UserWithProfile) => {
     setEditingUser(user);
@@ -109,6 +123,32 @@ export default function Usuarios() {
       toast.error('Erro ao salvar alterações');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleOpenDelete = (user: UserWithProfile) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    
+    setIsDeleting(true);
+    
+    try {
+      const result = await deleteUser(userToDelete.user_id);
+      if (result.success) {
+        toast.success('Usuário excluído com sucesso');
+        setDeleteDialogOpen(false);
+        setUserToDelete(null);
+      } else {
+        toast.error(`Erro ao excluir: ${result.error}`);
+      }
+    } catch (err) {
+      toast.error('Erro ao excluir usuário');
+    } finally {
+      setIsDeleting(false);
     }
   };
   
@@ -226,14 +266,26 @@ export default function Usuarios() {
                       {formatDate(user.created_at)}
                     </TableCell>
                     <TableCell>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleOpenEdit(user)}
-                        className="h-8 w-8"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleOpenEdit(user)}
+                          className="h-8 w-8"
+                          title="Editar"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleOpenDelete(user)}
+                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          title="Excluir"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -325,6 +377,39 @@ export default function Usuarios() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de Confirmação de Exclusão */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o usuário{' '}
+              <strong>{userToDelete?.full_name || 'Sem nome'}</strong>?
+              <br /><br />
+              Esta ação irá remover o perfil e as permissões do usuário. 
+              O usuário poderá fazer login novamente via SSO e será criado um novo perfil.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                'Excluir'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
