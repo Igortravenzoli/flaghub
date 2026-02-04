@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
@@ -10,8 +10,47 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, role } = useAuth();
+  const { isAuthenticated, isLoading, role, signOut } = useAuth();
   const location = useLocation();
+  const [isStuck, setIsStuck] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Sempre limpar timer anterior
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (!isLoading) {
+      setIsStuck(false);
+      return;
+    }
+
+    // Failsafe: se ficar carregando tempo demais (ex.: request pendurado), forçar logout
+    timeoutRef.current = window.setTimeout(() => {
+      console.warn('[Auth] ProtectedRoute loading timeout; forcing logout');
+      setIsStuck(true);
+      void signOut();
+    }, 12000);
+
+    return () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [isLoading, signOut]);
+
+  if (isStuck) {
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location.pathname, reason: 'auth_timeout' }}
+        replace
+      />
+    );
+  }
 
   if (isLoading) {
     return (
