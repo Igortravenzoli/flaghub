@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Welcome from "@/pages/Welcome";
 import Dashboard from "@/pages/Dashboard";
 import Tickets from "@/pages/Tickets";
@@ -32,12 +33,32 @@ const App = () => (
               <Route path="/" element={<Welcome />} />
               <Route path="/login" element={<Login />} />
               <Route path="/teste-setup" element={<TesteSupabaseSetup />} />
-              <Route element={<MainLayout />}>
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <MainLayout />
+                  </ProtectedRoute>
+                }
+              >
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/tickets" element={<Tickets />} />
                 <Route path="/importacoes" element={<Importacoes />} />
-                <Route path="/usuarios" element={<Usuarios />} />
-                <Route path="/configuracoes" element={<Configuracoes />} />
+                <Route
+                  path="/usuarios"
+                  element={
+                    <ProtectedRoute requiredRoles={["admin"]}>
+                      <Usuarios />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/configuracoes"
+                  element={
+                    <ProtectedRoute requiredRoles={["admin"]}>
+                      <Configuracoes />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="/ticket-busca" element={<TicketBuscaComponente />} />
                 <Route path="/acompanhamento" element={<Acompanhamento />} />
               </Route>
