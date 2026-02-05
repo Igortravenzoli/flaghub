@@ -129,19 +129,28 @@ function getInconsistencias(ticket: DBTicket, noOsGraceHours: number): string[] 
 }
 
 export function useTicketAnalysisDB() {
-  const { networkId, isLoading: authLoading } = useAuth();
-  
-  // CRITICAL: Só fazer queries quando networkId está disponível
-  const isReady = !authLoading && networkId !== null;
-  
-  const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useTickets({ 
-    networkId: networkId ?? undefined,
-    limit: 100,
-  });
-  const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useDashboardSummary(networkId ?? undefined);
+  const { networkId, isLoading: authLoading, isAdmin } = useAuth();
+
+  // Admin pode operar sem networkId (consulta agregada via RLS)
+  const canQueryTickets = !authLoading && (isAdmin || networkId !== null);
+  const canQueryNetworkScoped = !authLoading && networkId !== null;
+
+  const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useTickets(
+    {
+      networkId: isAdmin ? undefined : networkId ?? undefined,
+      limit: 100,
+    },
+    { enabled: canQueryTickets }
+  );
+
+  const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useDashboardSummary(
+    networkId ?? undefined,
+    { enabled: canQueryNetworkScoped }
+  );
+
   const { data: settings } = useSettings(networkId ?? undefined);
   const { data: statusMappings = [] } = useStatusMappings(networkId ?? undefined);
-  
+
   const noOsGraceHours = settings?.no_os_grace_hours ?? 24;
 
   // Consolidar tickets para formato compatível com UI
@@ -273,7 +282,9 @@ export function useTicketAnalysisDB() {
     filtros,
     atualizarFiltro,
     limparFiltros,
-    isLoading: !isReady || ticketsLoading || summaryLoading,
+    isLoading:
+      (!canQueryTickets && authLoading) ||
+      (canQueryTickets && (ticketsLoading || (canQueryNetworkScoped && summaryLoading))),
     refresh,
     ordensServico: [], // Legacy - OS agora está dentro dos tickets
   };

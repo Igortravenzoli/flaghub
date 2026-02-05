@@ -11,7 +11,7 @@ import type {
 } from '@/types/database';
 
 // Hook para buscar resumo do dashboard
-export function useDashboardSummary(networkId?: number) {
+export function useDashboardSummary(networkId?: number, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['dashboard-summary', networkId],
     queryFn: async () => {
@@ -19,34 +19,38 @@ export function useDashboardSummary(networkId?: number) {
       let query = supabase
         .from('v_dashboard_summary')
         .select('*');
-      
-      if (networkId) {
+
+      if (networkId !== undefined && networkId !== null) {
         query = query.eq('network_id', networkId);
       }
-      
+
       const { data, error } = await query.limit(1).single();
-      
+
       if (error && error.code !== 'PGRST116') throw error;
       return data as DashboardSummary | null;
     },
-    // Só executar query quando networkId estiver definido
-    enabled: networkId !== undefined && networkId !== null,
+    // Por padrão, só executar quando networkId estiver definido
+    enabled:
+      options?.enabled ?? (networkId !== undefined && networkId !== null),
     refetchInterval: 60000, // Auto-refresh a cada 60s
   });
 }
 
 // Hook para buscar tickets com filtros
-export function useTickets(filters?: {
-  networkId?: number;
-  dateFrom?: string;
-  dateTo?: string;
-  internalStatus?: InternalStatus;
-  severity?: TicketSeverity;
-  hasOs?: boolean;
-  searchText?: string;
-  limit?: number;
-  offset?: number;
-}) {
+export function useTickets(
+  filters?: {
+    networkId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    internalStatus?: InternalStatus;
+    severity?: TicketSeverity;
+    hasOs?: boolean;
+    searchText?: string;
+    limit?: number;
+    offset?: number;
+  },
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ['tickets', filters],
     queryFn: async () => {
@@ -62,12 +66,15 @@ export function useTickets(filters?: {
           p_limit: filters?.limit ?? 50,
           p_offset: filters?.offset ?? 0,
         });
-      
+
       if (error) throw error;
       return data as DBTicket[];
     },
-    // Só executar query quando networkId estiver definido
-    enabled: filters?.networkId !== undefined && filters.networkId !== null,
+    // Por padrão, só executar quando networkId estiver definido.
+    // Para casos especiais (ex.: admin sem networkId), usar options.enabled.
+    enabled:
+      options?.enabled ??
+      (filters?.networkId !== undefined && filters.networkId !== null),
     refetchInterval: 60000,
   });
 }

@@ -76,20 +76,11 @@ function isAuthError(error: unknown): boolean {
 }
 
 function isSessionInvalid(session: Session | null): boolean {
+  // Observação: não invalidar sessão apenas porque access_token expirou.
+  // O Supabase consegue renovar via refresh_token; invalidar aqui causa logoff no F5.
   if (!session) return true;
   if (!session.access_token) return true;
   if (!session.user?.id) return true;
-  
-  // Verificar se o token expirou
-  if (session.expires_at) {
-    const expiresAt = session.expires_at * 1000; // converter para ms
-    const now = Date.now();
-    if (now >= expiresAt) {
-      console.warn("[Auth] Session token expired");
-      return true;
-    }
-  }
-  
   return false;
 }
 
@@ -213,32 +204,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log("[Auth] setSignedIn called for user:", session.user.email);
     const opId = (opIdRef.current += 1);
 
-    try {
-      const claims = await withTimeout(
-        Promise.all([
-          supabase.rpc("auth_user_role"),
-          supabase.rpc("auth_network_id"),
-        ]),
-        2500,
-        "auth claims"
-      )
-        .then(([roleRes, netRes]) => ({
-          role: roleRes.error ? null : (roleRes.data as AppRole | null),
-          networkId: netRes.error ? null : (netRes.data as number | null),
-        }))
-        .catch((error) => {
-          console.warn("[Auth] auth claims fetch failed:", error);
-          return { role: null, networkId: null };
-        });
+    // Fase 1 (rápida): liberar UI imediatamente para não estourar watchdog do ProtectedRoute
+    initializedRef.current = true;
+    setState((prev) => ({
+      ...prev,
+      user: session.user,
+      session,
+      isLoading: false,
+      isAuthenticated: true,
+    }));
 
-      const userData = await withTimeout(
-        fetchUserData(session.user.id),
-        4500,
-        "fetchUserData"
-      ).catch((error) => {
-        console.warn("[Auth] fetchUserData timed out/failed:", error);
-        return { profile: null, role: null, networkId: null };
-      });
+    // Fase 2 (hidratação): carregar role/network/profile em paralelo e aplicar quando pronto
+    try {
+      const [claims, userData] = await Promise.all([
+        withTimeout(
+          Promise.all([supabase.rpc("auth_user_role"), supabase.rpc("auth_network_id")]),
+          2500,
+          "auth claims"
+        )
+          .then(([roleRes, netRes]) => ({
+            role: roleRes.error ? null : (roleRes.data as AppRole | null),
+            networkId: netRes.error ? null : (netRes.data as number | null),
+          }))
+          .catch((error) => {
+            console.warn("[Auth] auth claims fetch failed:", error);
+            return { role: null, networkId: null };
+          }),
+        withTimeout(fetchUserData(session.user.id), 4500, "fetchUserData").catch((error) => {
+          console.warn("[Auth] fetchUserData timed out/failed:", error);
+          return { profile: null, role: null, networkId: null };
+        }),
+      ]);
+
+      // Se outra operação começou, ignorar este resultado
+      if (opId !== opIdRef.current) {
+        console.log("[Auth] setSignedIn hydration aborted - newer operation in progress");
+        return;
+      }
 
       const mergedRole = userData.role ?? claims.role;
       const mergedNetworkId = userData.networkId ?? claims.networkId;
@@ -246,38 +248,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn("[Auth] networkId is null after sign-in (claims+profile)");
       }
 
-      // Se outra operação começou, ignorar este resultado
-      if (opId !== opIdRef.current) {
-        console.log("[Auth] setSignedIn aborted - newer operation in progress");
-        return;
-      }
-
-      initializedRef.current = true;
-      setState({
-        user: session.user,
-        session,
+      setState((prev) => ({
+        ...prev,
         profile: userData.profile,
         role: mergedRole,
         networkId: mergedNetworkId,
-        isLoading: false,
-        isAuthenticated: true,
-      });
+      }));
+
       console.log("[Auth] User signed in successfully:", session.user.email);
     } catch (error) {
-      console.error("[Auth] Error in setSignedIn:", error);
-      // Em caso de erro, ainda marcar como inicializado para não ficar travado
-      if (opId === opIdRef.current) {
-        initializedRef.current = true;
-        setState({
-          user: session.user,
-          session,
-          profile: null,
-          role: null,
-          networkId: null,
-          isLoading: false,
-          isAuthenticated: true,
-        });
-      }
+      console.error("[Auth] Error hydrating signed-in user:", error);
+      // manter estado básico autenticado; apenas deixar metadados nulos
     }
   }, []);
 
@@ -296,9 +277,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      console.warn("[Auth] Init timeout (6s); forcing clean logout");
-      clearSupabaseAuthStorage();
-      setSignedOut();
+      console.warn("[Auth] Init timeout (6s); stopping loading UI (no forced logout)");
+      setState((prev) => ({ ...prev, isLoading: false }));
     }, AUTH_INIT_TIMEOUT_MS);
 
     const clearInitTimeout = () => window.clearTimeout(timeoutId);
@@ -322,57 +302,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log(`[Auth] ${source}: Processing session...`);
       clearInitTimeout();
 
-      // CRÍTICO: Validar se a sessão é realmente válida
+      // CRÍTICO: Validar se a sessão tem estrutura mínima
+      // (não invalidar por expiração: o Supabase renova via refresh_token)
       if (isSessionInvalid(session)) {
-        console.warn(`[Auth] ${source}: Session is invalid or expired, clearing and logging out`);
-        clearSupabaseAuthStorage();
+        console.warn(`[Auth] ${source}: No session available`);
         setSignedOut();
         return;
       }
 
-      // Validação "online" (server-side) para detectar tokens corrompidos/invalidos
-      // Mesmo que exista um access_token no storage.
-      // IMPORTANTE: falha de rede/timeout NÃO deve derrubar sessão válida.
-      if (source === "INITIAL_SESSION" || source === "getSession") {
-        const userCheck = await withTimeout(
-          supabase.auth.getUser(),
-          6000,
-          `auth.getUser (${source})`
-        )
-          .then(({ data, error }) => ({ data, error, status: "resolved" as const }))
-          .catch((error) => ({ data: null, error, status: "timeout_or_network" as const }));
-
-        if (userCheck.status === "resolved") {
-          if (userCheck.error) {
-            if (isAuthError(userCheck.error)) {
-              console.warn(
-                `[Auth] ${source}: getUser auth error; clearing and logging out`,
-                userCheck.error
-              );
-              clearSupabaseAuthStorage();
-              setSignedOut();
-              return;
-            }
-
-            console.warn(
-              `[Auth] ${source}: getUser returned non-auth error; keeping session`,
-              userCheck.error
-            );
-          } else if (!userCheck.data?.user) {
-            console.warn(
-              `[Auth] ${source}: getUser returned no user; clearing and logging out`
-            );
-            clearSupabaseAuthStorage();
-            setSignedOut();
-            return;
-          }
-        } else {
-          console.warn(
-            `[Auth] ${source}: getUser validation inconclusive (timeout/network); keeping session`
-          );
-        }
-      }
-
+      // Não bloquear bootstrap com validação online aqui.
+      // Se houver refresh token inválido, o Supabase tende a emitir SIGNED_OUT/TOKEN_REFRESH_FAILED.
       await setSignedIn(session);
     };
 
