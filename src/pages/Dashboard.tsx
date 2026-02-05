@@ -17,12 +17,15 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+type StatusFilter = 'all' | 'ok' | 'semOS' | 'observacao';
+
 export default function Dashboard() {
   const { networkId, isLoading: isAuthLoading } = useAuth();
   const { ticketsConsolidados, estatisticas } = useTicketAnalysis();
   const { correlateAllPending, isCorrelating, progress: correlationProgress } = useAutoCorrelation();
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [kioskMode, setKioskMode] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   
   // Correlação automática ao carregar (somente quando autenticado)
   useEffect(() => {
@@ -58,11 +61,30 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [correlateAllPending, networkId, isAuthLoading]);
   
-  // Tickets recentes (últimos 10)
-  const ticketsRecentes = ticketsConsolidados.slice(0, 10);
+  // Filtrar tickets por status selecionado
+  const ticketsFiltrados = ticketsConsolidados.filter(t => {
+    switch (statusFilter) {
+      case 'ok':
+        return t.severidade === 'success' || (t.osVinculada && t.severidade === 'info');
+      case 'semOS':
+        return t.severidade === 'critical';
+      case 'observacao':
+        return t.severidade === 'warning';
+      default:
+        return true;
+    }
+  });
   
-  // Tickets críticos
+  // Tickets recentes (últimos 10, respeitando filtro)
+  const ticketsRecentes = ticketsFiltrados.slice(0, 10);
+  
+  // Tickets críticos (para alertas, sempre mostra todos os críticos)
   const ticketsCriticos = ticketsConsolidados.filter(t => t.severidade === 'critical');
+  
+  // Função para alternar filtro (clique novamente remove filtro)
+  const handleFilterClick = (filter: StatusFilter) => {
+    setStatusFilter(prev => prev === filter ? 'all' : filter);
+  };
   
   const handleRefresh = async () => {
     setLastUpdate(new Date());
@@ -132,6 +154,8 @@ export default function Dashboard() {
           icon={Ticket}
           subtitle="Tickets ativos no sistema"
           trend="neutral"
+          onClick={() => handleFilterClick('all')}
+          isActive={statusFilter === 'all'}
         />
         <ModernStatCard
           title="Tickets OK"
@@ -141,6 +165,8 @@ export default function Dashboard() {
           subtitle="Com OS vinculada"
           trend="up"
           trendValue="+12%"
+          onClick={() => handleFilterClick('ok')}
+          isActive={statusFilter === 'ok'}
         />
         <ModernStatCard
           title="Sem OS"
@@ -150,6 +176,8 @@ export default function Dashboard() {
           subtitle="Fora do prazo configurado"
           trend="down"
           trendValue="-5%"
+          onClick={() => handleFilterClick('semOS')}
+          isActive={statusFilter === 'semOS'}
         />
         <ModernStatCard
           title="Em Observação"
@@ -157,6 +185,8 @@ export default function Dashboard() {
           icon={Eye}
           severity="warning"
           subtitle="Requer atenção"
+          onClick={() => handleFilterClick('observacao')}
+          isActive={statusFilter === 'observacao'}
         />
       </div>
       
