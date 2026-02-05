@@ -214,6 +214,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const opId = (opIdRef.current += 1);
 
     try {
+      const claims = await withTimeout(
+        Promise.all([
+          supabase.rpc("auth_user_role"),
+          supabase.rpc("auth_network_id"),
+        ]),
+        2500,
+        "auth claims"
+      )
+        .then(([roleRes, netRes]) => ({
+          role: roleRes.error ? null : (roleRes.data as AppRole | null),
+          networkId: netRes.error ? null : (netRes.data as number | null),
+        }))
+        .catch((error) => {
+          console.warn("[Auth] auth claims fetch failed:", error);
+          return { role: null, networkId: null };
+        });
+
       const userData = await withTimeout(
         fetchUserData(session.user.id),
         4500,
@@ -222,6 +239,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn("[Auth] fetchUserData timed out/failed:", error);
         return { profile: null, role: null, networkId: null };
       });
+
+      const mergedRole = userData.role ?? claims.role;
+      const mergedNetworkId = userData.networkId ?? claims.networkId;
+      if (mergedNetworkId === null) {
+        console.warn("[Auth] networkId is null after sign-in (claims+profile)");
+      }
 
       // Se outra operação começou, ignorar este resultado
       if (opId !== opIdRef.current) {
@@ -234,8 +257,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: session.user,
         session,
         profile: userData.profile,
-        role: userData.role,
-        networkId: userData.networkId,
+        role: mergedRole,
+        networkId: mergedNetworkId,
         isLoading: false,
         isAuthenticated: true,
       });
@@ -309,26 +332,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Validação "online" (server-side) para detectar tokens corrompidos/invalidos
       // Mesmo que exista um access_token no storage.
+      // IMPORTANTE: falha de rede/timeout NÃO deve derrubar sessão válida.
       if (source === "INITIAL_SESSION" || source === "getSession") {
-        const isOnlineValid = await withTimeout(
+        const userCheck = await withTimeout(
           supabase.auth.getUser(),
-          2500,
+          6000,
           `auth.getUser (${source})`
         )
-          .then(({ data, error }) => {
-            if (error) return false;
-            return !!data?.user;
-          })
-          .catch((error) => {
-            console.warn(`[Auth] ${source}: getUser validation failed:`, error);
-            return false;
-          });
+          .then(({ data, error }) => ({ data, error, status: "resolved" as const }))
+          .catch((error) => ({ data: null, error, status: "timeout_or_network" as const }));
 
-        if (!isOnlineValid) {
-          console.warn(`[Auth] ${source}: Session rejected by getUser(); clearing and logging out`);
-          clearSupabaseAuthStorage();
-          setSignedOut();
-          return;
+        if (userCheck.status === "resolved") {
+          if (userCheck.error) {
+            if (isAuthError(userCheck.error)) {
+              console.warn(
+                `[Auth] ${source}: getUser auth error; clearing and logging out`,
+                userCheck.error
+              );
+              clearSupabaseAuthStorage();
+              setSignedOut();
+              return;
+            }
+
+            console.warn(
+              `[Auth] ${source}: getUser returned non-auth error; keeping session`,
+              userCheck.error
+            );
+          } else if (!userCheck.data?.user) {
+            console.warn(
+              `[Auth] ${source}: getUser returned no user; clearing and logging out`
+            );
+            clearSupabaseAuthStorage();
+            setSignedOut();
+            return;
+          }
+        } else {
+          console.warn(
+            `[Auth] ${source}: getUser validation inconclusive (timeout/network); keeping session`
+          );
         }
       }
 
