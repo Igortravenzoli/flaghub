@@ -11,6 +11,8 @@ interface ModernStatCardProps {
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
   className?: string;
+  onClick?: () => void;
+  isActive?: boolean;
 }
 
 const severityConfig: Record<Severidade, { 
@@ -53,18 +55,26 @@ export function ModernStatCard({
   subtitle, 
   trend,
   trendValue,
-  className 
+  className,
+  onClick,
+  isActive = false,
 }: ModernStatCardProps) {
   const config = severity ? severityConfig[severity] : null;
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
   
   return (
     <div 
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick() : undefined}
       className={cn(
         "group relative overflow-hidden rounded-xl transition-all duration-500",
         "bg-card border hover:border-primary/50",
         "hover:translate-y-[-2px] hover:shadow-xl hover:shadow-primary/10",
         config?.border || "border-border",
+        onClick && "cursor-pointer",
+        isActive && "ring-2 ring-primary ring-offset-2 ring-offset-background",
         className
       )}
     >
