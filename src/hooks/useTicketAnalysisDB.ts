@@ -129,15 +129,17 @@ function getInconsistencias(ticket: DBTicket, noOsGraceHours: number): string[] 
 }
 
 export function useTicketAnalysisDB() {
-  const { networkId, isLoading: authLoading, isAdmin } = useAuth();
+  const { networkId, isLoading: authLoading, isAdmin, isAuthenticated } = useAuth();
 
-  // Admin pode operar sem networkId (consulta agregada via RLS)
-  const canQueryTickets = !authLoading && (isAdmin || networkId !== null);
-  const canQueryNetworkScoped = !authLoading && networkId !== null;
+  // Permitir query assim que autenticado (RLS cuida do filtro por network).
+  // Não depender de isAdmin ou networkId para habilitar - eles hidratam depois.
+  const canQueryTickets = !authLoading && isAuthenticated;
+  const canQueryNetworkScoped = !authLoading && isAuthenticated && networkId !== null;
 
   const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useTickets(
     {
-      networkId: isAdmin ? undefined : networkId ?? undefined,
+      // Se networkId ainda não carregou, passa undefined e RLS filtra via auth_network_id()
+      networkId: networkId ?? undefined,
       limit: 100,
     },
     { enabled: canQueryTickets }
@@ -282,9 +284,7 @@ export function useTicketAnalysisDB() {
     filtros,
     atualizarFiltro,
     limparFiltros,
-    isLoading:
-      (!canQueryTickets && authLoading) ||
-      (canQueryTickets && (ticketsLoading || (canQueryNetworkScoped && summaryLoading))),
+    isLoading: authLoading || ticketsLoading,
     refresh,
     ordensServico: [], // Legacy - OS agora está dentro dos tickets
   };
