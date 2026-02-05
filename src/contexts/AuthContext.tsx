@@ -37,20 +37,24 @@ export interface AuthContextValue extends AuthState {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-function clearPossiblyCorruptedAuthStorage() {
+function clearSupabaseAuthStorage() {
+  console.log("[Auth] Clearing Supabase auth storage...");
   try {
     const keys = Object.keys(localStorage);
     for (const key of keys) {
-      if (key.startsWith("sb-") && key.endsWith("-auth-token")) {
+      if (key.startsWith("sb-") && key.includes("auth-token")) {
+        console.log("[Auth] Removing:", key);
         localStorage.removeItem(key);
       }
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    console.warn("[Auth] Error clearing storage:", e);
   }
 }
 
-function shouldClearAuthStorageForError(error: unknown) {
+function isAuthError(error: unknown): boolean {
+  if (!error) return false;
+  
   const message =
     typeof (error as { message?: unknown })?.message === "string"
       ? ((error as { message?: string }).message ?? "")
@@ -62,8 +66,31 @@ function shouldClearAuthStorageForError(error: unknown) {
     normalized.includes("refresh token") ||
     normalized.includes("token refresh") ||
     normalized.includes("jwt expired") ||
-    normalized.includes("session_not_found")
+    normalized.includes("session_not_found") ||
+    normalized.includes("invalid claim") ||
+    normalized.includes("token is expired") ||
+    normalized.includes("invalid token") ||
+    normalized.includes("auth session missing") ||
+    normalized.includes("not authenticated")
   );
+}
+
+function isSessionInvalid(session: Session | null): boolean {
+  if (!session) return true;
+  if (!session.access_token) return true;
+  if (!session.user?.id) return true;
+  
+  // Verificar se o token expirou
+  if (session.expires_at) {
+    const expiresAt = session.expires_at * 1000; // converter para ms
+    const now = Date.now();
+    if (now >= expiresAt) {
+      console.warn("[Auth] Session token expired");
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 async function provisionUser(userId: string) {
@@ -221,13 +248,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       console.warn("[Auth] Init timeout (6s); forcing clean logout");
-      clearPossiblyCorruptedAuthStorage();
+      clearSupabaseAuthStorage();
       setSignedOut();
     }, AUTH_INIT_TIMEOUT_MS);
 
     const clearInitTimeout = () => window.clearTimeout(timeoutId);
 
-    // Handler para sessão válida
+    // Handler para sessão - agora valida se a sessão está realmente válida
     const handleSession = async (session: Session | null, source: string) => {
       if (cancelled) return;
       
@@ -236,7 +263,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log(`[Auth] ${source}: Already initialized, ignoring`);
         // Mas ainda atualizar se for uma mudança de sessão real (não inicial)
         if (session?.user && source !== "getSession" && source !== "INITIAL_SESSION") {
-          await setSignedIn(session);
+          if (!isSessionInvalid(session)) {
+            await setSignedIn(session);
+          }
         }
         return;
       }
@@ -244,11 +273,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log(`[Auth] ${source}: Processing session...`);
       clearInitTimeout();
       
-      if (session?.user) {
-        await setSignedIn(session);
-      } else {
+      // CRÍTICO: Validar se a sessão é realmente válida
+      if (isSessionInvalid(session)) {
+        console.warn(`[Auth] ${source}: Session is invalid or expired, clearing and logging out`);
+        clearSupabaseAuthStorage();
         setSignedOut();
+        return;
       }
+      
+      await setSignedIn(session);
     };
 
     // Listener primeiro (padrão recomendado pelo Supabase)
@@ -262,7 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const eventName = event as string;
       if (eventName === "TOKEN_REFRESH_FAILED") {
         console.warn("[Auth] Token refresh failed");
-        clearPossiblyCorruptedAuthStorage();
+        clearSupabaseAuthStorage();
         clearInitTimeout();
         setSignedOut();
         return;
@@ -305,8 +338,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (error) {
           console.warn("[Auth] getSession error:", error);
-          if (shouldClearAuthStorageForError(error)) {
-            clearPossiblyCorruptedAuthStorage();
+          if (isAuthError(error)) {
+            clearSupabaseAuthStorage();
           }
           clearInitTimeout();
           setSignedOut();
@@ -318,8 +351,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled || initializedRef.current) return;
         
         console.warn("[Auth] getSession threw:", error);
-        if (shouldClearAuthStorageForError(error)) {
-          clearPossiblyCorruptedAuthStorage();
+        if (isAuthError(error)) {
+          clearSupabaseAuthStorage();
         }
         clearInitTimeout();
         setSignedOut();
@@ -355,11 +388,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     try {
       const { error } = await supabase.auth.signOut();
-      clearPossiblyCorruptedAuthStorage();
+      clearSupabaseAuthStorage();
       setSignedOut();
       return { error };
     } catch (error) {
-      clearPossiblyCorruptedAuthStorage();
+      clearSupabaseAuthStorage();
       setSignedOut();
       return { error };
     }
