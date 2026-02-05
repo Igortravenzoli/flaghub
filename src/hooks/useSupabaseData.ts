@@ -29,6 +29,8 @@ export function useDashboardSummary(networkId?: number) {
       if (error && error.code !== 'PGRST116') throw error;
       return data as DashboardSummary | null;
     },
+    // Só executar query quando networkId estiver definido
+    enabled: networkId !== undefined && networkId !== null,
     refetchInterval: 60000, // Auto-refresh a cada 60s
   });
 }
@@ -64,6 +66,8 @@ export function useTickets(filters?: {
       if (error) throw error;
       return data as DBTicket[];
     },
+    // Só executar query quando networkId estiver definido
+    enabled: filters?.networkId !== undefined && filters.networkId !== null,
     refetchInterval: 60000,
   });
 }

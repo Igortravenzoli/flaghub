@@ -129,8 +129,15 @@ function getInconsistencias(ticket: DBTicket, noOsGraceHours: number): string[] 
 }
 
 export function useTicketAnalysisDB() {
-  const { networkId } = useAuth();
-  const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useTickets({ networkId: networkId ?? undefined });
+  const { networkId, isLoading: authLoading } = useAuth();
+  
+  // CRITICAL: Só fazer queries quando networkId está disponível
+  const isReady = !authLoading && networkId !== null;
+  
+  const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useTickets({ 
+    networkId: networkId ?? undefined,
+    limit: 100,
+  });
   const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useDashboardSummary(networkId ?? undefined);
   const { data: settings } = useSettings(networkId ?? undefined);
   const { data: statusMappings = [] } = useStatusMappings(networkId ?? undefined);
@@ -266,7 +273,7 @@ export function useTicketAnalysisDB() {
     filtros,
     atualizarFiltro,
     limparFiltros,
-    isLoading: ticketsLoading || summaryLoading,
+    isLoading: !isReady || ticketsLoading || summaryLoading,
     refresh,
     ordensServico: [], // Legacy - OS agora está dentro dos tickets
   };
