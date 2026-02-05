@@ -93,6 +93,25 @@ function isSessionInvalid(session: Session | null): boolean {
   return false;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = window.setTimeout(() => {
+      reject(new Error(`[Auth] Timeout after ${ms}ms (${label})`));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        window.clearTimeout(id);
+        resolve(value);
+      },
+      (err) => {
+        window.clearTimeout(id);
+        reject(err);
+      }
+    );
+  });
+}
+
 async function provisionUser(userId: string) {
   try {
     const { data, error } = await supabase.rpc("provision_user", {
@@ -193,16 +212,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setSignedIn = useCallback(async (session: Session) => {
     console.log("[Auth] setSignedIn called for user:", session.user.email);
     const opId = (opIdRef.current += 1);
-    
+
     try {
-      const userData = await fetchUserData(session.user.id);
-      
+      const userData = await withTimeout(
+        fetchUserData(session.user.id),
+        4500,
+        "fetchUserData"
+      ).catch((error) => {
+        console.warn("[Auth] fetchUserData timed out/failed:", error);
+        return { profile: null, role: null, networkId: null };
+      });
+
       // Se outra operação começou, ignorar este resultado
       if (opId !== opIdRef.current) {
         console.log("[Auth] setSignedIn aborted - newer operation in progress");
         return;
       }
-      
+
       initializedRef.current = true;
       setState({
         user: session.user,
@@ -257,7 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Handler para sessão - agora valida se a sessão está realmente válida
     const handleSession = async (session: Session | null, source: string) => {
       if (cancelled) return;
-      
+
       // Se já inicializou por outra fonte, ignorar
       if (initializedRef.current) {
         console.log(`[Auth] ${source}: Already initialized, ignoring`);
@@ -269,10 +295,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
-      
+
       console.log(`[Auth] ${source}: Processing session...`);
       clearInitTimeout();
-      
+
       // CRÍTICO: Validar se a sessão é realmente válida
       if (isSessionInvalid(session)) {
         console.warn(`[Auth] ${source}: Session is invalid or expired, clearing and logging out`);
@@ -280,7 +306,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSignedOut();
         return;
       }
-      
+
+      // Validação "online" (server-side) para detectar tokens corrompidos/invalidos
+      // Mesmo que exista um access_token no storage.
+      if (source === "INITIAL_SESSION" || source === "getSession") {
+        const isOnlineValid = await withTimeout(
+          supabase.auth.getUser(),
+          2500,
+          `auth.getUser (${source})`
+        )
+          .then(({ data, error }) => {
+            if (error) return false;
+            return !!data?.user;
+          })
+          .catch((error) => {
+            console.warn(`[Auth] ${source}: getUser validation failed:`, error);
+            return false;
+          });
+
+        if (!isOnlineValid) {
+          console.warn(`[Auth] ${source}: Session rejected by getUser(); clearing and logging out`);
+          clearSupabaseAuthStorage();
+          setSignedOut();
+          return;
+        }
+      }
+
       await setSignedIn(session);
     };
 
@@ -386,15 +437,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    console.log("[Auth] signOut called");
+
+    // IMPORTANT: sempre finalizar o estado local primeiro (nunca ficar preso aguardando rede)
+    clearSupabaseAuthStorage();
+    setSignedOut();
+
     try {
-      const { error } = await supabase.auth.signOut();
-      clearSupabaseAuthStorage();
-      setSignedOut();
-      return { error };
+      const { error } = await withTimeout(
+        supabase.auth.signOut({ scope: "local" }),
+        2000,
+        "auth.signOut"
+      );
+      return { error: (error as unknown) ?? null };
     } catch (error) {
-      clearSupabaseAuthStorage();
-      setSignedOut();
-      return { error };
+      console.warn("[Auth] signOut timed out/failed (state already cleared):", error);
+      return { error: error ?? null };
     }
   }, [setSignedOut]);
 
