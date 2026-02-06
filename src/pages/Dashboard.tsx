@@ -137,7 +137,11 @@ export default function Dashboard() {
 
       {/* Action Bar + Export */}
       <div className="flex items-center justify-end gap-2">
-        <DashboardExport estatisticas={estatisticas} tickets={ticketsConsolidados} />
+        <DashboardExport 
+          estatisticas={estatisticas} 
+          tickets={ticketsFiltrados} 
+          filterLabel={statusFilter === 'ok' ? 'Tickets OK' : statusFilter === 'semOS' ? 'Sem OS' : statusFilter === 'observacao' ? 'Em Observação' : undefined}
+        />
         <ActionBar 
           onRefresh={handleRefresh}
           onKioskMode={() => setKioskMode(true)}

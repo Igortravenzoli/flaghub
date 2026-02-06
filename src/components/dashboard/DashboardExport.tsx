@@ -12,6 +12,7 @@ import type { EstatisticasDashboard, TicketConsolidado } from '@/types';
 interface DashboardExportProps {
   estatisticas: EstatisticasDashboard;
   tickets: TicketConsolidado[];
+  filterLabel?: string;
 }
 
 function buildExportData(tickets: TicketConsolidado[]) {
@@ -28,7 +29,7 @@ function buildExportData(tickets: TicketConsolidado[]) {
   }));
 }
 
-async function exportToPDF(estatisticas: EstatisticasDashboard, tickets: TicketConsolidado[]) {
+async function exportToPDF(estatisticas: EstatisticasDashboard, tickets: TicketConsolidado[], filterLabel?: string) {
   try {
     const { default: jsPDF } = await import('jspdf');
     const { autoTable } = await import('jspdf-autotable');
@@ -38,7 +39,7 @@ async function exportToPDF(estatisticas: EstatisticasDashboard, tickets: TicketC
     
     // Header
     doc.setFontSize(18);
-    doc.text('Relatório do Dashboard', 14, 22);
+    doc.text(filterLabel ? `Relatório: ${filterLabel}` : 'Relatório do Dashboard', 14, 22);
     doc.setFontSize(10);
     doc.setTextColor(100);
     doc.text(`Gerado em: ${now}`, 14, 30);
@@ -122,17 +123,17 @@ async function exportToExcel(estatisticas: EstatisticasDashboard, tickets: Ticke
   }
 }
 
-export function DashboardExport({ estatisticas, tickets }: DashboardExportProps) {
+export function DashboardExport({ estatisticas, tickets, filterLabel }: DashboardExportProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm">
           <Download className="h-4 w-4 mr-2" />
-          Exportar
+          Exportar{filterLabel ? ` (${filterLabel})` : ''}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => exportToPDF(estatisticas, tickets)}>
+        <DropdownMenuItem onClick={() => exportToPDF(estatisticas, tickets, filterLabel)}>
           <FileText className="h-4 w-4 mr-2" />
           Exportar PDF
         </DropdownMenuItem>
