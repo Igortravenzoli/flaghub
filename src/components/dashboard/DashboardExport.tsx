@@ -31,7 +31,7 @@ function buildExportData(tickets: TicketConsolidado[]) {
 async function exportToPDF(estatisticas: EstatisticasDashboard, tickets: TicketConsolidado[]) {
   try {
     const { default: jsPDF } = await import('jspdf');
-    await import('jspdf-autotable');
+    const { autoTable } = await import('jspdf-autotable');
     
     const doc = new jsPDF({ orientation: 'landscape' });
     const now = new Date().toLocaleString('pt-BR');
@@ -55,7 +55,7 @@ async function exportToPDF(estatisticas: EstatisticasDashboard, tickets: TicketC
       ['Em Observação', String(estatisticas.ticketsObservacao)],
     ];
     
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 46,
       head: [['Métrica', 'Valor']],
       body: statsData,
@@ -73,7 +73,7 @@ async function exportToPDF(estatisticas: EstatisticasDashboard, tickets: TicketC
     const headers = Object.keys(rows[0] || {});
     const body = rows.map(r => headers.map(h => (r as any)[h]));
     
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: finalY + 16,
       head: [headers],
       body,
