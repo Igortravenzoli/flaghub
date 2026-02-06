@@ -178,31 +178,33 @@ export function useImportBatch() {
           // Calcular hash
           const fileHash = await calculateFileHash(file);
 
-          // Verificar duplicação
-          const { data: existingImport } = await supabase
-            .from('imports')
-            .select('id, file_name, created_at, status')
-            .eq('network_id', networkId)
-            .eq('file_hash', fileHash)
-            .maybeSingle();
+          // Verificar duplicação (apenas no modo incremental)
+          if (!options?.clearBeforeImport) {
+            const { data: existingImports } = await supabase
+              .from('imports')
+              .select('id, file_name, created_at, status')
+              .eq('network_id', networkId)
+              .eq('file_hash', fileHash)
+              .limit(1);
 
-          // Incremental: pular arquivo duplicado (constraint removida, mas lógica mantida)
-          if (existingImport && !options?.clearBeforeImport) {
-            const importDate = new Date(existingImport.created_at).toLocaleString('pt-BR');
-            console.warn(`Arquivo ${file.name} já foi importado anteriormente em ${importDate}`);
-            
-            await supabase.from('import_events').insert([{
-              import_id: existingImport.id,
-              level: 'warning',
-              message: `Tentativa de reimportação do arquivo ${file.name} detectada (hash duplicado)`,
-              meta: { 
-                batch_id: batchId,
-                attempted_at: new Date().toISOString() 
-              },
-            }] as never);
-            
-            totalWarningsAll++;
-            continue;
+            if (existingImports && existingImports.length > 0) {
+              const existingImport = existingImports[0];
+              const importDate = new Date(existingImport.created_at).toLocaleString('pt-BR');
+              console.warn(`Arquivo ${file.name} já foi importado anteriormente em ${importDate}`);
+              
+              await supabase.from('import_events').insert([{
+                import_id: existingImport.id,
+                level: 'warning',
+                message: `Tentativa de reimportação do arquivo ${file.name} detectada (hash duplicado)`,
+                meta: { 
+                  batch_id: batchId,
+                  attempted_at: new Date().toISOString() 
+                },
+              }] as never);
+              
+              totalWarningsAll++;
+              continue;
+            }
           }
 
           // Criar registro de importação para este arquivo
