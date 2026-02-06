@@ -10,7 +10,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Welcome from "@/pages/Welcome";
 import Dashboard from "@/pages/Dashboard";
 import Tickets from "@/pages/Tickets";
-import Importacoes from "@/pages/Importacoes";
+import Importacoes from "@/pages/ImportacoesEnhanced";
 import Usuarios from "@/pages/Usuarios";
 import Configuracoes from "@/pages/Configuracoes";
 import Login from "@/pages/Login";
