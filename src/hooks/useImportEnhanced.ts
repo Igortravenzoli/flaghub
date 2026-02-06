@@ -178,16 +178,17 @@ export function useImportBatch() {
           // Calcular hash
           const fileHash = await calculateFileHash(file);
 
-          // Verificar duplicação apenas se NÃO estiver expurgando dados
-          if (!options?.clearBeforeImport) {
-            const { data: existingImport } = await supabase
-              .from('imports')
-              .select('id, file_name, created_at')
-              .eq('network_id', networkId)
-              .eq('file_hash', fileHash)
-              .maybeSingle();
+          // Verificar duplicação
+          const { data: existingImport } = await supabase
+            .from('imports')
+            .select('id, file_name, created_at, status')
+            .eq('network_id', networkId)
+            .eq('file_hash', fileHash)
+            .maybeSingle();
 
-            if (existingImport) {
+          if (existingImport) {
+            if (!options?.clearBeforeImport) {
+              // Incremental: pular arquivo duplicado
               const importDate = new Date(existingImport.created_at).toLocaleString('pt-BR');
               console.warn(`Arquivo ${file.name} já foi importado anteriormente em ${importDate}`);
               
@@ -203,6 +204,10 @@ export function useImportBatch() {
               
               totalWarningsAll++;
               continue;
+            } else {
+              // Expurgo: remover import antigo para permitir re-inserção (cascade de events)
+              await supabase.from('import_events').delete().eq('import_id', existingImport.id);
+              await supabase.from('imports').delete().eq('id', existingImport.id);
             }
           }
 
