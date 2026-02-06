@@ -135,14 +135,28 @@ export function useImportBatch() {
       setIsProcessing(true);
       setProgress(5);
 
+      console.log('[Import] Iniciando importação...', { networkId, userId: user.id, clearBeforeImport: options?.clearBeforeImport, fileCount: files.length });
+
       // Criar lote de importação
-      const batch = await createBatch.mutateAsync({
-        networkId,
-        userId: user.id,
-        batchName: options?.batchName,
-        clearBeforeImport: options?.clearBeforeImport || false,
-        notes: options?.notes,
-      });
+      let batch;
+      try {
+        batch = await createBatch.mutateAsync({
+          networkId,
+          userId: user.id,
+          batchName: options?.batchName,
+          clearBeforeImport: options?.clearBeforeImport || false,
+          notes: options?.notes,
+        });
+        console.log('[Import] Batch criado:', batch);
+      } catch (batchError) {
+        console.error('[Import] Erro ao criar batch:', batchError);
+        throw new Error(`Falha ao criar lote de importação: ${batchError instanceof Error ? batchError.message : JSON.stringify(batchError)}`);
+      }
+
+      if (!batch?.id) {
+        console.error('[Import] Batch criado sem ID:', batch);
+        throw new Error('Lote de importação criado sem ID válido. Verifique as permissões.');
+      }
 
       const batchId = batch.id;
       let totalRecordsAll = 0;
@@ -153,7 +167,14 @@ export function useImportBatch() {
         // Se clearBeforeImport, marcar todos tickets como inativos
         if (options?.clearBeforeImport) {
           setProgress(10);
-          await markInactive.mutateAsync(networkId);
+          console.log('[Import] Marcando tickets como inativos...');
+          try {
+            await markInactive.mutateAsync(networkId);
+            console.log('[Import] Tickets marcados como inativos');
+          } catch (markError) {
+            console.error('[Import] Erro ao marcar tickets inativos:', markError);
+            // Não bloquear importação por causa disto
+          }
         }
 
         setProgress(15);
@@ -208,6 +229,7 @@ export function useImportBatch() {
           }
 
           // Criar registro de importação para este arquivo
+          console.log('[Import] Criando registro para:', file.name);
           const { data: importRecord, error: importError } = await supabase
             .from('imports')
             .insert({
@@ -220,22 +242,21 @@ export function useImportBatch() {
               status: 'processing',
             })
             .select()
-            .single();
+            .maybeSingle();
 
           if (importError) {
-            console.error('Erro ao criar import record:', JSON.stringify(importError));
+            console.error('[Import] Erro ao criar import record:', JSON.stringify(importError));
             totalErrorsAll++;
-            // Log event no batch
-            try {
-              await supabase.from('import_events').insert([{
-                import_id: batchId,
-                level: 'error',
-                message: `Erro ao registrar arquivo ${file.name}: ${importError.message}`,
-                meta: { code: importError.code, details: importError.details },
-              }] as never);
-            } catch (_) { /* ignore logging errors */ }
             continue;
           }
+
+          if (!importRecord) {
+            console.error('[Import] Import record sem retorno (possível problema RLS)');
+            totalErrorsAll++;
+            continue;
+          }
+
+          console.log('[Import] Import record criado:', importRecord.id);
 
           try {
             // Ler e parsear arquivo
