@@ -9,11 +9,14 @@ import { CorrelationProgress } from '@/components/dashboard/CorrelationProgress'
 import { CriticalAlerts } from '@/components/dashboard/CriticalAlerts';
 import { RecentTickets } from '@/components/dashboard/RecentTickets';
 import { KioskMode } from '@/components/dashboard/KioskMode';
+import { DashboardExport } from '@/components/dashboard/DashboardExport';
+import { Badge } from '@/components/ui/badge';
 import { 
   Ticket, 
   CheckCircle, 
   AlertTriangle, 
   Eye,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -65,7 +68,8 @@ export default function Dashboard() {
   const ticketsFiltrados = ticketsConsolidados.filter(t => {
     switch (statusFilter) {
       case 'ok':
-        return t.severidade === 'success' || (t.osVinculada && t.severidade === 'info');
+        // Tickets OK = info ou success (com OS vinculada)
+        return t.severidade === 'info' || t.severidade === 'success';
       case 'semOS':
         return t.severidade === 'critical';
       case 'observacao':
@@ -131,8 +135,9 @@ export default function Dashboard() {
       {/* Hero Header */}
       <HeroHeader lastUpdate={lastUpdate} />
 
-      {/* Action Bar */}
-      <div className="flex items-center justify-end">
+      {/* Action Bar + Export */}
+      <div className="flex items-center justify-end gap-2">
+        <DashboardExport estatisticas={estatisticas} tickets={ticketsConsolidados} />
         <ActionBar 
           onRefresh={handleRefresh}
           onKioskMode={() => setKioskMode(true)}
@@ -193,6 +198,21 @@ export default function Dashboard() {
       {/* Alertas Críticos */}
       <CriticalAlerts tickets={ticketsCriticos} />
       
+      {/* Indicador de filtro ativo */}
+      {statusFilter !== 'all' && (
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="flex items-center gap-1 px-3 py-1">
+            Filtro: {statusFilter === 'ok' ? 'Tickets OK' : statusFilter === 'semOS' ? 'Sem OS' : 'Em Observação'}
+            <button onClick={() => setStatusFilter('all')} className="ml-1 hover:text-destructive">
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {ticketsFiltrados.length} ticket(s) encontrado(s)
+          </span>
+        </div>
+      )}
+
       {/* Tickets Recentes */}
       <RecentTickets tickets={ticketsRecentes} />
     </div>
