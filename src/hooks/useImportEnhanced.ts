@@ -265,7 +265,15 @@ export function useImportBatch() {
 
             if (fileType === 'json') {
               const parsed = JSON.parse(content);
-              records = Array.isArray(parsed) ? parsed : [parsed];
+              if (Array.isArray(parsed)) {
+                records = parsed;
+              } else if (parsed && typeof parsed === 'object') {
+                // Suportar objetos wrapper como {records: [...]}, {result: [...]}, {data: [...]}
+                const arrayProp = Object.values(parsed).find(v => Array.isArray(v)) as Record<string, unknown>[] | undefined;
+                records = arrayProp || [parsed];
+              } else {
+                records = [parsed];
+              }
             } else {
               records = parseCSV(content);
             }
