@@ -223,8 +223,17 @@ export function useImportBatch() {
             .single();
 
           if (importError) {
-            console.error('Erro ao criar import record:', importError);
+            console.error('Erro ao criar import record:', JSON.stringify(importError));
             totalErrorsAll++;
+            // Log event no batch
+            try {
+              await supabase.from('import_events').insert([{
+                import_id: batchId,
+                level: 'error',
+                message: `Erro ao registrar arquivo ${file.name}: ${importError.message}`,
+                meta: { code: importError.code, details: importError.details },
+              }] as never);
+            } catch (_) { /* ignore logging errors */ }
             continue;
           }
 
@@ -257,7 +266,7 @@ export function useImportBatch() {
               .from('settings')
               .select('no_os_grace_hours')
               .eq('network_id', networkId)
-              .single();
+              .maybeSingle();
 
             const noOsGraceHours = settings?.no_os_grace_hours ?? 24;
 
