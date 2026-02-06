@@ -386,7 +386,7 @@ export function useImportBatch() {
                 errorsCount++;
               } else if (!ticketData.internal_status) {
                 inconsistencyCode = 'UNKNOWN_STATUS';
-                severity = 'critico';
+                severity = 'atencao';
                 warningsCount++;
               } else if (!osNumber) {
                 const horasSemOS = ticketData.opened_at

@@ -49,13 +49,26 @@ export function useAutoCorrelation() {
         const lastOsEventAt = lastRecord?.dataHistorico || lastRecord?.dataRegistro || null;
         const lastOsEventDesc = lastRecord?.descricaoOS || lastRecord?.descricao || null;
 
+        // Buscar ticket atual para preservar inconsistency_code se for UNKNOWN_STATUS
+        const { data: currentTicket } = await supabase
+          .from('tickets')
+          .select('inconsistency_code, internal_status')
+          .eq('ticket_external_id', r.ticket)
+          .eq('network_id', networkId)
+          .maybeSingle();
+
+        // Se o único problema é status não mapeado, manter como atencao (não critico)
+        const hasUnmappedStatus = currentTicket?.inconsistency_code === 'UNKNOWN_STATUS';
+        const finalInconsistencyCode = hasUnmappedStatus ? 'UNKNOWN_STATUS' : null;
+        const finalSeverity = hasUnmappedStatus ? ('atencao' as const) : ('info' as const);
+
         return supabase
           .from('tickets')
           .update({
             os_found_in_vdesk: true,
             os_number: allOsNumbers,
-            inconsistency_code: null,
-            severity: 'info' as const,
+            inconsistency_code: finalInconsistencyCode,
+            severity: finalSeverity,
             vdesk_payload: r.data as any,
             last_os_event_at: lastOsEventAt,
             last_os_event_desc: lastOsEventDesc,
