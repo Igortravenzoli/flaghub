@@ -96,13 +96,35 @@ export interface DBTicket {
   inconsistency_code: string | null;
   severity: TicketSeverity;
   raw_payload: Record<string, unknown>;
+  vdesk_payload: VdeskPayloadRecord[] | null;
   last_os_event_at: string | null;
   last_os_event_desc: string | null;
   last_import_id: number | null;
-  is_active: boolean;
-  last_seen_at: string | null;
+  is_active?: boolean;
+  last_seen_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Registro individual do payload VDESK
+export interface VdeskPayloadRecord {
+  cliente?: string;
+  bandeira?: string;
+  programador?: string;
+  os?: string;
+  ticketNestle?: string;
+  sequencia?: number;
+  dataRegistro?: string;
+  sistema?: string;
+  componente?: string;
+  descricao?: string;
+  descricaoOS?: string;
+  previsao?: string | null;
+  dataHistorico?: string | null;
+  previsaoMinutos?: string;
+  tipoChamado?: string;
+  criticidade?: string | null;
+  retorno?: string;
 }
 
 // Settings por network

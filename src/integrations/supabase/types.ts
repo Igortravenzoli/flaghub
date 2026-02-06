@@ -334,6 +334,7 @@ export type Database = {
           ticket_external_id: string
           ticket_type: string | null
           updated_at: string
+          vdesk_payload: Json | null
         }
         Insert: {
           assigned_to?: string | null
@@ -359,6 +360,7 @@ export type Database = {
           ticket_external_id: string
           ticket_type?: string | null
           updated_at?: string
+          vdesk_payload?: Json | null
         }
         Update: {
           assigned_to?: string | null
@@ -384,6 +386,7 @@ export type Database = {
           ticket_external_id?: string
           ticket_type?: string | null
           updated_at?: string
+          vdesk_payload?: Json | null
         }
         Relationships: [
           {
@@ -515,6 +518,7 @@ export type Database = {
           ticket_external_id: string
           ticket_type: string
           updated_at: string
+          vdesk_payload: Json
         }[]
       }
       get_tickets: {
