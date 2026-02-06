@@ -150,17 +150,34 @@ async function fetchUserData(userId: string): Promise<{
       profile = newProfile;
     }
 
-    const { data: roleData, error: roleError } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .maybeSingle();
+    // Usar RPC get_user_role para obter a role com maior privilégio
+    // (admin > gestao > qualidade > operacional)
+    const { data: roleFromRpc, error: roleError } = await supabase
+      .rpc("get_user_role", { p_user_id: userId });
 
-    if (roleError) throw roleError;
+    if (roleError) {
+      console.warn("[Auth] get_user_role RPC failed, falling back to direct query:", roleError);
+      // Fallback: query direta com ordenação
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId);
+      
+      const rolePriority: Record<string, number> = { admin: 1, gestao: 2, qualidade: 3, operacional: 4 };
+      const sortedRoles = (roleData || []).sort((a, b) => 
+        (rolePriority[a.role] ?? 99) - (rolePriority[b.role] ?? 99)
+      );
+      
+      return {
+        profile: profile as Profile | null,
+        role: (sortedRoles[0]?.role as AppRole) || null,
+        networkId: profile?.network_id ?? null,
+      };
+    }
 
     return {
       profile: profile as Profile | null,
-      role: roleData?.role as AppRole | null,
+      role: (roleFromRpc as AppRole) || null,
       networkId: profile?.network_id ?? null,
     };
   } catch (error) {

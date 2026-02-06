@@ -72,6 +72,19 @@ export async function correlacionarTicketViaProxy(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    if (response.status === 404) {
+      // Retornar resposta amigável para ticket sem OS
+      return {
+        success: false,
+        ticket: ticketNestle,
+        osEncontradas: [],
+        count: 0,
+        data: [],
+        message: 'Esse ticket não possui OS vinculada',
+        errorCode: 'NOT_FOUND',
+        timestamp: new Date().toISOString(),
+      };
+    }
     throw new Error(errorData.error || `Erro HTTP ${response.status}`);
   }
 
@@ -118,6 +131,19 @@ export async function consultarTicketsViaProxy(params: {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    if (response.status === 404) {
+      return {
+        success: false,
+        data: [],
+        count: 0,
+        totalPages: 0,
+        currentPage: 1,
+        pageSize: params.pageSize || 20,
+        message: 'Esse ticket não possui OS vinculada',
+        errorCode: 'NOT_FOUND',
+        timestamp: new Date().toISOString(),
+      };
+    }
     throw new Error(errorData.error || `Erro HTTP ${response.status}`);
   }
 

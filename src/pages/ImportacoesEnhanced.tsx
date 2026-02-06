@@ -55,6 +55,8 @@ export default function ImportacoesEnhanced() {
   const [batchName, setBatchName] = useState('');
   const [notes, setNotes] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showPurgeOnDropDialog, setShowPurgeOnDropDialog] = useState(false);
+  const [pendingDropFiles, setPendingDropFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -74,7 +76,18 @@ export default function ImportacoesEnhanced() {
       f.name.endsWith('.json') || f.name.endsWith('.csv')
     );
     
-    setSelectedFiles(prev => [...prev, ...files]);
+    if (files.length > 0) {
+      // Mostrar alerta de expurgo ao arrastar arquivos
+      setPendingDropFiles(files);
+      setShowPurgeOnDropDialog(true);
+    }
+  };
+
+  const handlePurgeOnDropConfirm = (shouldPurge: boolean) => {
+    setShowPurgeOnDropDialog(false);
+    setClearBeforeImport(shouldPurge);
+    setSelectedFiles(prev => [...prev, ...pendingDropFiles]);
+    setPendingDropFiles([]);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,8 +168,13 @@ export default function ImportacoesEnhanced() {
     return (
       <div className="p-6">
         <Card>
-          <CardContent className="p-6 text-center">
-            <p className="text-muted-foreground">Você não tem permissão para importar arquivos</p>
+          <CardContent className="p-6 text-center space-y-2">
+            <AlertTriangle className="h-8 w-8 text-warning mx-auto" />
+            <p className="text-muted-foreground font-medium">⚠️ Você não tem permissão para importar arquivos.</p>
+            <p className="text-sm text-muted-foreground">
+              Contate um administrador para obter acesso. Sua role atual pode não ter sido carregada corretamente.
+              Tente fazer <strong>logout e login novamente</strong>.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -498,6 +516,40 @@ export default function ImportacoesEnhanced() {
               className={cn(clearBeforeImport && "bg-amber-600 hover:bg-amber-700")}
             >
               {clearBeforeImport ? 'Substituir Dados' : 'Importar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de Expurgo ao Arrastar Arquivo */}
+      <AlertDialog open={showPurgeOnDropDialog} onOpenChange={setShowPurgeOnDropDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Nova Importação Detectada
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                Você está iniciando uma nova importação com <strong>{pendingDropFiles.length} arquivo(s)</strong>.
+              </p>
+              <p className="font-medium text-amber-700 dark:text-amber-400">
+                Deseja expurgar (descontinuar) os dados anteriores antes de importar?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Se marcar "Sim", todos os tickets existentes serão marcados como inativos antes do processamento.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex gap-2">
+            <AlertDialogCancel onClick={() => handlePurgeOnDropConfirm(false)}>
+              Não, manter dados
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handlePurgeOnDropConfirm(true)}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              Sim, expurgar anteriores
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
