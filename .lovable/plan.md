@@ -1,134 +1,76 @@
 
-# Plano: Correção da Integração VDESK
 
-## Problema Identificado
+# Otimização da Correlação em Lote (Batch)
 
-A página de Busca VDESK está apresentando "Failed to fetch" porque:
+## Problema Atual
 
-1. **Os hooks (`useTicketsOSApi.ts`) chamam `ticketsOSApi.ts` que faz requisições diretas** à API externa `https://clientes.flag.com.br/Flag.Ai.Gateway`
-2. **O navegador bloqueia essas requisições por CORS** (Cross-Origin Resource Sharing)
-3. **A Edge Function `vdesk-proxy` existe e suporta a ação `consultar`**, mas não está sendo utilizada pelos hooks de consulta
-4. **A Edge Function precisa ser re-deployada** para garantir disponibilidade
+Para correlacionar 100 tickets, o navegador faz **100 chamadas HTTP** individuais para a Edge Function, que por sua vez faz 100 chamadas para a API VDESK. Isso gera:
+- Latência acumulada (cada chamada tem overhead de rede browser-to-edge)
+- Risco de timeout no navegador
+- Uso excessivo de conexões simultâneas
 
----
+## Solução Proposta
 
-## Solução
+Mover o loop de correlação para dentro da **Edge Function** (servidor). O navegador fará **1 unica chamada POST** enviando todos os ticket IDs, e a Edge Function processará internamente com o token já cacheado.
 
-Migrar os hooks de consulta para usar o serviço proxy (`vdeskProxyService.ts`) que roteia as requisições através da Edge Function, contornando as restrições de CORS.
+```text
+ANTES (100 tickets = 100 chamadas do browser):
+  Browser --[1]--> Edge Function --> VDESK
+  Browser --[2]--> Edge Function --> VDESK
+  Browser --[3]--> Edge Function --> VDESK
+  ... (x100)
 
----
-
-## Alterações Necessárias
-
-### 1. Atualizar hooks para usar o Proxy
-
-Modificar `src/hooks/useTicketsOSApi.ts` para importar e utilizar as funções do `vdeskProxyService.ts`:
-
-- Substituir `consultarTicketsOS` por `consultarTicketsViaProxy`
-- Substituir `correlacionarTicket` por `correlacionarTicketViaProxy`
-- Remover dependência do `useApiSessionToken` (o proxy gerencia tokens internamente)
-
-### 2. Re-deploy da Edge Function
-
-Garantir que a função `vdesk-proxy` esteja corretamente deployada e respondendo.
-
-### 3. Atualizar Headers CORS (se necessário)
-
-Verificar se os headers CORS da Edge Function incluem todos os headers necessários do Supabase client.
-
----
+DEPOIS (100 tickets = 1 chamada do browser):
+  Browser --[1 POST com 100 IDs]--> Edge Function --[loop interno]--> VDESK
+                                    (token cacheado, sem CORS overhead)
+```
 
 ## Detalhes Técnicos
 
-### Arquivo: `src/hooks/useTicketsOSApi.ts`
+### 1. Edge Function `vdesk-proxy` - Nova action `correlacao-batch`
 
-Mudanças principais:
+- Aceitar **POST** com body `{ tickets: ["INC001", "INC002", ...] }`
+- Obter token VDESK uma unica vez (ja cacheado)
+- Processar tickets em lotes paralelos de 5 (mesmo ritmo atual, mas server-side)
+- Retornar resultados consolidados com status individual de cada ticket
+- Formato de resposta:
+  ```json
+  {
+    "success": true,
+    "results": [
+      { "ticket": "INC001", "found": true, "osEncontradas": ["OS123"], "data": [...] },
+      { "ticket": "INC002", "found": false, "message": "Sem OS vinculada" }
+    ],
+    "summary": { "total": 100, "found": 85, "notFound": 15, "errors": 0 }
+  }
+  ```
 
-```typescript
-// ANTES
-import { 
-  consultarTicketsOS, 
-  correlacionarTicket, 
-} from '@/services/ticketsOSApi';
-import { useApiSessionToken } from './useApiSessionToken';
+### 2. Proxy Service - Nova funcao `correlacionarBatchViaProxy`
 
-// DEPOIS
-import { 
-  consultarTicketsViaProxy, 
-  correlacionarTicketViaProxy,
-  ConsultaResponse,
-  CorrelacaoResponse,
-} from '@/services/vdeskProxyService';
-```
+- Novo metodo em `src/services/vdeskProxyService.ts`
+- Envia todos os ticket IDs em uma unica chamada POST
+- Timeout maior (120s) para processar lotes grandes
 
-Cada hook será simplificado para chamar diretamente o proxy:
+### 3. Hook `useAutoCorrelation` - Simplificação
 
-```typescript
-export function useConsultarTicketsOS(params, enabled = true) {
-  return useQuery({
-    queryKey: ['tickets-os', 'consultar', params],
-    queryFn: () => consultarTicketsViaProxy(params),
-    enabled: enabled && (!!params.ticketNestle || !!params.osNumber || ...),
-    // ...
-  });
-}
-```
+- `correlateAllPending` passa a buscar os tickets pendentes e enviar todos de uma vez para a Edge Function
+- Progresso recebido via resposta final (nao streaming, mas muito mais rapido no total)
+- Mantém fallback para correlação individual caso o batch falhe
+- Atualização do Supabase continua sendo feita no frontend apos receber os resultados consolidados
 
-### Arquivo: `supabase/functions/vdesk-proxy/index.ts`
+### 4. Atualização em massa no Supabase
 
-Atualizar headers CORS para incluir todos os headers do Supabase:
+- Apos receber os resultados do batch, o hook fara updates agrupados:
+  - Tickets encontrados: atualizar `os_found_in_vdesk=true`, `os_number`, `vdesk_payload`
+  - Tickets nao encontrados: atualizar `os_found_in_vdesk=false`, `inconsistency_code='OS_NOT_FOUND'`
+- Usar Promise.all para paralelizar os updates no Supabase
 
-```typescript
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-}
-```
+## Beneficios
 
----
+| Aspecto | Antes | Depois |
+|---------|-------|--------|
+| Chamadas HTTP do browser | N | 1 |
+| Autenticações VDESK | 1 (cache) | 1 (cache) |
+| Round-trips de rede | N x 2 (browser-edge-vdesk) | 1 (browser-edge) + N (edge-vdesk interno) |
+| Tempo estimado (100 tickets) | ~60-90s | ~15-25s |
 
-## Arquivos a Modificar
-
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/hooks/useTicketsOSApi.ts` | Usar `vdeskProxyService` ao invés de `ticketsOSApi` |
-| `supabase/functions/vdesk-proxy/index.ts` | Atualizar headers CORS |
-
----
-
-## Benefícios da Mudança
-
-1. **Resolve CORS**: Todas as requisições passam pelo backend (Edge Function)
-2. **Gerenciamento de Token Centralizado**: O proxy gerencia autenticação com a API externa
-3. **Fallback Automático**: O proxy já implementa fallback entre endpoints HTTPS/HTTP
-4. **Logs Centralizados**: Facilita debug e monitoramento
-
----
-
-## Fluxo Após a Correção
-
-```text
-Usuário digita ticket
-       ↓
-Frontend (useConsultarTicketsOS)
-       ↓
-consultarTicketsViaProxy()
-       ↓
-fetch() → Edge Function (vdesk-proxy)
-       ↓
-Edge Function → API Externa (clientes.flag.com.br)
-       ↓
-Resposta JSON → Frontend
-```
-
----
-
-## Estimativa
-
-| Tarefa | Tempo |
-|--------|-------|
-| Atualizar hooks | 15 min |
-| Atualizar CORS da Edge Function | 5 min |
-| Re-deploy e teste | 10 min |
-| **Total** | **30 min** |
