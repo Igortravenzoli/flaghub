@@ -48,15 +48,22 @@ export function useAutoCorrelation() {
         const allOsNumbers = response.osEncontradas.join(', ');
         console.log(`[AutoCorrelation] OS encontrada para ${ticketExternalId}: ${allOsNumbers}`);
         
-        // Atualizar ticket no Supabase com TODAS as OS encontradas
-        // Nota: has_os é coluna gerada, atualiza automaticamente quando os_number é definido
+        // Extrair dados mais recentes da OS para campos de evento
+        const lastOsRecord = response.data?.[response.data.length - 1];
+        const lastOsEventAt = lastOsRecord?.dataHistorico || lastOsRecord?.dataRegistro || null;
+        const lastOsEventDesc = lastOsRecord?.descricaoOS || lastOsRecord?.descricao || null;
+
+        // Atualizar ticket no Supabase com TODAS as OS encontradas + payload completo
         const { error: updateError } = await supabase
           .from('tickets')
           .update({
             os_found_in_vdesk: true,
-            os_number: allOsNumbers, // Todas as OS separadas por vírgula
+            os_number: allOsNumbers,
             inconsistency_code: null,
             severity: 'info',
+            vdesk_payload: response.data as any,
+            last_os_event_at: lastOsEventAt,
+            last_os_event_desc: lastOsEventDesc,
             updated_at: new Date().toISOString(),
           })
           .eq('ticket_external_id', ticketExternalId)

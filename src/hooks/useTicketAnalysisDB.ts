@@ -35,8 +35,9 @@ function mapStatus(dbStatus: InternalStatus | null): StatusNormalizado {
 }
 
 // Converter DBTicket para formato legado da UI
-function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemServico | null } {
+function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemServico | null; osMultiplas: OrdemServico[] } {
   const rawPayload = ticket.raw_payload as Record<string, string> || {};
+  const vdeskData = ticket.vdesk_payload as any[] | null;
   
   // Extrair dados do ticket Nestlé do raw_payload
   const ticketNestle: TicketNestle = {
@@ -64,31 +65,60 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
     type: (ticket.ticket_type === 'incident' ? 'incident' : 'request') as 'incident' | 'request',
   };
 
-  // Extrair dados da OS se existir
+  // Construir OS a partir do vdesk_payload (dados completos) ou fallback
   let osVinculada: OrdemServico | null = null;
+  const osMultiplas: OrdemServico[] = [];
+
   if (ticket.has_os && ticket.os_number) {
-    osVinculada = {
-      cliente: rawPayload.os_cliente || '',
-      bandeira: 'Nestlé',
-      programador: '',
-      os: ticket.os_number,
-      ticketNestle: ticket.ticket_external_id,
-      sequencia: 1,
-      dataRegistro: '',
-      sistema: rawPayload.os_sistema || 'Visual Desk',
-      componente: rawPayload.os_componente || '',
-      descricao: '',
-      descricaoOS: ticket.last_os_event_desc || '',
-      previsao: null,
-      dataHistorico: ticket.last_os_event_at || null,
-      previsaoMinutos: '',
-      tipoChamado: 'Preventiva',
-      criticidade: null,
-      retorno: '',
-    };
+    if (vdeskData && vdeskData.length > 0) {
+      // Usar dados completos do VDESK
+      vdeskData.forEach((vd: any) => {
+        osMultiplas.push({
+          cliente: vd.cliente || '',
+          bandeira: vd.bandeira || 'Nestlé',
+          programador: vd.programador || '',
+          os: vd.os || ticket.os_number || '',
+          ticketNestle: vd.ticketNestle || ticket.ticket_external_id,
+          sequencia: vd.sequencia || 1,
+          dataRegistro: vd.dataRegistro || '',
+          sistema: vd.sistema || '',
+          componente: vd.componente || '',
+          descricao: vd.descricao || '',
+          descricaoOS: vd.descricaoOS || '',
+          previsao: vd.previsao || null,
+          dataHistorico: vd.dataHistorico || null,
+          previsaoMinutos: vd.previsaoMinutos || '',
+          tipoChamado: vd.tipoChamado || '',
+          criticidade: vd.criticidade || null,
+          retorno: vd.retorno || '',
+        });
+      });
+      osVinculada = osMultiplas[0];
+    } else {
+      // Fallback: dados básicos
+      osVinculada = {
+        cliente: rawPayload.os_cliente || '',
+        bandeira: 'Nestlé',
+        programador: '',
+        os: ticket.os_number,
+        ticketNestle: ticket.ticket_external_id,
+        sequencia: 1,
+        dataRegistro: '',
+        sistema: rawPayload.os_sistema || 'Visual Desk',
+        componente: rawPayload.os_componente || '',
+        descricao: '',
+        descricaoOS: ticket.last_os_event_desc || '',
+        previsao: null,
+        dataHistorico: ticket.last_os_event_at || null,
+        previsaoMinutos: '',
+        tipoChamado: 'Preventiva',
+        criticidade: null,
+        retorno: '',
+      };
+    }
   }
 
-  return { ticket: ticketNestle, os: osVinculada };
+  return { ticket: ticketNestle, os: osVinculada, osMultiplas };
 }
 
 // Calcular horas sem OS
@@ -158,17 +188,19 @@ export function useTicketAnalysisDB() {
   // Consolidar tickets para formato compatível com UI
   const ticketsConsolidados = useMemo<TicketConsolidado[]>(() => {
     return tickets.map((dbTicket: DBTicket) => {
-      const { ticket, os } = dbTicketToLegacy(dbTicket);
+      const { ticket, os, osMultiplas } = dbTicketToLegacy(dbTicket);
       const horasSemOS = !dbTicket.has_os ? calcularHorasSemOS(dbTicket.opened_at) : null;
       const inconsistencias = getInconsistencias(dbTicket, noOsGraceHours);
       
       return {
         ticket,
         osVinculada: os,
+        osMultiplas: osMultiplas.length > 0 ? osMultiplas : undefined,
         statusNormalizado: mapStatus(dbTicket.internal_status),
         severidade: mapSeverity(dbTicket.severity),
         horasSemOS,
         inconsistencias,
+        vdeskPayload: dbTicket.vdesk_payload || undefined,
       };
     });
   }, [tickets, noOsGraceHours]);

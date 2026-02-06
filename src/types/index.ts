@@ -53,10 +53,12 @@ export type Severidade = 'critical' | 'warning' | 'info' | 'success';
 export interface TicketConsolidado {
   ticket: TicketNestle;
   osVinculada: OrdemServico | null;
+  osMultiplas?: OrdemServico[];
   statusNormalizado: StatusNormalizado;
   severidade: Severidade;
   horasSemOS: number | null;
   inconsistencias: string[];
+  vdeskPayload?: any[] | null;
 }
 
 // Importação de arquivo

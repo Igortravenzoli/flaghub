@@ -223,34 +223,101 @@ export default function Tickets() {
                   <div>
                     <h4 className="font-medium mb-3">OS Vinculada (VDESK)</h4>
                     {selectedTicket.osVinculada ? (
-                      <dl className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">OS:</dt>
-                          <dd className="font-mono text-[hsl(var(--success))]">
-                            {selectedTicket.osVinculada.os}
-                          </dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Cliente:</dt>
-                          <dd>{selectedTicket.osVinculada.cliente}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Sistema:</dt>
-                          <dd>{selectedTicket.osVinculada.sistema}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Componente:</dt>
-                          <dd>{selectedTicket.osVinculada.componente}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Tipo:</dt>
-                          <dd>{selectedTicket.osVinculada.tipoChamado}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Data Histórico:</dt>
-                          <dd>{selectedTicket.osVinculada.dataHistorico?.split(' ')[0] || '-'}</dd>
-                        </div>
-                      </dl>
+                      <div className="space-y-4">
+                        {/* OS principal ou múltiplas */}
+                        {(selectedTicket.osMultiplas && selectedTicket.osMultiplas.length > 0 
+                          ? selectedTicket.osMultiplas 
+                          : [selectedTicket.osVinculada]
+                        ).map((os, osIdx) => (
+                          <div key={osIdx} className={`${osIdx > 0 ? 'pt-3 border-t border-border' : ''}`}>
+                            {selectedTicket.osMultiplas && selectedTicket.osMultiplas.length > 1 && (
+                              <Badge variant="outline" className="mb-2 text-xs">
+                                OS {osIdx + 1} de {selectedTicket.osMultiplas.length}
+                              </Badge>
+                            )}
+                            <dl className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <dt className="text-muted-foreground">OS:</dt>
+                                <dd className="font-mono text-[hsl(var(--success))]">{os.os}</dd>
+                              </div>
+                              {os.cliente && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Cliente:</dt>
+                                  <dd>{os.cliente}</dd>
+                                </div>
+                              )}
+                              {os.bandeira && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Bandeira:</dt>
+                                  <dd>{os.bandeira}</dd>
+                                </div>
+                              )}
+                              {os.programador && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Colaborador:</dt>
+                                  <dd>{os.programador}</dd>
+                                </div>
+                              )}
+                              {os.sistema && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Sistema:</dt>
+                                  <dd>{os.sistema}</dd>
+                                </div>
+                              )}
+                              {os.componente && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Componente:</dt>
+                                  <dd>{os.componente}</dd>
+                                </div>
+                              )}
+                              {os.tipoChamado && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Tipo:</dt>
+                                  <dd>{os.tipoChamado}</dd>
+                                </div>
+                              )}
+                              {os.criticidade && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Criticidade:</dt>
+                                  <dd>{os.criticidade}</dd>
+                                </div>
+                              )}
+                              {os.dataRegistro && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Data Registro:</dt>
+                                  <dd>{os.dataRegistro.split(' ')[0]}</dd>
+                                </div>
+                              )}
+                              {os.dataHistorico && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Data Histórico:</dt>
+                                  <dd>{os.dataHistorico.split(' ')[0]}</dd>
+                                </div>
+                              )}
+                              {os.previsao && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Previsão:</dt>
+                                  <dd>{os.previsao}</dd>
+                                </div>
+                              )}
+                              {os.retorno && (
+                                <div className="flex justify-between">
+                                  <dt className="text-muted-foreground">Retorno:</dt>
+                                  <dd>{os.retorno}</dd>
+                                </div>
+                              )}
+                            </dl>
+                            {/* Descrição da OS inline */}
+                            {os.descricaoOS && (
+                              <div className="mt-2">
+                                <p className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                                  {os.descricaoOS}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <div className="text-center py-6 text-muted-foreground">
                         <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-[hsl(var(--critical))]" />
@@ -272,16 +339,6 @@ export default function Tickets() {
                     {selectedTicket.ticket.short_description || 'Sem descrição disponível'}
                   </p>
                 </div>
-                
-                {/* Descrição OS */}
-                {selectedTicket.osVinculada?.descricaoOS && (
-                  <div>
-                    <h4 className="font-medium mb-2">Descrição da OS</h4>
-                    <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
-                      {selectedTicket.osVinculada.descricaoOS}
-                    </p>
-                  </div>
-                )}
               </div>
             </>
           )}
