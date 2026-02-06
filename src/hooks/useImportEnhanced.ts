@@ -327,6 +327,9 @@ export function useImportBatch() {
                 updated_at: new Date().toISOString(),
                 is_active: true,
                 last_seen_at: new Date().toISOString(),
+                // Forçar re-correlação com VDESK após importação
+                os_found_in_vdesk: null,
+                vdesk_payload: null,
               };
 
               // Adicionar campos opcionais apenas se não-nulos/não-vazios
