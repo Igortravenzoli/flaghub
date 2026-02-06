@@ -19,6 +19,12 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { 
   Upload, 
   FileJson, 
@@ -264,23 +270,44 @@ export default function ImportacoesEnhanced() {
                       {batch.errors_count}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          batch.status === 'success' ? 'default' :
-                          batch.status === 'partial_success' ? 'secondary' :
-                          batch.status === 'error' ? 'destructive' :
-                          'outline'
-                        }
-                      >
-                        {batch.status === 'processing' && <Clock className="mr-1 h-3 w-3" />}
-                        {batch.status === 'success' && <CheckCircle className="mr-1 h-3 w-3" />}
-                        {batch.status === 'error' && <XCircle className="mr-1 h-3 w-3" />}
-                        {batch.status === 'partial_success' && <Info className="mr-1 h-3 w-3" />}
-                        {batch.status === 'processing' ? 'Processando' :
-                         batch.status === 'success' ? 'Sucesso' :
-                         batch.status === 'partial_success' ? 'Parcial' :
-                         'Erro'}
-                      </Badge>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge
+                              variant={
+                                batch.status === 'success' ? 'default' :
+                                batch.status === 'partial_success' ? 'secondary' :
+                                batch.status === 'error' ? 'destructive' :
+                                'outline'
+                              }
+                              className="cursor-default"
+                            >
+                              {batch.status === 'processing' && <Clock className="mr-1 h-3 w-3" />}
+                              {batch.status === 'success' && <CheckCircle className="mr-1 h-3 w-3" />}
+                              {batch.status === 'error' && <XCircle className="mr-1 h-3 w-3" />}
+                              {batch.status === 'partial_success' && <Info className="mr-1 h-3 w-3" />}
+                              {batch.status === 'processing' ? 'Processando' :
+                               batch.status === 'success' ? 'Sucesso' :
+                               batch.status === 'partial_success' ? 'Parcial' :
+                               'Erro'}
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            {batch.status === 'success' && (
+                              <p>Importação concluída com sucesso. {batch.total_records} registros processados.</p>
+                            )}
+                            {batch.status === 'partial_success' && (
+                              <p>Importação parcial: {batch.total_records} registros, {batch.errors_count} erro(s), {batch.warnings_count} aviso(s).</p>
+                            )}
+                            {batch.status === 'error' && (
+                              <p>Falha na importação: {batch.errors_count} erro(s) encontrado(s). Verifique o formato do arquivo e tente novamente.</p>
+                            )}
+                            {batch.status === 'processing' && (
+                              <p>Importação em andamento...</p>
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                     <TableCell>
                       {batch.clear_before_import ? (

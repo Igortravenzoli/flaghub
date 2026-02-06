@@ -16,7 +16,7 @@ export function useRecentBatches(networkId?: number, limit = 20) {
         });
 
       if (error) throw error;
-      return data as ImportBatch[];
+      return (data ?? []) as (ImportBatch & { imported_by_email?: string; imported_by_name?: string })[];
     },
     enabled: !!networkId,
   });
