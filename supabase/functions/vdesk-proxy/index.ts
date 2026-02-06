@@ -390,6 +390,146 @@ serve(async (req) => {
       return await executeProxyWithRetry(`/api/tickets-os/correlacao?ticketNestle=${encodeURIComponent(ticketNestle)}`)
     }
 
+    // =========================================
+    // CORRELAÇÃO EM LOTE (BATCH)
+    // =========================================
+    if (action === 'correlacao-batch') {
+      if (req.method !== 'POST') {
+        return new Response(
+          JSON.stringify({ success: false, error: 'correlacao-batch requer método POST' }),
+          { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const body = await req.json()
+      const tickets: string[] = body?.tickets
+
+      if (!tickets || !Array.isArray(tickets) || tickets.length === 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Body deve conter { tickets: ["INC001", ...] }' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      console.log(`[VdeskProxy] Correlação batch: ${tickets.length} tickets`)
+
+      const endpoint = await getActiveEndpoint()
+      const token = await getVdeskToken(endpoint)
+
+      const BATCH_SIZE = 5
+      const results: Array<{
+        ticket: string
+        found: boolean
+        osEncontradas: string[]
+        count: number
+        data: any[]
+        message?: string
+      }> = []
+
+      let foundCount = 0
+      let notFoundCount = 0
+      let errorsCount = 0
+
+      for (let i = 0; i < tickets.length; i += BATCH_SIZE) {
+        const batch = tickets.slice(i, i + BATCH_SIZE)
+
+        const batchResults = await Promise.all(
+          batch.map(async (ticketId) => {
+            try {
+              const fullUrl = `${endpoint.url}/api/tickets-os/correlacao?ticketNestle=${encodeURIComponent(ticketId)}`
+              const response = await fetchWithTimeout(
+                fullUrl,
+                {
+                  method: 'GET',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                  },
+                },
+                REQUEST_TIMEOUT_MS,
+                'batch_request',
+              )
+
+              if (response.status === 404) {
+                await response.text() // consume body
+                notFoundCount++
+                return {
+                  ticket: ticketId,
+                  found: false,
+                  osEncontradas: [] as string[],
+                  count: 0,
+                  data: [] as any[],
+                  message: 'Sem OS vinculada',
+                }
+              }
+
+              const data = await response.json()
+
+              // A API retorna array diretamente ou objeto com dados
+              const records = Array.isArray(data) ? data : (data?.data || [])
+              const osNumbers = [...new Set(records.map((r: any) => r.os).filter(Boolean))] as string[]
+
+              if (osNumbers.length > 0) {
+                foundCount++
+                return {
+                  ticket: ticketId,
+                  found: true,
+                  osEncontradas: osNumbers,
+                  count: records.length,
+                  data: records,
+                }
+              } else {
+                notFoundCount++
+                return {
+                  ticket: ticketId,
+                  found: false,
+                  osEncontradas: [] as string[],
+                  count: 0,
+                  data: [] as any[],
+                  message: 'Sem OS vinculada',
+                }
+              }
+            } catch (err: unknown) {
+              console.error(`[VdeskProxy] Erro batch para ${ticketId}:`, (err as Error).message)
+              errorsCount++
+              return {
+                ticket: ticketId,
+                found: false,
+                osEncontradas: [] as string[],
+                count: 0,
+                data: [] as any[],
+                message: (err as Error).message || 'Erro na consulta',
+              }
+            }
+          })
+        )
+
+        results.push(...batchResults)
+
+        // Pausa entre lotes para não sobrecarregar a API
+        if (i + BATCH_SIZE < tickets.length) {
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+      }
+
+      console.log(`[VdeskProxy] Batch concluído: ${foundCount} encontrados, ${notFoundCount} sem OS, ${errorsCount} erros`)
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          results,
+          summary: {
+            total: tickets.length,
+            found: foundCount,
+            notFound: notFoundCount,
+            errors: errorsCount,
+          },
+          timestamp: new Date().toISOString(),
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     if (action === 'consultar') {
       const params = new URLSearchParams()
       
@@ -406,7 +546,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: 'Ação inválida. Use action=correlacao, action=consultar, action=status ou action=reset' 
+        error: 'Ação inválida. Use action=correlacao, action=correlacao-batch, action=consultar, action=status ou action=reset' 
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

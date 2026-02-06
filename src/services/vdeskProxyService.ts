@@ -91,6 +91,64 @@ export async function correlacionarTicketViaProxy(
   return await response.json();
 }
 
+// === Tipos para correlação batch ===
+
+export interface BatchCorrelationResult {
+  ticket: string;
+  found: boolean;
+  osEncontradas: string[];
+  count: number;
+  data: TicketOSRecord[];
+  message?: string;
+}
+
+export interface BatchCorrelationResponse {
+  success: boolean;
+  results: BatchCorrelationResult[];
+  summary: {
+    total: number;
+    found: number;
+    notFound: number;
+    errors: number;
+  };
+  timestamp: string;
+}
+
+/**
+ * Correlaciona múltiplos tickets em lote via proxy (1 chamada HTTP)
+ */
+export async function correlacionarBatchViaProxy(
+  tickets: string[]
+): Promise<BatchCorrelationResponse> {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?action=correlacao-batch`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout
+
+  try {
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session?.access_token || ''}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ tickets }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Erro HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Consulta tickets/OS no VDESK via proxy
  */

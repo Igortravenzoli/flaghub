@@ -1,13 +1,14 @@
 /**
  * Hook para correlação automática de tickets com VDESK
  * 
- * Usa Edge Function como proxy para evitar CORS
+ * Usa correlação em lote (batch) via Edge Function para performance
+ * Fallback para correlação individual caso o batch falhe
  */
 
 import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { correlacionarTicketViaProxy } from '@/services/vdeskProxyService';
+import { correlacionarBatchViaProxy, correlacionarTicketViaProxy } from '@/services/vdeskProxyService';
 import { useAuth } from './useAuth';
 
 interface CorrelationResult {
@@ -34,97 +35,55 @@ export function useAutoCorrelation() {
   const [summary, setSummary] = useState<CorrelationSummary | null>(null);
 
   /**
-   * Correlaciona um único ticket com a API VDESK via proxy
+   * Atualiza tickets no Supabase com os resultados do batch
    */
-  const correlateOneTicket = useCallback(async (
-    ticketExternalId: string
-  ): Promise<CorrelationResult> => {
-    try {
-      console.log(`[AutoCorrelation] Correlacionando ticket: ${ticketExternalId}`);
-      const response = await correlacionarTicketViaProxy(ticketExternalId);
-      
-      if (response.success && response.count > 0) {
-        // Juntar todas as OS encontradas separadas por vírgula
-        const allOsNumbers = response.osEncontradas.join(', ');
-        console.log(`[AutoCorrelation] OS encontrada para ${ticketExternalId}: ${allOsNumbers}`);
-        
-        // Extrair dados mais recentes da OS para campos de evento
-        const lastOsRecord = response.data?.[response.data.length - 1];
-        const lastOsEventAt = lastOsRecord?.dataHistorico || lastOsRecord?.dataRegistro || null;
-        const lastOsEventDesc = lastOsRecord?.descricaoOS || lastOsRecord?.descricao || null;
+  const applyBatchResults = useCallback(async (
+    results: { ticket: string; found: boolean; osEncontradas: string[]; count: number; data: any[]; message?: string }[]
+  ) => {
+    if (!networkId) return;
 
-        // Atualizar ticket no Supabase com TODAS as OS encontradas + payload completo
-        const { error: updateError } = await supabase
+    const updatePromises = results.map(async (r) => {
+      if (r.found && r.osEncontradas.length > 0) {
+        const allOsNumbers = r.osEncontradas.join(', ');
+        const lastRecord = r.data?.[r.data.length - 1];
+        const lastOsEventAt = lastRecord?.dataHistorico || lastRecord?.dataRegistro || null;
+        const lastOsEventDesc = lastRecord?.descricaoOS || lastRecord?.descricao || null;
+
+        return supabase
           .from('tickets')
           .update({
             os_found_in_vdesk: true,
             os_number: allOsNumbers,
             inconsistency_code: null,
-            severity: 'info',
-            vdesk_payload: response.data as any,
+            severity: 'info' as const,
+            vdesk_payload: r.data as any,
             last_os_event_at: lastOsEventAt,
             last_os_event_desc: lastOsEventDesc,
             updated_at: new Date().toISOString(),
           })
-          .eq('ticket_external_id', ticketExternalId)
+          .eq('ticket_external_id', r.ticket)
           .eq('network_id', networkId);
-        
-        if (updateError) {
-          console.error(`[AutoCorrelation] Erro ao atualizar ${ticketExternalId}:`, updateError);
-        }
-
-        return {
-          ticketId: ticketExternalId,
-          success: true,
-          osCount: response.count,
-          osNumbers: response.osEncontradas,
-        };
       } else {
-        console.log(`[AutoCorrelation] Nenhuma OS encontrada para ${ticketExternalId}`);
-        
-        // Ticket não encontrado no VDESK
-        const { error: updateError } = await supabase
+        return supabase
           .from('tickets')
           .update({
             os_found_in_vdesk: false,
             inconsistency_code: 'OS_NOT_FOUND',
-            severity: 'critico',
+            severity: 'critico' as const,
             updated_at: new Date().toISOString(),
           })
-          .eq('ticket_external_id', ticketExternalId)
+          .eq('ticket_external_id', r.ticket)
           .eq('network_id', networkId);
-        
-        if (updateError) {
-          console.error(`[AutoCorrelation] Erro ao atualizar ${ticketExternalId}:`, updateError);
-        }
-
-        return {
-          ticketId: ticketExternalId,
-          success: false,
-          osCount: 0,
-          osNumbers: [],
-          error: response.message || 'Ticket não encontrado no VDESK',
-        };
       }
-    } catch (error) {
-      console.error(`[AutoCorrelation] Erro ao correlacionar ${ticketExternalId}:`, error);
-      
-      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
-      
-      return {
-        ticketId: ticketExternalId,
-        success: false,
-        osCount: 0,
-        osNumbers: [],
-        error: errorMsg,
-      };
-    }
+    });
+
+    await Promise.all(updatePromises);
   }, [networkId]);
 
   /**
-   * Processa um lote de tickets
+   * Fallback: correlação individual (usado se batch falhar)
    */
-  const processBatch = useCallback(async (
+  const correlateIndividually = useCallback(async (
     ticketIds: string[],
     onProgress: (processed: number) => void
   ): Promise<CorrelationResult[]> => {
@@ -133,38 +92,65 @@ export function useAutoCorrelation() {
 
     for (let i = 0; i < ticketIds.length; i += batchSize) {
       const batch = ticketIds.slice(i, i + batchSize);
-      
-      // Processar lote em paralelo
       const batchResults = await Promise.all(
-        batch.map(ticketId => correlateOneTicket(ticketId))
+        batch.map(async (ticketExternalId): Promise<CorrelationResult> => {
+          try {
+            const response = await correlacionarTicketViaProxy(ticketExternalId);
+            if (response.success && response.count > 0) {
+              const allOsNumbers = response.osEncontradas.join(', ');
+              const lastOsRecord = response.data?.[response.data.length - 1];
+              await supabase
+                .from('tickets')
+                .update({
+                  os_found_in_vdesk: true,
+                  os_number: allOsNumbers,
+                  inconsistency_code: null,
+                  severity: 'info' as const,
+                  vdesk_payload: response.data as any,
+                  last_os_event_at: lastOsRecord?.dataHistorico || lastOsRecord?.dataRegistro || null,
+                  last_os_event_desc: lastOsRecord?.descricaoOS || lastOsRecord?.descricao || null,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('ticket_external_id', ticketExternalId)
+                .eq('network_id', networkId);
+              return { ticketId: ticketExternalId, success: true, osCount: response.count, osNumbers: response.osEncontradas };
+            } else {
+              await supabase
+                .from('tickets')
+                .update({
+                  os_found_in_vdesk: false,
+                  inconsistency_code: 'OS_NOT_FOUND',
+                  severity: 'critico' as const,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('ticket_external_id', ticketExternalId)
+                .eq('network_id', networkId);
+              return { ticketId: ticketExternalId, success: false, osCount: 0, osNumbers: [], error: response.message || 'Sem OS' };
+            }
+          } catch (error) {
+            return { ticketId: ticketExternalId, success: false, osCount: 0, osNumbers: [], error: (error as Error).message };
+          }
+        })
       );
-
       results.push(...batchResults);
       onProgress(i + batch.length);
-      
-      // Pequena pausa entre lotes para não sobrecarregar a API
-      if (i + batchSize < ticketIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      if (i + batchSize < ticketIds.length) await new Promise(r => setTimeout(r, 500));
     }
-
     return results;
-  }, [correlateOneTicket]);
+  }, [networkId]);
 
   /**
-   * Correlaciona todos os tickets pendentes (que têm has_os = true mas os_found_in_vdesk = null)
+   * Correlaciona todos os tickets pendentes usando batch
    */
   const correlateAllPending = useCallback(async (): Promise<CorrelationSummary> => {
-    if (!networkId) {
-      throw new Error('Network não identificada');
-    }
+    if (!networkId) throw new Error('Network não identificada');
 
     setIsCorrelating(true);
     setProgress(0);
     setSummary(null);
 
     try {
-      // Buscar tickets que precisam de correlação
+      // Buscar tickets pendentes
       const { data: tickets, error } = await supabase
         .from('tickets')
         .select('ticket_external_id')
@@ -175,50 +161,59 @@ export function useAutoCorrelation() {
       if (error) throw error;
 
       const ticketIds = tickets?.map(t => t.ticket_external_id) || [];
-      
+
       if (ticketIds.length === 0) {
-        const emptySummary: CorrelationSummary = {
-          total: 0,
-          correlated: 0,
-          notFound: 0,
-          errors: 0,
-          results: [],
-        };
-        setSummary(emptySummary);
-        return emptySummary;
+        const empty: CorrelationSummary = { total: 0, correlated: 0, notFound: 0, errors: 0, results: [] };
+        setSummary(empty);
+        return empty;
       }
 
-      // Processar tickets
-      const results = await processBatch(ticketIds, (processed) => {
-        setProgress(Math.round((processed / ticketIds.length) * 100));
-      });
+      setProgress(10); // indicar que iniciou
+
+      let results: CorrelationResult[];
+
+      try {
+        // === BATCH: 1 chamada HTTP para todos os tickets ===
+        console.log(`[AutoCorrelation] Batch: ${ticketIds.length} tickets`);
+        const batchResponse = await correlacionarBatchViaProxy(ticketIds);
+
+        setProgress(70); // batch concluído, agora salvando no Supabase
+
+        // Aplicar resultados no Supabase
+        await applyBatchResults(batchResponse.results);
+
+        setProgress(90);
+
+        // Mapear resultados para formato interno
+        results = batchResponse.results.map(r => ({
+          ticketId: r.ticket,
+          success: r.found,
+          osCount: r.count,
+          osNumbers: r.osEncontradas,
+          error: r.found ? undefined : (r.message || 'Sem OS'),
+        }));
+
+        console.log(`[AutoCorrelation] Batch concluído:`, batchResponse.summary);
+      } catch (batchError) {
+        // === FALLBACK: correlação individual ===
+        console.warn(`[AutoCorrelation] Batch falhou, usando fallback individual:`, batchError);
+        results = await correlateIndividually(ticketIds, (processed) => {
+          setProgress(Math.round((processed / ticketIds.length) * 100));
+        });
+      }
 
       // Calcular estatísticas
-      let correlated = 0;
-      let notFound = 0;
-      let errors = 0;
-
-      for (const result of results) {
-        if (result.success) {
-          correlated++;
-        } else if (result.error?.includes('não encontrado')) {
-          notFound++;
-        } else {
-          errors++;
-        }
+      let correlated = 0, notFound = 0, errors = 0;
+      for (const r of results) {
+        if (r.success) correlated++;
+        else if (r.error?.includes('não encontrad') || r.error?.includes('Sem OS')) notFound++;
+        else errors++;
       }
 
-      const finalSummary: CorrelationSummary = {
-        total: ticketIds.length,
-        correlated,
-        notFound,
-        errors,
-        results,
-      };
-
+      const finalSummary: CorrelationSummary = { total: ticketIds.length, correlated, notFound, errors, results };
       setSummary(finalSummary);
 
-      // Invalidar queries relacionadas
+      // Invalidar queries
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['correlation-metrics'] });
@@ -228,61 +223,49 @@ export function useAutoCorrelation() {
       setIsCorrelating(false);
       setProgress(100);
     }
-  }, [networkId, processBatch, queryClient]);
+  }, [networkId, applyBatchResults, correlateIndividually, queryClient]);
 
   /**
-   * Correlaciona uma lista específica de tickets
+   * Correlaciona lista específica de tickets usando batch
    */
-  const correlateTickets = useCallback(async (
-    ticketIds: string[]
-  ): Promise<CorrelationSummary> => {
-    if (!networkId) {
-      throw new Error('Network não identificada');
-    }
-
-    if (ticketIds.length === 0) {
-      return {
-        total: 0,
-        correlated: 0,
-        notFound: 0,
-        errors: 0,
-        results: [],
-      };
-    }
+  const correlateTickets = useCallback(async (ticketIds: string[]): Promise<CorrelationSummary> => {
+    if (!networkId) throw new Error('Network não identificada');
+    if (ticketIds.length === 0) return { total: 0, correlated: 0, notFound: 0, errors: 0, results: [] };
 
     setIsCorrelating(true);
     setProgress(0);
     setSummary(null);
 
     try {
-      // Processar tickets
-      const results = await processBatch(ticketIds, (processed) => {
-        setProgress(Math.round((processed / ticketIds.length) * 100));
-      });
+      let results: CorrelationResult[];
 
-      // Calcular estatísticas
-      let correlated = 0;
-      let notFound = 0;
-      let errors = 0;
-
-      for (const result of results) {
-        if (result.success) {
-          correlated++;
-        } else if (result.error?.includes('não encontrado')) {
-          notFound++;
-        } else {
-          errors++;
-        }
+      try {
+        const batchResponse = await correlacionarBatchViaProxy(ticketIds);
+        setProgress(70);
+        await applyBatchResults(batchResponse.results);
+        setProgress(90);
+        results = batchResponse.results.map(r => ({
+          ticketId: r.ticket,
+          success: r.found,
+          osCount: r.count,
+          osNumbers: r.osEncontradas,
+          error: r.found ? undefined : (r.message || 'Sem OS'),
+        }));
+      } catch {
+        console.warn('[AutoCorrelation] Batch falhou, fallback individual');
+        results = await correlateIndividually(ticketIds, (processed) => {
+          setProgress(Math.round((processed / ticketIds.length) * 100));
+        });
       }
 
-      const finalSummary: CorrelationSummary = {
-        total: ticketIds.length,
-        correlated,
-        notFound,
-        errors,
-        results,
-      };
+      let correlated = 0, notFound = 0, errors = 0;
+      for (const r of results) {
+        if (r.success) correlated++;
+        else if (r.error?.includes('não encontrad') || r.error?.includes('Sem OS')) notFound++;
+        else errors++;
+      }
 
+      const finalSummary: CorrelationSummary = { total: ticketIds.length, correlated, notFound, errors, results };
       setSummary(finalSummary);
 
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
@@ -294,7 +277,7 @@ export function useAutoCorrelation() {
       setIsCorrelating(false);
       setProgress(100);
     }
-  }, [networkId, processBatch, queryClient]);
+  }, [networkId, applyBatchResults, correlateIndividually, queryClient]);
 
   return {
     correlateAllPending,
