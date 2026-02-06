@@ -112,8 +112,10 @@ export default function ImportacoesEnhanced() {
         setSelectedFiles([]);
       }
     } catch (err) {
+      console.error('[ImportPage] Erro na importação:', err);
       toast.error('Erro na importação', {
-        description: err instanceof Error ? err.message : 'Erro desconhecido',
+        description: err instanceof Error ? err.message : JSON.stringify(err),
+        duration: 10000,
       });
     }
   };

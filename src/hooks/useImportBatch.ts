@@ -61,6 +61,7 @@ export function useCreateBatch() {
       clearBeforeImport?: boolean;
       notes?: string;
     }) => {
+      console.log('[ImportBatch] Criando batch:', { networkId, userId, batchName, clearBeforeImport });
       const { data, error } = await supabase
         .from('import_batches' as any)
         .insert({
@@ -72,10 +73,18 @@ export function useCreateBatch() {
           notes: notes || null,
         } as any)
         .select()
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
-      return (data || {}) as unknown as ImportBatch;
+      if (error) {
+        console.error('[ImportBatch] Erro ao criar batch:', JSON.stringify(error));
+        throw error;
+      }
+      if (!data) {
+        console.error('[ImportBatch] Batch criado mas sem retorno de dados (possível RLS)');
+        throw new Error('Não foi possível criar o lote de importação. Verifique suas permissões.');
+      }
+      console.log('[ImportBatch] Batch criado com sucesso:', data);
+      return data as unknown as ImportBatch;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['import-batches'] });
