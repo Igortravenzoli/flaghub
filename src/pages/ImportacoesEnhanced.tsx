@@ -231,8 +231,9 @@ export default function ImportacoesEnhanced() {
           ) : batches && batches.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow>
+              <TableRow>
                   <TableHead>Data/Hora</TableHead>
+                  <TableHead>Importado por</TableHead>
                   <TableHead>Nome do Lote</TableHead>
                   <TableHead className="text-center">Arquivos</TableHead>
                   <TableHead className="text-center">Registros</TableHead>
@@ -246,6 +247,9 @@ export default function ImportacoesEnhanced() {
                   <TableRow key={batch.id}>
                     <TableCell className="text-sm">
                       {new Date(batch.created_at).toLocaleString('pt-BR')}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {(batch as any).imported_by_name || (batch as any).imported_by_email || '-'}
                     </TableCell>
                     <TableCell>
                       {batch.batch_name || `Lote #${batch.id}`}

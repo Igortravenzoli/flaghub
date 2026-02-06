@@ -186,29 +186,23 @@ export function useImportBatch() {
             .eq('file_hash', fileHash)
             .maybeSingle();
 
-          if (existingImport) {
-            if (!options?.clearBeforeImport) {
-              // Incremental: pular arquivo duplicado
-              const importDate = new Date(existingImport.created_at).toLocaleString('pt-BR');
-              console.warn(`Arquivo ${file.name} já foi importado anteriormente em ${importDate}`);
-              
-              await supabase.from('import_events').insert([{
-                import_id: existingImport.id,
-                level: 'warning',
-                message: `Tentativa de reimportação do arquivo ${file.name} detectada (hash duplicado)`,
-                meta: { 
-                  batch_id: batchId,
-                  attempted_at: new Date().toISOString() 
-                },
-              }] as never);
-              
-              totalWarningsAll++;
-              continue;
-            } else {
-              // Expurgo: remover import antigo para permitir re-inserção (cascade de events)
-              await supabase.from('import_events').delete().eq('import_id', existingImport.id);
-              await supabase.from('imports').delete().eq('id', existingImport.id);
-            }
+          // Incremental: pular arquivo duplicado (constraint removida, mas lógica mantida)
+          if (existingImport && !options?.clearBeforeImport) {
+            const importDate = new Date(existingImport.created_at).toLocaleString('pt-BR');
+            console.warn(`Arquivo ${file.name} já foi importado anteriormente em ${importDate}`);
+            
+            await supabase.from('import_events').insert([{
+              import_id: existingImport.id,
+              level: 'warning',
+              message: `Tentativa de reimportação do arquivo ${file.name} detectada (hash duplicado)`,
+              meta: { 
+                batch_id: batchId,
+                attempted_at: new Date().toISOString() 
+              },
+            }] as never);
+            
+            totalWarningsAll++;
+            continue;
           }
 
           // Criar registro de importação para este arquivo

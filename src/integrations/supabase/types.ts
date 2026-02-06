@@ -490,6 +490,7 @@ export type Database = {
           errors_count: number
           id: number
           imported_by_email: string
+          imported_by_name: string
           status: string
           total_files: number
           total_records: number
