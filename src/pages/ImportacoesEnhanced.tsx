@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+// Checkbox removed - purge mode now set via dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -77,7 +77,6 @@ export default function ImportacoesEnhanced() {
     );
     
     if (files.length > 0) {
-      // Mostrar alerta de expurgo ao arrastar arquivos
       setPendingDropFiles(files);
       setShowPurgeOnDropDialog(true);
     }
@@ -92,7 +91,10 @@ export default function ImportacoesEnhanced() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setSelectedFiles(prev => [...prev, ...files]);
+    if (files.length > 0) {
+      setPendingDropFiles(files);
+      setShowPurgeOnDropDialog(true);
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -286,30 +288,52 @@ export default function ImportacoesEnhanced() {
               />
             </div>
 
-            <div className="flex items-start space-x-2 p-3 border rounded-lg bg-amber-50 dark:bg-amber-950/20">
-              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="clear-before"
-                    checked={clearBeforeImport}
-                    onCheckedChange={(checked) => setClearBeforeImport(checked as boolean)}
+            {clearBeforeImport && (
+              <div className="flex items-start space-x-2 p-3 border rounded-lg bg-amber-50 dark:bg-amber-950/20">
+                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                    Modo Importação Completa ativado
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Todos os tickets existentes serão descontinuados antes do processamento.
+                    Apenas os tickets contidos nos arquivos selecionados ficarão ativos.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setClearBeforeImport(false)}
+                    className="text-xs h-7"
                     disabled={isProcessing}
-                  />
-                  <Label
-                    htmlFor="clear-before"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                   >
-                    Descontinuar todos os dados anteriores
-                  </Label>
+                    Mudar para Incremental
+                  </Button>
                 </div>
-                <p className="text-xs text-muted-foreground ml-6">
-                  <strong>ATENÇÃO:</strong> Ao marcar esta opção, todos os tickets existentes serão marcados como inativos 
-                  antes de processar os novos arquivos. Apenas os tickets nos arquivos importados ficarão ativos. 
-                  Esta ação é recomendada quando você deseja substituir completamente a base de dados.
-                </p>
               </div>
-            </div>
+            )}
+            {!clearBeforeImport && selectedFiles.length > 0 && (
+              <div className="flex items-start space-x-2 p-3 border rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                    Modo Incremental ativado
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Os dados serão adicionados/atualizados sem descartar registros existentes.
+                    Arquivos duplicados (mesmo conteúdo) serão ignorados.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setClearBeforeImport(true)}
+                    className="text-xs h-7"
+                    disabled={isProcessing}
+                  >
+                    Mudar para Completa (expurgar)
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Progresso */}
@@ -521,35 +545,53 @@ export default function ImportacoesEnhanced() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog de Expurgo ao Arrastar Arquivo */}
+      {/* Dialog de Modo de Importação */}
       <AlertDialog open={showPurgeOnDropDialog} onOpenChange={setShowPurgeOnDropDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-600" />
-              Nova Importação Detectada
+              <Upload className="h-5 w-5" />
+              Como deseja importar?
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>
-                Você está iniciando uma nova importação com <strong>{pendingDropFiles.length} arquivo(s)</strong>.
-              </p>
-              <p className="font-medium text-amber-700 dark:text-amber-400">
-                Deseja expurgar (descontinuar) os dados anteriores antes de importar?
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Se marcar "Sim", todos os tickets existentes serão marcados como inativos antes do processamento.
-              </p>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Você está adicionando <strong>{pendingDropFiles.length} arquivo(s)</strong>. Selecione o modo de importação:
+                </p>
+                <div className="space-y-2">
+                  <div className="p-3 border rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                    <p className="text-sm font-medium text-blue-700 dark:text-blue-400">📥 Incremental</p>
+                    <p className="text-xs text-muted-foreground">
+                      Os arquivos são somados aos dados existentes. Ideal para adicionar novos tickets 
+                      um a um ou em blocos, sem perder o que já foi importado.
+                    </p>
+                  </div>
+                  <div className="p-3 border rounded-lg bg-amber-50 dark:bg-amber-950/20">
+                    <p className="text-sm font-medium text-amber-700 dark:text-amber-400">🔄 Completa (Expurgo)</p>
+                    <p className="text-xs text-muted-foreground">
+                      Todos os dados anteriores serão descontinuados antes da importação. 
+                      Ideal para importações massivas onde o cenário anterior não é mais relevante.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex gap-2">
-            <AlertDialogCancel onClick={() => handlePurgeOnDropConfirm(false)}>
-              Não, manter dados
+          <AlertDialogFooter className="flex gap-2 sm:flex-row">
+            <AlertDialogCancel onClick={() => { setPendingDropFiles([]); }}>
+              Cancelar
             </AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => handlePurgeOnDropConfirm(false)}
+            >
+              📥 Incremental
+            </Button>
             <AlertDialogAction
               onClick={() => handlePurgeOnDropConfirm(true)}
               className="bg-amber-600 hover:bg-amber-700"
             >
-              Sim, expurgar anteriores
+              🔄 Completa (Expurgar)
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
