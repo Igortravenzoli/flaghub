@@ -33,7 +33,7 @@ async function exportToPDF(estatisticas: EstatisticasDashboard, tickets: TicketC
     const { default: jsPDF } = await import('jspdf');
     await import('jspdf-autotable');
     
-    const doc = new jsPDF('landscape');
+    const doc = new jsPDF({ orientation: 'landscape' });
     const now = new Date().toLocaleString('pt-BR');
     
     // Header
