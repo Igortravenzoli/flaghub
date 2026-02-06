@@ -2,20 +2,14 @@ import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-// Checkbox removed - purge mode now set via dialog
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { 
   Table, 
   TableBody, 
@@ -35,7 +29,8 @@ import {
   Loader2,
   Trash2,
   AlertTriangle,
-  Info
+  Info,
+  Ban
 } from 'lucide-react';
 import { useImportBatch } from '@/hooks/useImportEnhanced';
 import { useRecentBatches, usePurgeOldTickets } from '@/hooks/useImportBatch';
@@ -51,11 +46,7 @@ export default function ImportacoesEnhanced() {
   
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [clearBeforeImport, setClearBeforeImport] = useState(false);
-  const [batchName, setBatchName] = useState('');
-  const [notes, setNotes] = useState('');
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [showPurgeOnDropDialog, setShowPurgeOnDropDialog] = useState(false);
+  const [showModeDialog, setShowModeDialog] = useState(false);
   const [pendingDropFiles, setPendingDropFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -78,50 +69,33 @@ export default function ImportacoesEnhanced() {
     
     if (files.length > 0) {
       setPendingDropFiles(files);
-      setShowPurgeOnDropDialog(true);
+      setShowModeDialog(true);
     }
-  };
-
-  const handlePurgeOnDropConfirm = (shouldPurge: boolean) => {
-    setShowPurgeOnDropDialog(false);
-    setClearBeforeImport(shouldPurge);
-    setSelectedFiles(prev => [...prev, ...pendingDropFiles]);
-    setPendingDropFiles([]);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 0) {
       setPendingDropFiles(files);
-      setShowPurgeOnDropDialog(true);
+      setShowModeDialog(true);
     }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  const removeFile = (index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-  };
+  const handleModeSelect = async (mode: 'incremental' | 'complete') => {
+    setShowModeDialog(false);
+    const filesToImport = [...pendingDropFiles];
+    setPendingDropFiles([]);
 
-  const handleImportClick = () => {
-    if (selectedFiles.length === 0) {
-      toast.error('Nenhum arquivo selecionado');
-      return;
-    }
-    setShowConfirmDialog(true);
-  };
-
-  const handleImport = async () => {
-    setShowConfirmDialog(false);
+    const clearBeforeImport = mode === 'complete';
 
     try {
       const result = await importBatch({
-        files: selectedFiles,
+        files: filesToImport,
         options: {
           clearBeforeImport,
-          batchName: batchName || undefined,
-          notes: notes || undefined,
         },
       });
 
@@ -129,12 +103,7 @@ export default function ImportacoesEnhanced() {
         toast.success('Importação concluída!', {
           description: `${result.totalFiles} arquivo(s), ${result.totalRecords} registros processados.`,
         });
-        
-        // Limpar formulário
         setSelectedFiles([]);
-        setBatchName('');
-        setNotes('');
-        setClearBeforeImport(false);
       }
     } catch (err) {
       toast.error('Erro na importação', {
@@ -143,15 +112,13 @@ export default function ImportacoesEnhanced() {
     }
   };
 
-  const handlePurgeOld = async () => {
-    if (!networkId) return;
+  const handleCancel = () => {
+    setShowModeDialog(false);
+    setPendingDropFiles([]);
+  };
 
-    try {
-      const count = await purgeOld.mutateAsync({ networkId, daysThreshold: 7 });
-      toast.success(`${count} tickets inativos removidos`);
-    } catch (err) {
-      toast.error('Erro ao expurgar tickets antigos');
-    }
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   if (!isAuthenticated) {
@@ -171,7 +138,7 @@ export default function ImportacoesEnhanced() {
       <div className="p-6">
         <Card>
           <CardContent className="p-6 text-center space-y-2">
-            <AlertTriangle className="h-8 w-8 text-warning mx-auto" />
+            <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
             <p className="text-muted-foreground font-medium">⚠️ Você não tem permissão para importar arquivos.</p>
             <p className="text-sm text-muted-foreground">
               Contate um administrador para obter acesso. Sua role atual pode não ter sido carregada corretamente.
@@ -193,8 +160,7 @@ export default function ImportacoesEnhanced() {
             Importar Arquivos
           </CardTitle>
           <CardDescription>
-            Selecione um ou mais arquivos JSON/CSV para importar. Os arquivos serão processados em lote.
-            Arquivos duplicados (mesmo conteúdo) serão automaticamente identificados e ignorados.
+            Selecione um ou mais arquivos JSON/CSV para importar. Ao adicionar arquivos, você escolherá o modo de importação.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -228,114 +194,6 @@ export default function ImportacoesEnhanced() {
             />
           </div>
 
-          {/* Arquivos Selecionados */}
-          {selectedFiles.length > 0 && (
-            <div className="space-y-2">
-              <Label>Arquivos selecionados ({selectedFiles.length})</Label>
-              <div className="space-y-2">
-                {selectedFiles.map((file, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-2 border rounded-lg"
-                  >
-                    <div className="flex items-center gap-2">
-                      {file.name.endsWith('.json') ? (
-                        <FileJson className="h-4 w-4 text-blue-500" />
-                      ) : (
-                        <FileSpreadsheet className="h-4 w-4 text-green-500" />
-                      )}
-                      <span className="text-sm">{file.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        ({(file.size / 1024).toFixed(1)} KB)
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeFile(index)}
-                      disabled={isProcessing}
-                    >
-                      <XCircle className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Opções de Importação */}
-          <div className="space-y-4 pt-4 border-t">
-            <div className="space-y-2">
-              <Label htmlFor="batch-name">Nome do Lote (opcional)</Label>
-              <Input
-                id="batch-name"
-                placeholder="Ex: Importação diária - 29/01/2026"
-                value={batchName}
-                onChange={(e) => setBatchName(e.target.value)}
-                disabled={isProcessing}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Observações (opcional)</Label>
-              <Textarea
-                id="notes"
-                placeholder="Adicione notas sobre esta importação..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                disabled={isProcessing}
-                rows={3}
-              />
-            </div>
-
-            {clearBeforeImport && (
-              <div className="flex items-start space-x-2 p-3 border rounded-lg bg-amber-50 dark:bg-amber-950/20">
-                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                    Modo Importação Completa ativado
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Todos os tickets existentes serão descontinuados antes do processamento.
-                    Apenas os tickets contidos nos arquivos selecionados ficarão ativos.
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setClearBeforeImport(false)}
-                    className="text-xs h-7"
-                    disabled={isProcessing}
-                  >
-                    Mudar para Incremental
-                  </Button>
-                </div>
-              </div>
-            )}
-            {!clearBeforeImport && selectedFiles.length > 0 && (
-              <div className="flex items-start space-x-2 p-3 border rounded-lg bg-blue-50 dark:bg-blue-950/20">
-                <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
-                    Modo Incremental ativado
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Os dados serão adicionados/atualizados sem descartar registros existentes.
-                    Arquivos duplicados (mesmo conteúdo) serão ignorados.
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setClearBeforeImport(true)}
-                    className="text-xs h-7"
-                    disabled={isProcessing}
-                  >
-                    Mudar para Completa (expurgar)
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Progresso */}
           {isProcessing && (
             <div className="space-y-2 pt-4 border-t">
@@ -354,36 +212,6 @@ export default function ImportacoesEnhanced() {
               )}
             </div>
           )}
-
-          {/* Botões */}
-          <div className="flex gap-2">
-            <Button
-              onClick={handleImportClick}
-              disabled={selectedFiles.length === 0 || isProcessing}
-              className="flex-1"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processando...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Importar {selectedFiles.length > 0 && `(${selectedFiles.length})`}
-                </>
-              )}
-            </Button>
-            
-            <Button
-              variant="outline"
-              onClick={handlePurgeOld}
-              disabled={isProcessing || purgeOld.isPending}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Expurgar Antigos
-            </Button>
-          </div>
         </CardContent>
       </Card>
 
@@ -472,130 +300,71 @@ export default function ImportacoesEnhanced() {
         </CardContent>
       </Card>
 
-      {/* Dialog de Confirmação */}
-      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              {clearBeforeImport ? (
-                <>
-                  <AlertTriangle className="h-5 w-5 text-amber-600" />
-                  Confirmar Substituição de Dados
-                </>
-              ) : (
-                <>
-                  <Upload className="h-5 w-5" />
-                  Confirmar Importação
-                </>
-              )}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              {clearBeforeImport ? (
-                <>
-                  <p className="font-medium text-amber-700 dark:text-amber-400">
-                    ⚠️ ATENÇÃO: Esta ação irá descontinuar todos os dados anteriores!
-                  </p>
-                  <p>
-                    Você está prestes a importar <strong>{selectedFiles.length} arquivo(s)</strong>.
-                    Todos os tickets existentes serão marcados como inativos antes do processamento.
-                  </p>
-                  <p>
-                    Apenas os tickets contidos nos arquivos selecionados ficarão ativos após a importação.
-                  </p>
-                  <p className="text-sm">
-                    Arquivos a importar:
-                  </p>
-                  <ul className="text-sm list-disc list-inside space-y-1 max-h-32 overflow-y-auto">
-                    {selectedFiles.map((file, i) => (
-                      <li key={i}>{file.name}</li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <>
-                  <p>
-                    Você está prestes a importar <strong>{selectedFiles.length} arquivo(s)</strong>.
-                    Os dados serão adicionados ou atualizados sem descartar os registros existentes.
-                  </p>
-                  <p className="text-sm">
-                    Arquivos a importar:
-                  </p>
-                  <ul className="text-sm list-disc list-inside space-y-1 max-h-32 overflow-y-auto">
-                    {selectedFiles.map((file, i) => (
-                      <li key={i}>{file.name}</li>
-                    ))}
-                  </ul>
-                  <p className="text-xs text-muted-foreground">
-                    Nota: Arquivos duplicados (mesmo conteúdo) serão automaticamente ignorados.
-                  </p>
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleImport}
-              disabled={isProcessing}
-              className={cn(clearBeforeImport && "bg-amber-600 hover:bg-amber-700")}
-            >
-              {clearBeforeImport ? 'Substituir Dados' : 'Importar'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Dialog de Modo de Importação */}
-      <AlertDialog open={showPurgeOnDropDialog} onOpenChange={setShowPurgeOnDropDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
+      {/* Dialog de Modo de Importação - botões clicáveis que executam a ação */}
+      <Dialog open={showModeDialog} onOpenChange={(open) => { if (!open) handleCancel(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
               <Upload className="h-5 w-5" />
               Como deseja importar?
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>
-                  Você está adicionando <strong>{pendingDropFiles.length} arquivo(s)</strong>. Selecione o modo de importação:
-                </p>
-                <div className="space-y-2">
-                  <div className="p-3 border rounded-lg bg-blue-50 dark:bg-blue-950/20">
-                    <p className="text-sm font-medium text-blue-700 dark:text-blue-400">📥 Incremental</p>
-                    <p className="text-xs text-muted-foreground">
-                      Os arquivos são somados aos dados existentes. Ideal para adicionar novos tickets 
-                      um a um ou em blocos, sem perder o que já foi importado.
-                    </p>
-                  </div>
-                  <div className="p-3 border rounded-lg bg-amber-50 dark:bg-amber-950/20">
-                    <p className="text-sm font-medium text-amber-700 dark:text-amber-400">🔄 Completa (Expurgo)</p>
-                    <p className="text-xs text-muted-foreground">
-                      Todos os dados anteriores serão descontinuados antes da importação. 
-                      Ideal para importações massivas onde o cenário anterior não é mais relevante.
-                    </p>
-                  </div>
+            </DialogTitle>
+            <DialogDescription>
+              {pendingDropFiles.length} arquivo(s) selecionado(s). Escolha o modo de importação:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            {/* Incremental */}
+            <button
+              onClick={() => handleModeSelect('incremental')}
+              className="w-full text-left p-4 border-2 rounded-lg transition-all hover:border-primary hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <div className="flex items-start gap-3">
+                <Info className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">📥 Importação Incremental</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Os arquivos são somados aos dados existentes. Ideal para adicionar novos tickets
+                    sem perder o que já foi importado. Arquivos duplicados serão ignorados.
+                  </p>
                 </div>
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex gap-2 sm:flex-row">
-            <AlertDialogCancel onClick={() => { setPendingDropFiles([]); }}>
-              Cancelar
-            </AlertDialogCancel>
-            <Button
-              variant="outline"
-              onClick={() => handlePurgeOnDropConfirm(false)}
+            </button>
+
+            {/* Completa (Expurgo) */}
+            <button
+              onClick={() => handleModeSelect('complete')}
+              className="w-full text-left p-4 border-2 rounded-lg transition-all hover:border-destructive hover:bg-destructive/5 focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              📥 Incremental
-            </Button>
-            <AlertDialogAction
-              onClick={() => handlePurgeOnDropConfirm(true)}
-              className="bg-amber-600 hover:bg-amber-700"
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">🔄 Importação Completa (Expurgo)</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Todos os dados anteriores serão descontinuados antes da importação.
+                    Apenas os tickets dos arquivos selecionados ficarão ativos.
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            {/* Cancelar */}
+            <button
+              onClick={handleCancel}
+              className="w-full text-left p-4 border-2 rounded-lg transition-all hover:border-muted-foreground/50 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              🔄 Completa (Expurgar)
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              <div className="flex items-start gap-3">
+                <Ban className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Cancelar</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Nenhuma importação será realizada. Os arquivos selecionados serão descartados.
+                  </p>
+                </div>
+              </div>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
