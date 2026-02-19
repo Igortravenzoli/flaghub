@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Welcome from "@/pages/Welcome";
+import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
 import Tickets from "@/pages/Tickets";
 import Importacoes from "@/pages/ImportacoesEnhanced";
@@ -18,6 +19,12 @@ import NotFound from "@/pages/NotFound";
 import TesteSupabaseSetup from "@/pages/TesteSupabaseSetup";
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 import Acompanhamento from "@/pages/Acompanhamento";
+import QualidadeDashboard from "@/pages/setores/QualidadeDashboard";
+import ComercialDashboard from "@/pages/setores/ComercialDashboard";
+import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
+import InfraestruturaDashboard from "@/pages/setores/InfraestruturaDashboard";
+import ProgramacaoDashboard from "@/pages/setores/ProgramacaoDashboard";
+import ComunicacaoDashboard from "@/pages/setores/ComunicacaoDashboard";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +47,7 @@ const App = () => (
                   </ProtectedRoute>
                 }
               >
+                <Route path="/home" element={<Home />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/tickets" element={<Tickets />} />
                 <Route path="/importacoes" element={<Importacoes />} />
@@ -61,6 +69,13 @@ const App = () => (
                 />
                 <Route path="/ticket-busca" element={<TicketBuscaComponente />} />
                 <Route path="/acompanhamento" element={<Acompanhamento />} />
+                {/* Sector dashboards */}
+                <Route path="/setor/qualidade" element={<QualidadeDashboard />} />
+                <Route path="/setor/comercial" element={<ComercialDashboard />} />
+                <Route path="/setor/customer-service" element={<CustomerServiceDashboard />} />
+                <Route path="/setor/infraestrutura" element={<InfraestruturaDashboard />} />
+                <Route path="/setor/programacao" element={<ProgramacaoDashboard />} />
+                <Route path="/setor/comunicacao" element={<ComunicacaoDashboard />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

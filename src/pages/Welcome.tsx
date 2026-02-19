@@ -11,7 +11,7 @@ export default function Welcome() {
   // Redirecionar para dashboard se já estiver autenticado
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      navigate('/home', { replace: true });
     }
   }, [isAuthenticated, isLoading, navigate]);
 
@@ -41,8 +41,8 @@ export default function Welcome() {
 
         {/* Title */}
         <div className="space-y-2">
-          <h2 className="text-2xl font-semibold text-white">Painel Operacional</h2>
-          <p className="text-slate-400">Sistema de Correlação de Tickets e Ordens de Serviço</p>
+          <h2 className="text-2xl font-semibold text-white">Hub de Operações</h2>
+          <p className="text-slate-400">Sistema de Automações e Dashboards Setoriais</p>
         </div>
 
         {/* CTA Button */}
