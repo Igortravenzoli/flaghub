@@ -1,10 +1,11 @@
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plane, Bug, ListTodo, Code2, AlertTriangle, Users } from 'lucide-react';
+import { Plane, Bug, ListTodo, Code2, AlertTriangle, Users, Maximize2, Minimize2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
 import { sprintTasksData } from '@/data/mockSectorData';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
 const integrations: Integration[] = [
@@ -29,6 +30,7 @@ function MacroCard({ label, value, icon: Icon, color, subtitle }: {
 
 export default function ProgramacaoDashboard() {
   const data = sprintTasksData;
+  const [boardFullscreen, setBoardFullscreen] = useState(false);
 
   const stats = useMemo(() => {
     const inProgress = data.filter((d) => d.state === 'In Progress').length;
@@ -90,7 +92,7 @@ export default function ProgramacaoDashboard() {
       <Card className="p-5 animate-fade-in">
         <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
           <Users className="h-4 w-4 text-primary" />
-          Tasks por Programador
+      Tasks por Colaborador
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
           {Object.entries(stats.porProgramador)
@@ -105,38 +107,41 @@ export default function ProgramacaoDashboard() {
       </Card>
 
       {/* Airport Board */}
-      <Card className="bg-[hsl(222,47%,11%)] text-[hsl(210,40%,98%)] overflow-hidden animate-fade-in">
-        <div className="p-4 border-b border-white/10 flex items-center gap-3">
+      <Card className={`bg-[hsl(222,47%,11%)] dark:bg-background text-[hsl(210,40%,98%)] dark:text-foreground overflow-hidden animate-fade-in ${boardFullscreen ? 'fixed inset-0 z-50 rounded-none m-0' : ''}`}>
+        <div className="p-4 border-b border-white/10 dark:border-border flex items-center gap-3">
           <Plane className="h-5 w-5 text-[hsl(var(--warning))]" />
           <h3 className="font-bold text-lg font-mono tracking-wider">PAINEL DE MONITORAMENTO — SPRINT S4-2026</h3>
-          <div className="ml-auto flex gap-2">
-            {stats.aviao > 0 && <Badge className="bg-[hsl(var(--info))] text-white font-mono animate-pulse">✈ {stats.aviao} AVIÕES</Badge>}
-            {stats.transbordo > 0 && <Badge className="bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))] font-mono">⚡ {stats.transbordo} TRANSBORDOS</Badge>}
-            {stats.retornoQA > 0 && <Badge className="bg-purple-500 text-white font-mono">↩ {stats.retornoQA} RETORNO QA</Badge>}
+          <div className="ml-auto flex gap-2 items-center">
+            {stats.aviao > 0 && <Badge className="bg-[hsl(199,89%,48%)] text-white font-mono animate-pulse">✈ {stats.aviao} AVIÕES</Badge>}
+            {stats.transbordo > 0 && <Badge className="bg-[hsl(43,85%,46%)] text-[hsl(222,47%,11%)] font-mono">⚡ {stats.transbordo} TRANSBORDOS</Badge>}
+            {stats.retornoQA > 0 && <Badge className="bg-[hsl(280,65%,60%)] text-white font-mono">↩ {stats.retornoQA} RETORNO QA</Badge>}
+            <Button variant="ghost" size="icon" onClick={() => setBoardFullscreen(!boardFullscreen)} className="text-white/70 hover:text-white hover:bg-white/10 h-8 w-8">
+              {boardFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
           </div>
         </div>
-        <div className="overflow-auto max-h-[500px]">
+        <div className={`overflow-auto ${boardFullscreen ? 'max-h-[calc(100vh-60px)]' : 'max-h-[500px]'}`}>
           <Table>
             <TableHeader>
-              <TableRow className="border-white/10 hover:bg-white/5">
+              <TableRow className="border-white/10 dark:border-border hover:bg-white/5">
                 <TableHead className="text-[hsl(var(--warning))] font-mono">ID</TableHead>
                 <TableHead className="text-[hsl(var(--warning))] font-mono">TASK</TableHead>
-                <TableHead className="text-[hsl(var(--warning))] font-mono">PROGRAMADOR</TableHead>
+                <TableHead className="text-[hsl(var(--warning))] font-mono">COLABORADOR</TableHead>
                 <TableHead className="text-[hsl(var(--warning))] font-mono">STATUS</TableHead>
                 <TableHead className="text-[hsl(var(--warning))] font-mono">TAGS</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.map((item) => (
-                <TableRow key={item.id} className="border-white/5 hover:bg-white/5 transition-colors">
-                  <TableCell className="font-mono text-xs text-[hsl(var(--info))]">#{item.id}</TableCell>
+                <TableRow key={item.id} className="border-white/5 dark:border-border hover:bg-white/5 transition-colors">
+                  <TableCell className="font-mono text-xs text-[hsl(199,89%,48%)]">#{item.id}</TableCell>
                   <TableCell className="text-sm max-w-[350px] truncate">{item.title}</TableCell>
-                  <TableCell className="text-sm text-white/70">{item.assignedTo || '—'}</TableCell>
+                  <TableCell className="text-sm text-white/70 dark:text-muted-foreground">{item.assignedTo || '—'}</TableCell>
                   <TableCell>{stateBadge(item.state)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1 flex-wrap">
                       {item.tags.split(';').map(t => t.trim()).filter(Boolean).map((tag) => (
-                        <Badge key={tag} className={`text-xs font-mono ${tagBadge(tag)}`} variant={tagBadge(tag) ? undefined : 'outline'}>
+                        <Badge key={tag} className={`text-xs font-mono ${tagBadge(tag)}`} variant={tagBadge(tag) ? undefined : 'secondary'}>
                           {tag}
                         </Badge>
                       ))}

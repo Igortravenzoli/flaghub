@@ -4,36 +4,56 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { customerServiceData, csKPIs } from '@/data/mockSectorData';
-import { useMemo } from 'react';
-import { Eye, Settings2, Zap, FileText, Clock, Users, Layers, AlertTriangle, TrendingUp, Target } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { Progress } from '@/components/ui/progress';
+import { Eye, Settings2, Zap, FileText, Clock, Users, Layers, AlertTriangle, TrendingUp, Target, ArrowUp, ArrowDown } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Area, AreaChart } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
-const COLORS = ['hsl(43, 85%, 46%)', 'hsl(199, 89%, 48%)', 'hsl(142, 71%, 45%)', 'hsl(0, 84%, 60%)', 'hsl(280, 65%, 60%)', 'hsl(30, 90%, 55%)', 'hsl(190, 70%, 50%)', 'hsl(340, 70%, 55%)', 'hsl(160, 60%, 45%)'];
+const COLORS = ['hsl(43,85%,46%)', 'hsl(199,89%,48%)', 'hsl(142,71%,45%)', 'hsl(0,84%,60%)', 'hsl(280,65%,60%)', 'hsl(30,90%,55%)', 'hsl(190,70%,50%)', 'hsl(340,70%,55%)', 'hsl(160,60%,45%)'];
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '20/02/2026 09:00', latency: '120ms', description: 'Work Items & Sprints' },
   { name: 'Vdesk API', type: 'api', status: 'up', lastCheck: '20/02/2026 09:00', latency: '85ms', description: 'Ordens de Serviço' },
 ];
 
-function KPICard({ label, value, subtitle, icon: Icon, alert }: {
-  label: string; value: string | number; subtitle: string; icon: React.ComponentType<{ className?: string }>; alert?: boolean;
+function MetricTile({ label, value, change, changeLabel, icon: Icon, accent }: {
+  label: string; value: string | number; change?: number; changeLabel?: string; icon: React.ComponentType<{ className?: string }>; accent?: string;
 }) {
+  const isPositive = (change ?? 0) >= 0;
   return (
-    <Card className="p-5 animate-fade-in hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
-          <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
-          <p className={`text-xs mt-1 ${alert ? 'text-[hsl(var(--critical))] font-medium' : 'text-muted-foreground'}`}>
-            {subtitle}
-          </p>
+    <Card className="p-5 animate-fade-in group hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 relative overflow-hidden">
+      <div className={`absolute inset-0 opacity-[0.04] ${accent || 'bg-primary'}`} />
+      <div className="relative">
+        <div className="flex items-center justify-between mb-3">
+          <div className={`p-2.5 rounded-xl ${accent ? accent + '/10' : 'bg-primary/10'}`}>
+            <Icon className={`h-5 w-5 ${accent ? accent.replace('bg-', 'text-') : 'text-primary'}`} />
+          </div>
+          {change !== undefined && (
+            <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${isPositive ? 'bg-[hsl(142,71%,45%)]/10 text-[hsl(142,71%,45%)]' : 'bg-[hsl(0,84%,60%)]/10 text-[hsl(0,84%,60%)]'}`}>
+              {isPositive ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+              {Math.abs(change)}%
+            </div>
+          )}
         </div>
-        <div className="p-2 rounded-lg bg-primary/10">
-          <Icon className="h-5 w-5 text-primary" />
-        </div>
+        <p className="text-3xl font-bold text-foreground tracking-tight">{value}</p>
+        <p className="text-xs text-muted-foreground mt-1 font-medium">{label}</p>
+        {changeLabel && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{changeLabel}</p>}
       </div>
     </Card>
+  );
+}
+
+function MiniProgressBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-semibold text-foreground">{value}</span>
+      </div>
+      <div className="h-2 bg-muted rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(value / max) * 100}%`, backgroundColor: color }} />
+      </div>
+    </div>
   );
 }
 
@@ -41,131 +61,151 @@ export default function CustomerServiceDashboard() {
   const data = customerServiceData;
   const kpis = csKPIs;
 
+  const systemCounts: Record<string, number> = {};
+  data.forEach(d => { systemCounts[d.sistema] = (systemCounts[d.sistema] || 0) + 1; });
+  const maxSystem = Math.max(...Object.values(systemCounts));
+
+  const priorityCounts = [0, 0, 0, 0, 0];
+  data.forEach(d => { if (d.prioridade >= 0 && d.prioridade <= 4) priorityCounts[d.prioridade]++; });
+
   return (
     <SectorLayout
-      title="CS Performance"
+      title="Customer Service"
       subtitle="Dashboard de Gestão — Customer Success"
       lastUpdate="19/02/2026 08:45"
       integrations={integrations}
     >
       <Tabs defaultValue="executiva" className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="executiva" className="gap-1.5">
+        <TabsList className="mb-4 bg-muted/50 p-1">
+          <TabsTrigger value="executiva" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Eye className="h-3.5 w-3.5" />
-            Executiva
+            Visão Executiva
           </TabsTrigger>
-          <TabsTrigger value="operacional" className="gap-1.5">
+          <TabsTrigger value="operacional" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Settings2 className="h-3.5 w-3.5" />
             Operacional
           </TabsTrigger>
-          <TabsTrigger value="performance" className="gap-1.5">
+          <TabsTrigger value="performance" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Zap className="h-3.5 w-3.5" />
             Performance
           </TabsTrigger>
         </TabsList>
 
         {/* ── Executiva ── */}
-        <TabsContent value="executiva" className="space-y-4 animate-fade-in">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <KPICard label="Em Atuação CS" value={kpis.executiva.emAtuacao} subtitle="Demandas na fila CS sem entrega" icon={TrendingUp} />
-            <KPICard label="Lead Time Médio" value={`${kpis.executiva.leadTimeMedio}d`} subtitle="Dt OS → Dt Entrega" icon={Clock} />
-            <KPICard label="Acima de 15 Dias" value={`${kpis.executiva.acima15Dias}%`} subtitle="Atenção necessária" icon={AlertTriangle} alert />
-            <KPICard label="Taxa Retrabalho" value={`${kpis.executiva.taxaRetrabalho}%`} subtitle="Dentro do esperado" icon={Target} />
+        <TabsContent value="executiva" className="space-y-5 animate-fade-in">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricTile label="Em Atuação CS" value={kpis.executiva.emAtuacao} change={-8} changeLabel="vs sprint anterior" icon={TrendingUp} />
+            <MetricTile label="Lead Time Médio" value={`${kpis.executiva.leadTimeMedio}d`} change={12} changeLabel="Dt OS → Dt Entrega" icon={Clock} accent="bg-[hsl(199,89%,48%)]" />
+            <MetricTile label="Acima de 15 Dias" value={`${kpis.executiva.acima15Dias}%`} change={-3} changeLabel="Atenção necessária" icon={AlertTriangle} accent="bg-[hsl(0,84%,60%)]" />
+            <MetricTile label="Taxa Retrabalho" value={`${kpis.executiva.taxaRetrabalho}%`} change={-5} changeLabel="Dentro do esperado" icon={Target} accent="bg-[hsl(142,71%,45%)]" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="p-5 animate-fade-in">
-              <h3 className="font-semibold text-foreground mb-4">Demandas Finalizadas por Sprint CS</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={kpis.demandasPorSprint}>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card className="p-5 animate-fade-in lg:col-span-2">
+              <h3 className="font-semibold text-foreground mb-4 text-sm">Entregas por Sprint CS</h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={kpis.demandasPorSprint}>
+                  <defs>
+                    <linearGradient id="csGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(199,89%,48%)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(199,89%,48%)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="sprint" fontSize={12} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis fontSize={12} stroke="hsl(var(--muted-foreground))" />
+                  <XAxis dataKey="sprint" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis fontSize={11} stroke="hsl(var(--muted-foreground))" />
                   <Tooltip />
-                  <Bar dataKey="finalizadas" fill="hsl(199, 89%, 48%)" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Area type="monotone" dataKey="finalizadas" stroke="hsl(199,89%,48%)" fill="url(#csGrad)" strokeWidth={2} />
+                </AreaChart>
               </ResponsiveContainer>
             </Card>
 
             <Card className="p-5 animate-fade-in">
-              <h3 className="font-semibold text-foreground mb-4">Volume por Sistema</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                  <Pie data={kpis.volumePorSistema} dataKey="pct" nameKey="sistema" cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} label={({ sistema, pct }) => `${sistema} (${pct}%)`} labelLine={false}>
-                    {kpis.volumePorSistema.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <h3 className="font-semibold text-foreground mb-4 text-sm">Volume por Sistema</h3>
+              <div className="space-y-3">
+                {Object.entries(systemCounts)
+                  .sort(([, a], [, b]) => b - a)
+                  .slice(0, 6)
+                  .map(([sys, count], i) => (
+                    <MiniProgressBar key={sys} label={sys} value={count} max={maxSystem} color={COLORS[i % COLORS.length]} />
+                  ))}
+              </div>
             </Card>
           </div>
         </TabsContent>
 
         {/* ── Operacional ── */}
-        <TabsContent value="operacional" className="space-y-4 animate-fade-in">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <KPICard label="Sem Dt Entrega" value={kpis.operacional.semDtEntrega} subtitle="Demandas sem finalização" icon={FileText} />
-            <KPICard label="Responsáveis Ativos" value={kpis.operacional.responsaveisAtivos} subtitle="Com demandas em aberto" icon={Users} />
-            <KPICard label="Filas Ativas" value={kpis.operacional.filasAtivas} subtitle="CS + Aprovação UI/UX" icon={Layers} />
-            <KPICard label="Backlog 30+ Dias" value={kpis.operacional.backlog30Dias} subtitle="Alto risco" icon={AlertTriangle} alert />
+        <TabsContent value="operacional" className="space-y-5 animate-fade-in">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricTile label="Sem Dt Entrega" value={kpis.operacional.semDtEntrega} icon={FileText} accent="bg-[hsl(43,85%,46%)]" />
+            <MetricTile label="Responsáveis Ativos" value={kpis.operacional.responsaveisAtivos} icon={Users} />
+            <MetricTile label="Filas Ativas" value={kpis.operacional.filasAtivas} icon={Layers} accent="bg-[hsl(199,89%,48%)]" />
+            <MetricTile label="Backlog 30+ Dias" value={kpis.operacional.backlog30Dias} change={15} changeLabel="Alto risco" icon={AlertTriangle} accent="bg-[hsl(0,84%,60%)]" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="p-5 animate-fade-in">
-              <h3 className="font-semibold text-foreground mb-4">Fila por Responsável</h3>
+              <h3 className="font-semibold text-foreground mb-4 text-sm">Fila por Responsável</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={kpis.filaPorResp} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis type="number" fontSize={12} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis type="category" dataKey="resp" fontSize={12} stroke="hsl(var(--muted-foreground))" width={100} />
+                  <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis type="category" dataKey="resp" fontSize={11} stroke="hsl(var(--muted-foreground))" width={100} />
                   <Tooltip />
-                  <Bar dataKey="qtd" fill="hsl(199, 89%, 48%)" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="qtd" fill="hsl(43,85%,46%)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Card>
 
             <Card className="p-5 animate-fade-in">
-              <h3 className="font-semibold text-foreground mb-4">Aging da Fila</h3>
+              <h3 className="font-semibold text-foreground mb-4 text-sm">Aging da Fila</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={kpis.agingFila}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="faixa" fontSize={11} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis fontSize={12} stroke="hsl(var(--muted-foreground))" />
+                  <XAxis dataKey="faixa" fontSize={10} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis fontSize={11} stroke="hsl(var(--muted-foreground))" />
                   <Tooltip />
-                  <Bar dataKey="qtd" fill="hsl(0, 84%, 60%)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="qtd" radius={[4, 4, 0, 0]}>
+                    {kpis.agingFila.map((_, i) => (
+                      <Cell key={i} fill={i < 2 ? 'hsl(142,71%,45%)' : i < 3 ? 'hsl(43,85%,46%)' : 'hsl(0,84%,60%)'} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </Card>
           </div>
 
-          {/* Tabela operacional */}
-          <Card className="animate-fade-in">
+          <Card className="animate-fade-in overflow-hidden">
+            <div className="p-4 border-b border-border">
+              <h3 className="font-semibold text-foreground text-sm">Fila Operacional</h3>
+              <p className="text-xs text-muted-foreground">{data.length} itens em atuação</p>
+            </div>
             <div className="overflow-auto max-h-[400px]">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Id</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead>Resp</TableHead>
-                    <TableHead>Sistema</TableHead>
-                    <TableHead>Prioridade</TableHead>
-                    <TableHead>Ação</TableHead>
-                    <TableHead>Tags</TableHead>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="text-xs font-semibold">Id</TableHead>
+                    <TableHead className="text-xs font-semibold">Descrição</TableHead>
+                    <TableHead className="text-xs font-semibold">Resp</TableHead>
+                    <TableHead className="text-xs font-semibold">Sistema</TableHead>
+                    <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                    <TableHead className="text-xs font-semibold">Ação</TableHead>
+                    <TableHead className="text-xs font-semibold">Tags</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-muted/50 transition-colors">
-                      <TableCell className="font-mono text-xs">{item.id}</TableCell>
+                    <TableRow key={item.id} className="hover:bg-muted/30 transition-colors">
+                      <TableCell className="font-mono text-xs text-muted-foreground">{item.id}</TableCell>
                       <TableCell className="max-w-[280px] truncate text-sm">{item.descricao}</TableCell>
                       <TableCell className="text-sm">{item.resp || '—'}</TableCell>
-                      <TableCell className="text-sm">{item.sistema}</TableCell>
+                      <TableCell><Badge variant="outline" className="text-xs">{item.sistema}</Badge></TableCell>
                       <TableCell>
-                        <Badge variant={item.prioridade <= 1 ? 'destructive' : 'secondary'}>{item.prioridade}</Badge>
+                        <Badge className={`text-xs ${item.prioridade <= 1 ? 'bg-[hsl(0,84%,60%)] text-white' : item.prioridade <= 2 ? 'bg-[hsl(43,85%,46%)] text-[hsl(222,47%,11%)]' : 'bg-muted text-muted-foreground'}`}>
+                          P{item.prioridade}
+                        </Badge>
                       </TableCell>
-                      <TableCell><Badge variant="outline">{item.acao}</Badge></TableCell>
+                      <TableCell><Badge variant="secondary" className="text-xs">{item.acao}</Badge></TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{item.tags}</TableCell>
                     </TableRow>
                   ))}
@@ -176,41 +216,65 @@ export default function CustomerServiceDashboard() {
         </TabsContent>
 
         {/* ── Performance ── */}
-        <TabsContent value="performance" className="space-y-4 animate-fade-in">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <KPICard label="Throughput Médio" value="4/sprint" subtitle="Média de entregas por sprint" icon={Zap} />
-            <KPICard label="Lead Time Médio" value={`${kpis.performance.leadTimeMedio} dias`} subtitle="Tempo médio de atuação CS" icon={TrendingUp} />
-            <KPICard label="Backlog Envelhecido" value={`${kpis.performance.backlogEnvelhecido}%`} subtitle="Risco alto" icon={AlertTriangle} alert />
-            <KPICard label="Taxa Conclusão Geral" value={`${kpis.performance.taxaConclusao}%`} subtitle="Média entre sprints" icon={Target} />
+        <TabsContent value="performance" className="space-y-5 animate-fade-in">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricTile label="Throughput Médio" value="4/sprint" change={10} icon={Zap} />
+            <MetricTile label="Lead Time Médio" value={`${kpis.performance.leadTimeMedio}d`} icon={TrendingUp} accent="bg-[hsl(199,89%,48%)]" />
+            <MetricTile label="Backlog Envelhecido" value={`${kpis.performance.backlogEnvelhecido}%`} change={8} icon={AlertTriangle} accent="bg-[hsl(0,84%,60%)]" />
+            <MetricTile label="Taxa Conclusão" value={`${kpis.performance.taxaConclusao}%`} change={-2} icon={Target} accent="bg-[hsl(142,71%,45%)]" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="p-5 animate-fade-in">
-              <h3 className="font-semibold text-foreground mb-4">Throughput por Sprint CS</h3>
-              <ResponsiveContainer width="100%" height={250}>
+              <h3 className="font-semibold text-foreground mb-4 text-sm">Throughput por Sprint CS</h3>
+              <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={kpis.throughputPorSprint}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="sprint" fontSize={12} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis fontSize={12} stroke="hsl(var(--muted-foreground))" />
+                  <XAxis dataKey="sprint" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis fontSize={11} stroke="hsl(var(--muted-foreground))" />
                   <Tooltip />
-                  <Bar dataKey="valor" fill="hsl(199, 89%, 48%)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="valor" fill="hsl(199,89%,48%)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Card>
 
             <Card className="p-5 animate-fade-in">
-              <h3 className="font-semibold text-foreground mb-4">Taxa de Conclusão por Sprint</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={kpis.taxaConclusaoPorSprint}>
+              <h3 className="font-semibold text-foreground mb-4 text-sm">Taxa de Conclusão por Sprint</h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={kpis.taxaConclusaoPorSprint}>
+                  <defs>
+                    <linearGradient id="taxaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(142,71%,45%)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(142,71%,45%)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="sprint" fontSize={12} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis domain={[0, 100]} fontSize={12} stroke="hsl(var(--muted-foreground))" unit="%" />
+                  <XAxis dataKey="sprint" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis domain={[0, 100]} fontSize={11} stroke="hsl(var(--muted-foreground))" unit="%" />
                   <Tooltip />
-                  <Line type="monotone" dataKey="taxa" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={{ fill: 'hsl(142, 71%, 45%)', r: 5 }} />
-                </LineChart>
+                  <Area type="monotone" dataKey="taxa" stroke="hsl(142,71%,45%)" fill="url(#taxaGrad)" strokeWidth={2} />
+                </AreaChart>
               </ResponsiveContainer>
             </Card>
           </div>
+
+          <Card className="p-5 animate-fade-in">
+            <h3 className="font-semibold text-foreground mb-4 text-sm">Distribuição por Prioridade</h3>
+            <div className="grid grid-cols-5 gap-3">
+              {priorityCounts.map((count, i) => (
+                <div key={i} className="text-center">
+                  <div className={`text-2xl font-bold ${i <= 1 ? 'text-[hsl(0,84%,60%)]' : i <= 2 ? 'text-[hsl(43,85%,46%)]' : 'text-muted-foreground'}`}>{count}</div>
+                  <div className="text-xs text-muted-foreground mt-1">P{i}</div>
+                  <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{
+                      width: `${(count / Math.max(...priorityCounts, 1)) * 100}%`,
+                      backgroundColor: i <= 1 ? 'hsl(0,84%,60%)' : i <= 2 ? 'hsl(43,85%,46%)' : 'hsl(var(--muted-foreground))',
+                    }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
         </TabsContent>
       </Tabs>
     </SectorLayout>
