@@ -41,7 +41,7 @@ const navItems: NavItem[] = [
 const sectorItems: NavItem[] = [
   { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp },
   { label: 'Comunicação', path: '/setor/comunicacao', icon: Mail },
-  { label: 'Customer Service', path: '/setor/customer-service', icon: HeadphonesIcon },
+  { label: 'Customer Service', path: '/setor/customer-service', icon: Users },
   {
     label: 'HelpDesk', path: '/dashboard', icon: Headphones,
     children: [
@@ -50,6 +50,7 @@ const sectorItems: NavItem[] = [
       { label: 'Busca VDESK', path: '/ticket-busca', icon: Search },
       { label: 'Acompanhamento', path: '/acompanhamento', icon: Headphones },
       { label: 'Importações', path: '/importacoes', icon: Upload },
+      { label: 'Configurações', path: '/configuracoes', icon: Settings },
     ],
   },
   { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server },
@@ -59,7 +60,6 @@ const sectorItems: NavItem[] = [
 
 const adminItems: NavItem[] = [
   { label: 'Usuários', path: '/usuarios', icon: Users, adminOnly: true },
-  { label: 'Configurações', path: '/configuracoes', icon: Settings, adminOnly: true },
 ];
 
 export function Sidebar() {
@@ -70,7 +70,7 @@ export function Sidebar() {
   const { isAuthenticated, isLoading, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
-  const isHelpdeskActive = ['/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/importacoes'].includes(location.pathname);
+  const isHelpdeskActive = ['/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/importacoes', '/configuracoes'].includes(location.pathname);
 
   const handleAuthAction = async () => {
     if (isLoading) return;
