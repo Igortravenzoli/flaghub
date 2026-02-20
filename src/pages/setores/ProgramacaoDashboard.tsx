@@ -60,7 +60,7 @@ export default function ProgramacaoDashboard() {
   const stateBadge = (state: string) => {
     switch (state) {
       case 'In Progress': return <Badge className="bg-[hsl(var(--info))] text-[hsl(var(--info-foreground))] animate-pulse font-mono text-xs">▶ EM PROGRESSO</Badge>;
-      case 'To Do': return <Badge className="bg-muted-foreground/20 text-foreground border border-muted-foreground/30 font-mono text-xs">◻ TO DO</Badge>;
+      case 'To Do': return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-300 dark:border-amber-700 font-mono text-xs">◻ TO DO</Badge>;
       case 'Done': return <Badge className="bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))] font-mono text-xs">✓ DONE</Badge>;
       default: return <Badge variant="secondary" className="font-mono text-xs">{state}</Badge>;
     }
@@ -105,15 +105,15 @@ export default function ProgramacaoDashboard() {
       </Card>
 
       {/* Airport Board */}
-      <Card className={`bg-[hsl(222,47%,11%)] dark:bg-background text-[hsl(210,40%,98%)] dark:text-foreground overflow-hidden animate-fade-in ${boardFullscreen ? 'fixed inset-0 z-50 rounded-none m-0' : ''}`} style={{ animationDelay: '500ms' }}>
-        <div className="p-4 border-b border-white/10 dark:border-border flex items-center gap-3">
+      <Card className={`bg-card text-card-foreground overflow-hidden animate-fade-in border ${boardFullscreen ? 'fixed inset-0 z-50 rounded-none m-0' : ''}`} style={{ animationDelay: '500ms' }}>
+        <div className="p-4 border-b border-border flex items-center gap-3">
           <Plane className="h-5 w-5 text-[hsl(var(--warning))]" />
           <h3 className="font-bold text-lg font-mono tracking-wider">PAINEL DE MONITORAMENTO — SPRINT S4-2026</h3>
           <div className="ml-auto flex gap-2 items-center">
-            {stats.aviao > 0 && <Badge className="bg-[hsl(199,89%,48%)] text-white font-mono animate-pulse">✈ {stats.aviao} AVIÕES</Badge>}
-            {stats.transbordo > 0 && <Badge className="bg-[hsl(43,85%,46%)] text-[hsl(222,47%,11%)] font-mono">⚡ {stats.transbordo} TRANSBORDOS</Badge>}
-            {stats.retornoQA > 0 && <Badge className="bg-[hsl(280,65%,60%)] text-white font-mono">↩ {stats.retornoQA} RETORNO QA</Badge>}
-            <Button variant="ghost" size="icon" onClick={() => setBoardFullscreen(!boardFullscreen)} className="text-white/70 hover:text-white hover:bg-white/10 h-8 w-8">
+            {stats.aviao > 0 && <Badge className="bg-[hsl(var(--info))] text-[hsl(var(--info-foreground))] font-mono animate-pulse">✈ {stats.aviao} AVIÕES</Badge>}
+            {stats.transbordo > 0 && <Badge className="bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))] font-mono">⚡ {stats.transbordo} TRANSBORDOS</Badge>}
+            {stats.retornoQA > 0 && <Badge className="bg-purple-500 text-white font-mono">↩ {stats.retornoQA} RETORNO QA</Badge>}
+            <Button variant="ghost" size="icon" onClick={() => setBoardFullscreen(!boardFullscreen)} className="text-muted-foreground hover:text-foreground hover:bg-muted h-8 w-8">
               {boardFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           </div>
@@ -121,20 +121,20 @@ export default function ProgramacaoDashboard() {
         <div className={`overflow-auto ${boardFullscreen ? 'max-h-[calc(100vh-60px)]' : 'max-h-[500px]'}`}>
           <Table>
             <TableHeader>
-              <TableRow className="border-white/10 dark:border-border hover:bg-white/5">
-                <TableHead className="text-[hsl(var(--warning))] font-mono">ID</TableHead>
-                <TableHead className="text-[hsl(var(--warning))] font-mono">TASK</TableHead>
-                <TableHead className="text-[hsl(var(--warning))] font-mono">COLABORADOR</TableHead>
-                <TableHead className="text-[hsl(var(--warning))] font-mono">STATUS</TableHead>
-                <TableHead className="text-[hsl(var(--warning))] font-mono">TAGS</TableHead>
+              <TableRow className="border-border hover:bg-muted/50">
+                <TableHead className="text-primary font-mono">ID</TableHead>
+                <TableHead className="text-primary font-mono">TASK</TableHead>
+                <TableHead className="text-primary font-mono">COLABORADOR</TableHead>
+                <TableHead className="text-primary font-mono">STATUS</TableHead>
+                <TableHead className="text-primary font-mono">TAGS</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.map((item, i) => (
-                <TableRow key={item.id} className="border-white/5 dark:border-border hover:bg-white/5 transition-colors animate-fade-in" style={{ animationDelay: `${600 + i * 30}ms` }}>
-                  <TableCell className="font-mono text-xs text-[hsl(199,89%,48%)]">#{item.id}</TableCell>
-                  <TableCell className="text-sm max-w-[350px] truncate">{item.title}</TableCell>
-                  <TableCell className="text-sm text-white/70 dark:text-muted-foreground">{item.assignedTo || '—'}</TableCell>
+                <TableRow key={item.id} className="border-border hover:bg-muted/50 transition-colors animate-fade-in" style={{ animationDelay: `${600 + i * 30}ms` }}>
+                  <TableCell className="font-mono text-xs text-primary">#{item.id}</TableCell>
+                  <TableCell className="text-sm max-w-[350px] truncate text-foreground">{item.title}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{item.assignedTo || '—'}</TableCell>
                   <TableCell>{stateBadge(item.state)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1 flex-wrap">
