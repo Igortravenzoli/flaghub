@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Monitor, Tv, Settings2, Play, Shuffle } from 'lucide-react';
+import { Monitor, Tv, Play, Shuffle, Minimize2 } from 'lucide-react';
 import { SectorCard } from '@/components/setores/SectorCard';
 import { sectors } from '@/data/mockSectorData';
 import { Card } from '@/components/ui/card';
@@ -12,12 +12,66 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 
+// Lazy-load sector dashboards for kiosk
+import QualidadeDashboard from '@/pages/setores/QualidadeDashboard';
+import ComercialDashboard from '@/pages/setores/ComercialDashboard';
+import CustomerServiceDashboard from '@/pages/setores/CustomerServiceDashboard';
+import InfraestruturaDashboard from '@/pages/setores/InfraestruturaDashboard';
+import ProgramacaoDashboard from '@/pages/setores/ProgramacaoDashboard';
+import ComunicacaoDashboard from '@/pages/setores/ComunicacaoDashboard';
+import Dashboard from '@/pages/Dashboard';
+
+const sectorComponents: Record<string, React.ComponentType> = {
+  helpdesk: Dashboard,
+  qualidade: QualidadeDashboard,
+  comercial: ComercialDashboard,
+  'customer-service': CustomerServiceDashboard,
+  infraestrutura: InfraestruturaDashboard,
+  programacao: ProgramacaoDashboard,
+  comunicacao: ComunicacaoDashboard,
+};
+
 export default function Home() {
   const navigate = useNavigate();
   const [kioskOpen, setKioskOpen] = useState(false);
   const [kioskRandom, setKioskRandom] = useState(false);
   const [kioskInterval, setKioskInterval] = useState('30');
   const [selectedSectors, setSelectedSectors] = useState<string[]>(sectors.map(s => s.slug));
+
+  // Kiosk fullscreen state
+  const [kioskActive, setKioskActive] = useState(false);
+  const [kioskCurrentIndex, setKioskCurrentIndex] = useState(0);
+
+  const activeSectors = sectors.filter(s => selectedSectors.includes(s.slug));
+
+  const exitKiosk = useCallback(() => {
+    setKioskActive(false);
+    document.exitFullscreen?.().catch(() => {});
+  }, []);
+
+  // Rotation effect
+  useEffect(() => {
+    if (!kioskActive || !kioskRandom || activeSectors.length <= 1) return;
+    const interval = setInterval(() => {
+      setKioskCurrentIndex(prev => (prev + 1) % activeSectors.length);
+    }, parseInt(kioskInterval) * 1000);
+    return () => clearInterval(interval);
+  }, [kioskActive, kioskRandom, kioskInterval, activeSectors.length]);
+
+  // Escape key to exit
+  useEffect(() => {
+    if (!kioskActive) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') exitKiosk(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [kioskActive, exitKiosk]);
+
+  const startKiosk = () => {
+    setKioskOpen(false);
+    setKioskCurrentIndex(0);
+    setKioskActive(true);
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  };
 
   const toggleSector = (slug: string) => {
     setSelectedSectors(prev =>
@@ -28,9 +82,34 @@ export default function Home() {
   const selectAll = () => setSelectedSectors(sectors.map(s => s.slug));
   const selectNone = () => setSelectedSectors([]);
 
+  // Kiosk fullscreen overlay
+  if (kioskActive && activeSectors.length > 0) {
+    const currentSector = activeSectors[kioskCurrentIndex % activeSectors.length];
+    const SectorComponent = sectorComponents[currentSector.slug];
+
+    return (
+      <div className="fixed inset-0 z-[100] bg-background overflow-auto">
+        {/* Exit bar */}
+        <div className="fixed top-4 right-4 z-[110] flex items-center gap-2">
+          {kioskRandom && activeSectors.length > 1 && (
+            <Badge variant="secondary" className="font-mono text-xs">
+              {currentSector.name} • {kioskCurrentIndex + 1}/{activeSectors.length}
+            </Badge>
+          )}
+          <Button variant="outline" size="sm" onClick={exitKiosk} className="bg-card/80 backdrop-blur-sm shadow-lg">
+            <Minimize2 className="h-4 w-4 mr-1" /> Sair
+          </Button>
+        </div>
+        {/* Render sector dashboard */}
+        <div className="p-6">
+          {SectorComponent ? <SectorComponent /> : <p>Dashboard não encontrado</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-8">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <div className="p-2 rounded-xl bg-primary">
           <Monitor className="h-6 w-6 text-primary-foreground" />
@@ -41,7 +120,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Sector Grid + Kiosk Card */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {sectors.map((sector) => (
           <SectorCard key={sector.slug} sector={sector} />
@@ -66,11 +144,10 @@ export default function Home() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-5 py-2">
-              {/* Rotation mode */}
               <div className="flex items-center justify-between">
                 <div>
-                  <Label className="text-sm font-medium">Modo Aleatório</Label>
-                  <p className="text-xs text-muted-foreground">Rotaciona entre setores selecionados</p>
+                  <Label className="text-sm font-medium">Modo Rotativo</Label>
+                  <p className="text-xs text-muted-foreground">Alterna entre setores selecionados</p>
                 </div>
                 <Switch checked={kioskRandom} onCheckedChange={setKioskRandom} />
               </div>
@@ -92,7 +169,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Sector selection */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium">Setores a exibir</Label>
@@ -118,15 +194,7 @@ export default function Home() {
               <Button
                 className="w-full gap-2"
                 disabled={selectedSectors.length === 0}
-                onClick={() => {
-                  setKioskOpen(false);
-                  // Navigate to first selected sector in kiosk mode
-                  const first = sectors.find(s => selectedSectors.includes(s.slug));
-                  if (first) {
-                    const path = first.slug === 'helpdesk' ? '/dashboard' : `/setor/${first.slug}`;
-                    navigate(path);
-                  }
-                }}
+                onClick={startKiosk}
               >
                 {kioskRandom ? <Shuffle className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 {kioskRandom ? 'Iniciar Rotação' : 'Abrir Dashboard'}
