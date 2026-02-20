@@ -3,12 +3,12 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   TrendingUp, Mail, Headphones, Server, Code, ShieldCheck, HeadphonesIcon,
-  Wifi, WifiOff, Clock,
+  LayoutGrid, Wifi, WifiOff, Clock,
 } from 'lucide-react';
 import type { SectorInfo } from '@/data/mockSectorData';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  TrendingUp, Mail, Headphones, Server, Code, ShieldCheck, HeadphonesIcon,
+  TrendingUp, Mail, Headphones, Server, Code, ShieldCheck, HeadphonesIcon, LayoutGrid,
 };
 
 export function SectorCard({ sector }: { sector: SectorInfo }) {
