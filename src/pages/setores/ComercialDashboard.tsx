@@ -3,10 +3,16 @@ import { Card } from '@/components/ui/card';
 import { TrendingUp, Users, Heart, BarChart3 } from 'lucide-react';
 import { comercialData } from '@/data/mockSectorData';
 import { Progress } from '@/components/ui/progress';
+import type { Integration } from '@/components/setores/SectorIntegrations';
+
+const integrations: Integration[] = [
+  { name: 'CRM API', type: 'api', status: 'up', lastCheck: '20/02/2026 09:00', latency: '150ms', description: 'Pipeline & Clientes' },
+  { name: 'ERP SQL Server', type: 'database', status: 'up', lastCheck: '20/02/2026 09:00', latency: '25ms', description: 'Dados financeiros' },
+];
 
 function BlockCard({ icon: Icon, title, children }: { icon: React.ComponentType<{ className?: string }>; title: string; children: React.ReactNode }) {
   return (
-    <Card className="p-5">
+    <Card className="p-5 animate-fade-in hover:shadow-md transition-all">
       <div className="flex items-center gap-2 mb-4">
         <div className="p-2 rounded-lg bg-primary/10">
           <Icon className="h-5 w-5 text-primary" />
@@ -21,7 +27,7 @@ function BlockCard({ icon: Icon, title, children }: { icon: React.ComponentType<
 export default function ComercialDashboard() {
   const d = comercialData;
   return (
-    <SectorLayout title="Dashboard Único Q1 2026" subtitle="Comercial — Visão Consolidada" lastUpdate="19/02/2026 09:30">
+    <SectorLayout title="Dashboard Único Q1 2026" subtitle="Comercial — Visão Consolidada" lastUpdate="19/02/2026 09:30" integrations={integrations}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Executivo */}
         <BlockCard icon={TrendingUp} title="Topo Executivo">

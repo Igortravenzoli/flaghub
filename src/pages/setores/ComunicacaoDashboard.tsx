@@ -3,10 +3,15 @@ import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { comunicacaoData } from '@/data/mockSectorData';
 import { Mail, Send, Eye, Users, Target } from 'lucide-react';
+import type { Integration } from '@/components/setores/SectorIntegrations';
+
+const integrations: Integration[] = [
+  { name: 'RD Station API', type: 'api', status: 'up', lastCheck: '20/02/2026 09:10', latency: '200ms', description: 'Email Marketing & Leads' },
+];
 
 function KPI({ icon: Icon, label, value, suffix }: { icon: React.ComponentType<{ className?: string }>; label: string; value: number | string; suffix?: string }) {
   return (
-    <Card className="p-4 text-center">
+    <Card className="p-4 text-center animate-fade-in hover:shadow-md transition-all">
       <Icon className="h-5 w-5 text-primary mx-auto mb-2" />
       <p className="text-2xl font-bold text-foreground">{value}{suffix}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -17,8 +22,7 @@ function KPI({ icon: Icon, label, value, suffix }: { icon: React.ComponentType<{
 export default function ComunicacaoDashboard() {
   const d = comunicacaoData;
   return (
-    <SectorLayout title="Comunicação" subtitle="Dashboard RD Station" lastUpdate="19/02/2026 09:10">
-      {/* KPIs */}
+    <SectorLayout title="Comunicação" subtitle="Dashboard RD Station" lastUpdate="19/02/2026 09:10" integrations={integrations}>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <KPI icon={Send} label="Emails enviados" value={d.kpis.emailsEnviados} />
         <KPI icon={Mail} label="Entregues" value={d.kpis.entregues} suffix="%" />
@@ -27,8 +31,7 @@ export default function ComunicacaoDashboard() {
         <KPI icon={Target} label="Conversões" value={d.kpis.conversoes} />
       </div>
 
-      {/* Tabela */}
-      <Card>
+      <Card className="animate-fade-in">
         <div className="overflow-auto">
           <Table>
             <TableHeader>
@@ -45,7 +48,7 @@ export default function ComunicacaoDashboard() {
             </TableHeader>
             <TableBody>
               {d.emails.map((email, i) => (
-                <TableRow key={i}>
+                <TableRow key={i} className="hover:bg-muted/50 transition-colors">
                   <TableCell className="max-w-[350px] truncate text-sm font-medium text-primary">{email.nome}</TableCell>
                   <TableCell className="text-sm">{email.dataEnvio}</TableCell>
                   <TableCell className="text-sm">{email.selecionados}</TableCell>
