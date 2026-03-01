@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Monitor, Loader2 } from 'lucide-react';
@@ -172,17 +172,17 @@ export default function Login() {
                     required
                   />
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="remember-me"
-                    checked={loginData.rememberMe}
-                    onCheckedChange={(checked) => 
-                      setLoginData(prev => ({ ...prev, rememberMe: checked === true }))
-                    }
-                  />
+                <div className="flex items-center justify-between">
                   <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
                     Manter conectado por 15 dias
                   </Label>
+                  <Switch
+                    id="remember-me"
+                    checked={loginData.rememberMe}
+                    onCheckedChange={(checked) => 
+                      setLoginData(prev => ({ ...prev, rememberMe: checked }))
+                    }
+                  />
                 </div>
                 <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting ? (
