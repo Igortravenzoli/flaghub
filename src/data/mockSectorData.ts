@@ -14,21 +14,21 @@ export interface SectorInfo {
 
 export const sectors: SectorInfo[] = [
   {
+    slug: 'produtos',
+    name: 'Produtos',
+    icon: 'Package',
+    kpiLabel: 'Emails enviados',
+    kpiValue: '285',
+    lastUpdate: '19/02/2026 09:10',
+    status: 'up',
+  },
+  {
     slug: 'comercial',
     name: 'Comercial',
     icon: 'TrendingUp',
     kpiLabel: 'Receita Q1',
     kpiValue: 'R$ 4.2M',
     lastUpdate: '19/02/2026 09:30',
-    status: 'up',
-  },
-  {
-    slug: 'comunicacao',
-    name: 'Comunicação',
-    icon: 'Mail',
-    kpiLabel: 'Emails enviados',
-    kpiValue: '285',
-    lastUpdate: '19/02/2026 09:10',
     status: 'up',
   },
   {
@@ -41,35 +41,15 @@ export const sectors: SectorInfo[] = [
     status: 'up',
   },
   {
-    slug: 'helpdesk',
-    name: 'HelpDesk',
-    icon: 'Headphones',
-    kpiLabel: 'Tickets ativos',
-    kpiValue: 142,
-    lastUpdate: '19/02/2026 09:15',
-    hasConnection: true,
-    connectionStatus: 'up',
-    status: 'up',
-  },
-  {
-    slug: 'infraestrutura',
-    name: 'Infraestrutura',
-    icon: 'Server',
-    kpiLabel: 'Conexões ativas',
-    kpiValue: 38,
-    lastUpdate: '10/01/2025 07:16',
-    hasConnection: true,
-    connectionStatus: 'up',
-    status: 'up',
-  },
-  {
-    slug: 'programacao',
-    name: 'Programação',
-    icon: 'Code',
-    kpiLabel: 'Backlog',
+    slug: 'fabrica',
+    name: 'Fábrica',
+    icon: 'Factory',
+    kpiLabel: 'Backlog Sprint',
     kpiValue: 83,
     lastUpdate: '19/02/2026 08:00',
-    status: 'partial',
+    hasConnection: true,
+    connectionStatus: 'up',
+    status: 'up',
   },
   {
     slug: 'qualidade',
@@ -78,6 +58,17 @@ export const sectors: SectorInfo[] = [
     kpiLabel: 'OSs na fila',
     kpiValue: 47,
     lastUpdate: '19/02/2026 09:00',
+    hasConnection: true,
+    connectionStatus: 'up',
+    status: 'up',
+  },
+  {
+    slug: 'tickets_os',
+    name: 'Tickets & OS',
+    icon: 'Headphones',
+    kpiLabel: 'Tickets ativos',
+    kpiValue: 142,
+    lastUpdate: '19/02/2026 09:15',
     hasConnection: true,
     connectionStatus: 'up',
     status: 'up',
@@ -183,26 +174,11 @@ export const customerServiceData: CSItem[] = [
   { id: 13647, descricao: 'Flexx Lead - Novas informações para IS do Supervisor', fila: 'CS', resp: '', sistema: 'Flexx Sales', prioridade: 0, esforco: 0, acao: 'Descoberta', tags: 'FLEXXSALES; MELHORIA' },
 ];
 
-// CS KPIs extras (referência imagens)
+// CS KPIs extras
 export const csKPIs = {
-  executiva: {
-    emAtuacao: 25,
-    leadTimeMedio: 17,
-    acima15Dias: 100,
-    taxaRetrabalho: 15,
-  },
-  operacional: {
-    semDtEntrega: 29,
-    responsaveisAtivos: 3,
-    filasAtivas: 2,
-    backlog30Dias: 24,
-  },
-  performance: {
-    throughputMedio: 4,
-    leadTimeMedio: 17,
-    backlogEnvelhecido: 100,
-    taxaConclusao: 100,
-  },
+  executiva: { emAtuacao: 25, leadTimeMedio: 17, acima15Dias: 100, taxaRetrabalho: 15 },
+  operacional: { semDtEntrega: 29, responsaveisAtivos: 3, filasAtivas: 2, backlog30Dias: 24 },
+  performance: { throughputMedio: 4, leadTimeMedio: 17, backlogEnvelhecido: 100, taxaConclusao: 100 },
   demandasPorSprint: [
     { sprint: 'Sprint 1', finalizadas: 4 },
     { sprint: 'Sprint 2', finalizadas: 4 },
@@ -248,7 +224,7 @@ export const csKPIs = {
   ],
 };
 
-// ── Infraestrutura ──
+// ── Infraestrutura (now part of Fábrica) ──
 export const infraestruturaData = {
   conexoesAtivas: 38,
   ultimaAtualizacao: '10/01/2025 07:16:58',
@@ -280,34 +256,18 @@ export const infraestruturaData = {
     { ambiente: 'S6', distribuidora: 'Checon Distribuidora', valor: 1620000 },
   ],
   histogramaAcessos: [
-    { hora: '00:00', acessos: 2 },
-    { hora: '01:00', acessos: 1 },
-    { hora: '02:00', acessos: 1 },
-    { hora: '03:00', acessos: 0 },
-    { hora: '04:00', acessos: 1 },
-    { hora: '05:00', acessos: 3 },
-    { hora: '06:00', acessos: 12 },
-    { hora: '07:00', acessos: 35 },
-    { hora: '08:00', acessos: 28 },
-    { hora: '09:00', acessos: 22 },
-    { hora: '10:00', acessos: 18 },
-    { hora: '11:00', acessos: 16 },
-    { hora: '12:00', acessos: 10 },
-    { hora: '13:00', acessos: 14 },
-    { hora: '14:00', acessos: 17 },
-    { hora: '15:00', acessos: 19 },
-    { hora: '16:00', acessos: 32 },
-    { hora: '17:00', acessos: 38 },
-    { hora: '18:00', acessos: 25 },
-    { hora: '19:00', acessos: 8 },
-    { hora: '20:00', acessos: 5 },
-    { hora: '21:00', acessos: 3 },
-    { hora: '22:00', acessos: 2 },
-    { hora: '23:00', acessos: 1 },
+    { hora: '00:00', acessos: 2 }, { hora: '01:00', acessos: 1 }, { hora: '02:00', acessos: 1 },
+    { hora: '03:00', acessos: 0 }, { hora: '04:00', acessos: 1 }, { hora: '05:00', acessos: 3 },
+    { hora: '06:00', acessos: 12 }, { hora: '07:00', acessos: 35 }, { hora: '08:00', acessos: 28 },
+    { hora: '09:00', acessos: 22 }, { hora: '10:00', acessos: 18 }, { hora: '11:00', acessos: 16 },
+    { hora: '12:00', acessos: 10 }, { hora: '13:00', acessos: 14 }, { hora: '14:00', acessos: 17 },
+    { hora: '15:00', acessos: 19 }, { hora: '16:00', acessos: 32 }, { hora: '17:00', acessos: 38 },
+    { hora: '18:00', acessos: 25 }, { hora: '19:00', acessos: 8 }, { hora: '20:00', acessos: 5 },
+    { hora: '21:00', acessos: 3 }, { hora: '22:00', acessos: 2 }, { hora: '23:00', acessos: 1 },
   ],
 };
 
-// ── Programação (novo CSV Tasks_Sprint) ──
+// ── Programação (Sprint Tasks — now part of Fábrica) ──
 export interface SprintTask {
   id: number;
   type: string;
@@ -390,7 +350,7 @@ export const programacaoData: ProgramacaoItem[] = [
   { id: 8315, tipo: 'Product Backlog Item', titulo: 'Modernização do Emissor CTE, NFE e MDF-e', responsavel: 'Alessander Lantim', estado: 'New', tags: 'FLAG; FLEXX; QUICKONE', prioridade: 2, esforco: 5 },
 ];
 
-// ── Comunicação ──
+// ── Comunicação (now part of Produtos) ──
 export interface ComunicacaoEmail {
   nome: string;
   dataEnvio: string;

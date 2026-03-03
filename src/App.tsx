@@ -22,9 +22,12 @@ import Acompanhamento from "@/pages/Acompanhamento";
 import QualidadeDashboard from "@/pages/setores/QualidadeDashboard";
 import ComercialDashboard from "@/pages/setores/ComercialDashboard";
 import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
-import InfraestruturaDashboard from "@/pages/setores/InfraestruturaDashboard";
-import ProgramacaoDashboard from "@/pages/setores/ProgramacaoDashboard";
-import ComunicacaoDashboard from "@/pages/setores/ComunicacaoDashboard";
+import FabricaDashboard from "@/pages/setores/FabricaDashboard";
+import ProdutosDashboard from "@/pages/setores/ProdutosDashboard";
+import AccessRequests from "@/pages/admin/AccessRequests";
+import Permissions from "@/pages/admin/Permissions";
+import SyncCentral from "@/pages/admin/SyncCentral";
+import IpAllowlist from "@/pages/admin/IpAllowlist";
 
 const queryClient = new QueryClient();
 
@@ -73,9 +76,13 @@ const App = () => (
                 <Route path="/setor/qualidade" element={<QualidadeDashboard />} />
                 <Route path="/setor/comercial" element={<ComercialDashboard />} />
                 <Route path="/setor/customer-service" element={<CustomerServiceDashboard />} />
-                <Route path="/setor/infraestrutura" element={<InfraestruturaDashboard />} />
-                <Route path="/setor/programacao" element={<ProgramacaoDashboard />} />
-                <Route path="/setor/comunicacao" element={<ComunicacaoDashboard />} />
+                <Route path="/setor/fabrica" element={<FabricaDashboard />} />
+                <Route path="/setor/produtos" element={<ProdutosDashboard />} />
+                {/* Admin pages */}
+                <Route path="/admin/requests" element={<ProtectedRoute requiredRoles={["admin"]}><AccessRequests /></ProtectedRoute>} />
+                <Route path="/admin/permissions" element={<ProtectedRoute requiredRoles={["admin"]}><Permissions /></ProtectedRoute>} />
+                <Route path="/admin/sync" element={<ProtectedRoute requiredRoles={["admin"]}><SyncCentral /></ProtectedRoute>} />
+                <Route path="/admin/ip-allowlist" element={<ProtectedRoute requiredRoles={["admin"]}><IpAllowlist /></ProtectedRoute>} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

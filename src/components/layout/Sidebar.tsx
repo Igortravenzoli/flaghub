@@ -15,11 +15,14 @@ import {
   Headphones,
   Loader2,
   TrendingUp,
-  Mail,
-  HeadphonesIcon,
-  Server,
-  Code,
+  Package,
+  Factory,
   ShieldCheck,
+  Shield,
+  Globe,
+  RefreshCw,
+  UserCheck,
+  LayoutGrid,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -39,11 +42,13 @@ const navItems: NavItem[] = [
 ];
 
 const sectorItems: NavItem[] = [
+  { label: 'Produtos', path: '/setor/produtos', icon: Package },
   { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp },
-  { label: 'Comunicação', path: '/setor/comunicacao', icon: Mail },
-  { label: 'Customer Service', path: '/setor/customer-service', icon: Users },
+  { label: 'Customer Service', path: '/setor/customer-service', icon: LayoutGrid },
+  { label: 'Fábrica', path: '/setor/fabrica', icon: Factory },
+  { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck },
   {
-    label: 'HelpDesk', path: '/dashboard', icon: Headphones,
+    label: 'Tickets & OS', path: '/dashboard', icon: Headphones,
     children: [
       { label: 'Centro de Operações', path: '/dashboard', icon: LayoutDashboard },
       { label: 'Tickets', path: '/tickets', icon: Ticket },
@@ -53,13 +58,14 @@ const sectorItems: NavItem[] = [
       { label: 'Configurações', path: '/configuracoes', icon: Settings },
     ],
   },
-  { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server },
-  { label: 'Programação', path: '/setor/programacao', icon: Code },
-  { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck },
 ];
 
 const adminItems: NavItem[] = [
   { label: 'Usuários', path: '/usuarios', icon: Users, adminOnly: true },
+  { label: 'Solicitações', path: '/admin/requests', icon: UserCheck, adminOnly: true },
+  { label: 'Permissões', path: '/admin/permissions', icon: Shield, adminOnly: true },
+  { label: 'Central de Sync', path: '/admin/sync', icon: RefreshCw, adminOnly: true },
+  { label: 'IP Allowlist', path: '/admin/ip-allowlist', icon: Globe, adminOnly: true },
 ];
 
 export function Sidebar() {
@@ -146,10 +152,10 @@ export function Sidebar() {
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {navItems.map(renderNavItem)}
 
-        {/* Separator: Setores */}
+        {/* Separator: Áreas */}
         {!collapsed && (
           <div className="pt-3 pb-1 px-3">
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Setores</span>
+            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Áreas</span>
           </div>
         )}
         {collapsed && <div className="border-t border-sidebar-border my-2" />}
@@ -243,8 +249,7 @@ export function Sidebar() {
         </Button>
         {!collapsed && (
           <div className="text-xs text-sidebar-foreground/50">
-            <p>Tickets ↔ OS</p>
-            <p>v1.0.0</p>
+            <p>FlagHub v2.0</p>
           </div>
         )}
       </div>

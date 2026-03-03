@@ -11,25 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-
-// Lazy-load sector dashboards for kiosk
-import QualidadeDashboard from '@/pages/setores/QualidadeDashboard';
-import ComercialDashboard from '@/pages/setores/ComercialDashboard';
-import CustomerServiceDashboard from '@/pages/setores/CustomerServiceDashboard';
-import InfraestruturaDashboard from '@/pages/setores/InfraestruturaDashboard';
-import ProgramacaoDashboard from '@/pages/setores/ProgramacaoDashboard';
-import ComunicacaoDashboard from '@/pages/setores/ComunicacaoDashboard';
-import Dashboard from '@/pages/Dashboard';
-
-const sectorComponents: Record<string, React.ComponentType> = {
-  helpdesk: Dashboard,
-  qualidade: QualidadeDashboard,
-  comercial: ComercialDashboard,
-  'customer-service': CustomerServiceDashboard,
-  infraestrutura: InfraestruturaDashboard,
-  programacao: ProgramacaoDashboard,
-  comunicacao: ComunicacaoDashboard,
-};
+import KioskOverlay from '@/components/home/KioskOverlay';
+import KioskConfigDialog from '@/components/home/KioskConfigDialog';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -37,8 +20,6 @@ export default function Home() {
   const [kioskRandom, setKioskRandom] = useState(false);
   const [kioskInterval, setKioskInterval] = useState('30');
   const [selectedSectors, setSelectedSectors] = useState<string[]>(sectors.map(s => s.slug));
-
-  // Kiosk fullscreen state
   const [kioskActive, setKioskActive] = useState(false);
   const [kioskCurrentIndex, setKioskCurrentIndex] = useState(0);
 
@@ -49,7 +30,6 @@ export default function Home() {
     document.exitFullscreen?.().catch(() => {});
   }, []);
 
-  // Rotation effect
   useEffect(() => {
     if (!kioskActive || !kioskRandom || activeSectors.length <= 1) return;
     const interval = setInterval(() => {
@@ -58,7 +38,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [kioskActive, kioskRandom, kioskInterval, activeSectors.length]);
 
-  // Escape key to exit
   useEffect(() => {
     if (!kioskActive) return;
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') exitKiosk(); };
@@ -79,32 +58,14 @@ export default function Home() {
     );
   };
 
-  const selectAll = () => setSelectedSectors(sectors.map(s => s.slug));
-  const selectNone = () => setSelectedSectors([]);
-
-  // Kiosk fullscreen overlay
   if (kioskActive && activeSectors.length > 0) {
-    const currentSector = activeSectors[kioskCurrentIndex % activeSectors.length];
-    const SectorComponent = sectorComponents[currentSector.slug];
-
     return (
-      <div className="fixed inset-0 z-[100] bg-background overflow-auto">
-        {/* Exit bar */}
-        <div className="fixed top-4 right-4 z-[110] flex items-center gap-2">
-          {kioskRandom && activeSectors.length > 1 && (
-            <Badge variant="secondary" className="font-mono text-xs">
-              {currentSector.name} • {kioskCurrentIndex + 1}/{activeSectors.length}
-            </Badge>
-          )}
-          <Button variant="outline" size="sm" onClick={exitKiosk} className="bg-card/80 backdrop-blur-sm shadow-lg">
-            <Minimize2 className="h-4 w-4 mr-1" /> Sair
-          </Button>
-        </div>
-        {/* Render sector dashboard */}
-        <div className="p-6">
-          {SectorComponent ? <SectorComponent /> : <p>Dashboard não encontrado</p>}
-        </div>
-      </div>
+      <KioskOverlay
+        activeSectors={activeSectors}
+        currentIndex={kioskCurrentIndex}
+        kioskRandom={kioskRandom}
+        onExit={exitKiosk}
+      />
     );
   }
 
@@ -116,7 +77,7 @@ export default function Home() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground">Hub de Operações</h1>
-          <p className="text-sm text-muted-foreground">Selecione um setor para acessar o dashboard</p>
+          <p className="text-sm text-muted-foreground">Selecione uma área para acessar o dashboard</p>
         </div>
       </div>
 
@@ -147,7 +108,7 @@ export default function Home() {
               <div className="flex items-center justify-between">
                 <div>
                   <Label className="text-sm font-medium">Modo Rotativo</Label>
-                  <p className="text-xs text-muted-foreground">Alterna entre setores selecionados</p>
+                  <p className="text-xs text-muted-foreground">Alterna entre áreas selecionadas</p>
                 </div>
                 <Switch checked={kioskRandom} onCheckedChange={setKioskRandom} />
               </div>
@@ -156,9 +117,7 @@ export default function Home() {
                 <div className="flex items-center gap-3">
                   <Label className="shrink-0 text-sm">Intervalo</Label>
                   <Select value={kioskInterval} onValueChange={setKioskInterval}>
-                    <SelectTrigger className="w-36">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="15">15 segundos</SelectItem>
                       <SelectItem value="30">30 segundos</SelectItem>
@@ -171,10 +130,10 @@ export default function Home() {
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Setores a exibir</Label>
+                  <Label className="text-sm font-medium">Áreas a exibir</Label>
                   <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={selectAll}>Todos</Button>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={selectNone}>Nenhum</Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelectedSectors(sectors.map(s => s.slug))}>Todos</Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelectedSectors([])}>Nenhum</Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto">
