@@ -12,21 +12,34 @@ Sistema de gerenciamento e correlação de tickets com ordens de serviço (OS), 
 
 ## ✅ Setup Rápido
 
+**Requisitos:** Node.js 18+ e [Bun](https://bun.sh)
+
 ```bash
 # 1. Instalar dependências
-npm install
+bun install
 
 # 2. Configurar variáveis de ambiente (.env.local)
 VITE_SUPABASE_URL=https://nxmgppfyltwsqryfxkbm.supabase.co
-VITE_SUPABASE_ANON_KEY=sua_chave_aqui
+VITE_SUPABASE_PUBLISHABLE_KEY=sua_chave_aqui
 VITE_API_BASE_URL=http://localhost:8080
 VITE_DEBUG_MODE=true
 
 # 3. Iniciar desenvolvimento
-npm run dev
+bun run dev
 ```
 
-Acesse: **http://localhost:8080**
+Acesse: **http://localhost:5173**
+
+## Configuração de Ambiente
+
+Crie um arquivo `.env.local` baseado no `.env.example` e preencha:
+
+```bash
+VITE_SUPABASE_URL=https://<ref-dev>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<anon-dev>
+```
+
+Nunca commite arquivos `.env`.
 
 ## 📁 Estrutura do Projeto
 

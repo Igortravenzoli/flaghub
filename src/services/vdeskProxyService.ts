@@ -7,7 +7,9 @@
 import { supabase } from '@/integrations/supabase/client';
 
 // URL base do Supabase (extraída do client)
-const SUPABASE_URL = 'https://nxmgppfyltwsqryfxkbm.supabase.co';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
+if (!SUPABASE_URL) throw new Error('Missing VITE_SUPABASE_URL');
 
 export interface TicketOSRecord {
   cliente: string;

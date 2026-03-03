@@ -80,7 +80,7 @@ export function TesteSupabaseSetup() {
         details: {
           error: err,
           url: import.meta.env.VITE_SUPABASE_URL,
-          anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 20) + '...',
+          publishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.substring(0, 20) + '...',
           timestamp: new Date().toLocaleString('pt-BR')
         }
       });
@@ -250,7 +250,7 @@ export function TesteSupabaseSetup() {
                   <strong>URL:</strong> {import.meta.env.VITE_SUPABASE_URL}
                 </p>
                 <p className="text-sm text-gray-600">
-                  <strong>Chave Anon:</strong> {import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 30)}...
+                  <strong>Chave Publica:</strong> {import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.substring(0, 30)}...
                 </p>
               </div>
 

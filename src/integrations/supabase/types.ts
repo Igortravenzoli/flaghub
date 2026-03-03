@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.4"
   }
   public: {
     Tables: {
@@ -452,7 +452,27 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"]
       }
+      batch_validate_os: {
+        Args: { p_validations: Json }
+        Returns: {
+          message: string
+          success: boolean
+          ticket_external_id: string
+        }[]
+      }
       get_batch_statistics: { Args: { p_batch_id: number }; Returns: Json }
+      get_correlation_stats: {
+        Args: { p_network_id?: number }
+        Returns: {
+          os_nao_encontradas: number
+          os_nao_validadas: number
+          os_validadas: number
+          taxa_correlacao: number
+          tickets_com_os: number
+          tickets_sem_os: number
+          total_tickets: number
+        }[]
+      }
       get_dashboard_summary: {
         Args: { p_network_id?: number }
         Returns: {
@@ -478,6 +498,25 @@ export type Database = {
           status: string
           total_records: number
           warnings_count: number
+        }[]
+      }
+      get_inconsistency_report: {
+        Args: {
+          p_network_id?: number
+          p_severity?: Database["public"]["Enums"]["ticket_severity"]
+        }
+        Returns: {
+          assigned_to: string
+          external_status: string
+          hours_without_os: number
+          inconsistency_code: string
+          internal_status: Database["public"]["Enums"]["internal_status"]
+          opened_at: string
+          os_found_in_vdesk: boolean
+          os_number: string
+          severity: Database["public"]["Enums"]["ticket_severity"]
+          ticket_external_id: string
+          ticket_type: string
         }[]
       }
       get_recent_batches: {
@@ -522,6 +561,17 @@ export type Database = {
           vdesk_payload: Json
         }[]
       }
+      get_ticket_timeline: {
+        Args: { p_ticket_external_id: string }
+        Returns: {
+          file_name: string
+          import_date: string
+          import_id: number
+          os_snapshot: string
+          severity_snapshot: string
+          status_snapshot: string
+        }[]
+      }
       get_tickets: {
         Args: {
           p_date_from?: string
@@ -552,6 +602,16 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_tickets_needing_os_validation: {
+        Args: { p_limit?: number; p_network_id?: number }
+        Returns: {
+          id: number
+          opened_at: string
+          os_number: string
+          severity: Database["public"]["Enums"]["ticket_severity"]
+          ticket_external_id: string
+        }[]
+      }
       get_user_network_id: { Args: { p_user_id: string }; Returns: number }
       get_user_role: {
         Args: { p_user_id: string }
@@ -567,12 +627,22 @@ export type Database = {
       hide_imports: { Args: { p_network_id: number }; Returns: number }
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_gestao: { Args: never; Returns: boolean }
+      jsonb_merge: { Args: { current: Json; new_data: Json }; Returns: Json }
       mark_tickets_inactive: { Args: { p_network_id: number }; Returns: number }
       provision_user: { Args: { p_user_id: string }; Returns: Json }
       purge_network_data: { Args: { p_network_id: number }; Returns: Json }
       purge_old_inactive_tickets: {
         Args: { p_days_threshold?: number; p_network_id: number }
         Returns: number
+      }
+      recalculate_ticket_severities: {
+        Args: { p_grace_hours?: number; p_network_id?: number }
+        Returns: {
+          critical_count: number
+          info_count: number
+          updated_count: number
+          warning_count: number
+        }[]
       }
     }
     Enums: {
