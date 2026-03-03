@@ -30,6 +30,17 @@ bun run dev
 
 Acesse: **http://localhost:5173**
 
+## Configuração de Ambiente
+
+Crie um arquivo `.env.local` baseado no `.env.example` e preencha:
+
+```bash
+VITE_SUPABASE_URL=https://<ref-dev>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<anon-dev>
+```
+
+Nunca commite arquivos `.env`.
+
 ## 📁 Estrutura do Projeto
 
 ```
