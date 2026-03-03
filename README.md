@@ -20,7 +20,7 @@ bun install
 
 # 2. Configurar variáveis de ambiente (.env.local)
 VITE_SUPABASE_URL=https://nxmgppfyltwsqryfxkbm.supabase.co
-VITE_SUPABASE_ANON_KEY=sua_chave_aqui
+VITE_SUPABASE_PUBLISHABLE_KEY=sua_chave_aqui
 VITE_API_BASE_URL=http://localhost:8080
 VITE_DEBUG_MODE=true
 

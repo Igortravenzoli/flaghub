@@ -16,7 +16,7 @@ npm install
 cat > .env.local << EOF
 VITE_API_BASE_URL=http://localhost:8080
 VITE_SUPABASE_URL=https://nxmgppfyltwsqryfxkbm.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 VITE_DEBUG_MODE=true
 EOF
 
@@ -116,7 +116,7 @@ operations-hub/
 |----------|-------|-----------|
 | `VITE_API_BASE_URL` | `http://localhost:8080` | Base URL do frontend (API integrada) |
 | `VITE_SUPABASE_URL` | `https://nxmgppfyltwsqryfxkbm.supabase.co` | Supabase cloud |
-| `VITE_SUPABASE_ANON_KEY` | `eyJhbGc...` | Chave anôn do Supabase |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | `eyJhbGc...` | Chave pública do Supabase |
 
 ### Opcionais
 

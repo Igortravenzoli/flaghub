@@ -58,7 +58,7 @@ HasAnonymousAccess: true
 ❌ **Se falhar:**
 - Verificar .env.local:
   - `VITE_SUPABASE_URL=https://nxmgppfyltwsqryfxkbm.supabase.co`
-  - `VITE_SUPABASE_ANON_KEY=eyJhbGc...` (JWT válido)
+   - `VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGc...` (JWT válido)
 - Verificar conexão de rede (Supabase é externa/cloud)
 
 ---
@@ -176,7 +176,7 @@ Testar a consulta de tickets na API REST integrada
 ```bash
 # Verificar variáveis em .env.local
 VITE_SUPABASE_URL=https://nxmgppfyltwsqryfxkbm.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGc...
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGc...
 
 # Verificar conexão de rede (Supabase é externa)
 # NÃO precisa iniciar Supabase localmente!
