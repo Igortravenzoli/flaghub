@@ -3,12 +3,12 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   TrendingUp, Mail, Headphones, Server, Code, ShieldCheck, HeadphonesIcon,
-  LayoutGrid, Wifi, WifiOff, Clock,
+  LayoutGrid, Wifi, WifiOff, Clock, Package, Factory,
 } from 'lucide-react';
 import type { SectorInfo } from '@/data/mockSectorData';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  TrendingUp, Mail, Headphones, Server, Code, ShieldCheck, HeadphonesIcon, LayoutGrid,
+  TrendingUp, Mail, Headphones, Server, Code, ShieldCheck, HeadphonesIcon, LayoutGrid, Package, Factory,
 };
 
 export function SectorCard({ sector }: { sector: SectorInfo }) {
@@ -16,7 +16,7 @@ export function SectorCard({ sector }: { sector: SectorInfo }) {
   const Icon = iconMap[sector.icon] || Headphones;
 
   const handleClick = () => {
-    if (sector.slug === 'helpdesk') {
+    if (sector.slug === 'tickets_os') {
       navigate('/dashboard');
     } else {
       navigate(`/setor/${sector.slug}`);
