@@ -12,6 +12,7 @@ interface SectorLayoutProps {
   lastUpdate?: string;
   children: ReactNode;
   integrations?: Integration[];
+  templateKey?: string;
   /** Additional tab content */
   extraTabs?: { id: string; label: string; icon: ReactNode; content: ReactNode }[];
 }
