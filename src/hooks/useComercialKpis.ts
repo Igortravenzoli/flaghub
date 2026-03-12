@@ -42,7 +42,7 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos') {
       const filter = statusFilter !== 'todos'
         ? { column: 'status', value: statusFilter }
         : undefined;
-      return fetchAllRows('vw_comercial_clientes_ativos', '*', filter) as Promise<ComercialClient[]>;
+      return fetchAllClients('*', filter) as Promise<ComercialClient[]>;
     },
     staleTime: 5 * 60 * 1000,
   });
