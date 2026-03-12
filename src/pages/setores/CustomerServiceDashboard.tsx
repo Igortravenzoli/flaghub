@@ -219,39 +219,6 @@ export default function CustomerServiceDashboard() {
               />
             )}
 
-            {/* Compact import history */}
-            <Card className="p-4">
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-                <Upload className="h-4 w-4 text-muted-foreground" />
-                Últimas Importações
-              </h3>
-              {batchesLoading ? (
-                <div className="py-3 flex justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
-              ) : recentBatches.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Nenhuma importação realizada. Use a aba "Importações" para enviar planilhas.</p>
-              ) : (
-                <div className="space-y-2">
-                  {recentBatches.map((b: any) => (
-                    <div key={b.id} className="flex items-center justify-between gap-2 rounded-md border border-border/50 px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        {b.status === 'published' ? (
-                          <CheckCircle className="h-3.5 w-3.5 text-[hsl(var(--chart-2))]" />
-                        ) : b.status === 'rejected' || b.status === 'error' ? (
-                          <XCircle className="h-3.5 w-3.5 text-destructive" />
-                        ) : (
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                        )}
-                        <Badge variant={b.status === 'published' ? 'default' : b.status === 'rejected' ? 'destructive' : 'secondary'} className="text-xs">
-                          {b.status === 'published' ? 'Publicado' : b.status === 'rejected' ? 'Rejeitado' : b.status}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">{b.valid_rows ?? 0}/{b.total_rows ?? 0} válidas</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{b.imported_at ? new Date(b.imported_at).toLocaleDateString('pt-BR') : '—'}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
           </TabsContent>
         </Tabs>
       )}
