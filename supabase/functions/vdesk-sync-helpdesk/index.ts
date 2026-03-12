@@ -1,4 +1,6 @@
-// gateway-sync-dashboard v1.0 — Sincroniza snapshots do dashboard helpdesk
+// gateway-sync-dashboard v2.0 — Sincroniza snapshots do dashboard helpdesk
+// Initial sync: last 90 days with Periodo=custom
+// Subsequent syncs: incremental (only since last collected_at)
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -46,6 +48,10 @@ async function getGatewayToken(): Promise<string> {
   return data.token || data.sessionToken || data.access_token
 }
 
+function formatDate(d: Date): string {
+  return d.toISOString().split('T')[0] // YYYY-MM-DD
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -63,10 +69,36 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}))
-    const periodoTipo = body.periodo_tipo || 'currentMonth'
     const consultor = body.consultor || null
-    const dataInicio = body.data_inicio || null
-    const dataFim = body.data_fim || null
+
+    // Determine date range: check last snapshot to decide initial vs incremental
+    const { data: lastSnapshot } = await admin
+      .from('helpdesk_dashboard_snapshots')
+      .select('collected_at')
+      .order('collected_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    let dataInicio: string
+    let dataFim: string
+    const now = new Date()
+    dataFim = body.data_fim || formatDate(now)
+
+    if (lastSnapshot?.collected_at && !body.data_inicio) {
+      // Incremental: from last collected minus 1 day for safety overlap
+      const lastDate = new Date(lastSnapshot.collected_at)
+      lastDate.setDate(lastDate.getDate() - 1)
+      dataInicio = formatDate(lastDate)
+      console.log(`[GatewaySyncDashboard] Incremental sync from ${dataInicio}`)
+    } else if (body.data_inicio) {
+      dataInicio = body.data_inicio
+    } else {
+      // Initial: last 90 days
+      const d = new Date()
+      d.setDate(d.getDate() - 90)
+      dataInicio = formatDate(d)
+      console.log(`[GatewaySyncDashboard] Initial sync - last 90 days from ${dataInicio}`)
+    }
 
     // Find sync job
     const { data: syncJob } = await admin
@@ -89,12 +121,12 @@ serve(async (req) => {
       const token = await getGatewayToken()
       const baseUrl = Deno.env.get('GATEWAY_BASE_URL')!
 
-      // Build query params
+      // Always use custom period with explicit dates
       const params = new URLSearchParams()
-      if (periodoTipo) params.set('periodo', periodoTipo)
-      if (consultor) params.set('consultor', consultor)
-      if (dataInicio) params.set('dataInicio', dataInicio)
-      if (dataFim) params.set('dataFim', dataFim)
+      params.set('Periodo', 'custom')
+      params.set('DataInicio', dataInicio)
+      params.set('DataFim', dataFim)
+      if (consultor) params.set('Consultor', consultor)
 
       const url = `${baseUrl}/api/helpdesk/dashboard?${params}`
       console.log(`[GatewaySyncDashboard] Fetching: ${url}`)
@@ -119,11 +151,11 @@ serve(async (req) => {
         processed_at: new Date().toISOString(),
       })
 
-      // Store snapshot
+      // Store snapshot — upsert by periodo_tipo + data_inicio + data_fim + consultor
       const snapshot = {
-        periodo_tipo: periodoTipo,
-        data_inicio: dataInicio || dashData.dataInicio || null,
-        data_fim: dataFim || dashData.dataFim || null,
+        periodo_tipo: 'custom',
+        data_inicio: dataInicio,
+        data_fim: dataFim,
         consultor: consultor,
         total_registros: dashData.totalRegistros || dashData.total || null,
         total_minutos: dashData.totalMinutos || dashData.tempoTotal || null,
@@ -148,12 +180,13 @@ serve(async (req) => {
       await admin.rpc('hub_audit_log', {
         p_action: 'gateway_sync_dashboard',
         p_entity_type: 'helpdesk_dashboard',
-        p_entity_id: periodoTipo,
-        p_metadata: { periodo_tipo: periodoTipo, consultor, duration_ms: duration },
+        p_entity_id: `${dataInicio}_${dataFim}`,
+        p_metadata: { data_inicio: dataInicio, data_fim: dataFim, consultor, duration_ms: duration },
       })
 
       return new Response(JSON.stringify({
-        success: true, periodo_tipo: periodoTipo, snapshot_saved: true, duration_ms: duration,
+        success: true, data_inicio: dataInicio, data_fim: dataFim,
+        snapshot_saved: true, duration_ms: duration,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
     } catch (innerErr) {
