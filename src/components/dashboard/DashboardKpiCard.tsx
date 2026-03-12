@@ -14,6 +14,8 @@ interface DashboardKpiCardProps {
   accent?: string;
   isLoading?: boolean;
   delay?: number;
+  onClick?: () => void;
+  active?: boolean;
 }
 
 export function DashboardKpiCard({
