@@ -65,6 +65,7 @@ const adminItems: NavItem[] = [
   { label: 'Solicitações', path: '/admin/requests', icon: UserCheck, adminOnly: true },
   { label: 'Permissões', path: '/admin/permissions', icon: Shield, adminOnly: true },
   { label: 'Central de Sync', path: '/admin/sync', icon: RefreshCw, adminOnly: true },
+  { label: 'Uploads Manuais', path: '/admin/uploads', icon: Upload, adminOnly: true },
   { label: 'IP Allowlist', path: '/admin/ip-allowlist', icon: Globe, adminOnly: true },
 ];
 

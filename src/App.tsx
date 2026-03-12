@@ -84,6 +84,7 @@ const App = () => (
                 <Route path="/admin/permissions" element={<ProtectedRoute requiredRoles={["admin"]}><Permissions /></ProtectedRoute>} />
                 <Route path="/admin/sync" element={<ProtectedRoute requiredRoles={["admin"]}><SyncCentral /></ProtectedRoute>} />
                 <Route path="/admin/ip-allowlist" element={<ProtectedRoute requiredRoles={["admin"]}><IpAllowlist /></ProtectedRoute>} />
+                <Route path="/admin/uploads" element={<ProtectedRoute requiredRoles={["admin"]}><ManualUploads /></ProtectedRoute>} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
