@@ -20,7 +20,11 @@ const integrations: Integration[] = [
 ];
 
 const columns: DataTableColumn<QualidadeItem>[] = [
-  { key: 'id', header: 'ID', className: 'font-mono text-xs w-16' },
+  { key: 'id', header: 'ID', className: 'font-mono text-xs w-16', render: r => r.web_url ? (
+    <a href={r.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono" onClick={e => e.stopPropagation()}>
+      {r.id}
+    </a>
+  ) : <span>{r.id}</span> },
   { key: 'title', header: 'Título', className: 'max-w-[350px] truncate' },
   { key: 'state', header: 'Estado', render: r => <Badge variant="outline" className="text-xs">{r.state || '—'}</Badge> },
   { key: 'assigned_to_display', header: 'Responsável' },
