@@ -17,7 +17,13 @@ export interface FabricaItem {
   parent_type: string | null;
 }
 
-export function useFabricaKpis() {
+function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  return d >= from && d <= to;
+}
+
+export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['fabrica', 'kpis'],
     queryFn: async () => {
@@ -44,21 +50,18 @@ export function useFabricaKpis() {
     staleTime: 60 * 1000,
   });
 
-  const items = query.data || [];
+  const allItems = query.data || [];
+
+  // Apply date filter
+  const items = (dateFrom && dateTo)
+    ? allItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    : allItems;
 
   const total = items.length;
   const inProgress = items.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
   const toDo = items.filter(i => i.state === 'To Do' || i.state === 'New').length;
   const done = items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
 
-  // Tags analysis
-  const tagCount = (tag: string) => items.filter(i => {
-    const tags = (i as any).tags || '';
-    // vw_fabrica_kpis doesn't have tags column - use parent data or item data from devops_work_items
-    return false;
-  }).length;
-
-  // Per collaborator
   const porColaborador = items.reduce((acc, item) => {
     const name = item.assigned_to_display || 'Não atribuído';
     acc[name] = (acc[name] || 0) + 1;
