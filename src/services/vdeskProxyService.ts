@@ -124,7 +124,7 @@ export async function correlacionarBatchViaProxy(
 ): Promise<BatchCorrelationResponse> {
   const { data: { session } } = await supabase.auth.getSession();
 
-  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?action=correlacao-batch`;
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os?action=correlacao-batch`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout
