@@ -28,6 +28,7 @@ import AccessRequests from "@/pages/admin/AccessRequests";
 import Permissions from "@/pages/admin/Permissions";
 import SyncCentral from "@/pages/admin/SyncCentral";
 import IpAllowlist from "@/pages/admin/IpAllowlist";
+import ManualUploads from "@/pages/admin/ManualUploads";
 
 const queryClient = new QueryClient();
 
