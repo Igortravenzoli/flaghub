@@ -64,7 +64,7 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos') {
   const statsQuery = useQuery({
     queryKey: ['comercial', 'stats'],
     queryFn: async () => {
-      const all = await fetchAllRows('vw_comercial_clientes_ativos', 'status');
+      const all = await fetchAllClients('status');
       const ativos = all.filter(c => c.status?.toLowerCase() === 'ativo').length;
       const inativos = all.filter(c => c.status?.toLowerCase() === 'inativo').length;
       const bloqueados = all.filter(c => c.status?.toLowerCase() === 'bloqueado').length;
