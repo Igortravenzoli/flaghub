@@ -20,6 +20,7 @@ import TesteSupabaseSetup from "@/pages/TesteSupabaseSetup";
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 import Acompanhamento from "@/pages/Acompanhamento";
 import QualidadeDashboard from "@/pages/setores/QualidadeDashboard";
+import HelpdeskDashboard from "@/pages/setores/HelpdeskDashboard";
 import ComercialDashboard from "@/pages/setores/ComercialDashboard";
 import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
 import FabricaDashboard from "@/pages/setores/FabricaDashboard";
@@ -76,6 +77,7 @@ const App = () => (
                 <Route path="/acompanhamento" element={<Acompanhamento />} />
                 {/* Sector dashboards */}
                 <Route path="/setor/qualidade" element={<QualidadeDashboard />} />
+                <Route path="/setor/helpdesk" element={<HelpdeskDashboard />} />
                 <Route path="/setor/comercial" element={<ComercialDashboard />} />
                 <Route path="/setor/customer-service" element={<CustomerServiceDashboard />} />
                 <Route path="/setor/fabrica" element={<FabricaDashboard />} />

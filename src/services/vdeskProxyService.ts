@@ -62,7 +62,7 @@ export async function correlacionarTicketViaProxy(
 ): Promise<CorrelacaoResponse> {
   const { data: { session } } = await supabase.auth.getSession();
   
-  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?action=correlacao&ticketNestle=${encodeURIComponent(ticketNestle)}`;
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os?action=correlacao&ticketNestle=${encodeURIComponent(ticketNestle)}`;
   
   const response = await fetch(functionUrl, {
     method: 'GET',
@@ -124,7 +124,7 @@ export async function correlacionarBatchViaProxy(
 ): Promise<BatchCorrelationResponse> {
   const { data: { session } } = await supabase.auth.getSession();
 
-  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?action=correlacao-batch`;
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os?action=correlacao-batch`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout
@@ -179,7 +179,7 @@ export async function consultarTicketsViaProxy(params: {
   if (params.pageNumber) queryParams.append('pageNumber', params.pageNumber.toString());
   if (params.pageSize) queryParams.append('pageSize', params.pageSize.toString());
 
-  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?${queryParams}`;
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os?${queryParams}`;
   
   const response = await fetch(functionUrl, {
     method: 'GET',

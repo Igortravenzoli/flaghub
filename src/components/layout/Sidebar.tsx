@@ -24,6 +24,7 @@ import {
   RefreshCw,
   UserCheck,
   LayoutGrid,
+  Eye,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -50,12 +51,17 @@ const sectorItems: NavItem[] = [
   { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server },
   { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck },
   {
-    label: 'Tickets & OS', path: '/dashboard', icon: Headphones,
+    label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones,
     children: [
-      { label: 'Centro de Operações', path: '/dashboard', icon: LayoutDashboard },
-      { label: 'Tickets', path: '/tickets', icon: Ticket },
-      { label: 'Busca VDESK', path: '/ticket-busca', icon: Search },
-      { label: 'Acompanhamento', path: '/acompanhamento', icon: Headphones },
+      { label: 'Dashboard Helpdesk', path: '/setor/helpdesk', icon: LayoutDashboard },
+      { label: 'Painel Gerenciamento Tickets', path: '/dashboard', icon: Ticket },
+      { label: 'Pesquisar', path: '/tickets', icon: Search,
+        children: [
+          { label: 'Tickets', path: '/tickets', icon: Ticket },
+          { label: 'Busca VDesk', path: '/ticket-busca', icon: Search },
+        ],
+      },
+      { label: 'Acompanhamento', path: '/acompanhamento', icon: Eye },
       { label: 'Importações', path: '/importacoes', icon: Upload },
       { label: 'Configurações', path: '/configuracoes', icon: Settings },
     ],
@@ -76,10 +82,13 @@ export function Sidebar() {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [helpdeskOpen, setHelpdeskOpen] = useState(false);
+  const [pesquisarOpen, setPesquisarOpen] = useState(false);
   const { isAuthenticated, isLoading, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
-  const isHelpdeskActive = ['/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/importacoes', '/configuracoes'].includes(location.pathname);
+  const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/importacoes', '/configuracoes'];
+  const isHelpdeskActive = helpdeskPaths.includes(location.pathname);
+  const isPesquisarActive = ['/tickets', '/ticket-busca'].includes(location.pathname);
 
   const handleAuthAction = async () => {
     if (isLoading) return;
@@ -112,6 +121,71 @@ export function Sidebar() {
       >
         <Icon className="h-4 w-4 flex-shrink-0" />
         {!collapsed && <span className="font-medium">{item.label}</span>}
+      </Link>
+    );
+  };
+
+  const renderChildItem = (child: NavItem, level = 0) => {
+    const ChildIcon = child.icon;
+    const childActive = isActive(child.path);
+
+    // Handle "Pesquisar" submenu
+    if (child.children) {
+      return (
+        <div key={child.label}>
+          <button
+            onClick={() => setPesquisarOpen(!pesquisarOpen)}
+            className={cn(
+              "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all w-full",
+              isPesquisarActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+            )}
+          >
+            <ChildIcon className="h-3.5 w-3.5" />
+            <span className="flex-1 text-left">{child.label}</span>
+            <ChevronRight className={cn("h-3 w-3 transition-transform", pesquisarOpen && "rotate-90")} />
+          </button>
+          {pesquisarOpen && (
+            <div className="ml-3 pl-2 border-l border-sidebar-border space-y-0.5 mt-0.5">
+              {child.children.map((sub) => {
+                const SubIcon = sub.icon;
+                const subActive = isActive(sub.path);
+                return (
+                  <Link
+                    key={sub.path}
+                    to={sub.path}
+                    className={cn(
+                      "flex items-center gap-2 px-2 py-1 rounded-md text-[11px] transition-all",
+                      subActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                        : "text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                    )}
+                  >
+                    <SubIcon className="h-3 w-3" />
+                    <span>{sub.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <Link
+        key={child.path}
+        to={child.path}
+        className={cn(
+          "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all",
+          childActive
+            ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+            : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+        )}
+      >
+        <ChildIcon className="h-3.5 w-3.5" />
+        <span>{child.label}</span>
       </Link>
     );
   };
@@ -187,25 +261,7 @@ export function Sidebar() {
                 </button>
                 {!collapsed && helpdeskOpen && (
                   <div className="ml-4 pl-3 border-l border-sidebar-border space-y-0.5 mt-0.5">
-                    {item.children.map((child) => {
-                      const ChildIcon = child.icon;
-                      const childActive = isActive(child.path);
-                      return (
-                        <Link
-                          key={child.path}
-                          to={child.path}
-                          className={cn(
-                            "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all",
-                            childActive
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
-                              : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-                          )}
-                        >
-                          <ChildIcon className="h-3.5 w-3.5" />
-                          <span>{child.label}</span>
-                        </Link>
-                      );
-                    })}
+                    {item.children.map((child) => renderChildItem(child))}
                   </div>
                 )}
               </div>
