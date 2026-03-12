@@ -15,22 +15,34 @@ export interface ComercialClient {
 
 export type ClientStatusFilter = 'todos' | 'ativo' | 'inativo' | 'bloqueado';
 
+/** Fetch all rows from a view, bypassing the 1000-row default limit */
+async function fetchAllClients(select: string, filter?: { column: string; value: string }) {
+  const PAGE = 1000;
+  let all: any[] = [];
+  let from = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    let q = supabase.from('vw_comercial_clientes_ativos').select(select).range(from, from + PAGE - 1);
+    if (filter) q = q.ilike(filter.column, filter.value);
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = data || [];
+    all = all.concat(rows);
+    hasMore = rows.length === PAGE;
+    from += PAGE;
+  }
+  return all;
+}
+
 export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos') {
   const clientsQuery = useQuery({
     queryKey: ['comercial', 'clientes', statusFilter],
     queryFn: async () => {
-      let query = supabase
-        .from('vw_comercial_clientes_ativos')
-        .select('*');
-
-      if (statusFilter !== 'todos') {
-        // Case-insensitive match via ilike
-        query = query.ilike('status', statusFilter);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []) as ComercialClient[];
+      const filter = statusFilter !== 'todos'
+        ? { column: 'status', value: statusFilter }
+        : undefined;
+      return fetchAllClients('*', filter) as Promise<ComercialClient[]>;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -49,15 +61,10 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos') {
     staleTime: 60 * 1000,
   });
 
-  // Stats query (always all clients for KPI counts)
   const statsQuery = useQuery({
     queryKey: ['comercial', 'stats'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vw_comercial_clientes_ativos')
-        .select('status');
-      if (error) throw error;
-      const all = data || [];
+      const all = await fetchAllClients('status');
       const ativos = all.filter(c => c.status?.toLowerCase() === 'ativo').length;
       const inativos = all.filter(c => c.status?.toLowerCase() === 'inativo').length;
       const bloqueados = all.filter(c => c.status?.toLowerCase() === 'bloqueado').length;
