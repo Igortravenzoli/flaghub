@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +32,7 @@ interface SectorImportAreaProps {
 export function SectorImportArea({ sectorName }: SectorImportAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [history] = useState<ImportRecord[]>(mockHistory);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -43,7 +44,18 @@ export function SectorImportArea({ sectorName }: SectorImportAreaProps) {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    // Mock — future implementation
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) {
+      console.log(`[SectorImport] ${files.length} arquivo(s) via drag-drop:`, files.map(f => f.name));
+    }
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length) {
+      console.log(`[SectorImport] ${files.length} arquivo(s) selecionado(s):`, files.map(f => f.name));
+    }
+    e.target.value = '';
   }, []);
 
   return (
@@ -66,8 +78,21 @@ export function SectorImportArea({ sectorName }: SectorImportAreaProps) {
         <p className="text-xs text-muted-foreground mt-1">
           Formatos aceitos: CSV, JSON, XLSX
         </p>
-        <Button variant="outline" size="sm" className="mt-4">
-          Selecionar Arquivo
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".csv,.json,.xlsx,.xls"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Selecionar Arquivo(s)
         </Button>
       </Card>
 
