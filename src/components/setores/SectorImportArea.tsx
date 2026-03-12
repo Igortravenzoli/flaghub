@@ -2,37 +2,38 @@ import { useState, useCallback, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Upload, FileSpreadsheet, FileJson, FileText, Clock, CheckCircle2, XCircle } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Upload, FileSpreadsheet, FileJson, FileText, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { useManualUpload, UploadFileStatus } from '@/hooks/useManualUpload';
 
-interface ImportRecord {
-  id: number;
-  fileName: string;
-  fileType: 'csv' | 'json' | 'xlsx';
-  importedAt: string;
-  status: 'success' | 'error' | 'processing';
-  records: number;
-}
-
-const mockHistory: ImportRecord[] = [
-  { id: 1, fileName: 'dados_setor_fev2026.xlsx', fileType: 'xlsx', importedAt: '19/02/2026 09:30', status: 'success', records: 142 },
-  { id: 2, fileName: 'backup_jan2026.csv', fileType: 'csv', importedAt: '15/01/2026 14:00', status: 'success', records: 89 },
-  { id: 3, fileName: 'config_errada.json', fileType: 'json', importedAt: '10/01/2026 11:20', status: 'error', records: 0 },
-];
-
-const fileTypeIcons = {
+const fileTypeIcons: Record<string, typeof FileText> = {
   csv: FileText,
   json: FileJson,
   xlsx: FileSpreadsheet,
+  xls: FileSpreadsheet,
 };
+
+function getFileIcon(fileName: string) {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  return fileTypeIcons[ext] || FileText;
+}
 
 interface SectorImportAreaProps {
   sectorName: string;
+  templateKey?: string;
 }
 
-export function SectorImportArea({ sectorName }: SectorImportAreaProps) {
+export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes' }: SectorImportAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const [history] = useState<ImportRecord[]>(mockHistory);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { uploadFiles, isUploading, fileStatuses, clearStatuses } = useManualUpload({
+    templateKey,
+    onComplete: () => {
+      // auto-clear statuses after 8s
+      setTimeout(clearStatuses, 8000);
+    },
+  });
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -45,24 +46,20 @@ export function SectorImportArea({ sectorName }: SectorImportAreaProps) {
     e.preventDefault();
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length) {
-      console.log(`[SectorImport] ${files.length} arquivo(s) via drag-drop:`, files.map(f => f.name));
-    }
-  }, []);
+    if (files.length) uploadFiles(files);
+  }, [uploadFiles]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length) {
-      console.log(`[SectorImport] ${files.length} arquivo(s) selecionado(s):`, files.map(f => f.name));
-    }
+    if (files.length) uploadFiles(files);
     e.target.value = '';
-  }, []);
+  }, [uploadFiles]);
 
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Upload Area */}
       <Card
-        className={`p-8 border-2 border-dashed transition-all duration-300 text-center ${
+        className={`p-8 border-2 border-dashed transition-all duration-300 text-center cursor-pointer ${
           isDragging
             ? 'border-primary bg-primary/5 scale-[1.01]'
             : 'border-border hover:border-primary/50'
@@ -70,13 +67,18 @@ export function SectorImportArea({ sectorName }: SectorImportAreaProps) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onClick={() => !isUploading && fileInputRef.current?.click()}
       >
-        <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+        {isUploading ? (
+          <Loader2 className="h-10 w-10 text-primary mx-auto mb-3 animate-spin" />
+        ) : (
+          <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+        )}
         <p className="text-sm font-medium text-foreground">
-          Arraste arquivos aqui ou clique para selecionar
+          {isUploading ? 'Processando arquivos...' : 'Arraste arquivos aqui ou clique para selecionar'}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          Formatos aceitos: CSV, JSON, XLSX
+          Formatos aceitos: CSV, JSON, XLSX • Seleção múltipla permitida
         </p>
         <input
           ref={fileInputRef}
@@ -85,48 +87,80 @@ export function SectorImportArea({ sectorName }: SectorImportAreaProps) {
           accept=".csv,.json,.xlsx,.xls"
           className="hidden"
           onChange={handleFileSelect}
+          disabled={isUploading}
         />
         <Button
           variant="outline"
           size="sm"
           className="mt-4"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={(e) => {
+            e.stopPropagation();
+            fileInputRef.current?.click();
+          }}
+          disabled={isUploading}
         >
-          Selecionar Arquivo(s)
+          {isUploading ? 'Processando...' : 'Selecionar Arquivo(s)'}
         </Button>
       </Card>
 
-      {/* History */}
+      {/* Upload Status */}
+      {fileStatuses.length > 0 && (
+        <Card className="p-4">
+          <h4 className="font-semibold text-foreground mb-3 text-sm">Resultado da Importação</h4>
+          <div className="space-y-2">
+            {fileStatuses.map((fs, idx) => (
+              <FileStatusRow key={idx} fileStatus={fs} />
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* History placeholder */}
       <Card className="p-4">
         <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
           <Clock className="h-4 w-4 text-muted-foreground" />
-          Histórico de Importações — {sectorName}
+          Importações — {sectorName}
         </h4>
-        <div className="space-y-2">
-          {history.map((item) => {
-            const Icon = fileTypeIcons[item.fileType];
-            return (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-              >
-                <Icon className="h-4 w-4 text-primary shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{item.fileName}</p>
-                  <p className="text-xs text-muted-foreground">{item.importedAt} • {item.records} registros</p>
-                </div>
-                {item.status === 'success' ? (
-                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--success))] shrink-0" />
-                ) : item.status === 'error' ? (
-                  <XCircle className="h-4 w-4 text-[hsl(var(--critical))] shrink-0" />
-                ) : (
-                  <Badge variant="secondary" className="text-xs">Processando...</Badge>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Os dados importados aparecerão no dashboard após processamento.
+        </p>
       </Card>
+    </div>
+  );
+}
+
+function FileStatusRow({ fileStatus }: { fileStatus: UploadFileStatus }) {
+  const Icon = getFileIcon(fileStatus.fileName);
+
+  return (
+    <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+      <Icon className="h-4 w-4 text-primary shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-foreground truncate">{fileStatus.fileName}</p>
+        {fileStatus.status === 'success' && fileStatus.result && (
+          <p className="text-xs text-muted-foreground">
+            {fileStatus.result.valid_rows} válidas • {fileStatus.result.invalid_rows} inválidas de {fileStatus.result.total_rows} linhas
+          </p>
+        )}
+        {fileStatus.status === 'error' && (
+          <p className="text-xs text-destructive">{fileStatus.error}</p>
+        )}
+        {fileStatus.status === 'uploading' && (
+          <Progress value={50} className="h-1 mt-1" />
+        )}
+      </div>
+      {fileStatus.status === 'success' && (
+        <CheckCircle2 className="h-4 w-4 text-[hsl(var(--chart-2))] shrink-0" />
+      )}
+      {fileStatus.status === 'error' && (
+        <XCircle className="h-4 w-4 text-destructive shrink-0" />
+      )}
+      {fileStatus.status === 'uploading' && (
+        <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
+      )}
+      {fileStatus.status === 'pending' && (
+        <Badge variant="secondary" className="text-xs">Na fila</Badge>
+      )}
     </div>
   );
 }
