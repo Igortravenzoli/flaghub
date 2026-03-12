@@ -98,6 +98,43 @@ export default function SyncCentral() {
     }
   };
 
+  const handleSyncQuery = async (query: any) => {
+    setRunningJobs(prev => new Set(prev).add(`q-${query.id}`));
+    toast.info(`Sincronizando query: ${query.name}...`);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('devops-sync-query', {
+        body: { query_id: query.id },
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(`Query sincronizada: ${query.name}`, {
+          description: `${data.items_upserted} itens atualizados de ${data.items_found} encontrados`,
+        });
+      } else {
+        toast.error(`Falha: ${data?.error || 'Erro desconhecido'}`);
+      }
+    } catch (err: any) {
+      toast.error(`Erro ao sincronizar query`, { description: err.message });
+    } finally {
+      setRunningJobs(prev => {
+        const next = new Set(prev);
+        next.delete(`q-${query.id}`);
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
+      queryClient.invalidateQueries({ queryKey: ['devops_queries_sync'] });
+    }
+  };
+
+  const handleSyncAllQueries = async () => {
+    for (const q of devopsQueries) {
+      await handleSyncQuery(q);
+    }
+  };
+
   const statusIcon = (status: string) => {
     switch (status) {
       case 'ok': return <CheckCircle className="h-3.5 w-3.5 text-green-500" />;
@@ -123,11 +160,63 @@ export default function SyncCentral() {
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['hub_sync_jobs'] });
             queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
+            queryClient.invalidateQueries({ queryKey: ['devops_queries_sync'] });
           }}
         >
           <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
         </Button>
       </div>
+
+      {/* DevOps Queries Section */}
+      <Card>
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" />
+            <h2 className="font-semibold">DevOps Queries</h2>
+          </div>
+          <Button size="sm" variant="outline" className="gap-1" onClick={handleSyncAllQueries}>
+            <Play className="h-3 w-3" /> Sync Todas
+          </Button>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Query</TableHead>
+              <TableHead>Setor</TableHead>
+              <TableHead>Última Sync</TableHead>
+              <TableHead>Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {queriesLoading && (
+              <TableRow><TableCell colSpan={4} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
+            )}
+            {!queriesLoading && devopsQueries.length === 0 && (
+              <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhuma query configurada</TableCell></TableRow>
+            )}
+            {devopsQueries.map((q: any) => {
+              const isRunning = runningJobs.has(`q-${q.id}`);
+              return (
+                <TableRow key={q.id}>
+                  <TableCell className="font-mono text-sm">{q.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{q.sector || 'geral'}</Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {q.last_synced_at ? new Date(q.last_synced_at).toLocaleString('pt-BR') : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Button size="sm" variant="outline" className="gap-1" disabled={isRunning} onClick={() => handleSyncQuery(q)}>
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      {isRunning ? 'Rodando...' : 'Sync'}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Card>
 
       <Card>
         <div className="p-4 border-b"><h2 className="font-semibold">Jobs Configurados</h2></div>
