@@ -1,0 +1,1 @@
+DELETE FROM helpdesk_dashboard_snapshots WHERE total_registros IS NULL OR total_registros = 0;
