@@ -10,6 +10,7 @@ export interface QualidadeItem {
   priority: number | null;
   created_date: string | null;
   changed_date: string | null;
+  web_url: string | null;
   qa_retorno_count?: number;
 }
 
