@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Monitor, Tv, Play, Shuffle, Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Clock, Wifi, WifiOff } from 'lucide-react';
+import { Monitor, Tv, Play, Shuffle, Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Clock, Wifi, WifiOff, Server } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +20,7 @@ import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones,
+  Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Server,
 };
 
 interface SectorCardData {
@@ -77,8 +77,14 @@ export default function Home() {
       hasConnection: true, connectionStatus: fabrica.isError ? 'down' : 'up',
     },
     {
+      slug: 'infraestrutura', name: 'Infraestrutura', icon: 'Server',
+      kpiLabel: 'Work Items', kpiValue: infra.total || null,
+      isLoading: infra.isLoading, path: '/setor/infraestrutura',
+      hasConnection: true, connectionStatus: infra.isError ? 'down' : 'up',
+    },
+    {
       slug: 'qualidade', name: 'Qualidade', icon: 'ShieldCheck',
-      kpiLabel: 'Itens na Fila', kpiValue: qualidade.items?.length || null,
+      kpiLabel: 'Itens na Fila', kpiValue: qualidade.filaQA || null,
       isLoading: qualidade.isLoading, path: '/setor/qualidade',
       hasConnection: true, connectionStatus: qualidade.isError ? 'down' : 'up',
     },

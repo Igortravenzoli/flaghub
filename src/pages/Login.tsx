@@ -22,7 +22,7 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAzureLoading, setIsAzureLoading] = useState(false);
 
-  const from = (location.state as { from?: string })?.from || '/dashboard';
+  const from = (location.state as { from?: string })?.from || '/home';
 
   const handleAzureLogin = async () => {
     setIsAzureLoading(true);

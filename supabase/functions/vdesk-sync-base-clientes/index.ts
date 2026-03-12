@@ -107,7 +107,7 @@ serve(async (req) => {
 
       while (hasMore) {
         console.log(`[GatewaySyncClients] Fetching page ${page}...`)
-        const url = `${baseUrl}/api/helpdesk/clientes?page=${page}&pageSize=${pageSize}`
+        const url = `${baseUrl}/api/helpdesk/clientes?Page=${page}&Size=${pageSize}`
         const resp = await fetch(url, {
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         })
@@ -119,13 +119,16 @@ serve(async (req) => {
 
         const data = await resp.json()
         const items = Array.isArray(data) ? data : (data.items || data.data || data.clientes || [])
+        const totalPages = data.totalPages || data.totalPaginas || null
 
         if (items.length === 0) {
           hasMore = false
         } else {
           allClients.push(...items)
           page++
-          if (items.length < pageSize) hasMore = false
+          // Stop if we know total pages, or if partial page received
+          if (totalPages && page > totalPages) hasMore = false
+          else if (items.length < pageSize) hasMore = false
         }
 
         // Safety: max 50 pages
