@@ -12,7 +12,13 @@ export interface QualidadeItem {
   changed_date: string | null;
 }
 
-export function useQualidadeKpis() {
+function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  return d >= from && d <= to;
+}
+
+export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['qualidade', 'kpis'],
     queryFn: async () => {
@@ -40,13 +46,16 @@ export function useQualidadeKpis() {
     staleTime: 60 * 1000,
   });
 
-  const items = query.data || [];
+  const allItems = query.data || [];
+
+  const items = (dateFrom && dateTo)
+    ? allItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    : allItems;
 
   const total = items.length;
   const filaQA = items.filter(i => i.state === 'New' || i.state === 'To Do' || i.state === 'Active').length;
   const emTeste = items.filter(i => i.state === 'In Progress' || i.state === 'Testing').length;
   const finalizados = items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
-
   const taxaVazao = total > 0 ? Math.round((finalizados / total) * 100) : 0;
 
   return {

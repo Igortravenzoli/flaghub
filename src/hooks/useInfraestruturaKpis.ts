@@ -14,7 +14,13 @@ export interface InfraItem {
   changed_date: string | null;
 }
 
-export function useInfraestruturaKpis() {
+function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  return d >= from && d <= to;
+}
+
+export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['infraestrutura', 'kpis'],
     queryFn: async () => {
@@ -42,23 +48,24 @@ export function useInfraestruturaKpis() {
     staleTime: 60 * 1000,
   });
 
-  const items = query.data || [];
+  const allItems = query.data || [];
+
+  const items = (dateFrom && dateTo)
+    ? allItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    : allItems;
 
   const total = items.length;
   const pendentes = items.filter(i => i.state === 'New' || i.state === 'To Do').length;
   const emAndamento = items.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
   const concluidos = items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
 
-  // Tag-based counters
   const countByTag = (tag: string) => items.filter(i => i.tags?.toUpperCase().includes(tag.toUpperCase())).length;
-
   const melhorias = countByTag('MELHORIA');
   const iso27001 = countByTag('ISO27001') + countByTag('ISO');
   const transbordo = countByTag('TRANSBORDO');
 
-  // Per state for backlog/dev breakdown
-  const backlog = items.filter(i => i.state === 'New' || i.state === 'To Do').length;
-  const dev = items.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
+  const backlog = pendentes;
+  const dev = emAndamento;
 
   return {
     items,
