@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { SectorLayout } from '@/components/setores/SectorLayout';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
