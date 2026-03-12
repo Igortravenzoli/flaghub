@@ -78,7 +78,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
         )}
 
         <TabsContent value="imports" className="mt-4">
-          <SectorImportArea sectorName={title} />
+          <SectorImportArea sectorName={title} templateKey={templateKey} />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-4">
