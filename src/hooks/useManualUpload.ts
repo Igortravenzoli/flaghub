@@ -69,7 +69,7 @@ async function parseXlsx(file: File): Promise<Record<string, string>[]> {
 
   for (let i = 0; i < matrix.length; i++) {
     const row = matrix[i] ?? [];
-    const score = row.reduce((acc, cell) => {
+    const score = row.reduce<number>((acc, cell) => {
       const key = normalize(cell);
       return acc + (key && expectedHeaders.has(key) ? 1 : 0);
     }, 0);
