@@ -106,8 +106,8 @@ export default function InfraestruturaDashboard() {
               columns={columns}
               data={items}
               isLoading={isLoading}
-              getRowKey={(r) => r.id || Math.random()}
-              onRowClick={setDrawerItem}
+              getRowKey={(r) => String(r.id ?? Math.random())}
+              onRowClick={(r) => setDrawerItem(r)}
               searchPlaceholder="Buscar atividade..."
             />
           )}
