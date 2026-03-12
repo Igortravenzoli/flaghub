@@ -77,8 +77,14 @@ export default function Home() {
       hasConnection: true, connectionStatus: fabrica.isError ? 'down' : 'up',
     },
     {
+      slug: 'infraestrutura', name: 'Infraestrutura', icon: 'Server',
+      kpiLabel: 'Work Items', kpiValue: infra.total || null,
+      isLoading: infra.isLoading, path: '/setor/infraestrutura',
+      hasConnection: true, connectionStatus: infra.isError ? 'down' : 'up',
+    },
+    {
       slug: 'qualidade', name: 'Qualidade', icon: 'ShieldCheck',
-      kpiLabel: 'Itens na Fila', kpiValue: qualidade.items?.length || null,
+      kpiLabel: 'Itens na Fila', kpiValue: qualidade.filaQA || null,
       isLoading: qualidade.isLoading, path: '/setor/qualidade',
       hasConnection: true, connectionStatus: qualidade.isError ? 'down' : 'up',
     },
