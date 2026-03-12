@@ -20,6 +20,7 @@ import TesteSupabaseSetup from "@/pages/TesteSupabaseSetup";
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 import Acompanhamento from "@/pages/Acompanhamento";
 import QualidadeDashboard from "@/pages/setores/QualidadeDashboard";
+import HelpdeskDashboard from "@/pages/setores/HelpdeskDashboard";
 import ComercialDashboard from "@/pages/setores/ComercialDashboard";
 import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
 import FabricaDashboard from "@/pages/setores/FabricaDashboard";
