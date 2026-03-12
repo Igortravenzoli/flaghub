@@ -23,7 +23,7 @@ interface SectorImportAreaProps {
   templateKey?: string;
 }
 
-export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes' }: SectorImportAreaProps) {
+export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1' }: SectorImportAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
