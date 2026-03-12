@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
-import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
+import { DashboardDataTable, DataTableColumn, ColumnFilter } from '@/components/dashboard/DashboardDataTable';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
