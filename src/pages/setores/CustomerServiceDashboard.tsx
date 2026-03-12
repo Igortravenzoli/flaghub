@@ -150,7 +150,7 @@ export default function CustomerServiceDashboard() {
                 data={devopsItems}
                 isLoading={isLoading}
                 getRowKey={(r) => String(r.work_item_id ?? Math.random())}
-                onRowClick={setDrawerItem}
+                onRowClick={(r) => setDrawerItem(r)}
                 searchPlaceholder="Buscar item..."
               />
             )}
