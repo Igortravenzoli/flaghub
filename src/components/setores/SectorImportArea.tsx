@@ -1,4 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +25,29 @@ interface SectorImportAreaProps {
   templateKey?: string;
 }
 
+interface ManualBatchHistoryItem {
+  id: string;
+  status: string;
+  total_rows: number | null;
+  valid_rows: number | null;
+  invalid_rows: number | null;
+  imported_at: string | null;
+  published_at: string | null;
+  manual_import_templates?: { key: string } | null;
+}
+
+function getBatchStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    uploaded: 'Enviado',
+    parsed: 'Parseado',
+    validated: 'Validado',
+    published: 'Publicado',
+    rejected: 'Rejeitado',
+    error: 'Erro',
+  };
+  return labels[status] ?? status;
+}
+
 export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1' }: SectorImportAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -32,6 +57,26 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
     onComplete: () => {
       // auto-clear statuses after 8s
       setTimeout(clearStatuses, 8000);
+    },
+  });
+
+  const { data: history = [], isLoading: isHistoryLoading } = useQuery({
+    queryKey: ['manual_import_batches', templateKey],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('manual_import_batches')
+        .select('id, status, total_rows, valid_rows, invalid_rows, imported_at, published_at, manual_import_templates!manual_import_batches_template_id_fkey(key)')
+        .order('imported_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      const rows = (data ?? []) as ManualBatchHistoryItem[];
+      const filtered = templateKey
+        ? rows.filter((row) => row.manual_import_templates?.key === templateKey)
+        : rows;
+
+      return filtered.slice(0, 10);
     },
   });
 
@@ -115,15 +160,41 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
         </Card>
       )}
 
-      {/* History placeholder */}
+      {/* Histórico */}
       <Card className="p-4">
         <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
           <Clock className="h-4 w-4 text-muted-foreground" />
-          Importações — {sectorName}
+          Histórico de Importações — {sectorName}
         </h4>
-        <p className="text-xs text-muted-foreground">
-          Os dados importados aparecerão no dashboard após processamento.
-        </p>
+
+        {isHistoryLoading ? (
+          <div className="py-4 flex items-center justify-center">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : history.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhuma importação encontrada para este setor.</p>
+        ) : (
+          <div className="space-y-2">
+            {history.map((batch) => (
+              <div key={batch.id} className="rounded-lg border border-border/60 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant={batch.status === 'published' ? 'default' : batch.status === 'rejected' || batch.status === 'error' ? 'destructive' : 'secondary'}>
+                    {getBatchStatusLabel(batch.status)}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {batch.imported_at ? new Date(batch.imported_at).toLocaleString('pt-BR') : '—'}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+                  <span>Total: {batch.total_rows ?? 0}</span>
+                  <span>Válidas: {batch.valid_rows ?? 0}</span>
+                  <span>Inválidas: {batch.invalid_rows ?? 0}</span>
+                  {batch.published_at && <span>Publicado: {new Date(batch.published_at).toLocaleString('pt-BR')}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );
