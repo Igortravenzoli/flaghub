@@ -26,17 +26,77 @@ interface UseManualUploadOptions {
 }
 
 /**
- * Parse an XLSX/XLS file into an array of row objects (first sheet).
+ * Parse an XLSX/XLS file into an array of row objects (first sheet),
+ * auto-detecting the real header row (ignores title/blank rows).
  */
 async function parseXlsx(file: File): Promise<Record<string, string>[]> {
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array' });
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error('Planilha vazia');
+
   const sheet = workbook.Sheets[sheetName];
-  // header: 1 returns arrays; we want objects keyed by header row
-  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
-  return rows;
+  const matrix = XLSX.utils.sheet_to_json<(string | number | boolean | Date | null)[]>(sheet, {
+    header: 1,
+    defval: '',
+    raw: false,
+  });
+
+  const normalize = (value: unknown) =>
+    String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  const expectedHeaders = new Set([
+    'cliente',
+    'responsavel',
+    'solucao',
+    'status',
+    'inicio',
+    'fim',
+    'obs',
+    'contato',
+    'licenca',
+    'atuacao',
+    'puxada',
+  ]);
+
+  let headerRowIndex = -1;
+  let bestScore = 0;
+
+  for (let i = 0; i < matrix.length; i++) {
+    const row = matrix[i] ?? [];
+    const score = row.reduce<number>((acc, cell) => {
+      const key = normalize(cell);
+      return acc + (key && expectedHeaders.has(key) ? 1 : 0);
+    }, 0);
+
+    if (score > bestScore) {
+      bestScore = score;
+      headerRowIndex = i;
+    }
+  }
+
+  if (headerRowIndex === -1 || bestScore < 3) {
+    throw new Error('Não foi possível identificar o cabeçalho da planilha');
+  }
+
+  const headers = (matrix[headerRowIndex] ?? []).map((cell) => String(cell ?? '').trim());
+  const dataRows = matrix
+    .slice(headerRowIndex + 1)
+    .filter((row) => row.some((cell) => String(cell ?? '').trim() !== ''));
+
+  return dataRows.map((row) => {
+    const out: Record<string, string> = {};
+    headers.forEach((header, idx) => {
+      if (!header) return;
+      out[header] = String(row[idx] ?? '').trim();
+    });
+    return out;
+  });
 }
 
 /**
