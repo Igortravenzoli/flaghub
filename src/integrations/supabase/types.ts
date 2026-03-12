@@ -72,46 +72,58 @@ export type Database = {
       }
       cs_implantacoes_records: {
         Row: {
+          atuacao: string | null
           batch_id: string | null
           cliente: string | null
           consultor: string | null
+          contato: string | null
           data_fim: string | null
           data_inicio: string | null
           data_referencia: string | null
           horas_totais: number | null
           id: string
+          licenca: string | null
           observacoes: string | null
           published_at: string | null
+          puxada: string | null
           raw: Json | null
           solucao: string | null
           status_implantacao: string | null
         }
         Insert: {
+          atuacao?: string | null
           batch_id?: string | null
           cliente?: string | null
           consultor?: string | null
+          contato?: string | null
           data_fim?: string | null
           data_inicio?: string | null
           data_referencia?: string | null
           horas_totais?: number | null
           id?: string
+          licenca?: string | null
           observacoes?: string | null
           published_at?: string | null
+          puxada?: string | null
           raw?: Json | null
           solucao?: string | null
           status_implantacao?: string | null
         }
         Update: {
+          atuacao?: string | null
           batch_id?: string | null
           cliente?: string | null
           consultor?: string | null
+          contato?: string | null
           data_fim?: string | null
           data_inicio?: string | null
           data_referencia?: string | null
           horas_totais?: number | null
           id?: string
+          licenca?: string | null
           observacoes?: string | null
           published_at?: string | null
+          puxada?: string | null
           raw?: Json | null
           solucao?: string | null
           status_implantacao?: string | null
