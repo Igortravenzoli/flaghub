@@ -18,7 +18,13 @@ export interface CSKpiItem {
   status_implantacao: string | null;
 }
 
-export function useCustomerServiceKpis() {
+function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  return d >= from && d <= to;
+}
+
+export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['customer-service', 'kpis'],
     queryFn: async () => {
@@ -31,7 +37,6 @@ export function useCustomerServiceKpis() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Manual queue (fila CS) from cs_fila_manual_records
   const filaQuery = useQuery({
     queryKey: ['customer-service', 'fila-manual'],
     queryFn: async () => {
@@ -60,14 +65,23 @@ export function useCustomerServiceKpis() {
     staleTime: 60 * 1000,
   });
 
-  const items = query.data || [];
+  const allItems = query.data || [];
   const filaManual = filaQuery.data || [];
+
+  // Apply date filter client-side using created_date or changed_date
+  const items = (dateFrom && dateTo)
+    ? allItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    : allItems;
 
   // Separate DevOps items and implantacoes
   const devopsItems = items.filter(i => i.source === 'devops_queue');
   const implantacoes = items.filter(i => i.source === 'manual_implantacao');
 
-  // KPI computations
+  // Unfiltered counts for KPIs that should show totals
+  const allDevops = allItems.filter(i => i.source === 'devops_queue');
+  const allImplantacoes = allItems.filter(i => i.source === 'manual_implantacao');
+
+  // KPI computations on filtered data
   const totalFilaCS = devopsItems.length;
   const porResponsavel = devopsItems.reduce((acc, item) => {
     const resp = item.assigned_to_display || 'Não atribuído';
@@ -80,6 +94,7 @@ export function useCustomerServiceKpis() {
 
   return {
     items,
+    allItems,
     devopsItems,
     implantacoes,
     filaManual,
@@ -88,6 +103,9 @@ export function useCustomerServiceKpis() {
     implAndamento: implAndamento.length,
     implFinalizadas: implFinalizadas.length,
     implTotal: implantacoes.length,
+    // Unfiltered totals for reference
+    allDevopsCount: allDevops.length,
+    allImplCount: allImplantacoes.length,
     lastSync: lastSyncQuery.data,
     isLoading: query.isLoading || filaQuery.isLoading,
     isError: query.isError,
