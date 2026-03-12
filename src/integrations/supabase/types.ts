@@ -1804,6 +1804,7 @@ export type Database = {
           priority: number | null
           state: string | null
           title: string | null
+          web_url: string | null
           work_item_type: string | null
         }
         Relationships: []
