@@ -16,14 +16,14 @@ export interface ComercialClient {
 export type ClientStatusFilter = 'todos' | 'ativo' | 'inativo' | 'bloqueado';
 
 /** Fetch all rows from a view, bypassing the 1000-row default limit */
-async function fetchAllRows(table: string, select: string, filter?: { column: string; value: string }) {
+async function fetchAllClients(select: string, filter?: { column: string; value: string }) {
   const PAGE = 1000;
   let all: any[] = [];
   let from = 0;
   let hasMore = true;
 
   while (hasMore) {
-    let q = supabase.from(table).select(select).range(from, from + PAGE - 1);
+    let q = supabase.from('vw_comercial_clientes_ativos').select(select).range(from, from + PAGE - 1);
     if (filter) q = q.ilike(filter.column, filter.value);
     const { data, error } = await q;
     if (error) throw error;
