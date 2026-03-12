@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -41,14 +41,16 @@ function getSupabaseAdmin() {
 
 async function validateAuth(req: Request): Promise<string | null> {
   const authHeader = req.headers.get('authorization')
-  if (!authHeader) return null
+  if (!authHeader?.startsWith('Bearer ')) return null
+  const token = authHeader.replace('Bearer ', '')
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
   )
-  const { data: { user } } = await supabase.auth.getUser()
-  return user?.id ?? null
+  const { data, error } = await supabase.auth.getClaims(token)
+  if (error || !data?.claims?.sub) return null
+  return data.claims.sub as string
 }
 
 async function devopsFetch(path: string, options: RequestInit = {}): Promise<Response> {
