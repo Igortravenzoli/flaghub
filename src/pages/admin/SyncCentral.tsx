@@ -30,6 +30,19 @@ export default function SyncCentral() {
     },
   });
 
+  const { data: devopsQueries = [], isLoading: queriesLoading } = useQuery({
+    queryKey: ['devops_queries_sync'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('devops_queries')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const { data: runs = [], isLoading: runsLoading } = useQuery({
     queryKey: ['hub_sync_runs'],
     queryFn: async () => {
