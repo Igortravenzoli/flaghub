@@ -12,11 +12,12 @@ interface SectorLayoutProps {
   lastUpdate?: string;
   children: ReactNode;
   integrations?: Integration[];
+  templateKey?: string;
   /** Additional tab content */
   extraTabs?: { id: string; label: string; icon: ReactNode; content: ReactNode }[];
 }
 
-export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, extraTabs }: SectorLayoutProps) {
+export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, extraTabs }: SectorLayoutProps) {
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -77,7 +78,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
         )}
 
         <TabsContent value="imports" className="mt-4">
-          <SectorImportArea sectorName={title} />
+          <SectorImportArea sectorName={title} templateKey={templateKey} />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-4">
