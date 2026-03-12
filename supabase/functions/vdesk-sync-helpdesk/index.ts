@@ -154,14 +154,21 @@ serve(async (req) => {
         processed_at: new Date().toISOString(),
       })
 
-      // Store snapshot — upsert by periodo_tipo + data_inicio + data_fim + consultor
+      // Extract totals from response — check multiple paths
+      const acum = dashData.acumulado || {}
+      const totalReg = dashData.totalRegistros || acum.totalRegistros || 
+        (dashData.registrosPorConsultor || []).reduce((s: number, c: any) => s + (c.totalRegistros || c.quantidade || 0), 0) || null
+      const totalMin = dashData.totalMinutos || acum.totalMinutos ||
+        (dashData.registrosPorConsultor || []).reduce((s: number, c: any) => s + (c.totalMinutos || 0), 0) || null
+
+      // Store snapshot
       const snapshot = {
         periodo_tipo: 'custom',
         data_inicio: dataInicio,
         data_fim: dataFim,
         consultor: consultor,
-        total_registros: dashData.totalRegistros || dashData.total || null,
-        total_minutos: dashData.totalMinutos || dashData.tempoTotal || null,
+        total_registros: totalReg,
+        total_minutos: totalMin,
         raw: dashData,
         collected_at: new Date().toISOString(),
       }
