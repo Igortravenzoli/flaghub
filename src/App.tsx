@@ -79,6 +79,7 @@ const App = () => (
                 <Route path="/setor/comercial" element={<ComercialDashboard />} />
                 <Route path="/setor/customer-service" element={<CustomerServiceDashboard />} />
                 <Route path="/setor/fabrica" element={<FabricaDashboard />} />
+                <Route path="/setor/infraestrutura" element={<InfraestruturaDashboard />} />
                 <Route path="/setor/produtos" element={<ProdutosDashboard />} />
                 {/* Admin pages */}
                 <Route path="/admin/requests" element={<ProtectedRoute requiredRoles={["admin"]}><AccessRequests /></ProtectedRoute>} />
