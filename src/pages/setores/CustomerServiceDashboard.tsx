@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2 } from 'lucide-react';
+import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
 type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas';
