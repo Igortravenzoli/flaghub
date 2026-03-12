@@ -135,31 +135,36 @@ export function Sidebar() {
     const ChildIcon = child.icon;
     const childActive = isActive(child.path);
 
-    // Handle "Pesquisar" submenu
+    // Handle submenus with children (Tickets, Pesquisar)
     if (child.children) {
+      const isTicketsSub = child.label === 'Tickets';
+      const isOpen = isTicketsSub ? ticketsOpen : pesquisarOpen;
+      const setOpen = isTicketsSub ? setTicketsOpen : setPesquisarOpen;
+      const isSubActive = isTicketsSub ? isTicketsActive : isPesquisarActive;
+
       return (
         <div key={child.label}>
           <button
-            onClick={() => setPesquisarOpen(!pesquisarOpen)}
+            onClick={() => setOpen(!isOpen)}
             className={cn(
               "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all w-full",
-              isPesquisarActive
+              isSubActive
                 ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
                 : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
             )}
           >
             <ChildIcon className="h-3.5 w-3.5" />
             <span className="flex-1 text-left">{child.label}</span>
-            <ChevronRight className={cn("h-3 w-3 transition-transform", pesquisarOpen && "rotate-90")} />
+            <ChevronRight className={cn("h-3 w-3 transition-transform", isOpen && "rotate-90")} />
           </button>
-          {pesquisarOpen && (
+          {isOpen && (
             <div className="ml-3 pl-2 border-l border-sidebar-border space-y-0.5 mt-0.5">
               {child.children.map((sub) => {
                 const SubIcon = sub.icon;
                 const subActive = isActive(sub.path);
                 return (
                   <Link
-                    key={sub.path}
+                    key={sub.path + sub.label}
                     to={sub.path}
                     className={cn(
                       "flex items-center gap-2 px-2 py-1 rounded-md text-[11px] transition-all",
