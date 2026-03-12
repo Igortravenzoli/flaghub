@@ -87,12 +87,14 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [helpdeskOpen, setHelpdeskOpen] = useState(false);
   const [pesquisarOpen, setPesquisarOpen] = useState(false);
+  const [ticketsOpen, setTicketsOpen] = useState(false);
   const { isAuthenticated, isLoading, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
   const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/importacoes', '/configuracoes'];
   const isHelpdeskActive = helpdeskPaths.includes(location.pathname);
   const isPesquisarActive = ['/tickets', '/ticket-busca'].includes(location.pathname);
+  const isTicketsActive = ['/dashboard', '/configuracoes'].includes(location.pathname);
 
   const handleAuthAction = async () => {
     if (isLoading) return;
