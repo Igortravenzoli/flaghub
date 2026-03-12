@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Upload, FileSpreadsheet, FileJson, FileText, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { useManualUpload, UploadFileStatus } from '@/hooks/useManualUpload';
+import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 
 const fileTypeIcons: Record<string, typeof FileText> = {
   csv: FileText,
@@ -50,12 +51,13 @@ function getBatchStatusLabel(status: string) {
 
 export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1' }: SectorImportAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const [showModeDialog, setShowModeDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { uploadFiles, isUploading, fileStatuses, clearStatuses } = useManualUpload({
     templateKey,
     onComplete: () => {
-      // auto-clear statuses after 8s
       setTimeout(clearStatuses, 8000);
     },
   });
@@ -80,6 +82,26 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
     },
   });
 
+  const hasExistingData = history.some(b => b.status === 'published');
+
+  const initiateUpload = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    if (hasExistingData) {
+      setPendingFiles(files);
+      setShowModeDialog(true);
+    } else {
+      uploadFiles(files, 'overwrite');
+    }
+  }, [hasExistingData, uploadFiles]);
+
+  const handleModeConfirm = useCallback((mode: ImportMode) => {
+    setShowModeDialog(false);
+    if (pendingFiles) {
+      uploadFiles(pendingFiles, mode);
+      setPendingFiles(null);
+    }
+  }, [pendingFiles, uploadFiles]);
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -91,14 +113,14 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
     e.preventDefault();
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length) uploadFiles(files);
-  }, [uploadFiles]);
+    if (files.length) initiateUpload(files);
+  }, [initiateUpload]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length) uploadFiles(files);
+    if (files.length) initiateUpload(files);
     e.target.value = '';
-  }, [uploadFiles]);
+  }, [initiateUpload]);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -196,6 +218,13 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
           </div>
         )}
       </Card>
+
+      <ImportModeDialog
+        open={showModeDialog}
+        onClose={() => { setShowModeDialog(false); setPendingFiles(null); }}
+        onConfirm={handleModeConfirm}
+        fileName={pendingFiles?.[0]?.name}
+      />
     </div>
   );
 }

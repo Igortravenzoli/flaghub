@@ -20,10 +20,20 @@ export interface UploadFileStatus {
   error?: string;
 }
 
+export type ImportMode = 'overwrite' | 'purge';
+
 interface UseManualUploadOptions {
   templateKey: string;
   onComplete?: () => void;
 }
+
+/**
+ * Map template keys to their curated tables for purge operations.
+ */
+const TEMPLATE_TABLES: Record<string, string> = {
+  cs_implantacoes_v1: 'cs_implantacoes_records',
+  cs_fila_cs_v1: 'cs_fila_manual_records',
+};
 
 /**
  * Parse an XLSX/XLS file into an array of row objects (first sheet),
@@ -135,7 +145,7 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
   const [fileStatuses, setFileStatuses] = useState<UploadFileStatus[]>([]);
   const queryClient = useQueryClient();
 
-  const uploadFiles = useCallback(async (files: File[]) => {
+  const uploadFiles = useCallback(async (files: File[], mode: ImportMode = 'overwrite') => {
     if (files.length === 0) return;
 
     setIsUploading(true);
@@ -144,6 +154,31 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
       status: 'pending',
     }));
     setFileStatuses([...statuses]);
+
+    // If purge mode, delete all existing records from the curated table first
+    if (mode === 'purge') {
+      const targetTable = TEMPLATE_TABLES[templateKey];
+      if (targetTable) {
+        try {
+          const { error: delErr } = await supabase
+            .from(targetTable as any)
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000'); // delete all rows
+          if (delErr) {
+            console.warn('[Purge] Falha ao limpar tabela:', delErr.message);
+            toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
+            setIsUploading(false);
+            return;
+          }
+          toast.info('Dados anteriores removidos com sucesso.');
+        } catch (err) {
+          console.error('[Purge] Error:', err);
+          toast.error('Erro ao limpar dados anteriores.');
+          setIsUploading(false);
+          return;
+        }
+      }
+    }
 
     let successCount = 0;
     let errorCount = 0;
