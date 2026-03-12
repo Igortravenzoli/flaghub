@@ -33,6 +33,17 @@ const columns: DataTableColumn<ComercialClient>[] = [
   },
 ];
 
+const tableColumnFilters: ColumnFilter[] = [
+  { key: 'bandeira', label: 'Bandeira' },
+  {
+    key: 'sistemas_label',
+    label: 'Sistemas',
+    extractValue: (row: ComercialClient) =>
+      row.sistemas_label ? row.sistemas_label.split(',').map((s: string) => s.trim()).filter(Boolean) : null,
+  },
+  { key: 'status', label: 'Status' },
+];
+
 export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
   const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter);
