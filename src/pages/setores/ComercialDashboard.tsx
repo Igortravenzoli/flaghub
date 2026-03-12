@@ -34,6 +34,8 @@ const columns: DataTableColumn<ComercialClient>[] = [
 ];
 
 const tableColumnFilters: ColumnFilter[] = [
+  { key: 'nome', label: 'Nome' },
+  { key: 'apelido', label: 'Apelido' },
   { key: 'bandeira', label: 'Bandeira' },
   {
     key: 'sistemas_label',
