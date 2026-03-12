@@ -78,8 +78,21 @@ export function SectorImportArea({ sectorName }: SectorImportAreaProps) {
         <p className="text-xs text-muted-foreground mt-1">
           Formatos aceitos: CSV, JSON, XLSX
         </p>
-        <Button variant="outline" size="sm" className="mt-4">
-          Selecionar Arquivo
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".csv,.json,.xlsx,.xls"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Selecionar Arquivo(s)
         </Button>
       </Card>
 
