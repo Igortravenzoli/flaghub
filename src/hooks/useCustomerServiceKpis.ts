@@ -68,9 +68,18 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date) {
   const allItems = query.data || [];
   const filaManual = filaQuery.data || [];
 
-  // Apply date filter client-side using created_date or changed_date
+  // Apply date filter client-side using created_date/changed_date.
+  // Manual uploads without date fields should remain visible.
   const items = (dateFrom && dateTo)
-    ? allItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    ? allItems.filter((i) => {
+        const inMainRange = isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo);
+        if (i.source !== 'manual_implantacao') return inMainRange;
+
+        const inReferenceRange = isInRange(i.data_referencia, dateFrom, dateTo);
+        const hasAnyDate = Boolean(i.created_date || i.changed_date || i.data_referencia);
+
+        return inMainRange || inReferenceRange || !hasAnyDate;
+      })
     : allItems;
 
   // Separate DevOps items and implantacoes
