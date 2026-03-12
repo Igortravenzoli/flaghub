@@ -101,13 +101,13 @@ serve(async (req) => {
 
       const baseUrl = Deno.env.get('GATEWAY_BASE_URL')!
       let allClients: any[] = []
-      let page = 1
+      let pageNumber = 1
       const pageSize = 100
-      let hasMore = true
+      let totalPages = 1
 
-      while (hasMore) {
-        console.log(`[GatewaySyncClients] Fetching page ${page}...`)
-        const url = `${baseUrl}/api/helpdesk/clientes?Page=${page}&Size=${pageSize}`
+      do {
+        console.log(`[GatewaySyncClients] Fetching pageNumber=${pageNumber}/${totalPages}...`)
+        const url = `${baseUrl}/api/helpdesk/clientes?pageNumber=${pageNumber}&pageSize=${pageSize}`
         const resp = await fetch(url, {
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         })
@@ -118,23 +118,16 @@ serve(async (req) => {
         }
 
         const data = await resp.json()
-        const items = Array.isArray(data) ? data : (data.items || data.data || data.clientes || [])
-        const totalPages = data.totalPages || data.totalPaginas || null
+        const items = Array.isArray(data) ? data : (data.data ?? data.items ?? data.clientes ?? [])
+        totalPages = data.totalPages ?? data.totalPaginas ?? 1
 
-        if (items.length === 0) {
-          hasMore = false
-        } else {
-          allClients.push(...items)
-          page++
-          // Stop if we know total pages, or if partial page received
-          if (totalPages && page > totalPages) hasMore = false
-          else if (items.length < pageSize) hasMore = false
-        }
+        allClients = allClients.concat(items)
+        console.log(`[GatewaySyncClients] Page ${pageNumber}: ${items.length} items, totalPages=${totalPages}`)
+        pageNumber++
 
-        // Safety: max 50 pages
-        if (page > 50) break
+        if (pageNumber > 50) break // safety
         await new Promise(r => setTimeout(r, 200))
-      }
+      } while (pageNumber <= totalPages)
 
       console.log(`[GatewaySyncClients] Fetched ${allClients.length} clients total`)
 
