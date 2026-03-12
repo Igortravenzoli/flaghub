@@ -29,6 +29,8 @@ export function DashboardKpiCard({
   accent,
   isLoading,
   delay = 0,
+  onClick,
+  active,
 }: DashboardKpiCardProps) {
   const numericValue = typeof value === 'number' ? value : 0;
   const animated = useCountUp(numericValue);
