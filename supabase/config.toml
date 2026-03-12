@@ -1,1 +1,25 @@
 project_id = "onpdhywrzjtwxaxuvijw"
+
+[functions.vdesk-proxy]
+verify_jwt = false
+
+[functions.consultar-vdesk]
+verify_jwt = false
+
+[functions.devops-sync-query]
+verify_jwt = false
+
+[functions.devops-sync-all]
+verify_jwt = false
+
+[functions.gateway-sync-clients]
+verify_jwt = false
+
+[functions.gateway-sync-dashboard]
+verify_jwt = false
+
+[functions.manual-upload-parse]
+verify_jwt = false
+
+[functions.manual-upload-publish]
+verify_jwt = false
