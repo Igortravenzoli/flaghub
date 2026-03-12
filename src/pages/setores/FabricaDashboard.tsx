@@ -17,6 +17,9 @@ import { Code2, ListTodo, Bug, AlertTriangle, Users, Server, Wrench, Shield, Clo
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
+type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done';
+type InfraKpiFilter = 'all' | 'pendentes' | 'em_andamento' | 'melhorias' | 'iso27001' | 'transbordo';
+
 const integrations: Integration[] = [
   { name: 'Azure DevOps API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items, Sprints' },
 ];
@@ -50,11 +53,13 @@ const infraColumns: DataTableColumn<InfraItem>[] = [
 ];
 
 export default function FabricaDashboard() {
-  const fab = useFabricaKpis();
-  const infra = useInfraestruturaKpis();
   const filters = useDashboardFilters('mes_atual');
+  const fab = useFabricaKpis(filters.dateFrom, filters.dateTo);
+  const infra = useInfraestruturaKpis(filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<(FabricaItem | InfraItem) & { web_url?: string } | null>(null);
+  const [fabKpiFilter, setFabKpiFilter] = useState<FabKpiFilter>('all');
+  const [infraKpiFilter, setInfraKpiFilter] = useState<InfraKpiFilter>('all');
 
   const colabChartData = useMemo(() =>
     Object.entries(fab.porColaborador)
@@ -63,6 +68,31 @@ export default function FabricaDashboard() {
       .map(([name, count]) => ({ name: name.split(' ').slice(0, 2).join(' '), count })),
     [fab.porColaborador]
   );
+
+  // Filtered fab items
+  const filteredFabItems = useMemo(() => {
+    switch (fabKpiFilter) {
+      case 'in_progress': return fab.items.filter(i => i.state === 'In Progress' || i.state === 'Active');
+      case 'todo': return fab.items.filter(i => i.state === 'To Do' || i.state === 'New');
+      case 'done': return fab.items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
+      default: return fab.items;
+    }
+  }, [fab.items, fabKpiFilter]);
+
+  // Filtered infra items
+  const filteredInfraItems = useMemo(() => {
+    switch (infraKpiFilter) {
+      case 'pendentes': return infra.items.filter(i => i.state === 'New' || i.state === 'To Do');
+      case 'em_andamento': return infra.items.filter(i => i.state === 'In Progress' || i.state === 'Active');
+      case 'melhorias': return infra.items.filter(i => i.tags?.toUpperCase().includes('MELHORIA'));
+      case 'iso27001': return infra.items.filter(i => i.tags?.toUpperCase().includes('ISO27001') || i.tags?.toUpperCase().includes('ISO'));
+      case 'transbordo': return infra.items.filter(i => i.tags?.toUpperCase().includes('TRANSBORDO'));
+      default: return infra.items;
+    }
+  }, [infra.items, infraKpiFilter]);
+
+  const toggleFab = (f: FabKpiFilter) => setFabKpiFilter(prev => prev === f ? 'all' : f);
+  const toggleInfra = (f: InfraKpiFilter) => setInfraKpiFilter(prev => prev === f ? 'all' : f);
 
   const handleExportCSV = () => exportCSV({
     title: 'Sprint Board', area: 'Fábrica', periodLabel: filters.presetLabel,
@@ -105,7 +135,7 @@ export default function FabricaDashboard() {
 
       <DashboardFilterBar
         preset={filters.preset}
-        onPresetChange={filters.setPreset}
+        onPresetChange={(p) => { filters.setPreset(p); setFabKpiFilter('all'); setInfraKpiFilter('all'); }}
         presetLabel={filters.presetLabel}
         onRefresh={() => { fab.refetch(); infra.refetch(); }}
         onExportCSV={handleExportCSV}
@@ -117,16 +147,16 @@ export default function FabricaDashboard() {
       ) : (
         <Tabs defaultValue="programacao" className="w-full">
           <TabsList className="mb-4 bg-muted/50 p-1">
-            <TabsTrigger value="programacao" className="gap-1.5"><Code2 className="h-3.5 w-3.5" />Programação</TabsTrigger>
-            <TabsTrigger value="infraestrutura" className="gap-1.5"><Server className="h-3.5 w-3.5" />Infraestrutura</TabsTrigger>
+            <TabsTrigger value="programacao" className="gap-1.5" onClick={() => setFabKpiFilter('all')}><Code2 className="h-3.5 w-3.5" />Programação</TabsTrigger>
+            <TabsTrigger value="infraestrutura" className="gap-1.5" onClick={() => setInfraKpiFilter('all')}><Server className="h-3.5 w-3.5" />Infraestrutura</TabsTrigger>
           </TabsList>
 
           <TabsContent value="programacao" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              <DashboardKpiCard label="Total Tasks" value={fab.total} icon={ListTodo} isLoading={fab.isLoading} />
-              <DashboardKpiCard label="Em Progresso" value={fab.inProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" />
-              <DashboardKpiCard label="To Do" value={fab.toDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" />
-              <DashboardKpiCard label="Done" value={fab.done} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" />
+              <DashboardKpiCard label="Total Tasks" value={fab.total} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
+              <DashboardKpiCard label="Em Progresso" value={fab.inProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
+              <DashboardKpiCard label="To Do" value={fab.toDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
+              <DashboardKpiCard label="Done" value={fab.done} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
             </div>
 
             {colabChartData.length > 0 && (
@@ -146,14 +176,14 @@ export default function FabricaDashboard() {
               </Card>
             )}
 
-            {!fab.isLoading && fab.items.length === 0 ? (
-              <DashboardEmptyState description="Nenhum work item encontrado. Execute o sync DevOps." />
+            {!fab.isLoading && filteredFabItems.length === 0 ? (
+              <DashboardEmptyState description="Nenhum work item encontrado para o período selecionado." />
             ) : (
               <DashboardDataTable
                 title="Sprint Board"
-                subtitle={`${fab.total} tasks`}
+                subtitle={`${filteredFabItems.length} tasks`}
                 columns={fabricaColumns}
-                data={fab.items}
+                data={filteredFabItems}
                 isLoading={fab.isLoading}
                 getRowKey={(r) => r.id || Math.random()}
                 onRowClick={(r) => setDrawerItem(r as any)}
@@ -164,22 +194,22 @@ export default function FabricaDashboard() {
 
           <TabsContent value="infraestrutura" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <DashboardKpiCard label="Total" value={infra.total} icon={Server} isLoading={infra.isLoading} />
-              <DashboardKpiCard label="Pendentes" value={infra.pendentes} icon={Clock} isLoading={infra.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" />
-              <DashboardKpiCard label="Em Andamento" value={infra.emAndamento} icon={Wrench} isLoading={infra.isLoading} delay={160} accent="bg-[hsl(var(--info))]" />
-              <DashboardKpiCard label="Melhorias" value={infra.melhorias} icon={Wrench} isLoading={infra.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" />
-              <DashboardKpiCard label="ISO 27001" value={infra.iso27001} icon={Shield} isLoading={infra.isLoading} delay={320} accent="bg-[hsl(280,65%,60%)]" />
-              <DashboardKpiCard label="Transbordo" value={infra.transbordo} icon={AlertTriangle} isLoading={infra.isLoading} delay={400} accent="bg-[hsl(0,84%,60%)]" />
+              <DashboardKpiCard label="Total" value={infra.total} icon={Server} isLoading={infra.isLoading} onClick={() => toggleInfra('all')} active={infraKpiFilter === 'all'} />
+              <DashboardKpiCard label="Pendentes" value={infra.pendentes} icon={Clock} isLoading={infra.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleInfra('pendentes')} active={infraKpiFilter === 'pendentes'} />
+              <DashboardKpiCard label="Em Andamento" value={infra.emAndamento} icon={Wrench} isLoading={infra.isLoading} delay={160} accent="bg-[hsl(var(--info))]" onClick={() => toggleInfra('em_andamento')} active={infraKpiFilter === 'em_andamento'} />
+              <DashboardKpiCard label="Melhorias" value={infra.melhorias} icon={Wrench} isLoading={infra.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleInfra('melhorias')} active={infraKpiFilter === 'melhorias'} />
+              <DashboardKpiCard label="ISO 27001" value={infra.iso27001} icon={Shield} isLoading={infra.isLoading} delay={320} accent="bg-[hsl(280,65%,60%)]" onClick={() => toggleInfra('iso27001')} active={infraKpiFilter === 'iso27001'} />
+              <DashboardKpiCard label="Transbordo" value={infra.transbordo} icon={AlertTriangle} isLoading={infra.isLoading} delay={400} accent="bg-[hsl(0,84%,60%)]" onClick={() => toggleInfra('transbordo')} active={infraKpiFilter === 'transbordo'} />
             </div>
 
-            {!infra.isLoading && infra.items.length === 0 ? (
-              <DashboardEmptyState description="Nenhum item de infraestrutura. Os dados serão filtrados por sector='infraestrutura' após sync." />
+            {!infra.isLoading && filteredInfraItems.length === 0 ? (
+              <DashboardEmptyState description="Nenhum item de infraestrutura para o período/filtro selecionado." />
             ) : (
               <DashboardDataTable
                 title="Atividades Infraestrutura"
-                subtitle={`${infra.total} itens`}
+                subtitle={`${filteredInfraItems.length} itens`}
                 columns={infraColumns}
-                data={infra.items}
+                data={filteredInfraItems}
                 isLoading={infra.isLoading}
                 getRowKey={(r) => r.id || Math.random()}
                 onRowClick={(r) => setDrawerItem(r as any)}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
@@ -12,6 +12,8 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Badge } from '@/components/ui/badge';
 import { FileCheck, Clock, TrendingUp, BarChart3 } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+
+type QaKpiFilter = 'all' | 'fila_qa' | 'finalizados';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items QA' },
@@ -27,10 +29,21 @@ const columns: DataTableColumn<QualidadeItem>[] = [
 ];
 
 export default function QualidadeDashboard() {
-  const { items, total, filaQA, emTeste, finalizados, taxaVazao, lastSync, isLoading, isError, refetch } = useQualidadeKpis();
   const filters = useDashboardFilters('mes_atual');
+  const { items, total, filaQA, emTeste, finalizados, taxaVazao, lastSync, isLoading, isError, refetch } = useQualidadeKpis(filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
+  const [kpiFilter, setKpiFilter] = useState<QaKpiFilter>('all');
+
+  const toggleKpi = (f: QaKpiFilter) => setKpiFilter(prev => prev === f ? 'all' : f);
+
+  const filteredItems = useMemo(() => {
+    switch (kpiFilter) {
+      case 'fila_qa': return items.filter(i => i.state === 'New' || i.state === 'To Do' || i.state === 'Active');
+      case 'finalizados': return items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
+      default: return items;
+    }
+  }, [items, kpiFilter]);
 
   const handleExportCSV = () => exportCSV({
     title: 'Qualidade QA', area: 'Qualidade', periodLabel: filters.presetLabel,
@@ -69,7 +82,7 @@ export default function QualidadeDashboard() {
 
       <DashboardFilterBar
         preset={filters.preset}
-        onPresetChange={filters.setPreset}
+        onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
         presetLabel={filters.presetLabel}
         onRefresh={() => refetch()}
         onExportCSV={handleExportCSV}
@@ -81,20 +94,20 @@ export default function QualidadeDashboard() {
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <DashboardKpiCard label="Total QA" value={total} icon={FileCheck} isLoading={isLoading} />
-            <DashboardKpiCard label="Fila QA (WIP)" value={filaQA} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" />
+            <DashboardKpiCard label="Total QA" value={total} icon={FileCheck} isLoading={isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
+            <DashboardKpiCard label="Fila QA (WIP)" value={filaQA} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
             <DashboardKpiCard label="Taxa Vazão QA" value={taxaVazao} suffix="%" icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
-            <DashboardKpiCard label="Finalizados" value={finalizados} icon={BarChart3} isLoading={isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" />
+            <DashboardKpiCard label="Finalizados" value={finalizados} icon={BarChart3} isLoading={isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('finalizados')} active={kpiFilter === 'finalizados'} />
           </div>
 
-          {!isLoading && items.length === 0 ? (
-            <DashboardEmptyState description="Nenhum item de qualidade encontrado. Os dados serão exibidos após sync do DevOps." />
+          {!isLoading && filteredItems.length === 0 ? (
+            <DashboardEmptyState description="Nenhum item de qualidade para o período/filtro selecionado." />
           ) : (
             <DashboardDataTable
               title="Itens QA"
-              subtitle={`${total} registros`}
+              subtitle={`${filteredItems.length} registros`}
               columns={columns}
-              data={items}
+              data={filteredItems}
               isLoading={isLoading}
               getRowKey={(r) => String(r.id ?? Math.random())}
               onRowClick={(r) => setDrawerItem(r)}
