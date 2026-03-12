@@ -6,11 +6,12 @@ import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/Dash
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
-import { useComercialKpis, ComercialClient } from '@/hooks/useComercialKpis';
+import { useComercialKpis, ComercialClient, ClientStatusFilter } from '@/hooks/useComercialKpis';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { Users, Building2, Flag } from 'lucide-react';
+import { Users, Building2, Flag, UserCheck, UserX, ShieldBan } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
 const integrations: Integration[] = [
@@ -23,26 +24,35 @@ const columns: DataTableColumn<ComercialClient>[] = [
   { key: 'apelido', header: 'Apelido' },
   { key: 'bandeira', header: 'Bandeira', render: (r) => r.bandeira ? <Badge variant="outline" className="text-xs">{r.bandeira}</Badge> : '—' },
   { key: 'sistemas_label', header: 'Sistemas', className: 'max-w-[200px] truncate text-xs text-muted-foreground' },
-  { key: 'status', header: 'Status', render: (r) => <Badge variant={r.status === 'ativo' ? 'default' : 'secondary'} className="text-xs">{r.status || '—'}</Badge> },
+  {
+    key: 'status', header: 'Status', render: (r) => {
+      const s = r.status?.toLowerCase();
+      const variant = s === 'ativo' ? 'default' : s === 'bloqueado' ? 'destructive' : 'secondary';
+      return <Badge variant={variant} className="text-xs">{r.status || '—'}</Badge>;
+    }
+  },
 ];
 
 export default function ComercialDashboard() {
-  const { clients, totalClientes, bandeiras, lastSync, isLoading, isError, refetch } = useComercialKpis();
+  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
+  const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter);
   const filters = useDashboardFilters('mes_atual');
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerClient, setDrawerClient] = useState<ComercialClient | null>(null);
 
   const handleExportCSV = () => exportCSV({
-    title: 'Clientes Ativos', area: 'Comercial', periodLabel: filters.presetLabel,
+    title: 'Base de Clientes', area: 'Comercial', periodLabel: filters.presetLabel,
     columns: ['id', 'nome', 'apelido', 'bandeira', 'sistemas_label', 'status'],
     rows: clients as any[],
   });
 
   const handleExportPDF = () => exportPDF({
-    title: 'Clientes Ativos', area: 'Comercial', periodLabel: filters.presetLabel,
+    title: 'Base de Clientes', area: 'Comercial', periodLabel: filters.presetLabel,
     kpis: [
-      { label: 'Total Clientes Ativos', value: totalClientes },
-      { label: 'Bandeiras', value: bandeiras.length },
+      { label: 'Total Clientes', value: stats.total },
+      { label: 'Ativos', value: stats.ativos },
+      { label: 'Inativos', value: stats.inativos },
+      { label: 'Bloqueados', value: stats.bloqueados },
     ],
     columns: ['id', 'nome', 'apelido', 'bandeira', 'status'],
     rows: clients as any[],
@@ -58,8 +68,12 @@ export default function ComercialDashboard() {
     { label: 'Última Sync', value: drawerClient.synced_at ? new Date(drawerClient.synced_at).toLocaleString('pt-BR') : '—' },
   ] : [];
 
+  const handleKpiClick = (filter: ClientStatusFilter) => {
+    setStatusFilter(prev => prev === filter ? 'todos' : filter);
+  };
+
   return (
-    <SectorLayout title="Comercial" subtitle="Clientes Ativos — Gateway/VDesk" lastUpdate="" integrations={integrations}>
+    <SectorLayout title="Comercial" subtitle="Base de Clientes — Gateway/VDesk" lastUpdate="" integrations={integrations}>
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
@@ -77,18 +91,58 @@ export default function ComercialDashboard() {
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <DashboardKpiCard label="Clientes Ativos" value={totalClientes} icon={Users} isLoading={isLoading} />
-            <DashboardKpiCard label="Bandeiras" value={bandeiras.length} icon={Flag} isLoading={isLoading} delay={80} />
-            <DashboardKpiCard label="Sistemas" value={clients.filter(c => c.sistemas_label).length} icon={Building2} isLoading={isLoading} delay={160} />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <DashboardKpiCard
+              label="Total Clientes"
+              value={stats.total}
+              icon={Users}
+              isLoading={isLoading}
+            />
+            <DashboardKpiCard
+              label="Ativos"
+              value={stats.ativos}
+              icon={UserCheck}
+              isLoading={isLoading}
+              delay={80}
+              active={statusFilter === 'ativo'}
+              onClick={() => handleKpiClick('ativo')}
+            />
+            <DashboardKpiCard
+              label="Inativos"
+              value={stats.inativos}
+              icon={UserX}
+              isLoading={isLoading}
+              delay={160}
+              active={statusFilter === 'inativo'}
+              onClick={() => handleKpiClick('inativo')}
+            />
+            <DashboardKpiCard
+              label="Bloqueados"
+              value={stats.bloqueados}
+              icon={ShieldBan}
+              isLoading={isLoading}
+              delay={240}
+              active={statusFilter === 'bloqueado'}
+              onClick={() => handleKpiClick('bloqueado')}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 mt-1 mb-1">
+            <span className="text-xs text-muted-foreground">Filtrar:</span>
+            <ToggleGroup type="single" value={statusFilter} onValueChange={(v) => setStatusFilter((v || 'todos') as ClientStatusFilter)} size="sm">
+              <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
+              <ToggleGroupItem value="ativo" className="text-xs h-7 px-3">Ativos</ToggleGroupItem>
+              <ToggleGroupItem value="inativo" className="text-xs h-7 px-3">Inativos</ToggleGroupItem>
+              <ToggleGroupItem value="bloqueado" className="text-xs h-7 px-3">Bloqueados</ToggleGroupItem>
+            </ToggleGroup>
           </div>
 
           {!isLoading && clients.length === 0 ? (
-            <DashboardEmptyState description="Nenhum cliente sincronizado ainda. Execute o sync via /admin/sync." />
+            <DashboardEmptyState description="Nenhum cliente encontrado com o filtro selecionado." />
           ) : (
             <DashboardDataTable
-              title="Clientes Ativos"
-              subtitle={`${totalClientes} clientes`}
+              title="Base de Clientes"
+              subtitle={`${totalClientes} clientes${statusFilter !== 'todos' ? ` (${statusFilter})` : ''}`}
               columns={columns}
               data={clients}
               isLoading={isLoading}
