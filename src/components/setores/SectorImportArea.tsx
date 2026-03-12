@@ -160,15 +160,41 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
         </Card>
       )}
 
-      {/* History placeholder */}
+      {/* Histórico */}
       <Card className="p-4">
         <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
           <Clock className="h-4 w-4 text-muted-foreground" />
-          Importações — {sectorName}
+          Histórico de Importações — {sectorName}
         </h4>
-        <p className="text-xs text-muted-foreground">
-          Os dados importados aparecerão no dashboard após processamento.
-        </p>
+
+        {isHistoryLoading ? (
+          <div className="py-4 flex items-center justify-center">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : history.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhuma importação encontrada para este setor.</p>
+        ) : (
+          <div className="space-y-2">
+            {history.map((batch) => (
+              <div key={batch.id} className="rounded-lg border border-border/60 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant={batch.status === 'published' ? 'default' : batch.status === 'rejected' || batch.status === 'error' ? 'destructive' : 'secondary'}>
+                    {getBatchStatusLabel(batch.status)}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {batch.imported_at ? new Date(batch.imported_at).toLocaleString('pt-BR') : '—'}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+                  <span>Total: {batch.total_rows ?? 0}</span>
+                  <span>Válidas: {batch.valid_rows ?? 0}</span>
+                  <span>Inválidas: {batch.invalid_rows ?? 0}</span>
+                  {batch.published_at && <span>Publicado: {new Date(batch.published_at).toLocaleString('pt-BR')}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );
