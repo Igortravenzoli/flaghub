@@ -20,10 +20,20 @@ export interface UploadFileStatus {
   error?: string;
 }
 
+export type ImportMode = 'overwrite' | 'purge';
+
 interface UseManualUploadOptions {
   templateKey: string;
   onComplete?: () => void;
 }
+
+/**
+ * Map template keys to their curated tables for purge operations.
+ */
+const TEMPLATE_TABLES: Record<string, string> = {
+  cs_implantacoes_v1: 'cs_implantacoes_records',
+  cs_fila_cs_v1: 'cs_fila_manual_records',
+};
 
 /**
  * Parse an XLSX/XLS file into an array of row objects (first sheet),
