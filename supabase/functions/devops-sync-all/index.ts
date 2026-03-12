@@ -17,14 +17,16 @@ function getSupabaseAdmin() {
 
 async function validateAuth(req: Request): Promise<string | null> {
   const authHeader = req.headers.get('authorization')
-  if (!authHeader) return null
+  if (!authHeader?.startsWith('Bearer ')) return null
+  const token = authHeader.replace('Bearer ', '')
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
   )
-  const { data: { user } } = await supabase.auth.getUser()
-  return user?.id ?? null
+  const { data, error } = await supabase.auth.getClaims(token)
+  if (error || !data?.claims?.sub) return null
+  return data.claims.sub as string
 }
 
 serve(async (req) => {
