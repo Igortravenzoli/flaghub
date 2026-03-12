@@ -187,8 +187,8 @@ serve(async (req) => {
       importRows.push({
         batch_id: batch.id,
         row_number: i + 1,
-        raw,
-        normalized,
+        raw: sanitizeValue(raw),
+        normalized: sanitizeValue(normalized),
         validation_errors: errors.length > 0 ? errors : null,
         is_valid: isValid,
       })
