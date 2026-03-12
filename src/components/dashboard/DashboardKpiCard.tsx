@@ -48,8 +48,9 @@ export function DashboardKpiCard({
 
   return (
     <Card
-      className="p-5 animate-fade-in group hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 relative overflow-hidden"
+      className={`p-5 animate-fade-in group hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 relative overflow-hidden ${onClick ? 'cursor-pointer' : ''} ${active ? 'ring-2 ring-primary shadow-lg' : ''}`}
       style={{ animationDelay: `${delay}ms` }}
+      onClick={onClick}
     >
       <div className={`absolute inset-0 opacity-[0.04] ${accent || 'bg-primary'}`} />
       <div className="relative">
