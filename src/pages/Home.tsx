@@ -20,7 +20,7 @@ import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones,
+  Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Server,
 };
 
 interface SectorCardData {

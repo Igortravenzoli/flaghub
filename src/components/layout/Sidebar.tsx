@@ -54,7 +54,12 @@ const sectorItems: NavItem[] = [
     label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones,
     children: [
       { label: 'Dashboard Helpdesk', path: '/setor/helpdesk', icon: LayoutDashboard },
-      { label: 'Painel Gerenciamento Tickets', path: '/dashboard', icon: Ticket },
+      { label: 'Tickets', path: '/dashboard', icon: Ticket,
+        children: [
+          { label: 'Painel Tickets', path: '/dashboard', icon: Ticket },
+          { label: 'Configurações', path: '/configuracoes', icon: Settings },
+        ],
+      },
       { label: 'Pesquisar', path: '/tickets', icon: Search,
         children: [
           { label: 'Tickets', path: '/tickets', icon: Ticket },
@@ -63,7 +68,6 @@ const sectorItems: NavItem[] = [
       },
       { label: 'Acompanhamento', path: '/acompanhamento', icon: Eye },
       { label: 'Importações', path: '/importacoes', icon: Upload },
-      { label: 'Configurações', path: '/configuracoes', icon: Settings },
     ],
   },
 ];
