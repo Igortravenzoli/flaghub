@@ -27,6 +27,22 @@ async function validateAuth(req: Request): Promise<string | null> {
   return user?.id ?? null
 }
 
+/** Remove null bytes and problematic Unicode escape sequences from strings */
+function sanitizeValue(val: unknown): unknown {
+  if (typeof val === 'string') {
+    return val.replace(/\0/g, '').replace(/\\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+  }
+  if (val && typeof val === 'object' && !Array.isArray(val)) {
+    const clean: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(val)) {
+      clean[sanitizeValue(k) as string] = sanitizeValue(v)
+    }
+    return clean
+  }
+  if (Array.isArray(val)) return val.map(sanitizeValue)
+  return val
+}
+
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.split('\n').filter(l => l.trim())
   if (lines.length < 2) return []
