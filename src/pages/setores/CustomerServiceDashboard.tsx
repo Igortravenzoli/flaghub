@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
@@ -13,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2 } from 'lucide-react';
+import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
 type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas';
@@ -47,6 +49,21 @@ export default function CustomerServiceDashboard() {
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
+
+  // Import history for compact view in Implantações tab
+  const { data: recentBatches = [], isLoading: batchesLoading } = useQuery({
+    queryKey: ['manual_import_batches', 'cs_implantacoes_v1', 'compact'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('manual_import_batches')
+        .select('id, status, total_rows, valid_rows, invalid_rows, imported_at, published_at, manual_import_templates!manual_import_batches_template_id_fkey(key)')
+        .order('imported_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data ?? []).filter((b: any) => b.manual_import_templates?.key === 'cs_implantacoes_v1').slice(0, 5);
+    },
+    staleTime: 60 * 1000,
+  });
 
   const respChartData = useMemo(() =>
     Object.entries(porResponsavel)
@@ -201,6 +218,40 @@ export default function CustomerServiceDashboard() {
                 searchPlaceholder="Buscar implantação..."
               />
             )}
+
+            {/* Compact import history */}
+            <Card className="p-4">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
+                <Upload className="h-4 w-4 text-muted-foreground" />
+                Últimas Importações
+              </h3>
+              {batchesLoading ? (
+                <div className="py-3 flex justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+              ) : recentBatches.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhuma importação realizada. Use a aba "Importações" para enviar planilhas.</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentBatches.map((b: any) => (
+                    <div key={b.id} className="flex items-center justify-between gap-2 rounded-md border border-border/50 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        {b.status === 'published' ? (
+                          <CheckCircle className="h-3.5 w-3.5 text-[hsl(var(--chart-2))]" />
+                        ) : b.status === 'rejected' || b.status === 'error' ? (
+                          <XCircle className="h-3.5 w-3.5 text-destructive" />
+                        ) : (
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                        <Badge variant={b.status === 'published' ? 'default' : b.status === 'rejected' ? 'destructive' : 'secondary'} className="text-xs">
+                          {b.status === 'published' ? 'Publicado' : b.status === 'rejected' ? 'Rejeitado' : b.status}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">{b.valid_rows ?? 0}/{b.total_rows ?? 0} válidas</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{b.imported_at ? new Date(b.imported_at).toLocaleDateString('pt-BR') : '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </TabsContent>
         </Tabs>
       )}
