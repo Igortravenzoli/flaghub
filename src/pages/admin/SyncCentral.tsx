@@ -10,8 +10,8 @@ import { useState } from 'react';
 
 const JOB_FUNCTION_MAP: Record<string, string> = {
   devops_sync_all_default: 'devops-sync-all',
-  gateway_helpdesk_clients_default: 'gateway-sync-clients',
-  gateway_helpdesk_dashboard_default: 'gateway-sync-dashboard',
+  gateway_helpdesk_clients_default: 'vdesk-sync-base-clientes',
+  gateway_helpdesk_dashboard_default: 'vdesk-sync-helpdesk',
 };
 
 export default function SyncCentral() {
