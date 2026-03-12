@@ -60,6 +60,26 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
     },
   });
 
+  const { data: history = [], isLoading: isHistoryLoading } = useQuery({
+    queryKey: ['manual_import_batches', templateKey],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('manual_import_batches')
+        .select('id, status, total_rows, valid_rows, invalid_rows, imported_at, published_at, manual_import_templates!manual_import_batches_template_id_fkey(key)')
+        .order('imported_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      const rows = (data ?? []) as ManualBatchHistoryItem[];
+      const filtered = templateKey
+        ? rows.filter((row) => row.manual_import_templates?.key === templateKey)
+        : rows;
+
+      return filtered.slice(0, 10);
+    },
+  });
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
