@@ -160,6 +160,7 @@ export default function ComercialDashboard() {
               getRowKey={(r) => r.id}
               onRowClick={(r) => setDrawerClient(r)}
               searchPlaceholder="Buscar cliente..."
+              columnFilters={tableColumnFilters}
             />
           )}
         </>
