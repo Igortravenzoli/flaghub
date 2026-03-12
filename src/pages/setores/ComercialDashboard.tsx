@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
-import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
+import { DashboardDataTable, DataTableColumn, ColumnFilter } from '@/components/dashboard/DashboardDataTable';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
@@ -31,6 +31,17 @@ const columns: DataTableColumn<ComercialClient>[] = [
       return <Badge variant={variant} className="text-xs">{r.status || '—'}</Badge>;
     }
   },
+];
+
+const tableColumnFilters: ColumnFilter[] = [
+  { key: 'bandeira', label: 'Bandeira' },
+  {
+    key: 'sistemas_label',
+    label: 'Sistemas',
+    extractValue: (row: ComercialClient) =>
+      row.sistemas_label ? row.sistemas_label.split(',').map((s: string) => s.trim()).filter(Boolean) : null,
+  },
+  { key: 'status', label: 'Status' },
 ];
 
 export default function ComercialDashboard() {
@@ -149,6 +160,7 @@ export default function ComercialDashboard() {
               getRowKey={(r) => r.id}
               onRowClick={(r) => setDrawerClient(r)}
               searchPlaceholder="Buscar cliente..."
+              columnFilters={tableColumnFilters}
             />
           )}
         </>
