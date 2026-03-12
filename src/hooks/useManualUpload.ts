@@ -215,8 +215,8 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
 
     setIsUploading(false);
 
-    queryClient.invalidateQueries({ queryKey: ['customer-service-kpis'] });
-    queryClient.invalidateQueries({ queryKey: ['manual-import-batches'] });
+    queryClient.invalidateQueries({ queryKey: ['customer-service'] });
+    queryClient.invalidateQueries({ queryKey: ['manual_import_batches'] });
 
     if (successCount > 0 && errorCount === 0) {
       toast.success(`${successCount} arquivo(s) importado(s) com sucesso`);
