@@ -25,6 +25,29 @@ interface SectorImportAreaProps {
   templateKey?: string;
 }
 
+interface ManualBatchHistoryItem {
+  id: string;
+  status: string;
+  total_rows: number | null;
+  valid_rows: number | null;
+  invalid_rows: number | null;
+  imported_at: string | null;
+  published_at: string | null;
+  manual_import_templates?: { key: string } | null;
+}
+
+function getBatchStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    uploaded: 'Enviado',
+    parsed: 'Parseado',
+    validated: 'Validado',
+    published: 'Publicado',
+    rejected: 'Rejeitado',
+    error: 'Erro',
+  };
+  return labels[status] ?? status;
+}
+
 export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1' }: SectorImportAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
