@@ -12,13 +12,22 @@ export interface ComercialClient {
   synced_at: string | null;
 }
 
-export function useComercialKpis() {
+export type ClientStatusFilter = 'todos' | 'ativo' | 'inativo' | 'bloqueado';
+
+export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos') {
   const clientsQuery = useQuery({
-    queryKey: ['comercial', 'clientes-ativos'],
+    queryKey: ['comercial', 'clientes', statusFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('vw_comercial_clientes_ativos')
         .select('*');
+
+      if (statusFilter !== 'todos') {
+        // Case-insensitive match via ilike
+        query = query.ilike('status', statusFilter);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data || []) as ComercialClient[];
     },
@@ -39,14 +48,33 @@ export function useComercialKpis() {
     staleTime: 60 * 1000,
   });
 
+  // Stats query (always all clients for KPI counts)
+  const statsQuery = useQuery({
+    queryKey: ['comercial', 'stats'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('vw_comercial_clientes_ativos')
+        .select('status');
+      if (error) throw error;
+      const all = data || [];
+      const ativos = all.filter(c => c.status?.toLowerCase() === 'ativo').length;
+      const inativos = all.filter(c => c.status?.toLowerCase() === 'inativo').length;
+      const bloqueados = all.filter(c => c.status?.toLowerCase() === 'bloqueado').length;
+      return { total: all.length, ativos, inativos, bloqueados };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   const clients = clientsQuery.data || [];
   const totalClientes = clients.length;
   const bandeiras = [...new Set(clients.map(c => c.bandeira).filter(Boolean))];
+  const stats = statsQuery.data || { total: 0, ativos: 0, inativos: 0, bloqueados: 0 };
 
   return {
     clients,
     totalClientes,
     bandeiras,
+    stats,
     lastSync: lastSyncQuery.data,
     isLoading: clientsQuery.isLoading,
     isError: clientsQuery.isError,
