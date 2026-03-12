@@ -12,9 +12,11 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2 } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+
+type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items CS' },
@@ -40,10 +42,11 @@ const implColumns: DataTableColumn<CSKpiItem>[] = [
 ];
 
 export default function CustomerServiceDashboard() {
-  const { devopsItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis();
   const filters = useDashboardFilters('mes_atual');
+  const { devopsItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
+  const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
 
   const respChartData = useMemo(() =>
     Object.entries(porResponsavel)
@@ -51,6 +54,24 @@ export default function CustomerServiceDashboard() {
       .map(([resp, qtd]) => ({ resp, qtd })),
     [porResponsavel]
   );
+
+  // Apply KPI filter to table data
+  const filteredDevops = useMemo(() => {
+    if (kpiFilter === 'fila') return devopsItems;
+    return devopsItems;
+  }, [devopsItems, kpiFilter]);
+
+  const filteredImpl = useMemo(() => {
+    if (kpiFilter === 'impl_andamento')
+      return implantacoes.filter(i => i.status_implantacao && !['finalizado', 'concluído', 'concluido'].includes(i.status_implantacao.toLowerCase()));
+    if (kpiFilter === 'impl_finalizadas')
+      return implantacoes.filter(i => i.status_implantacao && ['finalizado', 'concluído', 'concluido'].includes(i.status_implantacao.toLowerCase()));
+    return implantacoes;
+  }, [implantacoes, kpiFilter]);
+
+  const handleKpiClick = (filter: KpiFilter) => {
+    setKpiFilter(prev => prev === filter ? 'all' : filter);
+  };
 
   const handleExportCSV = () => exportCSV({
     title: 'Fila Customer Service', area: 'Customer Service', periodLabel: filters.presetLabel,
@@ -94,7 +115,7 @@ export default function CustomerServiceDashboard() {
 
       <DashboardFilterBar
         preset={filters.preset}
-        onPresetChange={filters.setPreset}
+        onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
         presetLabel={filters.presetLabel}
         onRefresh={() => refetch()}
         onExportCSV={handleExportCSV}
@@ -106,11 +127,11 @@ export default function CustomerServiceDashboard() {
       ) : (
         <Tabs defaultValue="fila" className="w-full">
           <TabsList className="mb-4 bg-muted/50 p-1">
-            <TabsTrigger value="fila" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <TabsTrigger value="fila" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setKpiFilter('all')}>
               <Eye className="h-3.5 w-3.5" />
               Fila CS
             </TabsTrigger>
-            <TabsTrigger value="implantacoes" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <TabsTrigger value="implantacoes" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setKpiFilter('all')}>
               <Settings2 className="h-3.5 w-3.5" />
               Implantações
             </TabsTrigger>
@@ -118,10 +139,10 @@ export default function CustomerServiceDashboard() {
 
           <TabsContent value="fila" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <DashboardKpiCard label="Volume Total na Fila" value={totalFilaCS} icon={Layers} isLoading={isLoading} />
+              <DashboardKpiCard label="Volume Total na Fila" value={totalFilaCS} icon={Layers} isLoading={isLoading} onClick={() => handleKpiClick('fila')} active={kpiFilter === 'fila'} />
               <DashboardKpiCard label="Responsáveis Ativos" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={80} />
-              <DashboardKpiCard label="Implantações Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={160} accent="bg-[hsl(199,89%,48%)]" />
-              <DashboardKpiCard label="Implantações Finalizadas" value={implFinalizadas} icon={TrendingUp} isLoading={isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" />
+              <DashboardKpiCard label="Implantações Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={160} accent="bg-[hsl(199,89%,48%)]" onClick={() => handleKpiClick('impl_andamento')} active={kpiFilter === 'impl_andamento'} />
+              <DashboardKpiCard label="Implantações Finalizadas" value={implFinalizadas} icon={TrendingUp} isLoading={isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleKpiClick('impl_finalizadas')} active={kpiFilter === 'impl_finalizadas'} />
             </div>
 
             {/* Volume por Responsável */}
@@ -140,14 +161,14 @@ export default function CustomerServiceDashboard() {
               </Card>
             )}
 
-            {!isLoading && devopsItems.length === 0 ? (
-              <DashboardEmptyState description="Nenhum item na fila CS. Execute o sync DevOps via /admin/sync." />
+            {!isLoading && filteredDevops.length === 0 ? (
+              <DashboardEmptyState description="Nenhum item na fila CS para o período selecionado." />
             ) : (
               <DashboardDataTable
                 title="Fila Operacional CS"
-                subtitle={`${devopsItems.length} itens`}
+                subtitle={`${filteredDevops.length} itens`}
                 columns={devopsColumns}
-                data={devopsItems}
+                data={filteredDevops}
                 isLoading={isLoading}
                 getRowKey={(r) => String(r.work_item_id ?? Math.random())}
                 onRowClick={(r) => setDrawerItem(r)}
@@ -158,19 +179,19 @@ export default function CustomerServiceDashboard() {
 
           <TabsContent value="implantacoes" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              <DashboardKpiCard label="Total Implantações" value={implTotal} icon={Package} isLoading={isLoading} />
-              <DashboardKpiCard label="Em Andamento" value={implAndamento} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" />
-              <DashboardKpiCard label="Finalizadas" value={implFinalizadas} icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
+              <DashboardKpiCard label="Total Implantações" value={implTotal} icon={Package} isLoading={isLoading} onClick={() => handleKpiClick('all')} active={kpiFilter === 'all'} />
+              <DashboardKpiCard label="Em Andamento" value={implAndamento} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleKpiClick('impl_andamento')} active={kpiFilter === 'impl_andamento'} />
+              <DashboardKpiCard label="Finalizadas" value={implFinalizadas} icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleKpiClick('impl_finalizadas')} active={kpiFilter === 'impl_finalizadas'} />
             </div>
 
-            {!isLoading && implantacoes.length === 0 ? (
-              <DashboardEmptyState description="Nenhuma implantação registrada. Faça upload via /admin/uploads." />
+            {!isLoading && filteredImpl.length === 0 ? (
+              <DashboardEmptyState description="Nenhuma implantação para o período selecionado." />
             ) : (
               <DashboardDataTable
                 title="Implantações"
-                subtitle={`${implantacoes.length} registros`}
+                subtitle={`${filteredImpl.length} registros`}
                 columns={implColumns}
-                data={implantacoes}
+                data={filteredImpl}
                 isLoading={isLoading}
                 getRowKey={(r) => `${r.title ?? ''}-${r.created_date ?? ''}`}
                 onRowClick={(r) => setDrawerItem(r)}
