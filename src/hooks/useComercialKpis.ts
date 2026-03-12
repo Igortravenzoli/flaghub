@@ -7,6 +7,7 @@ export interface ComercialClient {
   apelido: string | null;
   status: string | null;
   bandeira: string | null;
+  bandeira_cod: string | null;
   sistemas_label: string | null;
   sistemas: any;
   synced_at: string | null;

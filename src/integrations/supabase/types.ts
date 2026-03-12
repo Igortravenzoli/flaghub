@@ -1627,6 +1627,7 @@ export type Database = {
         Row: {
           apelido: string | null
           bandeira: string | null
+          bandeira_cod: string | null
           id: number | null
           nome: string | null
           sistemas: Json | null
@@ -1636,7 +1637,8 @@ export type Database = {
         }
         Insert: {
           apelido?: string | null
-          bandeira?: string | null
+          bandeira?: never
+          bandeira_cod?: string | null
           id?: number | null
           nome?: string | null
           sistemas?: Json | null
@@ -1646,7 +1648,8 @@ export type Database = {
         }
         Update: {
           apelido?: string | null
-          bandeira?: string | null
+          bandeira?: never
+          bandeira_cod?: string | null
           id?: number | null
           nome?: string | null
           sistemas?: Json | null

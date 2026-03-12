@@ -157,19 +157,16 @@ serve(async (req) => {
         raw: c,
       }))
 
-      // Upsert in chunks (use nome+apelido as natural key since we don't know the external ID structure)
+      // Upsert in chunks using nome as natural key (unique index)
       let upsertedCount = 0
       for (let i = 0; i < normalized.length; i += 100) {
         const chunk = normalized.slice(i, i + 100)
         const { error } = await admin.from('vdesk_clients').upsert(chunk, {
-          onConflict: 'id',
+          onConflict: 'nome',
           ignoreDuplicates: false,
         })
         if (error) {
-          // If upsert by id fails (new items), try insert
-          for (const item of chunk) {
-            await admin.from('vdesk_clients').insert(item).maybeSingle()
-          }
+          console.error(`[GatewaySyncClients] Upsert chunk error:`, error.message)
         }
         upsertedCount += chunk.length
       }
