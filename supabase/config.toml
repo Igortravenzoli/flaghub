@@ -1,6 +1,6 @@
 project_id = "onpdhywrzjtwxaxuvijw"
 
-[functions.vdesk-proxy]
+[functions.vdesk-tickets-os]
 verify_jwt = false
 
 [functions.consultar-vdesk]
@@ -12,10 +12,10 @@ verify_jwt = false
 [functions.devops-sync-all]
 verify_jwt = false
 
-[functions.gateway-sync-clients]
+[functions.vdesk-sync-base-clientes]
 verify_jwt = false
 
-[functions.gateway-sync-dashboard]
+[functions.vdesk-sync-helpdesk]
 verify_jwt = false
 
 [functions.manual-upload-parse]

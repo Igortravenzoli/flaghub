@@ -179,7 +179,7 @@ export async function consultarTicketsViaProxy(params: {
   if (params.pageNumber) queryParams.append('pageNumber', params.pageNumber.toString());
   if (params.pageSize) queryParams.append('pageSize', params.pageSize.toString());
 
-  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?${queryParams}`;
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os?${queryParams}`;
   
   const response = await fetch(functionUrl, {
     method: 'GET',
