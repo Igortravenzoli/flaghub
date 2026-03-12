@@ -62,7 +62,7 @@ export async function correlacionarTicketViaProxy(
 ): Promise<CorrelacaoResponse> {
   const { data: { session } } = await supabase.auth.getSession();
   
-  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-proxy?action=correlacao&ticketNestle=${encodeURIComponent(ticketNestle)}`;
+  const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os?action=correlacao&ticketNestle=${encodeURIComponent(ticketNestle)}`;
   
   const response = await fetch(functionUrl, {
     method: 'GET',
