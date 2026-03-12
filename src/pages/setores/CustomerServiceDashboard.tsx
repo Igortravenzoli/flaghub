@@ -172,7 +172,7 @@ export default function CustomerServiceDashboard() {
                 columns={implColumns}
                 data={implantacoes}
                 isLoading={isLoading}
-                getRowKey={(r) => `${r.title}-${r.created_date}`}
+                getRowKey={(r) => `${r.title ?? ''}-${r.created_date ?? ''}`}
                 onRowClick={setDrawerItem}
                 searchPlaceholder="Buscar implantação..."
               />
