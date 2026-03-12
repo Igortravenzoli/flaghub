@@ -50,6 +50,21 @@ export default function CustomerServiceDashboard() {
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
 
+  // Import history for compact view in Implantações tab
+  const { data: recentBatches = [], isLoading: batchesLoading } = useQuery({
+    queryKey: ['manual_import_batches', 'cs_implantacoes_v1', 'compact'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('manual_import_batches')
+        .select('id, status, total_rows, valid_rows, invalid_rows, imported_at, published_at, manual_import_templates!manual_import_batches_template_id_fkey(key)')
+        .order('imported_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data ?? []).filter((b: any) => b.manual_import_templates?.key === 'cs_implantacoes_v1').slice(0, 5);
+    },
+    staleTime: 60 * 1000,
+  });
+
   const respChartData = useMemo(() =>
     Object.entries(porResponsavel)
       .sort(([, a], [, b]) => b - a)
