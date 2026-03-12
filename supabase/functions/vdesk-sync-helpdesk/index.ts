@@ -71,10 +71,11 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}))
     const consultor = body.consultor || null
 
-    // Determine date range: check last snapshot to decide initial vs incremental
+    // Determine date range: check last snapshot WITH real data to decide initial vs incremental
     const { data: lastSnapshot } = await admin
       .from('helpdesk_dashboard_snapshots')
-      .select('collected_at')
+      .select('collected_at, total_registros')
+      .gt('total_registros', 0)
       .order('collected_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -84,14 +85,16 @@ serve(async (req) => {
     const now = new Date()
     dataFim = body.data_fim || formatDate(now)
 
-    if (lastSnapshot?.collected_at && !body.data_inicio) {
+    if (body.data_inicio) {
+      // Explicit date from request body takes priority
+      dataInicio = body.data_inicio
+      console.log(`[GatewaySyncDashboard] Explicit date range: ${dataInicio} to ${dataFim}`)
+    } else if (lastSnapshot?.collected_at && lastSnapshot.total_registros > 0) {
       // Incremental: from last collected minus 1 day for safety overlap
       const lastDate = new Date(lastSnapshot.collected_at)
       lastDate.setDate(lastDate.getDate() - 1)
       dataInicio = formatDate(lastDate)
       console.log(`[GatewaySyncDashboard] Incremental sync from ${dataInicio}`)
-    } else if (body.data_inicio) {
-      dataInicio = body.data_inicio
     } else {
       // Initial: last 90 days
       const d = new Date()
@@ -151,14 +154,21 @@ serve(async (req) => {
         processed_at: new Date().toISOString(),
       })
 
-      // Store snapshot — upsert by periodo_tipo + data_inicio + data_fim + consultor
+      // Extract totals from response — check multiple paths
+      const acum = dashData.acumulado || {}
+      const totalReg = dashData.totalRegistros || acum.totalRegistros || 
+        (dashData.registrosPorConsultor || []).reduce((s: number, c: any) => s + (c.totalRegistros || c.quantidade || 0), 0) || null
+      const totalMin = dashData.totalMinutos || acum.totalMinutos ||
+        (dashData.registrosPorConsultor || []).reduce((s: number, c: any) => s + (c.totalMinutos || 0), 0) || null
+
+      // Store snapshot
       const snapshot = {
         periodo_tipo: 'custom',
         data_inicio: dataInicio,
         data_fim: dataFim,
         consultor: consultor,
-        total_registros: dashData.totalRegistros || dashData.total || null,
-        total_minutos: dashData.totalMinutos || dashData.tempoTotal || null,
+        total_registros: totalReg,
+        total_minutos: totalMin,
         raw: dashData,
         collected_at: new Date().toISOString(),
       }
