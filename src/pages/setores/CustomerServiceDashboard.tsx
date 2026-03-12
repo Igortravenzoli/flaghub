@@ -62,10 +62,13 @@ export default function CustomerServiceDashboard() {
   }, [devopsItems, kpiFilter]);
 
   const filteredImpl = useMemo(() => {
-    if (kpiFilter === 'impl_andamento')
-      return implantacoes.filter(i => i.status_implantacao && !['finalizado', 'concluído', 'concluido'].includes(i.status_implantacao.toLowerCase()));
-    if (kpiFilter === 'impl_finalizadas')
-      return implantacoes.filter(i => i.status_implantacao && ['finalizado', 'concluído', 'concluido'].includes(i.status_implantacao.toLowerCase()));
+    const encerradoStatuses = ['finalizado', 'concluído', 'concluido', '8 - encerrado', 'encerrado', '11 - cancelado', 'cancelado'];
+    if (kpiFilter === 'impl_andamento') {
+      return implantacoes.filter(i => i.status_implantacao && !encerradoStatuses.includes(i.status_implantacao.toLowerCase()));
+    }
+    if (kpiFilter === 'impl_finalizadas') {
+      return implantacoes.filter(i => i.status_implantacao && encerradoStatuses.includes(i.status_implantacao.toLowerCase()));
+    }
     return implantacoes;
   }, [implantacoes, kpiFilter]);
 
