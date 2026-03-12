@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Package,
   Factory,
+  Server,
   ShieldCheck,
   Shield,
   Globe,
