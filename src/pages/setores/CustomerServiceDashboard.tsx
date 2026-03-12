@@ -108,7 +108,7 @@ export default function CustomerServiceDashboard() {
   ] : [];
 
   return (
-    <SectorLayout title="Customer Service" subtitle="Dashboard de Gestão — CS" lastUpdate="" integrations={integrations}>
+    <SectorLayout title="Customer Service" subtitle="Dashboard de Gestão — CS" lastUpdate="" integrations={integrations} templateKey="cs_implantacoes">
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
