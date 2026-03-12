@@ -1,145 +1,116 @@
+import { useState } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
-import { Card } from '@/components/ui/card';
+import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
+import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
+import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
+import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
+import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
+import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
+import { useQualidadeKpis, QualidadeItem } from '@/hooks/useQualidadeKpis';
+import { useDashboardFilters } from '@/hooks/useDashboardFilters';
+import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Badge } from '@/components/ui/badge';
-import { qualidadeData } from '@/data/mockSectorData';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { FileCheck, Clock, TrendingUp, BarChart3 } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
-import { FileCheck, Clock, AlertTriangle, BarChart3, TrendingUp } from 'lucide-react';
 
 const integrations: Integration[] = [
-  { name: 'Vdesk API', type: 'api', status: 'up', lastCheck: '20/02/2026 09:00', latency: '85ms', description: 'Ordens de Serviço' },
-  { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '20/02/2026 09:00', latency: '120ms', description: 'Work Items & Boards' },
+  { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items QA' },
 ];
 
-function KPICard({ title, total, sistemaA, sistemaB, icon: Icon }: {
-  title: string; total: number | string; sistemaA: number; sistemaB: number; icon: React.ComponentType<{ className?: string }>;
-}) {
-  return (
-    <Card className="p-5 bg-primary/5 border-primary/20 hover:shadow-lg transition-all duration-300 animate-fade-in">
-      <div className="flex items-start justify-between">
-        <h3 className="font-semibold text-sm text-foreground">{title}</h3>
-        <div className="p-1.5 rounded-lg bg-primary/10">
-          <Icon className="h-4 w-4 text-primary" />
-        </div>
-      </div>
-      <p className="text-3xl font-bold text-foreground mt-2">{total}</p>
-      <div className="flex gap-3 mt-3">
-        <div className="text-center flex-1 rounded-lg bg-primary/10 p-2">
-          <p className="text-xs text-muted-foreground">Sistema A</p>
-          <p className="text-lg font-bold text-foreground">{sistemaA}%</p>
-        </div>
-        <div className="text-center flex-1 rounded-lg bg-primary/10 p-2">
-          <p className="text-xs text-muted-foreground">Sistema B</p>
-          <p className="text-lg font-bold text-foreground">{sistemaB}%</p>
-        </div>
-      </div>
-    </Card>
-  );
-}
+const columns: DataTableColumn<QualidadeItem>[] = [
+  { key: 'id', header: 'ID', className: 'font-mono text-xs w-16' },
+  { key: 'title', header: 'Título', className: 'max-w-[350px] truncate' },
+  { key: 'state', header: 'Estado', render: r => <Badge variant="outline" className="text-xs">{r.state || '—'}</Badge> },
+  { key: 'assigned_to_display', header: 'Responsável' },
+  { key: 'priority', header: 'Prior.', render: r => r.priority != null ? <Badge variant="secondary" className="text-xs">P{r.priority}</Badge> : '—' },
+  { key: 'created_date', header: 'Criado', render: r => r.created_date ? new Date(r.created_date).toLocaleDateString('pt-BR') : '—', className: 'text-xs' },
+];
 
 export default function QualidadeDashboard() {
-  const d = qualidadeData;
+  const { items, total, filaQA, emTeste, finalizados, taxaVazao, lastSync, isLoading, isError, refetch } = useQualidadeKpis();
+  const filters = useDashboardFilters('mes_atual');
+  const { exportCSV, exportPDF } = useDashboardExport();
+  const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
 
-  // Top KPI cards from gestão à vista
-  const topKPIs = [
-    { label: 'Ordens em Aberto', value: d.ordensAberto },
-    { label: 'Registro OS Dia', value: d.registroOsDia },
-    { label: 'Registro OS D-1', value: d.registroOsD1 },
-    { label: 'Sem Recl. AT', value: d.semReclamacaoAT },
-    { label: 'Sem Recl. SIS', value: d.semReclamacaoSIS },
-  ];
+  const handleExportCSV = () => exportCSV({
+    title: 'Qualidade QA', area: 'Qualidade', periodLabel: filters.presetLabel,
+    columns: ['id', 'title', 'state', 'assigned_to_display', 'priority', 'created_date'],
+    rows: items as any[],
+  });
+
+  const handleExportPDF = () => exportPDF({
+    title: 'Dashboard Qualidade', area: 'Qualidade', periodLabel: filters.presetLabel,
+    kpis: [
+      { label: 'Total QA', value: total },
+      { label: 'Fila QA (WIP)', value: filaQA },
+      { label: 'Taxa Vazão', value: `${taxaVazao}%` },
+      { label: 'Finalizados', value: finalizados },
+    ],
+    columns: ['id', 'title', 'state', 'assigned_to_display', 'priority'],
+    rows: items as any[],
+  });
+
+  const drawerFields: DrawerField[] = drawerItem ? [
+    { label: 'ID', value: drawerItem.id },
+    { label: 'Título', value: drawerItem.title },
+    { label: 'Tipo', value: drawerItem.work_item_type },
+    { label: 'Estado', value: drawerItem.state },
+    { label: 'Responsável', value: drawerItem.assigned_to_display },
+    { label: 'Prioridade', value: drawerItem.priority != null ? `P${drawerItem.priority}` : '—' },
+    { label: 'Criado em', value: drawerItem.created_date ? new Date(drawerItem.created_date).toLocaleString('pt-BR') : '—' },
+    { label: 'Alterado em', value: drawerItem.changed_date ? new Date(drawerItem.changed_date).toLocaleString('pt-BR') : '—' },
+  ] : [];
 
   return (
-    <SectorLayout title="Qualidade" subtitle="Gestão à Vista — QA" lastUpdate="20/02/2026 09:00" integrations={integrations}>
-      {/* Top macro KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {topKPIs.map((kpi) => (
-          <Card key={kpi.label} className="p-4 text-center bg-primary/5 border-primary/20 animate-fade-in hover:shadow-md transition-all">
-            <p className="text-xs font-semibold text-primary uppercase tracking-wider">{kpi.label}</p>
-            <p className="text-3xl font-bold text-foreground mt-1 font-mono">{kpi.value}</p>
-          </Card>
-        ))}
+    <SectorLayout title="Qualidade" subtitle="Gestão à Vista — QA" lastUpdate="" integrations={integrations}>
+      <div className="flex items-center justify-between mb-2">
+        <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
 
-      {/* OS KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <KPICard title="Total de OS's na fila" total={d.osNaFila.total} sistemaA={d.osNaFila.sistemaA} sistemaB={d.osNaFila.sistemaB} icon={FileCheck} />
-        <KPICard title="Total OS's encerradas" total={d.osEncerradas.total} sistemaA={d.osEncerradas.sistemaA} sistemaB={d.osEncerradas.sistemaB} icon={TrendingUp} />
-        <KPICard title="% OS's Encerradas sem retorno" total={`${d.osEncerradasSemRetorno.total}%`} sistemaA={d.osEncerradasSemRetorno.sistemaA} sistemaB={d.osEncerradasSemRetorno.sistemaB} icon={AlertTriangle} />
-      </div>
+      <DashboardFilterBar
+        preset={filters.preset}
+        onPresetChange={filters.setPreset}
+        presetLabel={filters.presetLabel}
+        onRefresh={() => refetch()}
+        onExportCSV={handleExportCSV}
+        onExportPDF={handleExportPDF}
+      />
 
-      {/* Ordens por Status e Sistema */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {(['desenvolvimento', 'backlog', 'teste'] as const).map((status) => (
-          <Card key={status} className="overflow-hidden animate-fade-in">
-            <div className="bg-primary px-4 py-2">
-              <h4 className="font-bold text-primary-foreground text-sm text-center capitalize">
-                Ordens em {status}
-              </h4>
-            </div>
-            <div className="grid grid-cols-3 divide-x divide-border">
-              {d.porSistema[status].map((s) => (
-                <div key={s.sistema} className="p-4 text-center">
-                  <p className="text-xs text-muted-foreground font-medium">{s.sistema}</p>
-                  <p className="text-2xl font-bold text-foreground mt-1 font-mono">{s.qtd}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-        ))}
-      </div>
+      {isError ? (
+        <DashboardEmptyState variant="error" onRetry={() => refetch()} />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <DashboardKpiCard label="Total QA" value={total} icon={FileCheck} isLoading={isLoading} />
+            <DashboardKpiCard label="Fila QA (WIP)" value={filaQA} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" />
+            <DashboardKpiCard label="Taxa Vazão QA" value={taxaVazao} suffix="%" icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
+            <DashboardKpiCard label="Finalizados" value={finalizados} icon={BarChart3} isLoading={isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" />
+          </div>
 
-      {/* Faixa de Tempo */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="p-5 animate-fade-in">
-          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-primary" />
-            Faixa de Tempo
-          </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie data={d.faixaTempo} dataKey="qtd" nameKey="faixa" cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={2} label={({ faixa, pct }) => `${faixa} (${pct}%)`} labelLine={false}>
-                {d.faixaTempo.map((entry, i) => (
-                  <Cell key={i} fill={entry.cor} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
+          {!isLoading && items.length === 0 ? (
+            <DashboardEmptyState description="Nenhum item de qualidade encontrado. Os dados serão exibidos após sync do DevOps." />
+          ) : (
+            <DashboardDataTable
+              title="Itens QA"
+              subtitle={`${total} registros`}
+              columns={columns}
+              data={items}
+              isLoading={isLoading}
+              getRowKey={(r) => r.id || Math.random()}
+              onRowClick={setDrawerItem}
+              searchPlaceholder="Buscar item QA..."
+            />
+          )}
+        </>
+      )}
 
-        <Card className="p-5 animate-fade-in">
-          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-primary" />
-            Distribuição por Faixa
-          </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={d.faixaTempo}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="faixa" fontSize={10} stroke="hsl(var(--muted-foreground))" />
-              <YAxis fontSize={12} stroke="hsl(var(--muted-foreground))" />
-              <Tooltip />
-              <Bar dataKey="qtd" radius={[4, 4, 0, 0]}>
-                {d.faixaTempo.map((entry, i) => (
-                  <Cell key={i} fill={entry.cor} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* Revisão Atual */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="p-4 bg-primary/5 border-primary/20 animate-fade-in">
-          <h4 className="font-semibold text-foreground">Revisão Atual: Sistema A</h4>
-          <p className="text-sm text-muted-foreground mt-1">Versão {d.revisaoAtual.sistemaA.versao} • Liberação {d.revisaoAtual.sistemaA.dataLiberacao}</p>
-        </Card>
-        <Card className="p-4 bg-primary/5 border-primary/20 animate-fade-in">
-          <h4 className="font-semibold text-foreground">Revisão Atual: Sistema B</h4>
-          <p className="text-sm text-muted-foreground mt-1">Versão {d.revisaoAtual.sistemaB.versao} • Liberação {d.revisaoAtual.sistemaB.dataLiberacao}</p>
-        </Card>
-      </div>
+      <DashboardDrawer
+        open={!!drawerItem}
+        onClose={() => setDrawerItem(null)}
+        title={drawerItem?.title || undefined}
+        subtitle={drawerItem?.work_item_type || undefined}
+        fields={drawerFields}
+      />
     </SectorLayout>
   );
 }
