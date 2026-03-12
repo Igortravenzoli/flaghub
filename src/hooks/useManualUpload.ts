@@ -187,8 +187,22 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
         if (error) throw new Error(error.message || 'Erro ao processar arquivo');
         if (data?.error) throw new Error(data.error);
 
+        const parseResult = data as UploadResult;
+
+        // Auto-publish if there are valid rows
+        if (parseResult.valid_rows > 0 && parseResult.status !== 'rejected') {
+          const { data: pubData, error: pubError } = await supabase.functions.invoke('manual-upload-publish', {
+            body: { batch_id: parseResult.batch_id },
+          });
+          if (pubError || pubData?.error) {
+            console.warn('[AutoPublish] Falha:', pubError?.message || pubData?.error);
+          } else {
+            parseResult.status = 'published';
+          }
+        }
+
         statuses[i].status = 'success';
-        statuses[i].result = data as UploadResult;
+        statuses[i].result = parseResult;
         successCount++;
       } catch (err) {
         statuses[i].status = 'error';

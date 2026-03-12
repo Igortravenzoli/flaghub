@@ -89,8 +89,9 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date) {
     return acc;
   }, {} as Record<string, number>);
 
-  const implAndamento = implantacoes.filter(i => i.status_implantacao && !['finalizado', 'concluído', 'concluido'].includes(i.status_implantacao.toLowerCase()));
-  const implFinalizadas = implantacoes.filter(i => i.status_implantacao && ['finalizado', 'concluído', 'concluido'].includes(i.status_implantacao.toLowerCase()));
+  const encerradoStatuses = ['finalizado', 'concluído', 'concluido', '8 - encerrado', 'encerrado', '11 - cancelado', 'cancelado'];
+  const implAndamento = implantacoes.filter(i => i.status_implantacao && !encerradoStatuses.includes(i.status_implantacao.toLowerCase()));
+  const implFinalizadas = implantacoes.filter(i => i.status_implantacao && encerradoStatuses.includes(i.status_implantacao.toLowerCase()));
 
   return {
     items,
