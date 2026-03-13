@@ -335,6 +335,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Fase 2 (hidratação): carregar role/network/profile com retry
     await hydrateUserData(session, opId);
+
+    // Fase 3: Se hydration não trouxe roleCode, tentar mais uma vez após breve delay
+    // (cobre cenário pós-login onde RPC pode falhar na primeira tentativa)
+    if (opId === opIdRef.current) {
+      setState((prev) => {
+        if (!prev.roleCode && prev.isAuthenticated) {
+          console.warn("[Auth] roleCode still null after hydration, scheduling retry...");
+          setTimeout(async () => {
+            if (opId === opIdRef.current) {
+              await hydrateUserData(session, opId);
+            }
+          }, 2000);
+        }
+        return prev;
+      });
+    }
   }, [hydrateUserData]);
 
   useEffect(() => {
