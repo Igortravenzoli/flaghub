@@ -10,7 +10,7 @@ type MfaStep = "loading" | "enroll" | "verify";
 
 export default function MfaChallenge() {
   const navigate = useNavigate();
-  const { signOut, isAdmin } = useAuth();
+  const { signOut, clearMfaRequired } = useAuth();
   const [step, setStep] = useState<MfaStep>("loading");
   const [factorId, setFactorId] = useState<string>("");
 
@@ -26,11 +26,9 @@ export default function MfaChallenge() {
       const verifiedFactors = data.totp.filter((f) => f.status === "verified");
 
       if (verifiedFactors.length > 0) {
-        // Has enrolled factor — need to verify
         setFactorId(verifiedFactors[0].id);
         setStep("verify");
       } else {
-        // No factor — need to enroll
         setStep("enroll");
       }
     } catch (err) {
@@ -40,6 +38,8 @@ export default function MfaChallenge() {
   };
 
   const handleComplete = () => {
+    // Clear the mfaRequired flag so ProtectedRoute won't redirect back here
+    clearMfaRequired();
     navigate("/home", { replace: true });
   };
 

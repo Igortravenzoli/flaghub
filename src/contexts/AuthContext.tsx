@@ -538,6 +538,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const clearMfaRequired = useCallback(() => {
+    console.log("[Auth] clearMfaRequired called");
+    setState((prev) => ({ ...prev, mfaRequired: false }));
+  }, []);
+
   const isAdmin = hasElevated(state.roleCode);
   const isGestao = hasManagement(state.roleCode) && !hasElevated(state.roleCode);
   const isQualidade = hasQuality(state.roleCode);
@@ -560,6 +565,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       signInWithAzure,
+      clearMfaRequired,
       isAdmin,
       isGestao,
       isQualidade,
@@ -575,6 +581,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       signInWithAzure,
+      clearMfaRequired,
       isAdmin,
       isGestao,
       isQualidade,
