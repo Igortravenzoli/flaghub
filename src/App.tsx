@@ -32,6 +32,7 @@ import Permissions from "@/pages/admin/Permissions";
 import SyncCentral from "@/pages/admin/SyncCentral";
 import IpAllowlist from "@/pages/admin/IpAllowlist";
 import ManualUploads from "@/pages/admin/ManualUploads";
+import AuditLogs from "@/pages/admin/AuditLogs";
 
 const queryClient = new QueryClient();
 
