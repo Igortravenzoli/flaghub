@@ -138,7 +138,7 @@ async function fetchUserData(userId: string): Promise<{
   try {
     let { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("*")
+      .select("user_id, full_name, network_id, created_at")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -150,7 +150,7 @@ async function fetchUserData(userId: string): Promise<{
 
       const { data: newProfile, error: newProfileError } = await supabase
         .from("profiles")
-        .select("*")
+        .select("user_id, full_name, network_id, created_at")
         .eq("user_id", userId)
         .maybeSingle();
 

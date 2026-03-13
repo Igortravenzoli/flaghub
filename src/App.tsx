@@ -17,7 +17,7 @@ import Configuracoes from "@/pages/Configuracoes";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
 import MfaChallenge from "@/pages/MfaChallenge";
-import TesteSupabaseSetup from "@/pages/TesteSupabaseSetup";
+
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 import Acompanhamento from "@/pages/Acompanhamento";
 import QualidadeDashboard from "@/pages/setores/QualidadeDashboard";
@@ -48,7 +48,7 @@ const App = () => (
               <Route path="/" element={<Welcome />} />
               <Route path="/login" element={<Login />} />
               <Route path="/mfa" element={<MfaChallenge />} />
-              <Route path="/teste-setup" element={<TesteSupabaseSetup />} />
+              
               <Route
                 element={
                   <ProtectedRoute>
