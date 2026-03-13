@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, role, signOut, mfaRequired } = useAuth();
+  const { isAuthenticated, isLoading, role, signOut, mfaRequired, pendingApproval } = useAuth();
   const location = useLocation();
   const [isStuck, setIsStuck] = useState(false);
   const timeoutRef = useRef<number | null>(null);
