@@ -210,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading: false,
       isAuthenticated: false,
       mfaRequired: false,
+      pendingApproval: false,
     });
   }, []);
 
