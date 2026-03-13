@@ -16,6 +16,7 @@ import Usuarios from "@/pages/Usuarios";
 import Configuracoes from "@/pages/Configuracoes";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
+import MfaChallenge from "@/pages/MfaChallenge";
 import TesteSupabaseSetup from "@/pages/TesteSupabaseSetup";
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 import Acompanhamento from "@/pages/Acompanhamento";
