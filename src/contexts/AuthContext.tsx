@@ -272,6 +272,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[Auth] Elevated role MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
         }
 
+        const isPending = !obfuscatedRole && userData.profile != null;
+
         setState((prev) => {
           const nextRoleCode = obfuscatedRole ?? prev.roleCode;
           const nextNetworkId = mergedNetworkId ?? prev.networkId;
@@ -286,6 +288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             roleCode: nextRoleCode,
             networkId: nextNetworkId,
             mfaRequired: obfuscatedRole ? mfaRequired : prev.mfaRequired,
+            pendingApproval: isPending && !prev.roleCode,
           };
         });
 
