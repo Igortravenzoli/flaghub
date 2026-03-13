@@ -487,12 +487,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const isAdmin = state.role === "admin";
-  const isGestao = state.role === "gestao";
-  const isQualidade = state.role === "qualidade";
-  const isOperacional = state.role === "operacional";
-  const canImport = isAdmin || isGestao;
-  const canManageSettings = isAdmin;
+  const isAdmin = hasElevated(state.roleCode);
+  const isGestao = hasManagement(state.roleCode) && !hasElevated(state.roleCode);
+  const isQualidade = hasQuality(state.roleCode);
+  const isOperacional = hasOperational(state.roleCode);
+  const canImport = canPerformImport(state.roleCode);
+  const canManageSettingsFlag = canManageConfig(state.roleCode);
+
+  // Derive the DB role name from obfuscated code for backward compatibility
+  const roleFromCode = ((): AppRole | null => {
+    if (!state.roleCode) return null;
+    const map: Record<string, AppRole> = { s1: 'admin', s2: 'gestao', s3: 'qualidade', s4: 'operacional' };
+    return map[state.roleCode] ?? null;
+  })();
 
   const value = useMemo<AuthContextValue>(
     () => ({
