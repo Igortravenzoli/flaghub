@@ -67,6 +67,11 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
     return <Navigate to="/mfa" replace />;
   }
 
+  // Pending approval: user authenticated but no role assigned yet
+  if (pendingApproval && location.pathname !== '/pending-approval') {
+    return <Navigate to="/pending-approval" replace />;
+  }
+
   // Verificar roles se especificados
   if (requiredRoles && requiredRoles.length > 0) {
     if (!role || !requiredRoles.includes(role)) {

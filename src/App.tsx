@@ -49,6 +49,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Welcome />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/pending-approval" element={<PendingApproval />} />
               <Route path="/login" element={<Login />} />
               <Route path="/mfa" element={<MfaChallenge />} />
               
