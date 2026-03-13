@@ -19,7 +19,16 @@ function getSupabaseAdmin() {
   )
 }
 
+function validateCronSecret(req: Request): boolean {
+  const cronSecret = req.headers.get('x-cron-secret')
+  const expected = Deno.env.get('CRON_SECRET')
+  return !!cronSecret && !!expected && cronSecret === expected
+}
+
 async function validateAuth(req: Request): Promise<string | null> {
+  // Allow pg_cron calls via shared secret
+  if (validateCronSecret(req)) return 'cron'
+
   const authHeader = req.headers.get('authorization')
   if (!authHeader?.startsWith('Bearer ')) return null
   const token = authHeader.replace('Bearer ', '')
