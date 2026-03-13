@@ -148,7 +148,7 @@ function mapWorkItem(wi: DevOpsWorkItem) {
     iteration_path: f['System.IterationPath'] ?? null,
     created_date: f['System.CreatedDate'] ?? null,
     changed_date: f['System.ChangedDate'] ?? null,
-    web_url: wi._links?.html?.href ?? null,
+    web_url: wi._links?.html?.href ?? `https://dev.azure.com/${DEVOPS_ORG}/${encodeURIComponent(f['System.TeamProject'] || DEVOPS_PROJECT)}/_workitems/edit/${wi.id}`,
     api_url: wi.url ?? null,
     custom_fields: Object.keys(customFields).length > 0 ? customFields : null,
     raw: wi,
