@@ -52,8 +52,15 @@ export function useHelpdeskKpis() {
 
   const snapshots = query.data || [];
 
-  // Get the latest snapshot with raw data
-  const latestWithRaw = snapshots.find(s => s.raw && typeof s.raw === 'object');
+  // Get the latest snapshot with POPULATED raw data (not empty arrays)
+  const latestWithRaw = snapshots.find(s => {
+    if (!s.raw || typeof s.raw !== 'object') return false;
+    const r = s.raw as any;
+    // Check if at least one KPI array has data
+    return (r.registrosPorConsultor?.length > 0) ||
+           (r.ocorrenciasPorTipo?.length > 0) ||
+           (r.acumulado?.totalRegistros > 0);
+  });
   const raw = latestWithRaw?.raw || {};
 
   // Parse KPIs from raw JSONB

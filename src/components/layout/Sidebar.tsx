@@ -254,7 +254,7 @@ export function Sidebar() {
             return (
               <div key={item.label}>
                 <button
-                  onClick={() => { setHelpdeskOpen(!helpdeskOpen); if (collapsed) navigate(item.path); }}
+                  onClick={() => { navigate(item.path); setHelpdeskOpen(!helpdeskOpen); }}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm w-full",
                     isHelpdeskActive
