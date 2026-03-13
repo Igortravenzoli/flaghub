@@ -178,16 +178,21 @@ serve(async (req) => {
 
     const results: Array<{ query_id: string; name: string; success: boolean; detail?: any; error?: string }> = []
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const authHeader = req.headers.get('authorization')!
+    const isCron = validateCronSecret(req)
+    const forwardHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    if (isCron) {
+      forwardHeaders['x-cron-secret'] = Deno.env.get('CRON_SECRET')!
+    } else {
+      forwardHeaders['Authorization'] = req.headers.get('authorization')!
+    }
 
     for (const query of queries) {
       try {
         const resp = await fetch(`${supabaseUrl}/functions/v1/devops-sync-query`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader,
-          },
+          headers: forwardHeaders,
           body: JSON.stringify({ query_id: query.id }),
         })
 
