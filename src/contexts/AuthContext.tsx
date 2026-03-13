@@ -4,7 +4,7 @@ import type { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Profile } from "@/types/database";
-import { toCode, hasElevated, hasManagement, hasQuality, hasOperational, canPerformImport, canManageConfig } from "@/lib/roleMap";
+import { hasElevated, hasManagement, hasQuality, hasOperational, canPerformImport, canManageConfig } from "@/lib/roleMap";
 
 interface AuthState {
   user: User | null;
@@ -131,7 +131,8 @@ async function provisionUser(userId: string) {
 
 async function fetchUserData(userId: string): Promise<{
   profile: Profile | null;
-  role: AppRole | null;
+  /** Already obfuscated role code (s1/s2/s3/s4) */
+  roleCode: string | null;
   networkId: number | null;
 }> {
   try {
@@ -157,39 +158,22 @@ async function fetchUserData(userId: string): Promise<{
       profile = newProfile;
     }
 
-    // Usar RPC get_user_role para obter a role com maior privilégio
-    // (admin > gestao > qualidade > operacional)
-    const { data: roleFromRpc, error: roleError } = await supabase
-      .rpc("get_user_role", { p_user_id: userId });
+    // Use masked RPC — returns obfuscated code (s1/s2/s3/s4), never plain role names
+    const { data: maskedCode, error: roleError } = await supabase
+      .rpc("auth_user_role_masked");
 
     if (roleError) {
-      console.warn("[Auth] get_user_role RPC failed, falling back to direct query:", roleError);
-      // Fallback: query direta com ordenação
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId);
-      
-      const rolePriority: Record<string, number> = { admin: 1, gestao: 2, qualidade: 3, operacional: 4 };
-      const sortedRoles = (roleData || []).sort((a, b) => 
-        (rolePriority[a.role] ?? 99) - (rolePriority[b.role] ?? 99)
-      );
-      
-      return {
-        profile: profile as Profile | null,
-        role: (sortedRoles[0]?.role as AppRole) || null,
-        networkId: profile?.network_id ?? null,
-      };
+      console.warn("[Auth] auth_user_role_masked RPC failed:", roleError);
     }
 
     return {
       profile: profile as Profile | null,
-      role: (roleFromRpc as AppRole) || null,
+      roleCode: (maskedCode as string) || null,
       networkId: profile?.network_id ?? null,
     };
   } catch (error) {
     console.error("[Auth] Error fetching user data:", error);
-    return { profile: null, role: null, networkId: null };
+    return { profile: null, roleCode: null, networkId: null };
   }
 }
 
@@ -235,21 +219,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const [claims, userData] = await Promise.all([
           withTimeout(
-            Promise.all([supabase.rpc("auth_user_role"), supabase.rpc("auth_network_id")]),
+            Promise.all([supabase.rpc("auth_user_role_masked"), supabase.rpc("auth_network_id")]),
             claimsTimeoutMs,
             `auth claims (attempt ${attempt})`
           )
             .then(([roleRes, netRes]) => ({
-              role: roleRes.error ? null : (roleRes.data as AppRole | null),
+              roleCode: roleRes.error ? null : (roleRes.data as string | null),
               networkId: netRes.error ? null : (netRes.data as number | null),
             }))
             .catch((error) => {
               console.warn(`[Auth] auth claims fetch failed (attempt ${attempt}):`, error);
-              return { role: null, networkId: null };
+              return { roleCode: null, networkId: null };
             }),
           withTimeout(fetchUserData(session.user.id), timeoutMs, `fetchUserData (attempt ${attempt})`).catch((error) => {
             console.warn(`[Auth] fetchUserData timed out/failed (attempt ${attempt}):`, error);
-            return { profile: null, role: null, networkId: null };
+            return { profile: null, roleCode: null, networkId: null };
           }),
         ]);
 
@@ -258,11 +242,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return false;
         }
 
-        const mergedRole = userData.role ?? claims.role;
+        // Both sources now return obfuscated codes directly — no toCode() needed
+        const mergedRoleCode = userData.roleCode ?? claims.roleCode;
         const mergedNetworkId = userData.networkId ?? claims.networkId;
 
         // If both sources returned null, hydration failed
-        if (!mergedRole && !userData.profile) {
+        if (!mergedRoleCode && !userData.profile) {
           return false;
         }
 
@@ -270,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn("[Auth] networkId is null after sign-in (claims+profile)");
         }
 
-        const obfuscatedRole = toCode(mergedRole);
+        const obfuscatedRole = mergedRoleCode;
 
         let mfaRequired = false;
         if (hasElevated(obfuscatedRole)) {
