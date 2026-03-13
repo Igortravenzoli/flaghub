@@ -217,6 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       networkId: null,
       isLoading: false,
       isAuthenticated: false,
+      mfaRequired: false,
     });
   }, []);
 
