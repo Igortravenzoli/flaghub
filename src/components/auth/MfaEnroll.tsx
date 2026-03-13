@@ -125,7 +125,7 @@ export function MfaEnroll({ onEnrolled }: MfaEnrollProps) {
               </code>
               <Button variant="outline" size="icon" onClick={copySecret}>
                 {copied ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
                 ) : (
                   <Copy className="h-4 w-4" />
                 )}
