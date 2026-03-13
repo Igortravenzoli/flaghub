@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { Monitor, Loader2 } from 'lucide-react';
+import { Monitor, Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { FusionText } from '@/components/auth/FusionText';
+
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_SECONDS = 60;
 
 export default function Login() {
   const navigate = useNavigate();
@@ -21,8 +24,34 @@ export default function Login() {
   const [signupData, setSignupData] = useState({ email: '', password: '', fullName: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAzureLoading, setIsAzureLoading] = useState(false);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const attemptsRef = useRef(0);
+  const lockoutTimerRef = useRef<number | null>(null);
 
   const from = (location.state as { from?: string })?.from || '/home';
+
+  const isLockedOut = useCallback(() => {
+    if (!lockoutUntil) return false;
+    return Date.now() < lockoutUntil;
+  }, [lockoutUntil]);
+
+  const startLockoutTimer = (until: number) => {
+    setLockoutUntil(until);
+    const tick = () => {
+      const remaining = Math.ceil((until - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockoutUntil(null);
+        setRemainingSeconds(0);
+        attemptsRef.current = 0;
+        if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current);
+        return;
+      }
+      setRemainingSeconds(remaining);
+    };
+    tick();
+    lockoutTimerRef.current = window.setInterval(tick, 1000);
+  };
 
   const handleAzureLogin = async () => {
     setIsAzureLoading(true);
