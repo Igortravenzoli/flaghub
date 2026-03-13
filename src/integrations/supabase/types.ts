@@ -1819,6 +1819,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"]
       }
+      auth_user_role_masked: { Args: never; Returns: string }
       batch_validate_os: {
         Args: { p_validations: Json }
         Returns: {
