@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -39,7 +39,15 @@ function getSupabaseAdmin() {
   )
 }
 
+function validateCronSecret(req: Request): boolean {
+  const cronSecret = req.headers.get('x-cron-secret')
+  const expected = Deno.env.get('CRON_SECRET')
+  return !!cronSecret && !!expected && cronSecret === expected
+}
+
 async function validateAuth(req: Request): Promise<string | null> {
+  if (validateCronSecret(req)) return 'cron'
+
   const authHeader = req.headers.get('authorization')
   if (!authHeader?.startsWith('Bearer ')) return null
   const token = authHeader.replace('Bearer ', '')

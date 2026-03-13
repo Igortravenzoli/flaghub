@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
@@ -19,7 +19,16 @@ function getSupabaseAdmin() {
   )
 }
 
+function validateCronSecret(req: Request): boolean {
+  const cronSecret = req.headers.get('x-cron-secret')
+  const expected = Deno.env.get('CRON_SECRET')
+  return !!cronSecret && !!expected && cronSecret === expected
+}
+
 async function validateAuth(req: Request): Promise<string | null> {
+  // Allow pg_cron calls via shared secret
+  if (validateCronSecret(req)) return 'cron'
+
   const authHeader = req.headers.get('authorization')
   if (!authHeader?.startsWith('Bearer ')) return null
   const token = authHeader.replace('Bearer ', '')
@@ -169,16 +178,21 @@ serve(async (req) => {
 
     const results: Array<{ query_id: string; name: string; success: boolean; detail?: any; error?: string }> = []
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const authHeader = req.headers.get('authorization')!
+    const isCron = validateCronSecret(req)
+    const forwardHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    if (isCron) {
+      forwardHeaders['x-cron-secret'] = Deno.env.get('CRON_SECRET')!
+    } else {
+      forwardHeaders['Authorization'] = req.headers.get('authorization')!
+    }
 
     for (const query of queries) {
       try {
         const resp = await fetch(`${supabaseUrl}/functions/v1/devops-sync-query`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader,
-          },
+          headers: forwardHeaders,
           body: JSON.stringify({ query_id: query.id }),
         })
 
