@@ -47,6 +47,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Welcome />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/login" element={<Login />} />
               <Route path="/mfa" element={<MfaChallenge />} />
               
