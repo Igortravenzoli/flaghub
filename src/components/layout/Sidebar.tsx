@@ -281,14 +281,18 @@ export function Sidebar() {
           return renderNavItem(item);
         })}
 
-        {/* Separator: Admin */}
-        {!collapsed && (
-          <div className="pt-3 pb-1 px-3">
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Admin</span>
-          </div>
+        {/* Admin — only visible to admins */}
+        {isAdmin && (
+          <>
+            {!collapsed && (
+              <div className="pt-3 pb-1 px-3">
+                <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Admin</span>
+              </div>
+            )}
+            {collapsed && <div className="border-t border-sidebar-border my-2" />}
+            {adminItems.map(renderNavItem)}
+          </>
         )}
-        {collapsed && <div className="border-t border-sidebar-border my-2" />}
-        {adminItems.map(renderNavItem)}
       </nav>
 
       {/* Footer */}
