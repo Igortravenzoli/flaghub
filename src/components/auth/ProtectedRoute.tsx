@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, role, signOut, mfaRequired } = useAuth();
+  const { isAuthenticated, isLoading, role, signOut, mfaRequired, pendingApproval } = useAuth();
   const location = useLocation();
   const [isStuck, setIsStuck] = useState(false);
   const timeoutRef = useRef<number | null>(null);
@@ -65,6 +65,11 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   // MFA enforcement for admins
   if (mfaRequired && location.pathname !== '/mfa') {
     return <Navigate to="/mfa" replace />;
+  }
+
+  // Pending approval: user authenticated but no role assigned yet
+  if (pendingApproval && location.pathname !== '/pending-approval') {
+    return <Navigate to="/pending-approval" replace />;
   }
 
   // Verificar roles se especificados

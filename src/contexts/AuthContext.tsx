@@ -16,6 +16,7 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   mfaRequired: boolean;
+  pendingApproval: boolean;
 }
 
 export interface AuthContextValue extends AuthState {
@@ -40,6 +41,7 @@ export interface AuthContextValue extends AuthState {
   canImport: boolean;
   canManageSettings: boolean;
   mfaRequired: boolean;
+  pendingApproval: boolean;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -187,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
     isAuthenticated: false,
     mfaRequired: false,
+    pendingApproval: false,
   });
 
   // Ref para garantir que o estado inicial só seja definido uma vez
@@ -207,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading: false,
       isAuthenticated: false,
       mfaRequired: false,
+      pendingApproval: false,
     });
   }, []);
 
@@ -268,6 +272,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[Auth] Elevated role MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
         }
 
+        const isPending = !obfuscatedRole && userData.profile != null;
+
         setState((prev) => {
           const nextRoleCode = obfuscatedRole ?? prev.roleCode;
           const nextNetworkId = mergedNetworkId ?? prev.networkId;
@@ -282,6 +288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             roleCode: nextRoleCode,
             networkId: nextNetworkId,
             mfaRequired: obfuscatedRole ? mfaRequired : prev.mfaRequired,
+            pendingApproval: isPending && !prev.roleCode,
           };
         });
 

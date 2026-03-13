@@ -9,6 +9,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Welcome from "@/pages/Welcome";
 import AuthCallback from "@/pages/AuthCallback";
+import PendingApproval from "@/pages/PendingApproval";
 import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
 import Tickets from "@/pages/Tickets";
@@ -48,6 +49,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Welcome />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/pending-approval" element={<PendingApproval />} />
               <Route path="/login" element={<Login />} />
               <Route path="/mfa" element={<MfaChallenge />} />
               
