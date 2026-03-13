@@ -12,6 +12,7 @@ export interface InfraItem {
   tags: string | null;
   created_date: string | null;
   changed_date: string | null;
+  web_url: string | null;
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {

@@ -22,7 +22,9 @@ const integrations: Integration[] = [
 ];
 
 const fabricaColumns: DataTableColumn<FabricaItem>[] = [
-  { key: 'id', header: 'ID', className: 'font-mono text-xs w-16' },
+  { key: 'id', header: 'ID', className: 'font-mono text-xs w-16', render: r => r.web_url ? (
+    <a href={r.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono" onClick={e => e.stopPropagation()}>{r.id}</a>
+  ) : <span>{r.id}</span> },
   { key: 'title', header: 'Task', className: 'max-w-[350px] truncate' },
   { key: 'assigned_to_display', header: 'Colaborador' },
   { key: 'state', header: 'Status', render: r => {
@@ -163,6 +165,7 @@ export default function FabricaDashboard() {
         title={drawerItem?.title || undefined}
         subtitle={drawerItem?.work_item_type || undefined}
         fields={drawerFields}
+        externalUrl={drawerItem?.web_url}
       />
     </SectorLayout>
   );
