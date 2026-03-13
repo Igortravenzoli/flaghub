@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Welcome from "@/pages/Welcome";
+import AuthCallback from "@/pages/AuthCallback";
 import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
 import Tickets from "@/pages/Tickets";
