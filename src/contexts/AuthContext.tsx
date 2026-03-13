@@ -197,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     networkId: null,
     isLoading: true,
     isAuthenticated: false,
+    mfaRequired: false,
   });
 
   // Ref para garantir que o estado inicial só seja definido uma vez
