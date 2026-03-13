@@ -4,12 +4,14 @@ import type { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Profile } from "@/types/database";
+import { toCode, hasElevated, hasManagement, hasQuality, hasOperational, canPerformImport, canManageConfig } from "@/lib/roleMap";
 
 interface AuthState {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
-  role: AppRole | null;
+  /** Obfuscated role code (s1, s2, s3, s4) — never exposes DB role names */
+  roleCode: string | null;
   networkId: number | null;
   isLoading: boolean;
   isAuthenticated: boolean;
@@ -28,6 +30,8 @@ export interface AuthContextValue extends AuthState {
   ) => ReturnType<typeof supabase.auth.signUp>;
   signOut: () => Promise<{ error: unknown | null }>;
   signInWithAzure: () => ReturnType<typeof supabase.auth.signInWithOAuth>;
+  /** @deprecated use roleCode-based checks */
+  role: AppRole | null;
   isAdmin: boolean;
   isGestao: boolean;
   isQualidade: boolean;
@@ -193,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: null,
     session: null,
     profile: null,
-    role: null,
+    roleCode: null,
     networkId: null,
     isLoading: true,
     isAuthenticated: false,
@@ -213,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: null,
       session: null,
       profile: null,
-      role: null,
+      roleCode: null,
       networkId: null,
       isLoading: false,
       isAuthenticated: false,
@@ -269,24 +273,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn("[Auth] networkId is null after sign-in (claims+profile)");
       }
 
-      // Check MFA requirement for admins
+      // Obfuscate the role before storing in state
+      const obfuscatedRole = toCode(mergedRole);
+
+      // Check MFA requirement for elevated roles
       let mfaRequired = false;
-      if (mergedRole === "admin") {
+      if (hasElevated(obfuscatedRole)) {
         const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
         if (aalData && aalData.currentLevel !== aalData.nextLevel) {
-          // User has MFA enrolled but hasn't verified yet (aal1 but needs aal2)
           mfaRequired = true;
         } else if (aalData && aalData.currentLevel === "aal1" && aalData.nextLevel === "aal1") {
-          // User hasn't enrolled MFA yet — also required
           mfaRequired = true;
         }
-        console.log("[Auth] Admin MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
+        console.log("[Auth] Elevated role MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
       }
 
       setState((prev) => ({
         ...prev,
         profile: userData.profile,
-        role: mergedRole,
+        roleCode: obfuscatedRole,
         networkId: mergedNetworkId,
         mfaRequired,
       }));
@@ -482,16 +487,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const isAdmin = state.role === "admin";
-  const isGestao = state.role === "gestao";
-  const isQualidade = state.role === "qualidade";
-  const isOperacional = state.role === "operacional";
-  const canImport = isAdmin || isGestao;
-  const canManageSettings = isAdmin;
+  const isAdmin = hasElevated(state.roleCode);
+  const isGestao = hasManagement(state.roleCode) && !hasElevated(state.roleCode);
+  const isQualidade = hasQuality(state.roleCode);
+  const isOperacional = hasOperational(state.roleCode);
+  const canImport = canPerformImport(state.roleCode);
+  const canManageSettingsFlag = canManageConfig(state.roleCode);
+
+  // Derive the DB role name from obfuscated code for backward compatibility
+  const roleFromCode = ((): AppRole | null => {
+    if (!state.roleCode) return null;
+    const map: Record<string, AppRole> = { s1: 'admin', s2: 'gestao', s3: 'qualidade', s4: 'operacional' };
+    return map[state.roleCode] ?? null;
+  })();
 
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
+      role: roleFromCode,
       signIn,
       signUp,
       signOut,
@@ -501,11 +514,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isQualidade,
       isOperacional,
       canImport,
-      canManageSettings,
+      canManageSettings: canManageSettingsFlag,
       mfaRequired: state.mfaRequired,
     }),
     [
       state,
+      roleFromCode,
       signIn,
       signUp,
       signOut,
@@ -515,7 +529,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isQualidade,
       isOperacional,
       canImport,
-      canManageSettings,
+      canManageSettingsFlag,
     ]
   );
 

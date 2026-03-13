@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -81,25 +82,35 @@ export default function Login() {
     setIsSubmitting(true);
 
     try {
-      const { data, error } = await signIn(loginData.email, loginData.password);
-      
-      if (error) {
-        attemptsRef.current += 1;
+      // Use server-side rate-limited endpoint
+      const { data: fnData, error: fnError } = await supabase.functions.invoke('auth-rate-limit', {
+        body: { email: loginData.email, password: loginData.password },
+      });
+
+      if (fnError || fnData?.error) {
+        const errorData = fnData || {};
         
-        if (attemptsRef.current >= MAX_ATTEMPTS) {
-          const until = Date.now() + LOCKOUT_SECONDS * 1000;
+        if (errorData.error === 'rate_limited') {
+          const retryAfter = errorData.retry_after || LOCKOUT_SECONDS;
+          const until = Date.now() + retryAfter * 1000;
           startLockoutTimer(until);
           toast.error('Conta temporariamente bloqueada', {
-            description: `Muitas tentativas falharam. Aguarde ${LOCKOUT_SECONDS} segundos.`,
+            description: `Muitas tentativas falharam. Aguarde ${retryAfter} segundos.`,
             icon: <ShieldAlert className="h-4 w-4" />,
           });
         } else {
-          const remaining = MAX_ATTEMPTS - attemptsRef.current;
+          attemptsRef.current += 1;
+          const remaining = errorData.remaining_attempts ?? (MAX_ATTEMPTS - attemptsRef.current);
           toast.error('Erro no login', {
-            description: `${error.message}. ${remaining} tentativa(s) restante(s).`,
+            description: `${errorData.message || fnError?.message || 'Credenciais inválidas'}. ${remaining} tentativa(s) restante(s).`,
           });
         }
-      } else {
+      } else if (fnData?.session) {
+        // Set session from the edge function response
+        await supabase.auth.setSession({
+          access_token: fnData.session.access_token,
+          refresh_token: fnData.session.refresh_token,
+        });
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
         navigate(from, { replace: true });
