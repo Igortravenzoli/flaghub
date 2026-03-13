@@ -236,12 +236,20 @@ export default function Login() {
                     }
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isLockedOut() && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                    <ShieldAlert className="h-4 w-4 flex-shrink-0" />
+                    <span>Bloqueado por {remainingSeconds}s — muitas tentativas falharam.</span>
+                  </div>
+                )}
+                <Button type="submit" className="w-full" disabled={isSubmitting || isLockedOut()}>
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Entrando...
                     </>
+                  ) : isLockedOut() ? (
+                    `Aguarde ${remainingSeconds}s`
                   ) : (
                     'Entrar'
                   )}
