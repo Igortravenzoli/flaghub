@@ -34,6 +34,7 @@ export interface AuthContextValue extends AuthState {
   isOperacional: boolean;
   canImport: boolean;
   canManageSettings: boolean;
+  mfaRequired: boolean;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
