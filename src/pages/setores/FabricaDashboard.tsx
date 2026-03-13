@@ -165,6 +165,7 @@ export default function FabricaDashboard() {
         title={drawerItem?.title || undefined}
         subtitle={drawerItem?.work_item_type || undefined}
         fields={drawerFields}
+        externalUrl={drawerItem?.web_url}
       />
     </SectorLayout>
   );

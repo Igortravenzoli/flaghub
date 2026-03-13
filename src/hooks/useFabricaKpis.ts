@@ -15,6 +15,7 @@ export interface FabricaItem {
   parent_id: number | null;
   parent_title: string | null;
   parent_type: string | null;
+  web_url: string | null;
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {

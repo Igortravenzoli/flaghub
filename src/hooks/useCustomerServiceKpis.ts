@@ -16,6 +16,7 @@ export interface CSKpiItem {
   consultor_impl: string | null;
   solucao: string | null;
   status_implantacao: string | null;
+  web_url: string | null;
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
