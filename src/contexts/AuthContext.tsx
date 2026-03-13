@@ -219,21 +219,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const [claims, userData] = await Promise.all([
           withTimeout(
-            Promise.all([supabase.rpc("auth_user_role"), supabase.rpc("auth_network_id")]),
+            Promise.all([supabase.rpc("auth_user_role_masked"), supabase.rpc("auth_network_id")]),
             claimsTimeoutMs,
             `auth claims (attempt ${attempt})`
           )
             .then(([roleRes, netRes]) => ({
-              role: roleRes.error ? null : (roleRes.data as AppRole | null),
+              roleCode: roleRes.error ? null : (roleRes.data as string | null),
               networkId: netRes.error ? null : (netRes.data as number | null),
             }))
             .catch((error) => {
               console.warn(`[Auth] auth claims fetch failed (attempt ${attempt}):`, error);
-              return { role: null, networkId: null };
+              return { roleCode: null, networkId: null };
             }),
           withTimeout(fetchUserData(session.user.id), timeoutMs, `fetchUserData (attempt ${attempt})`).catch((error) => {
             console.warn(`[Auth] fetchUserData timed out/failed (attempt ${attempt}):`, error);
-            return { profile: null, role: null, networkId: null };
+            return { profile: null, roleCode: null, networkId: null };
           }),
         ]);
 
@@ -242,11 +242,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return false;
         }
 
-        const mergedRole = userData.role ?? claims.role;
+        // Both sources now return obfuscated codes directly — no toCode() needed
+        const mergedRoleCode = userData.roleCode ?? claims.roleCode;
         const mergedNetworkId = userData.networkId ?? claims.networkId;
 
         // If both sources returned null, hydration failed
-        if (!mergedRole && !userData.profile) {
+        if (!mergedRoleCode && !userData.profile) {
           return false;
         }
 
@@ -254,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn("[Auth] networkId is null after sign-in (claims+profile)");
         }
 
-        const obfuscatedRole = toCode(mergedRole);
+        const obfuscatedRole = mergedRoleCode;
 
         let mfaRequired = false;
         if (hasElevated(obfuscatedRole)) {
