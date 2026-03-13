@@ -25,6 +25,7 @@ import {
   UserCheck,
   LayoutGrid,
   Eye,
+  ScrollText,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,7 @@ const adminItems: NavItem[] = [
   { label: 'Central de Sync', path: '/admin/sync', icon: RefreshCw, adminOnly: true },
   { label: 'Uploads Manuais', path: '/admin/uploads', icon: Upload, adminOnly: true },
   { label: 'IP Allowlist', path: '/admin/ip-allowlist', icon: Globe, adminOnly: true },
+  { label: 'Audit Log', path: '/admin/audit', icon: ScrollText, adminOnly: true },
 ];
 
 export function Sidebar() {

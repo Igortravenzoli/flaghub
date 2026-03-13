@@ -1,16 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Monitor, Tv, Play, Shuffle, Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Clock, Wifi, WifiOff, Server } from 'lucide-react';
+import { Monitor, Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Wifi, WifiOff, Server } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import KioskOverlay from '@/components/home/KioskOverlay';
+import KioskConfigDialog from '@/components/home/KioskConfigDialog';
 import { useComercialKpis } from '@/hooks/useComercialKpis';
 import { useHelpdeskKpis } from '@/hooks/useHelpdeskKpis';
 import { useFabricaKpis } from '@/hooks/useFabricaKpis';
@@ -37,11 +32,11 @@ interface SectorCardData {
 
 export default function Home() {
   const navigate = useNavigate();
-  const [kioskOpen, setKioskOpen] = useState(false);
-  const [kioskRandom, setKioskRandom] = useState(false);
-  const [kioskInterval, setKioskInterval] = useState('30');
   const [kioskActive, setKioskActive] = useState(false);
   const [kioskCurrentIndex, setKioskCurrentIndex] = useState(0);
+  const [kioskRotate, setKioskRotate] = useState(false);
+  const [kioskInterval, setKioskInterval] = useState(30);
+  const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
 
   // Real data hooks
   const comercial = useComercialKpis();
@@ -96,40 +91,39 @@ export default function Home() {
     },
   ];
 
-  const [selectedSectors, setSelectedSectors] = useState<string[]>(sectorCards.map(s => s.slug));
-  const activeSectors = mockSectors.filter(s => selectedSectors.includes(s.slug));
+  const activeSectors = mockSectors.filter((s) => kioskSelectedSlugs.includes(s.slug));
 
   const exitKiosk = useCallback(() => {
     setKioskActive(false);
     document.exitFullscreen?.().catch(() => {});
   }, []);
 
+  // Rotation timer
   useEffect(() => {
-    if (!kioskActive || !kioskRandom || activeSectors.length <= 1) return;
+    if (!kioskActive || !kioskRotate || activeSectors.length <= 1) return;
     const interval = setInterval(() => {
-      setKioskCurrentIndex(prev => (prev + 1) % activeSectors.length);
-    }, parseInt(kioskInterval) * 1000);
+      setKioskCurrentIndex((prev) => (prev + 1) % activeSectors.length);
+    }, kioskInterval * 1000);
     return () => clearInterval(interval);
-  }, [kioskActive, kioskRandom, kioskInterval, activeSectors.length]);
+  }, [kioskActive, kioskRotate, kioskInterval, activeSectors.length]);
 
+  // ESC to exit
   useEffect(() => {
     if (!kioskActive) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') exitKiosk(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitKiosk();
+    };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [kioskActive, exitKiosk]);
 
-  const startKiosk = () => {
-    setKioskOpen(false);
+  const startKiosk = (config: { selectedSlugs: string[]; rotateEnabled: boolean; intervalSec: number }) => {
+    setKioskSelectedSlugs(config.selectedSlugs);
+    setKioskRotate(config.rotateEnabled);
+    setKioskInterval(config.intervalSec);
     setKioskCurrentIndex(0);
     setKioskActive(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
-  };
-
-  const toggleSector = (slug: string) => {
-    setSelectedSectors(prev =>
-      prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]
-    );
   };
 
   if (kioskActive && activeSectors.length > 0) {
@@ -137,7 +131,7 @@ export default function Home() {
       <KioskOverlay
         activeSectors={activeSectors}
         currentIndex={kioskCurrentIndex}
-        kioskRandom={kioskRandom}
+        rotateEnabled={kioskRotate}
         onExit={exitKiosk}
       />
     );
@@ -198,79 +192,10 @@ export default function Home() {
         })}
 
         {/* Kiosk Mode Card */}
-        <Dialog open={kioskOpen} onOpenChange={setKioskOpen}>
-          <DialogTrigger asChild>
-            <Card className="p-5 cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 border-2 border-dashed border-primary/30 hover:border-primary/60 flex flex-col items-center justify-center text-center min-h-[160px] group">
-              <div className="p-3 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors mb-3">
-                <Tv className="h-7 w-7 text-primary" />
-              </div>
-              <h3 className="font-bold text-foreground">Modo Kiosk / TV</h3>
-              <p className="text-xs text-muted-foreground mt-1">Exibir dashboards em tela cheia</p>
-            </Card>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Tv className="h-5 w-5 text-primary" />
-                Configurar Modo Kiosk
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-5 py-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium">Modo Rotativo</Label>
-                  <p className="text-xs text-muted-foreground">Alterna entre áreas selecionadas</p>
-                </div>
-                <Switch checked={kioskRandom} onCheckedChange={setKioskRandom} />
-              </div>
-
-              {kioskRandom && (
-                <div className="flex items-center gap-3">
-                  <Label className="shrink-0 text-sm">Intervalo</Label>
-                  <Select value={kioskInterval} onValueChange={setKioskInterval}>
-                    <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15">15 segundos</SelectItem>
-                      <SelectItem value="30">30 segundos</SelectItem>
-                      <SelectItem value="60">1 minuto</SelectItem>
-                      <SelectItem value="120">2 minutos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Áreas a exibir</Label>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelectedSectors(sectorCards.map(s => s.slug))}>Todos</Button>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelectedSectors([])}>Nenhum</Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto">
-                  {sectorCards.map(s => (
-                    <label key={s.slug} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
-                      <Checkbox
-                        checked={selectedSectors.includes(s.slug)}
-                        onCheckedChange={() => toggleSector(s.slug)}
-                      />
-                      <span className="text-sm text-foreground">{s.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <Button
-                className="w-full gap-2"
-                disabled={selectedSectors.length === 0}
-                onClick={startKiosk}
-              >
-                {kioskRandom ? <Shuffle className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                {kioskRandom ? 'Iniciar Rotação' : 'Abrir Dashboard'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <KioskConfigDialog
+          sectors={sectorCards.map((s) => ({ slug: s.slug, name: s.name }))}
+          onStart={startKiosk}
+        />
       </div>
     </div>
   );
