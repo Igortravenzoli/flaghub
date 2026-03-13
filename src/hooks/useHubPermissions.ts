@@ -105,9 +105,15 @@ export function useIpAllowlist() {
     },
   });
 
+  const { user } = useAuth();
+
   const addEntry = useMutation({
     mutationFn: async ({ cidr, label }: { cidr: string; label: string }) => {
-      const { error } = await supabase.from('hub_ip_allowlist').insert({ cidr, label });
+      const { error } = await supabase.from('hub_ip_allowlist').insert({
+        cidr: cidr as any,
+        label,
+        created_by: user?.id ?? null,
+      });
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['hub_ip_allowlist'] }),
