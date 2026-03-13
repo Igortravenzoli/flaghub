@@ -502,6 +502,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isOperacional,
       canImport,
       canManageSettings,
+      mfaRequired: state.mfaRequired,
     }),
     [
       state,
