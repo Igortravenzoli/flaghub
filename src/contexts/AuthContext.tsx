@@ -518,7 +518,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider: "azure",
       options: {
         scopes: "email profile openid",
-        redirectTo: window.location.origin + "/home",
+        redirectTo: window.location.origin + "/auth/callback",
       },
     });
   }, []);
