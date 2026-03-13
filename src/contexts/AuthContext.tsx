@@ -504,6 +504,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
+      role: roleFromCode,
       signIn,
       signUp,
       signOut,
@@ -513,11 +514,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isQualidade,
       isOperacional,
       canImport,
-      canManageSettings,
+      canManageSettings: canManageSettingsFlag,
       mfaRequired: state.mfaRequired,
     }),
     [
       state,
+      roleFromCode,
       signIn,
       signUp,
       signOut,
@@ -527,7 +529,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isQualidade,
       isOperacional,
       canImport,
-      canManageSettings,
+      canManageSettingsFlag,
     ]
   );
 
