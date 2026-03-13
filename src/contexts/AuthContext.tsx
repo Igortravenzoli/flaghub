@@ -282,13 +282,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[Auth] Elevated role MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
         }
 
-        setState((prev) => ({
-          ...prev,
-          profile: userData.profile,
-          roleCode: obfuscatedRole,
-          networkId: mergedNetworkId,
-          mfaRequired,
-        }));
+        setState((prev) => {
+          const nextRoleCode = obfuscatedRole ?? prev.roleCode;
+          const nextNetworkId = mergedNetworkId ?? prev.networkId;
+
+          if (!obfuscatedRole && prev.roleCode) {
+            console.warn("[Auth] Hydration returned empty role; preserving previous roleCode");
+          }
+
+          return {
+            ...prev,
+            profile: userData.profile ?? prev.profile,
+            roleCode: nextRoleCode,
+            networkId: nextNetworkId,
+            mfaRequired: obfuscatedRole ? mfaRequired : prev.mfaRequired,
+          };
+        });
 
         console.log("[Auth] User hydrated successfully:", session.user.email, "role:", obfuscatedRole);
         return true;
