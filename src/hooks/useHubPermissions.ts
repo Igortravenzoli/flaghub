@@ -2,6 +2,27 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
+export interface IpCheckResult {
+  ip: string;
+  is_allowed: boolean;
+}
+
+export function useIpCheck() {
+  const { user } = useAuth();
+
+  return useQuery({
+    queryKey: ['hub_ip_check'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('hub_check_my_ip');
+      if (error) throw error;
+      return data as unknown as IpCheckResult;
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000, // cache 5 min
+    refetchOnWindowFocus: true,
+  });
+}
+
 export interface HubAccessRequest {
   id: string;
   user_id: string;

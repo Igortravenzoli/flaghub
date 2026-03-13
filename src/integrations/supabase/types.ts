@@ -2005,6 +2005,7 @@ export type Database = {
         Args: { p_area_id: string }
         Returns: boolean
       }
+      hub_check_my_ip: { Args: never; Returns: Json }
       hub_is_admin: { Args: never; Returns: boolean }
       hub_is_ip_allowed: { Args: never; Returns: boolean }
       hub_request_ip: { Args: never; Returns: string }
