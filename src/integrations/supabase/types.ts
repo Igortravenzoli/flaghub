@@ -1840,6 +1840,7 @@ export type Database = {
           total_tickets: number
         }[]
       }
+      get_cron_secret: { Args: never; Returns: string }
       get_dashboard_summary: {
         Args: { p_network_id?: number }
         Returns: {
