@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,9 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { Monitor, Loader2 } from 'lucide-react';
+import { Monitor, Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { FusionText } from '@/components/auth/FusionText';
+
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_SECONDS = 60;
 
 export default function Login() {
   const navigate = useNavigate();
@@ -21,8 +24,34 @@ export default function Login() {
   const [signupData, setSignupData] = useState({ email: '', password: '', fullName: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAzureLoading, setIsAzureLoading] = useState(false);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const attemptsRef = useRef(0);
+  const lockoutTimerRef = useRef<number | null>(null);
 
   const from = (location.state as { from?: string })?.from || '/home';
+
+  const isLockedOut = useCallback(() => {
+    if (!lockoutUntil) return false;
+    return Date.now() < lockoutUntil;
+  }, [lockoutUntil]);
+
+  const startLockoutTimer = (until: number) => {
+    setLockoutUntil(until);
+    const tick = () => {
+      const remaining = Math.ceil((until - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockoutUntil(null);
+        setRemainingSeconds(0);
+        attemptsRef.current = 0;
+        if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current);
+        return;
+      }
+      setRemainingSeconds(remaining);
+    };
+    tick();
+    lockoutTimerRef.current = window.setInterval(tick, 1000);
+  };
 
   const handleAzureLogin = async () => {
     setIsAzureLoading(true);
@@ -41,16 +70,38 @@ export default function Login() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isLockedOut()) {
+      toast.error('Muitas tentativas', {
+        description: `Aguarde ${remainingSeconds}s antes de tentar novamente.`,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const { data, error } = await signIn(loginData.email, loginData.password);
       
       if (error) {
-        toast.error('Erro no login', { description: error.message });
+        attemptsRef.current += 1;
+        
+        if (attemptsRef.current >= MAX_ATTEMPTS) {
+          const until = Date.now() + LOCKOUT_SECONDS * 1000;
+          startLockoutTimer(until);
+          toast.error('Conta temporariamente bloqueada', {
+            description: `Muitas tentativas falharam. Aguarde ${LOCKOUT_SECONDS} segundos.`,
+            icon: <ShieldAlert className="h-4 w-4" />,
+          });
+        } else {
+          const remaining = MAX_ATTEMPTS - attemptsRef.current;
+          toast.error('Erro no login', {
+            description: `${error.message}. ${remaining} tentativa(s) restante(s).`,
+          });
+        }
       } else {
+        attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
-        // MFA redirect is handled by ProtectedRoute if needed
         navigate(from, { replace: true });
       }
     } catch (err) {
@@ -185,12 +236,20 @@ export default function Login() {
                     }
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isLockedOut() && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                    <ShieldAlert className="h-4 w-4 flex-shrink-0" />
+                    <span>Bloqueado por {remainingSeconds}s — muitas tentativas falharam.</span>
+                  </div>
+                )}
+                <Button type="submit" className="w-full" disabled={isSubmitting || isLockedOut()}>
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Entrando...
                     </>
+                  ) : isLockedOut() ? (
+                    `Aguarde ${remainingSeconds}s`
                   ) : (
                     'Entrar'
                   )}

@@ -88,7 +88,7 @@ export function Sidebar() {
   const [helpdeskOpen, setHelpdeskOpen] = useState(false);
   const [pesquisarOpen, setPesquisarOpen] = useState(false);
   const [ticketsOpen, setTicketsOpen] = useState(false);
-  const { isAuthenticated, isLoading, profile, signOut } = useAuth();
+  const { isAuthenticated, isLoading, isAdmin, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
   const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/importacoes', '/configuracoes'];
@@ -281,14 +281,18 @@ export function Sidebar() {
           return renderNavItem(item);
         })}
 
-        {/* Separator: Admin */}
-        {!collapsed && (
-          <div className="pt-3 pb-1 px-3">
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Admin</span>
-          </div>
+        {/* Admin — only visible to admins */}
+        {isAdmin && (
+          <>
+            {!collapsed && (
+              <div className="pt-3 pb-1 px-3">
+                <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Admin</span>
+              </div>
+            )}
+            {collapsed && <div className="border-t border-sidebar-border my-2" />}
+            {adminItems.map(renderNavItem)}
+          </>
         )}
-        {collapsed && <div className="border-t border-sidebar-border my-2" />}
-        {adminItems.map(renderNavItem)}
       </nav>
 
       {/* Footer */}
