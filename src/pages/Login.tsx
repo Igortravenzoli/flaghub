@@ -113,7 +113,18 @@ export default function Login() {
         });
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
-        navigate(from, { replace: true });
+
+        // Check if user is admin → force MFA before navigating
+        try {
+          const { data: roleData } = await supabase.rpc("auth_user_role");
+          if (roleData === 'admin') {
+            navigate('/mfa', { replace: true });
+          } else {
+            navigate(from, { replace: true });
+          }
+        } catch {
+          navigate(from, { replace: true });
+        }
       }
     } catch (err) {
       toast.error('Erro inesperado ao fazer login');
