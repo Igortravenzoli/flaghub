@@ -70,16 +70,38 @@ export default function Login() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isLockedOut()) {
+      toast.error('Muitas tentativas', {
+        description: `Aguarde ${remainingSeconds}s antes de tentar novamente.`,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const { data, error } = await signIn(loginData.email, loginData.password);
       
       if (error) {
-        toast.error('Erro no login', { description: error.message });
+        attemptsRef.current += 1;
+        
+        if (attemptsRef.current >= MAX_ATTEMPTS) {
+          const until = Date.now() + LOCKOUT_SECONDS * 1000;
+          startLockoutTimer(until);
+          toast.error('Conta temporariamente bloqueada', {
+            description: `Muitas tentativas falharam. Aguarde ${LOCKOUT_SECONDS} segundos.`,
+            icon: <ShieldAlert className="h-4 w-4" />,
+          });
+        } else {
+          const remaining = MAX_ATTEMPTS - attemptsRef.current;
+          toast.error('Erro no login', {
+            description: `${error.message}. ${remaining} tentativa(s) restante(s).`,
+          });
+        }
       } else {
+        attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
-        // MFA redirect is handled by ProtectedRoute if needed
         navigate(from, { replace: true });
       }
     } catch (err) {
