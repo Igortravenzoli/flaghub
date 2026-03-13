@@ -44,12 +44,13 @@ export default function Login() {
     setIsSubmitting(true);
 
     try {
-      const { error } = await signIn(loginData.email, loginData.password);
+      const { data, error } = await signIn(loginData.email, loginData.password);
       
       if (error) {
         toast.error('Erro no login', { description: error.message });
       } else {
         toast.success('Login realizado com sucesso!');
+        // MFA redirect is handled by ProtectedRoute if needed
         navigate(from, { replace: true });
       }
     } catch (err) {
