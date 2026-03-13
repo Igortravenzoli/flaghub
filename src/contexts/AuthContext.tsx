@@ -10,7 +10,8 @@ interface AuthState {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
-  role: AppRole | null;
+  /** Obfuscated role code (s1, s2, s3, s4) — never exposes DB role names */
+  roleCode: string | null;
   networkId: number | null;
   isLoading: boolean;
   isAuthenticated: boolean;
