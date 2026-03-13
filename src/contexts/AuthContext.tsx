@@ -13,6 +13,7 @@ interface AuthState {
   networkId: number | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  mfaRequired: boolean;
 }
 
 export interface AuthContextValue extends AuthState {
