@@ -30,6 +30,7 @@ export interface AuthContextValue extends AuthState {
   ) => ReturnType<typeof supabase.auth.signUp>;
   signOut: () => Promise<{ error: unknown | null }>;
   signInWithAzure: () => ReturnType<typeof supabase.auth.signInWithOAuth>;
+  clearMfaRequired: () => void;
   /** @deprecated use roleCode-based checks */
   role: AppRole | null;
   isAdmin: boolean;
@@ -537,6 +538,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const clearMfaRequired = useCallback(() => {
+    console.log("[Auth] clearMfaRequired called");
+    setState((prev) => ({ ...prev, mfaRequired: false }));
+  }, []);
+
   const isAdmin = hasElevated(state.roleCode);
   const isGestao = hasManagement(state.roleCode) && !hasElevated(state.roleCode);
   const isQualidade = hasQuality(state.roleCode);
@@ -559,6 +565,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       signInWithAzure,
+      clearMfaRequired,
       isAdmin,
       isGestao,
       isQualidade,
@@ -574,6 +581,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       signInWithAzure,
+      clearMfaRequired,
       isAdmin,
       isGestao,
       isQualidade,
