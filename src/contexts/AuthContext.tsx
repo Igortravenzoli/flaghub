@@ -16,6 +16,7 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   mfaRequired: boolean;
+  pendingApproval: boolean;
 }
 
 export interface AuthContextValue extends AuthState {
