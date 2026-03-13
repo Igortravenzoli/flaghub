@@ -197,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: null,
     session: null,
     profile: null,
-    role: null,
+    roleCode: null,
     networkId: null,
     isLoading: true,
     isAuthenticated: false,
