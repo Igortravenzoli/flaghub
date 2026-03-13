@@ -269,11 +269,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn("[Auth] networkId is null after sign-in (claims+profile)");
       }
 
+      // Check MFA requirement for admins
+      let mfaRequired = false;
+      if (mergedRole === "admin") {
+        const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aalData && aalData.currentLevel !== aalData.nextLevel) {
+          // User has MFA enrolled but hasn't verified yet (aal1 but needs aal2)
+          mfaRequired = true;
+        } else if (aalData && aalData.currentLevel === "aal1" && aalData.nextLevel === "aal1") {
+          // User hasn't enrolled MFA yet — also required
+          mfaRequired = true;
+        }
+        console.log("[Auth] Admin MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
+      }
+
       setState((prev) => ({
         ...prev,
         profile: userData.profile,
         role: mergedRole,
         networkId: mergedNetworkId,
+        mfaRequired,
       }));
 
       console.log("[Auth] User signed in successfully:", session.user.email);
