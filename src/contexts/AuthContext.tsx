@@ -30,6 +30,7 @@ export interface AuthContextValue extends AuthState {
   ) => ReturnType<typeof supabase.auth.signUp>;
   signOut: () => Promise<{ error: unknown | null }>;
   signInWithAzure: () => ReturnType<typeof supabase.auth.signInWithOAuth>;
+  clearMfaRequired: () => void;
   /** @deprecated use roleCode-based checks */
   role: AppRole | null;
   isAdmin: boolean;
