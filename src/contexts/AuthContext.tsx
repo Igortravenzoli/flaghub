@@ -41,6 +41,7 @@ export interface AuthContextValue extends AuthState {
   canImport: boolean;
   canManageSettings: boolean;
   mfaRequired: boolean;
+  pendingApproval: boolean;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
