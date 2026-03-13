@@ -114,10 +114,10 @@ export default function Login() {
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
 
-        // Check if user is admin → force MFA before navigating
+        // Check if user has elevated role → force MFA before navigating
         try {
-          const { data: roleData } = await supabase.rpc("auth_user_role");
-          if (roleData === 'admin') {
+          const { data: maskedCode } = await supabase.rpc("auth_user_role_masked");
+          if (maskedCode === 's1') {
             navigate('/mfa', { replace: true });
           } else {
             navigate(from, { replace: true });

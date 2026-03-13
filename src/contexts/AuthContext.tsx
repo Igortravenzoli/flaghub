@@ -131,7 +131,8 @@ async function provisionUser(userId: string) {
 
 async function fetchUserData(userId: string): Promise<{
   profile: Profile | null;
-  role: AppRole | null;
+  /** Already obfuscated role code (s1/s2/s3/s4) */
+  roleCode: string | null;
   networkId: number | null;
 }> {
   try {
@@ -157,39 +158,22 @@ async function fetchUserData(userId: string): Promise<{
       profile = newProfile;
     }
 
-    // Usar RPC get_user_role para obter a role com maior privilégio
-    // (admin > gestao > qualidade > operacional)
-    const { data: roleFromRpc, error: roleError } = await supabase
-      .rpc("get_user_role", { p_user_id: userId });
+    // Use masked RPC — returns obfuscated code (s1/s2/s3/s4), never plain role names
+    const { data: maskedCode, error: roleError } = await supabase
+      .rpc("auth_user_role_masked");
 
     if (roleError) {
-      console.warn("[Auth] get_user_role RPC failed, falling back to direct query:", roleError);
-      // Fallback: query direta com ordenação
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId);
-      
-      const rolePriority: Record<string, number> = { admin: 1, gestao: 2, qualidade: 3, operacional: 4 };
-      const sortedRoles = (roleData || []).sort((a, b) => 
-        (rolePriority[a.role] ?? 99) - (rolePriority[b.role] ?? 99)
-      );
-      
-      return {
-        profile: profile as Profile | null,
-        role: (sortedRoles[0]?.role as AppRole) || null,
-        networkId: profile?.network_id ?? null,
-      };
+      console.warn("[Auth] auth_user_role_masked RPC failed:", roleError);
     }
 
     return {
       profile: profile as Profile | null,
-      role: (roleFromRpc as AppRole) || null,
+      roleCode: (maskedCode as string) || null,
       networkId: profile?.network_id ?? null,
     };
   } catch (error) {
     console.error("[Auth] Error fetching user data:", error);
-    return { profile: null, role: null, networkId: null };
+    return { profile: null, roleCode: null, networkId: null };
   }
 }
 
