@@ -1,4 +1,4 @@
-// devops-sync-all v1.0 — Orquestra sync de todas as queries DevOps ativas
+// devops-sync-all v2.0 — Orquestra sync de todas as queries DevOps ativas + cálculo retorno QA
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -7,6 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
+
+const DEVOPS_ORG = 'FlagIW'
+const DEVOPS_PROJECT = 'Flag.Planejamento'
+const EM_TESTE_STATE = 'Em Teste'
 
 function getSupabaseAdmin() {
   return createClient(
@@ -29,6 +33,109 @@ async function validateAuth(req: Request): Promise<string | null> {
   return data.claims.sub as string
 }
 
+// ── QA Retorno helpers ─────────────────────────────────────────────
+
+async function devopsFetch(path: string): Promise<Response> {
+  const pat = Deno.env.get('DEVOPS_PAT')!
+  const base64Pat = btoa(`:${pat}`)
+  const url = path.startsWith('http') ? path : `https://dev.azure.com/${DEVOPS_ORG}/${path}`
+  return await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Basic ${base64Pat}`,
+    },
+  })
+}
+
+interface StateChange {
+  newValue: string
+  oldValue?: string
+  revisedDate: string
+}
+
+function countRetornos(updates: any[]): { retornos: number; retornoDetails: StateChange[] } {
+  const emTesteTransitions: StateChange[] = []
+  for (const update of updates) {
+    const stateField = update.fields?.['System.State']
+    if (!stateField) continue
+    if (stateField.newValue === EM_TESTE_STATE) {
+      emTesteTransitions.push({
+        newValue: stateField.newValue,
+        oldValue: stateField.oldValue ?? undefined,
+        revisedDate: update.revisedDate,
+      })
+    }
+  }
+  const retornoDetails = emTesteTransitions.length > 1 ? emTesteTransitions.slice(1) : []
+  return { retornos: retornoDetails.length, retornoDetails }
+}
+
+async function processQaRetornos(admin: any): Promise<{ processed: number; withRetornos: number }> {
+  const { data: qaItems, error } = await admin
+    .from('vw_qualidade_kpis')
+    .select('id')
+  if (error) {
+    console.warn('[QA-Retorno] Failed to fetch QA items:', error.message)
+    return { processed: 0, withRetornos: 0 }
+  }
+
+  const workItemIds = (qaItems || []).map((i: any) => i.id).filter(Boolean) as number[]
+  if (workItemIds.length === 0) return { processed: 0, withRetornos: 0 }
+
+  console.log(`[QA-Retorno] Processing ${workItemIds.length} work items`)
+  let processed = 0
+  let withRetornos = 0
+
+  for (let i = 0; i < workItemIds.length; i += 10) {
+    const batch = workItemIds.slice(i, i + 10)
+    const batchResults = await Promise.all(
+      batch.map(async (wiId) => {
+        try {
+          const resp = await devopsFetch(
+            `${DEVOPS_PROJECT}/_apis/wit/workitems/${wiId}/updates?api-version=7.1`
+          )
+          if (!resp.ok) return { id: wiId, retornos: 0, details: [] }
+          const data = await resp.json()
+          const { retornos, retornoDetails } = countRetornos(data.value || [])
+          return { id: wiId, retornos, details: retornoDetails }
+        } catch {
+          return { id: wiId, retornos: 0, details: [] }
+        }
+      })
+    )
+
+    for (const result of batchResults) {
+      const { data: existing } = await admin
+        .from('devops_work_items')
+        .select('custom_fields')
+        .eq('id', result.id)
+        .single()
+
+      const customFields = (existing?.custom_fields as Record<string, any>) || {}
+      customFields['qa_retorno_count'] = result.retornos
+      customFields['qa_retorno_details'] = result.details
+      customFields['qa_retorno_synced_at'] = new Date().toISOString()
+
+      await admin
+        .from('devops_work_items')
+        .update({ custom_fields: customFields })
+        .eq('id', result.id)
+
+      processed++
+      if (result.retornos > 0) withRetornos++
+    }
+
+    if (i + 10 < workItemIds.length) {
+      await new Promise(r => setTimeout(r, 500))
+    }
+  }
+
+  console.log(`[QA-Retorno] Done: ${processed} processed, ${withRetornos} with retornos`)
+  return { processed, withRetornos }
+}
+
+// ── Main handler ───────────────────────────────────────────────────
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -44,7 +151,7 @@ serve(async (req) => {
       })
     }
 
-    // Fetch all active queries
+    // ── Step 1: Sync all active queries ──
     const { data: queries, error: qErr } = await admin
       .from('devops_queries')
       .select('id, name, is_active')
@@ -61,8 +168,6 @@ serve(async (req) => {
     console.log(`[DevOpsSyncAll] Syncing ${queries.length} active queries`)
 
     const results: Array<{ query_id: string; name: string; success: boolean; detail?: any; error?: string }> = []
-
-    // Invoke devops-sync-query for each query sequentially
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const authHeader = req.headers.get('authorization')!
 
@@ -78,7 +183,6 @@ serve(async (req) => {
         })
 
         const data = await resp.json()
-
         results.push({
           query_id: query.id,
           name: query.name,
@@ -94,9 +198,12 @@ serve(async (req) => {
         })
       }
 
-      // Delay between queries
       await new Promise(r => setTimeout(r, 500))
     }
+
+    // ── Step 2: QA Retorno calculation ──
+    console.log('[DevOpsSyncAll] Starting QA retorno calculation...')
+    const qaRetorno = await processQaRetornos(admin)
 
     const succeeded = results.filter(r => r.success).length
     const failed = results.filter(r => !r.success).length
@@ -106,7 +213,7 @@ serve(async (req) => {
       p_action: 'devops_sync_all',
       p_entity_type: 'devops',
       p_entity_id: null,
-      p_metadata: { total: queries.length, succeeded, failed },
+      p_metadata: { total: queries.length, succeeded, failed, qa_retorno: qaRetorno },
     })
 
     return new Response(JSON.stringify({
@@ -114,6 +221,7 @@ serve(async (req) => {
       total: queries.length,
       succeeded,
       failed,
+      qa_retorno: qaRetorno,
       results,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 

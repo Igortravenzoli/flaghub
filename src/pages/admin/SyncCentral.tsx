@@ -12,7 +12,6 @@ const JOB_FUNCTION_MAP: Record<string, string> = {
   devops_sync_all_default: 'devops-sync-all',
   gateway_helpdesk_clients_default: 'vdesk-sync-base-clientes',
   gateway_helpdesk_dashboard_default: 'vdesk-sync-helpdesk',
-  devops_qa_retorno: 'devops-qa-retorno',
 };
 
 export default function SyncCentral() {
