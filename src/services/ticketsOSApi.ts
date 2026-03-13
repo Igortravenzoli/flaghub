@@ -172,17 +172,8 @@ export async function obterTokenAPI(): Promise<string> {
   return getValidToken();
 }
 
-/**
- * @deprecated Use obterTokenAPI() ao invés. Mantido para compatibilidade.
- */
-export async function obterTokenSupabase(): Promise<string | null> {
-  try {
-    return await getValidToken();
-  } catch {
-    console.warn('Falha ao obter token da API');
-    return null;
-  }
-}
+
+
 
 /**
  * Valida conexão com a API

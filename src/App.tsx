@@ -48,7 +48,7 @@ const App = () => (
               <Route path="/" element={<Welcome />} />
               <Route path="/login" element={<Login />} />
               <Route path="/mfa" element={<MfaChallenge />} />
-              <Route path="/teste-setup" element={<TesteSupabaseSetup />} />
+              
               <Route
                 element={
                   <ProtectedRoute>
