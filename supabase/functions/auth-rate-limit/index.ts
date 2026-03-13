@@ -166,10 +166,13 @@ Deno.serve(async (req) => {
   // Success — clear attempts
   attempts.delete(key);
 
+  // Return ONLY the tokens needed for setSession — never echo user details or credentials
   return new Response(
     JSON.stringify({
-      session: data.session,
-      user: data.user,
+      session: {
+        access_token: data.session?.access_token,
+        refresh_token: data.session?.refresh_token,
+      },
     }),
     {
       status: 200,
