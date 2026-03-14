@@ -27,10 +27,14 @@ interface FilterBarProps {
 }
 
 const DEFAULT_PRESETS: Array<{ value: FilterPreset; label: string }> = [
-  { value: '7d', label: 'Últimos 7 dias' },
-  { value: '30d', label: 'Últimos 30 dias' },
-  { value: 'mes_atual', label: 'Mês atual' },
-  { value: 'mes_anterior', label: 'Mês anterior' },
+  { value: '7d', label: '7d' },
+  { value: '30d', label: '30d' },
+  { value: '90d', label: '90d' },
+  { value: '6m', label: '6m' },
+  { value: 'mes_atual', label: 'Mês' },
+  { value: 'mes_anterior', label: 'Mês ant.' },
+  { value: '1y', label: '1 ano' },
+  { value: 'all', label: 'Todos' },
 ];
 
 export function DashboardFilterBar({
@@ -65,13 +69,13 @@ export function DashboardFilterBar({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {/* Period presets */}
-      <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
+      <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-1 overflow-x-auto">
         {presets.map(p => (
           <Button
             key={p.value}
             variant={preset === p.value ? 'default' : 'ghost'}
             size="sm"
-            className="h-7 text-xs"
+            className="h-7 text-xs px-2.5 whitespace-nowrap"
             onClick={() => onPresetChange(p.value)}
           >
             {p.label}
@@ -85,12 +89,12 @@ export function DashboardFilterBar({
               <Button
                 variant={isCustom ? 'default' : 'ghost'}
                 size="sm"
-                className={cn('h-7 text-xs gap-1.5')}
+                className={cn('h-7 text-xs gap-1.5 px-2.5')}
               >
                 <CalendarIcon className="h-3 w-3" />
                 {isCustom && dateFrom && dateTo
                   ? `${format(dateFrom, 'dd/MM', { locale: ptBR })} – ${format(dateTo, 'dd/MM', { locale: ptBR })}`
-                  : 'Personalizado'}
+                  : 'Custom'}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">

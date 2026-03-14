@@ -1,14 +1,14 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { startOfMonth, endOfMonth, subDays, subMonths, startOfDay, endOfDay } from 'date-fns';
+import { startOfMonth, endOfMonth, subDays, subMonths, startOfDay, endOfDay, subYears } from 'date-fns';
 
-export type FilterPreset = '7d' | '30d' | 'mes_atual' | 'mes_anterior' | 'custom';
+export type FilterPreset = '7d' | '30d' | '90d' | '6m' | 'mes_atual' | 'mes_anterior' | '1y' | 'all' | 'custom';
 
 export interface DashboardFilters {
   preset: FilterPreset;
   dateFrom: Date;
   dateTo: Date;
-  customField?: string; // e.g. consultor, responsavel
+  customField?: string;
 }
 
 export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
@@ -27,12 +27,21 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
         return { from: subDays(now, 7), to: endOfDay(now) };
       case '30d':
         return { from: subDays(now, 30), to: endOfDay(now) };
+      case '90d':
+        return { from: subDays(now, 90), to: endOfDay(now) };
+      case '6m':
+        return { from: subMonths(now, 6), to: endOfDay(now) };
       case 'mes_atual':
         return { from: startOfMonth(now), to: endOfDay(now) };
       case 'mes_anterior': {
         const prev = subMonths(now, 1);
         return { from: startOfMonth(prev), to: endOfMonth(prev) };
       }
+      case '1y':
+        return { from: subYears(now, 1), to: endOfDay(now) };
+      case 'all':
+        // 10 years back — effectively "all data"
+        return { from: subYears(now, 10), to: endOfDay(now) };
       case 'custom':
         return {
           from: customFrom || subDays(now, 30),
@@ -65,8 +74,12 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
     switch (preset) {
       case '7d': return 'Últimos 7 dias';
       case '30d': return 'Últimos 30 dias';
+      case '90d': return 'Últimos 90 dias';
+      case '6m': return 'Últimos 6 meses';
       case 'mes_atual': return 'Mês atual';
       case 'mes_anterior': return 'Mês anterior';
+      case '1y': return 'Último ano';
+      case 'all': return 'Todos';
       case 'custom': return 'Personalizado';
       default: return preset;
     }
