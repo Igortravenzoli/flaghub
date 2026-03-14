@@ -428,7 +428,7 @@ export default function FabricaDashboard() {
                 delay={460}
                 accent={fab.transbordoPct != null && fab.transbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
                 description={fab.transbordoCount > 0 ? `${fab.transbordoCount} de ${fab.transbordoTotal} itens` : 'Itens não entregues na sprint'}
-                onClick={() => fab.transbordoItems.length > 0 && setTransbordoOpen(true)}
+                onClick={() => fab.transbordoItems.length > 0 && setActiveTab('transbordo')}
               />
               <HeroKpiCard 
                 label="Capacidade" 
