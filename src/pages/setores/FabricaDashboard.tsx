@@ -25,7 +25,20 @@ const fabricaColumns: DataTableColumn<FabricaItem>[] = [
   { key: 'id', header: 'ID', className: 'font-mono text-xs w-16', render: r => r.web_url ? (
     <a href={r.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono" onClick={e => e.stopPropagation()}>{r.id}</a>
   ) : <span>{r.id}</span> },
-  { key: 'title', header: 'Task', className: 'max-w-[350px] truncate' },
+  { key: 'work_item_type', header: 'Tipo', render: r => {
+    const typeColors: Record<string, string> = {
+      'Product Backlog Item': 'bg-primary/15 text-primary border-primary/30',
+      'Task': 'bg-accent text-accent-foreground',
+      'Bug': 'bg-destructive/15 text-destructive border-destructive/30',
+    };
+    const typeLabels: Record<string, string> = {
+      'Product Backlog Item': 'PBI',
+      'Task': 'Task',
+      'Bug': 'Bug',
+    };
+    return <Badge variant="outline" className={`text-xs ${typeColors[r.work_item_type || ''] || ''}`}>{typeLabels[r.work_item_type || ''] || r.work_item_type || '—'}</Badge>;
+  }},
+  { key: 'title', header: 'Título', className: 'max-w-[350px] truncate' },
   { key: 'assigned_to_display', header: 'Colaborador' },
   { key: 'state', header: 'Status', render: r => {
     const colors: Record<string, string> = {
