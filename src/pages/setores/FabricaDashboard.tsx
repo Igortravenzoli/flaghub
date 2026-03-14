@@ -1,22 +1,26 @@
 import { useState, useMemo, useCallback } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
-import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
-import { useFabricaKpis, FabricaItem } from '@/hooks/useFabricaKpis';
+import { useFabricaKpis, FabricaItem, TimelogAggregation } from '@/hooks/useFabricaKpis';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, Clock, Gauge, AlertTriangle, HelpCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { 
+  Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
+  Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
+  TrendingUp, BarChart3, Zap
+} from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done';
@@ -48,6 +52,135 @@ const stateColors: Record<string, string> = {
   'Resolved': 'bg-[hsl(var(--success))] text-white',
 };
 
+const CHART_COLORS = [
+  'hsl(var(--primary))',
+  'hsl(var(--info))',
+  'hsl(142, 71%, 45%)',
+  'hsl(43, 85%, 46%)',
+  'hsl(280, 65%, 60%)',
+  'hsl(200, 80%, 50%)',
+  'hsl(340, 75%, 55%)',
+  'hsl(160, 60%, 45%)',
+];
+
+function AnimatedNumber({ value, suffix = '' }: { value: number | null; suffix?: string }) {
+  if (value == null) return <span className="text-sm font-normal text-muted-foreground">Sem dados</span>;
+  return <span>{value}{suffix}</span>;
+}
+
+function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, delay = 0, onClick, isLoading, active }: {
+  label: string; value: number | string | null; suffix?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description?: string; accent?: string; delay?: number;
+  onClick?: () => void; isLoading?: boolean; active?: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <Card className="relative overflow-hidden">
+        <div className="p-5">
+          <Skeleton className="h-4 w-20 mb-3" />
+          <Skeleton className="h-9 w-16 mb-1" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card 
+      className={`relative overflow-hidden group transition-all duration-500 hover:shadow-xl hover:-translate-y-1 animate-fade-in ${onClick ? 'cursor-pointer' : ''} ${active ? 'ring-2 ring-primary shadow-xl scale-[1.02]' : ''}`}
+      style={{ animationDelay: `${delay}ms` }}
+      onClick={onClick}
+    >
+      <div className={`absolute top-0 left-0 w-1 h-full ${accent || 'bg-primary'} transition-all duration-300 group-hover:w-1.5`} />
+      <div className="p-5 pl-6">
+        <div className="flex items-center gap-2 mb-2">
+          <div className={`p-2 rounded-xl ${accent ? accent + '/10' : 'bg-primary/10'} transition-transform duration-300 group-hover:scale-110`}>
+            <Icon className={`h-4 w-4 ${accent ? accent.replace('bg-', 'text-') : 'text-primary'}`} />
+          </div>
+          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
+        </div>
+        <p className="text-3xl font-black text-foreground tracking-tight">
+          {typeof value === 'number' ? value : value ?? <span className="text-sm font-normal text-muted-foreground">—</span>}
+          {suffix && <span className="text-lg font-semibold text-muted-foreground ml-1">{suffix}</span>}
+        </p>
+        {description && <p className="text-[11px] text-muted-foreground/70 mt-1.5">{description}</p>}
+      </div>
+    </Card>
+  );
+}
+
+function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, delay = 0 }: {
+  title: string; icon: React.ComponentType<{ className?: string }>;
+  data: TimelogAggregation[]; isLoading: boolean; emptyMessage: string; delay?: number;
+}) {
+  const maxHours = data.length > 0 ? data[0].hours : 1;
+
+  if (isLoading) {
+    return (
+      <Card className="animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
+        <CardHeader className="pb-3"><Skeleton className="h-5 w-40" /></CardHeader>
+        <CardContent className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <Card className="animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Icon className="h-4 w-4 text-primary" />{title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <Timer className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Dados disponíveis após sincronização do TimeLog</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <Icon className="h-4 w-4 text-primary" />{title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2.5">
+        {data.slice(0, 8).map((item, idx) => (
+          <div key={item.name} className="group animate-fade-in" style={{ animationDelay: `${idx * 50}ms` }}>
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="text-foreground font-medium truncate max-w-[60%]">{item.name}</span>
+              <span className="text-muted-foreground font-mono text-xs">{item.hours}h</span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${Math.max(4, (item.hours / maxHours) * 100)}%`,
+                  background: CHART_COLORS[idx % CHART_COLORS.length],
+                }}
+              />
+            </div>
+          </div>
+        ))}
+        {data.length > 8 && (
+          <p className="text-xs text-muted-foreground/60 text-center pt-1">
+            +{data.length - 8} mais
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function FabricaDashboard() {
   const filters = useDashboardFilters('mes_atual');
   const fab = useFabricaKpis(filters.dateFrom, filters.dateTo);
@@ -68,6 +201,16 @@ export default function FabricaDashboard() {
     [fab.porColaborador]
   );
 
+  // Pie chart data for work item types
+  const typeDistribution = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of fab.items) {
+      const t = typeLabels[item.work_item_type || ''] || item.work_item_type || 'Outro';
+      map[t] = (map[t] || 0) + 1;
+    }
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [fab.items]);
+
   const filteredFabItems = useMemo(() => {
     switch (fabKpiFilter) {
       case 'in_progress': return fab.items.filter(i => i.state === 'In Progress' || i.state === 'Active');
@@ -77,7 +220,6 @@ export default function FabricaDashboard() {
     }
   }, [fab.items, fabKpiFilter]);
 
-  // Build hierarchy: PBIs (parents) with their children
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
     const matchesSearch = (item: FabricaItem) => {
@@ -203,6 +345,12 @@ export default function FabricaDashboard() {
     <SectorLayout title="Fábrica" subtitle="Programação — Sprint Board" lastUpdate="" integrations={integrations} areaKey="fabrica" syncFunctions={[{ name: 'devops-sync-all', label: 'Sincronizar Work Items (DevOps)' }, { name: 'devops-sync-timelog', label: 'Sincronizar TimeLog (Horas)' }]}>
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={fab.lastSync} status="ok" />
+        {fab.hasTimeLogs && (
+          <Badge variant="outline" className="gap-1 text-xs animate-fade-in">
+            <Timer className="h-3 w-3" />
+            {Math.round(fab.totalHoursLogged)}h registradas
+          </Badge>
+        )}
       </div>
 
       <DashboardFilterBar
@@ -217,204 +365,330 @@ export default function FabricaDashboard() {
       {fab.isError ? (
         <DashboardEmptyState variant="error" onRetry={() => fab.refetch()} />
       ) : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            <DashboardKpiCard label="Total Tasks" value={fab.total} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
-            <DashboardKpiCard label="Em Progresso" value={fab.inProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
-            <DashboardKpiCard label="To Do" value={fab.toDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
-            <DashboardKpiCard label="Done" value={fab.done} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
-          </div>
+        <Tabs defaultValue="overview" className="space-y-4">
+          <TabsList className="bg-muted/50 p-1">
+            <TabsTrigger value="overview" className="gap-1.5 text-xs">
+              <Zap className="h-3.5 w-3.5" />Visão Geral
+            </TabsTrigger>
+            <TabsTrigger value="timelog" className="gap-1.5 text-xs">
+              <Timer className="h-3.5 w-3.5" />Horas (TimeLog)
+            </TabsTrigger>
+            <TabsTrigger value="board" className="gap-1.5 text-xs">
+              <BarChart3 className="h-3.5 w-3.5" />Sprint Board
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Corporate KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card className="p-4 animate-fade-in">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-2 rounded-xl bg-primary/10">
-                  <Clock className="h-4 w-4 text-primary" />
-                </div>
-                <p className="text-xs text-muted-foreground font-medium">Lead Time Médio</p>
-              </div>
-              <p className="text-2xl font-bold text-foreground">
-                {fab.isLoading ? '—' : fab.leadTimeMedio != null
-                  ? `${fab.leadTimeMedio}${fab.leadTimeSource === 'effort' ? ' pts' : 'h'}`
-                  : <span className="text-sm font-normal text-muted-foreground">Sem dados</span>}
-              </p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">
-                {fab.leadTimeSource === 'effort' ? 'Effort médio / PBI (DevOps)' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
-              </p>
-            </Card>
+          {/* ═══════ TAB: Visão Geral ═══════ */}
+          <TabsContent value="overview" className="space-y-5 mt-0">
+            {/* Hero KPI row */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <HeroKpiCard label="Total" value={fab.total} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
+              <HeroKpiCard label="Em Progresso" value={fab.inProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
+              <HeroKpiCard label="To Do" value={fab.toDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
+              <HeroKpiCard label="Done" value={fab.done} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
+            </div>
 
-            <Card className="p-4 animate-fade-in" style={{ animationDelay: '80ms' }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-2 rounded-xl bg-[hsl(var(--info))]/10">
-                  <Gauge className="h-4 w-4 text-[hsl(var(--info))]" />
-                </div>
-                <p className="text-xs text-muted-foreground font-medium">Velocidade Média</p>
-              </div>
-              <p className="text-2xl font-bold text-foreground">
-                {fab.isLoading ? '—' : fab.velocidadeMedia != null
-                  ? `${fab.velocidadeMedia}${fab.velocidadeSource === 'effort' ? ' pts' : 'h'}`
-                  : <span className="text-sm font-normal text-muted-foreground">Sem dados</span>}
-              </p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">
-                {fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
-              </p>
-            </Card>
+            {/* Corporate KPIs */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <HeroKpiCard 
+                label="Lead Time Médio" 
+                value={fab.leadTimeMedio} 
+                suffix={fab.leadTimeSource === 'effort' ? ' pts' : 'h'}
+                icon={Clock} 
+                isLoading={fab.isLoading} 
+                delay={300}
+                description={fab.leadTimeSource === 'effort' ? 'Effort médio / PBI (DevOps)' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
+              />
+              <HeroKpiCard 
+                label="Velocidade Média" 
+                value={fab.velocidadeMedia} 
+                suffix={fab.velocidadeSource === 'effort' ? ' pts' : 'h'}
+                icon={Gauge} 
+                isLoading={fab.isLoading} 
+                delay={380}
+                accent="bg-[hsl(var(--info))]"
+                description={fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
+              />
+              <HeroKpiCard 
+                label="Transbordo" 
+                value={fab.transbordoPct != null ? `${fab.transbordoPct}%` : null} 
+                icon={AlertTriangle} 
+                isLoading={fab.isLoading} 
+                delay={460}
+                accent={fab.transbordoPct != null && fab.transbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
+                description={fab.transbordoCount > 0 ? `${fab.transbordoCount} de ${fab.transbordoTotal} itens` : 'Itens não entregues na sprint'}
+                onClick={() => fab.transbordoItems.length > 0 && setTransbordoOpen(true)}
+              />
+              <HeroKpiCard 
+                label="Capacidade" 
+                value="Pendente" 
+                icon={HelpCircle} 
+                isLoading={false} 
+                delay={540}
+                accent="bg-muted-foreground"
+                description="Requer API Capacity do DevOps"
+              />
+            </div>
 
-            <Card
-              className={`p-4 animate-fade-in cursor-pointer hover:shadow-md transition-shadow ${fab.transbordoPct != null && fab.transbordoPct > 50 ? 'ring-1 ring-destructive/30' : ''}`}
-              style={{ animationDelay: '160ms' }}
-              onClick={() => fab.transbordoItems.length > 0 && setTransbordoOpen(true)}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-2 rounded-xl bg-[hsl(43,85%,46%)]/10">
-                  <AlertTriangle className="h-4 w-4 text-[hsl(43,85%,46%)]" />
-                </div>
-                <p className="text-xs text-muted-foreground font-medium">Transbordo</p>
-              </div>
-              <p className="text-2xl font-bold text-foreground">
-                {fab.isLoading ? '—' : fab.transbordoPct != null ? `${fab.transbordoPct}%` : <span className="text-sm font-normal text-muted-foreground">Sem dados</span>}
-              </p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">
-                {fab.transbordoCount > 0 ? `${fab.transbordoCount} de ${fab.transbordoTotal} itens em sprints anteriores` : 'Não entregues na sprint planejada'}
-              </p>
-            </Card>
+            {/* Charts row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Collaborator chart */}
+              {colabChartData.length > 0 && (
+                <Card className="lg:col-span-2 animate-fade-in" style={{ animationDelay: '500ms' }}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Users className="h-4 w-4 text-primary" />Tasks por Colaborador
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={Math.max(200, colabChartData.length * 32)}>
+                      <BarChart data={colabChartData} layout="vertical" margin={{ left: 0, right: 16 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                        <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                        <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={110} />
+                        <Tooltip
+                          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                          labelStyle={{ color: 'hsl(var(--foreground))' }}
+                        />
+                        <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
 
-            <Card className="p-4 animate-fade-in opacity-60" style={{ animationDelay: '240ms' }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-2 rounded-xl bg-muted">
-                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <p className="text-xs text-muted-foreground font-medium">Capacidade Plan. vs Util.</p>
-              </div>
-              <p className="text-sm font-normal text-muted-foreground">Pendente</p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">Requer API Capacity do DevOps</p>
-            </Card>
-          </div>
-
-          {colabChartData.length > 0 && (
-            <Card className="p-5 animate-fade-in">
-              <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                <Users className="h-4 w-4 text-primary" />Tasks por Colaborador
-              </h3>
-              <ResponsiveContainer width="100%" height={Math.max(200, colabChartData.length * 32)}>
-                <BarChart data={colabChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={120} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-          )}
-
-          {fab.isLoading ? (
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b border-border"><Skeleton className="h-5 w-40" /></div>
-              <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-            </Card>
-          ) : allTopLevel.length === 0 ? (
-            <DashboardEmptyState description="Nenhum work item encontrado para o período selecionado." />
-          ) : (
-            <Card className="overflow-hidden animate-fade-in">
-              <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-foreground text-sm">Sprint Board</h3>
-                  <p className="text-xs text-muted-foreground">{filteredFabItems.length} itens • {parentRows.filter(p => childrenMap.has(p.id!)).length} PBIs com tasks</p>
-                </div>
-                <div className="relative w-full sm:w-64">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar task..."
-                    value={search}
-                    onChange={e => { setSearch(e.target.value); setPage(0); }}
-                    className="pl-8 h-8 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-auto max-h-[600px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30">
-                      <TableHead className="w-8" />
-                      <TableHead className="text-xs font-semibold w-16">ID</TableHead>
-                      <TableHead className="text-xs font-semibold">Tipo</TableHead>
-                      <TableHead className="text-xs font-semibold">Título</TableHead>
-                      <TableHead className="text-xs font-semibold">Colaborador</TableHead>
-                      <TableHead className="text-xs font-semibold">Status</TableHead>
-                      <TableHead className="text-xs font-semibold">Prior.</TableHead>
-                      <TableHead className="text-xs font-semibold">Sprint</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pagedTopLevel.map(item => {
-                      const children = childrenMap.get(item.id!) || [];
-                      const hasChildren = children.length > 0;
-                      const isExpanded = expandedPbis.has(item.id!);
-
-                      return (
-                        <>{/* Parent row */}
-                          <TableRow
-                            key={`p-${item.id!}`}
-                            className={`hover:bg-muted/30 transition-colors cursor-pointer ${hasChildren ? 'font-medium' : ''}`}
-                            onClick={() => setDrawerItem(item)}
-                          >
-                            <TableCell className="w-8 px-2">
-                              {hasChildren ? (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                  onClick={e => { e.stopPropagation(); toggleExpand(item.id!); }}
-                                >
-                                  {isExpanded
-                                    ? <ChevronDown className="h-4 w-4" />
-                                    : <div className="flex items-center gap-0.5"><ChevronRight className="h-4 w-4" /><span className="text-[10px] text-muted-foreground">{children.length}</span></div>
-                                  }
-                                </Button>
-                              ) : <span className="inline-block w-6" />}
-                            </TableCell>
-                            {renderItemCells(item)}
-                          </TableRow>
-
-                          {/* Child rows */}
-                          {hasChildren && isExpanded && children.map(child => (
-                            <TableRow
-                              key={`c-${child.id!}`}
-                              className="hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5 border-l-2 border-l-primary/20"
-                              onClick={() => setDrawerItem(child)}
-                            >
-                              <TableCell className="w-8 px-2">
-                                <span className="inline-block w-6 text-center text-muted-foreground/40 text-xs">└</span>
-                              </TableCell>
-                              {renderItemCells(child, true)}
-                            </TableRow>
+              {/* Type distribution pie */}
+              {typeDistribution.length > 0 && (
+                <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-primary" />Distribuição por Tipo
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie
+                          data={typeDistribution}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={80}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {typeDistribution.map((_, idx) => (
+                            <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
                           ))}
-                        </>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-wrap gap-2 justify-center mt-2">
+                      {typeDistribution.map((t, idx) => (
+                        <div key={t.name} className="flex items-center gap-1.5 text-xs">
+                          <div className="h-2.5 w-2.5 rounded-sm" style={{ background: CHART_COLORS[idx % CHART_COLORS.length] }} />
+                          <span className="text-muted-foreground">{t.name}</span>
+                          <span className="font-semibold text-foreground">{t.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
 
-              {allTopLevel.length > PAGE_SIZE && (
-                <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{allTopLevel.length} itens • Página {page + 1} de {totalPages}</span>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
+          {/* ═══════ TAB: Horas (TimeLog) ═══════ */}
+          <TabsContent value="timelog" className="space-y-5 mt-0">
+            {/* TimeLog hero stats */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <HeroKpiCard label="Total Horas" value={fab.hasTimeLogs ? Math.round(fab.totalHoursLogged) : null} suffix="h" icon={Timer} isLoading={fab.isLoading} accent="bg-primary" description="Soma de horas registradas no TimeLog" />
+              <HeroKpiCard label="Colaboradores" value={fab.horasPorColaborador.length || null} icon={Users} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" description="Com registros no período" />
+              <HeroKpiCard label="Produtos" value={fab.horasPorProduto.length || null} icon={Package} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" description="Identificados via tags do DevOps" />
+              <HeroKpiCard label="Clientes" value={fab.horasPorCliente.length || null} icon={Building2} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(43,85%,46%)]" description="Identificados via parent/título" />
+            </div>
+
+            {/* Three ranking cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <HoursRankingCard
+                title="Horas por Colaborador"
+                icon={Users}
+                data={fab.horasPorColaborador}
+                isLoading={fab.isLoading}
+                emptyMessage="Nenhuma hora registrada"
+                delay={300}
+              />
+              <HoursRankingCard
+                title="Horas por Produto"
+                icon={Package}
+                data={fab.horasPorProduto}
+                isLoading={fab.isLoading}
+                emptyMessage="Nenhum produto identificado"
+                delay={400}
+              />
+              <HoursRankingCard
+                title="Horas por Cliente"
+                icon={Building2}
+                data={fab.horasPorCliente}
+                isLoading={fab.isLoading}
+                emptyMessage="Nenhum cliente identificado"
+                delay={500}
+              />
+            </div>
+
+            {/* Hours chart (horizontal bars for collaborators) */}
+            {fab.horasPorColaborador.length > 0 && (
+              <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-primary" />Distribuição de Horas por Colaborador
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={Math.max(200, fab.horasPorColaborador.length * 36)}>
+                    <BarChart data={fab.horasPorColaborador.slice(0, 12)} layout="vertical" margin={{ left: 0, right: 16 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                      <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" unit="h" />
+                      <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
+                      <Tooltip
+                        contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                        formatter={(value: number) => [`${value}h`, 'Horas']}
+                      />
+                      <Bar dataKey="hours" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ═══════ TAB: Sprint Board ═══════ */}
+          <TabsContent value="board" className="space-y-4 mt-0">
+            {fab.isLoading ? (
+              <Card className="overflow-hidden">
+                <div className="p-4 border-b border-border"><Skeleton className="h-5 w-40" /></div>
+                <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              </Card>
+            ) : allTopLevel.length === 0 ? (
+              <DashboardEmptyState description="Nenhum work item encontrado para o período selecionado." />
+            ) : (
+              <Card className="overflow-hidden animate-fade-in">
+                <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-foreground text-sm">Sprint Board</h3>
+                    <p className="text-xs text-muted-foreground">{filteredFabItems.length} itens • {parentRows.filter(p => childrenMap.has(p.id!)).length} PBIs com tasks</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Quick filter badges */}
+                    <div className="hidden md:flex gap-1">
+                      {(['all', 'in_progress', 'todo', 'done'] as FabKpiFilter[]).map(f => (
+                        <Badge 
+                          key={f} 
+                          variant={fabKpiFilter === f ? 'default' : 'outline'} 
+                          className="cursor-pointer text-xs transition-all"
+                          onClick={() => toggleFab(f)}
+                        >
+                          {f === 'all' ? 'Todos' : f === 'in_progress' ? 'Em Progresso' : f === 'todo' ? 'To Do' : 'Done'}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="relative w-full sm:w-56">
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar task..."
+                        value={search}
+                        onChange={e => { setSearch(e.target.value); setPage(0); }}
+                        className="pl-8 h-8 text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
-              )}
-            </Card>
-          )}
-        </div>
+
+                <div className="overflow-auto max-h-[600px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="w-8" />
+                        <TableHead className="text-xs font-semibold w-16">ID</TableHead>
+                        <TableHead className="text-xs font-semibold">Tipo</TableHead>
+                        <TableHead className="text-xs font-semibold">Título</TableHead>
+                        <TableHead className="text-xs font-semibold">Colaborador</TableHead>
+                        <TableHead className="text-xs font-semibold">Status</TableHead>
+                        <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                        <TableHead className="text-xs font-semibold">Sprint</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagedTopLevel.map(item => {
+                        const children = childrenMap.get(item.id!) || [];
+                        const hasChildren = children.length > 0;
+                        const isExpanded = expandedPbis.has(item.id!);
+
+                        return (
+                          <>{/* Parent row */}
+                            <TableRow
+                              key={`p-${item.id!}`}
+                              className={`hover:bg-muted/30 transition-colors cursor-pointer ${hasChildren ? 'font-medium' : ''}`}
+                              onClick={() => setDrawerItem(item)}
+                            >
+                              <TableCell className="w-8 px-2">
+                                {hasChildren ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                    onClick={e => { e.stopPropagation(); toggleExpand(item.id!); }}
+                                  >
+                                    {isExpanded
+                                      ? <ChevronDown className="h-4 w-4" />
+                                      : <div className="flex items-center gap-0.5"><ChevronRight className="h-4 w-4" /><span className="text-[10px] text-muted-foreground">{children.length}</span></div>
+                                    }
+                                  </Button>
+                                ) : <span className="inline-block w-6" />}
+                              </TableCell>
+                              {renderItemCells(item)}
+                            </TableRow>
+
+                            {/* Child rows */}
+                            {hasChildren && isExpanded && children.map(child => (
+                              <TableRow
+                                key={`c-${child.id!}`}
+                                className="hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5 border-l-2 border-l-primary/20"
+                                onClick={() => setDrawerItem(child)}
+                              >
+                                <TableCell className="w-8 px-2">
+                                  <span className="inline-block w-6 text-center text-muted-foreground/40 text-xs">└</span>
+                                </TableCell>
+                                {renderItemCells(child, true)}
+                              </TableRow>
+                            ))}
+                          </>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {allTopLevel.length > PAGE_SIZE && (
+                  <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{allTopLevel.length} itens • Página {page + 1} de {totalPages}</span>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
 
       <DashboardDrawer
@@ -435,7 +709,7 @@ export default function FabricaDashboard() {
               PBIs Transbordados
             </DialogTitle>
             <DialogDescription>
-              Itens em sprints anteriores que não foram finalizados. O contador indica em quantas sprints o item já apareceu.
+              Itens em sprints anteriores que não foram finalizados.
             </DialogDescription>
           </DialogHeader>
 
@@ -458,7 +732,7 @@ export default function FabricaDashboard() {
                   {fab.transbordoItems
                     .sort((a, b) => b.overflowCount - a.overflowCount)
                     .map(item => (
-                      <TableRow key={item.id} className="hover:bg-muted/30">
+                      <TableRow key={item.id} className="hover:bg-muted/30 animate-fade-in">
                         <TableCell className="font-mono text-xs">
                           {item.web_url ? (
                             <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.id}</a>
