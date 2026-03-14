@@ -93,10 +93,14 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
 
   const allItems = query.data || [];
 
+  // Exclude INFRA items — controlled only in Infraestrutura sector
+  const INFRA_PREFIX = '[INFRA]';
+  const nonInfraItems = allItems.filter(i => !i.title?.startsWith(INFRA_PREFIX));
+
   // Apply date filter
   const items = (dateFrom && dateTo)
-    ? allItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
-    : allItems;
+    ? nonInfraItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    : nonInfraItems;
 
   const total = items.length;
   const inProgress = items.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
