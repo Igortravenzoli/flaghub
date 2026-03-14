@@ -50,30 +50,28 @@ function sprintCompare(a: string, b: string): number {
   return pa.num - pb.num;
 }
 
-/** Extract product tags from a tags string (e.g., "FLEXX; CONNECTSALES") */
+/** Known product tags — only these are considered "products" */
+const KNOWN_PRODUCTS = new Set([
+  'FLEXX', 'FLEXXSALES', 'CONNECTSALES', 'FLEXXGO', 'FLEXXGPS',
+  'HEISHOP', 'PORTAL BROKER', 'FLEXXLEAD', 'QUICKONE',
+]);
+
+/** Extract only known product tags from a tags string */
 function extractProducts(tags: string | null): string[] {
   if (!tags) return [];
-  return tags.split(';').map(t => t.trim()).filter(Boolean);
+  return tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
 }
 
-/** Extract client name from parent_title or title (patterns like "HNK", "NESTLE", OS references) */
-function extractClient(item: FabricaItem, parentMap: Map<number, FabricaItem>): string {
-  // Try parent title for client extraction
-  const parent = item.parent_id ? parentMap.get(item.parent_id) : null;
-  const parentTitle = parent?.title || item.parent_title || '';
-  
-  // Common client patterns in titles
-  const clientMatch = parentTitle.match(/^([A-ZÀ-Ú][A-ZÀ-Ú\s]{2,20})\s*[-–]/);
-  if (clientMatch) return clientMatch[1].trim();
-  
-  // Fallback: use first meaningful part of parent title
-  if (parentTitle) {
-    const cleaned = parentTitle.replace(/^\[.*?\]\s*/, '').trim();
-    if (cleaned.length > 0 && cleaned.length <= 40) return cleaned;
-    return cleaned.substring(0, 40) + '…';
+/** Extract area/squad label from area_path. e.g. "Flag.Planejamento\STAGING\Squad" → "[STAGING]" */
+function extractAreaLabel(areaPath: string | null): string {
+  if (!areaPath) return 'Sem área';
+  const parts = areaPath.split('\\');
+  // Take the second segment (first child under project) as the area label
+  if (parts.length >= 2) {
+    const area = parts[1].trim();
+    return `[${area.toUpperCase()}]`;
   }
-  
-  return 'Sem cliente';
+  return `[${parts[0].trim().toUpperCase()}]`;
 }
 
 export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
