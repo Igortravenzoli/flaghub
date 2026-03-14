@@ -233,9 +233,13 @@ export default function FabricaDashboard() {
                 <p className="text-xs text-muted-foreground font-medium">Lead Time Médio</p>
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {fab.isLoading ? '—' : fab.leadTimeMedio != null ? `${fab.leadTimeMedio}h` : <span className="text-sm font-normal text-muted-foreground">Sem dados de horas</span>}
+                {fab.isLoading ? '—' : fab.leadTimeMedio != null
+                  ? `${fab.leadTimeMedio}${fab.leadTimeSource === 'effort' ? ' pts' : 'h'}`
+                  : <span className="text-sm font-normal text-muted-foreground">Sem dados</span>}
               </p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">Horas trabalhadas / PBI</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">
+                {fab.leadTimeSource === 'effort' ? 'Effort médio / PBI (DevOps)' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
+              </p>
             </Card>
 
             <Card className="p-4 animate-fade-in" style={{ animationDelay: '80ms' }}>
@@ -246,12 +250,16 @@ export default function FabricaDashboard() {
                 <p className="text-xs text-muted-foreground font-medium">Velocidade Média</p>
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {fab.isLoading ? '—' : fab.velocidadeMedia != null ? `${fab.velocidadeMedia}h` : <span className="text-sm font-normal text-muted-foreground">Sem dados de horas</span>}
+                {fab.isLoading ? '—' : fab.velocidadeMedia != null
+                  ? `${fab.velocidadeMedia}${fab.velocidadeSource === 'effort' ? ' pts' : 'h'}`
+                  : <span className="text-sm font-normal text-muted-foreground">Sem dados</span>}
               </p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">Horas / Sprint{fab.sprintCount > 0 ? ` (${fab.sprintCount} sprints)` : ''}</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">
+                {fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
+              </p>
             </Card>
 
-            <Card className="p-4 animate-fade-in" style={{ animationDelay: '160ms' }}>
+            <Card className={`p-4 animate-fade-in ${fab.transbordoPct != null && fab.transbordoPct > 50 ? 'ring-1 ring-destructive/30' : ''}`} style={{ animationDelay: '160ms' }}>
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-2 rounded-xl bg-[hsl(43,85%,46%)]/10">
                   <AlertTriangle className="h-4 w-4 text-[hsl(43,85%,46%)]" />
@@ -261,7 +269,9 @@ export default function FabricaDashboard() {
               <p className="text-2xl font-bold text-foreground">
                 {fab.isLoading ? '—' : fab.transbordoPct != null ? `${fab.transbordoPct}%` : <span className="text-sm font-normal text-muted-foreground">Sem dados</span>}
               </p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">Não entregues na sprint planejada</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">
+                {fab.transbordoCount > 0 ? `${fab.transbordoCount} de ${fab.transbordoTotal} itens em sprints anteriores` : 'Não entregues na sprint planejada'}
+              </p>
             </Card>
 
             <Card className="p-4 animate-fade-in opacity-60" style={{ animationDelay: '240ms' }}>
