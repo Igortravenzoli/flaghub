@@ -236,13 +236,6 @@ export type Database = {
             foreignKeyName: "devops_query_items_current_work_item_id_fkey"
             columns: ["work_item_id"]
             isOneToOne: false
-            referencedRelation: "vw_fabrica_kpis"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "devops_query_items_current_work_item_id_fkey"
-            columns: ["work_item_id"]
-            isOneToOne: false
             referencedRelation: "vw_infraestrutura_kpis"
             referencedColumns: ["id"]
           },
