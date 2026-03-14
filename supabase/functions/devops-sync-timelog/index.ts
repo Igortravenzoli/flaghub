@@ -291,7 +291,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: true,
-      documents: documents.length,
+      entries_total: rawEntries.length,
       entries_found: allRows.length,
       entries_skipped: skipped,
       upserted,
