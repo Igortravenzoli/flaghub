@@ -289,7 +289,8 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     }
   }
 
-  // Transbordo
+  // Transbordo — only PBIs count; a PBI is "transbordo" if it's in a past sprint
+  // and was NOT completed (Done/Closed/Resolved) in that sprint.
   const sortedSprints = [...sprintSet].sort(sprintCompare);
   const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
 
@@ -300,26 +301,33 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
 
   if (currentSprint && sortedSprints.length > 1) {
     const pastSprints = new Set(sortedSprints.slice(0, -1));
-    const pastSprintItems = items.filter(i => i.iteration_path && pastSprints.has(i.iteration_path));
-    transbordoTotal = pastSprintItems.length;
 
-    const overflowedItems = pastSprintItems.filter(
+    // Only PBIs (Product Backlog Item / User Story)
+    const pastSprintPbis = items.filter(
+      i => i.iteration_path && pastSprints.has(i.iteration_path)
+        && (i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story')
+    );
+    transbordoTotal = pastSprintPbis.length;
+
+    // PBIs not completed = transbordo (carried over to another sprint)
+    const overflowedPbis = pastSprintPbis.filter(
       i => i.state !== 'Done' && i.state !== 'Closed' && i.state !== 'Resolved'
     );
-    transbordoCount = overflowedItems.length;
+    transbordoCount = overflowedPbis.length;
     transbordoPct = transbordoTotal > 0
       ? Math.round((transbordoCount / transbordoTotal) * 100)
       : 0;
 
+    // Track which sprints each PBI appeared in (for overflow counter)
     const itemSprintMap = new Map<number, Set<string>>();
-    for (const item of pastSprintItems) {
+    for (const item of pastSprintPbis) {
       if (!item.id || !item.iteration_path) continue;
       if (!itemSprintMap.has(item.id)) itemSprintMap.set(item.id, new Set());
       itemSprintMap.get(item.id)!.add(item.iteration_path);
     }
 
     const seen = new Set<number>();
-    transbordoItems = overflowedItems
+    transbordoItems = overflowedPbis
       .filter(i => {
         if (!i.id || seen.has(i.id)) return false;
         seen.add(i.id);
