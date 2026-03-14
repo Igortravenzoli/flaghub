@@ -162,14 +162,7 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <div className="p-2 rounded-lg bg-primary">
-              <Monitor className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-2xl font-bold text-primary">FLAG</span>
-          </div>
-          <CardTitle>FLAG Hub</CardTitle>
+        <CardHeader className="text-center space-y-2 pb-2">
           
           {/* Animated Hub Fusion */}
           <HubFusionAnimation />
