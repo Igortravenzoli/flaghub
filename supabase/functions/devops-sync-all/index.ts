@@ -341,8 +341,8 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
       processed++
     }
 
-    if (i + 10 < workItemIds.length) {
-      await new Promise(r => setTimeout(r, 500))
+    if (i + 20 < workItemIds.length) {
+      await new Promise(r => setTimeout(r, 300))
     }
   }
 
