@@ -376,7 +376,17 @@ export default function FabricaDashboard() {
             <TabsTrigger value="timelog" className="gap-1.5 text-xs">
               <Timer className="h-3.5 w-3.5" />Horas (TimeLog)
             </TabsTrigger>
+            <TabsTrigger value="transbordo" className="gap-1.5 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5" />Transbordo
+              {fab.transbordoCount > 0 && (
+                <Badge variant={fab.transbordoPct != null && fab.transbordoPct > 50 ? 'destructive' : 'secondary'} className="text-[10px] ml-1 px-1.5 py-0">
+                  {fab.transbordoCount}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="board" className="gap-1.5 text-xs">
+              <BarChart3 className="h-3.5 w-3.5" />Sprint Board
+            </TabsTrigger>
               <BarChart3 className="h-3.5 w-3.5" />Sprint Board
             </TabsTrigger>
           </TabsList>
