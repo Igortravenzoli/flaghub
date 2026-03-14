@@ -233,26 +233,14 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   // Hours by fábrica/squad (from area_path via devops_work_items)
   const horasPorFabrica: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
+  // Hours by fábrica/squad (grouped by parent Epic)
+  const horasPorFabrica: TimelogAggregation[] = (() => {
+    if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
     for (const tl of timeLogs) {
       if (!tl.work_item_id) continue;
-      const wi = wiMap.get(tl.work_item_id);
-      const areaPath = wi?.area_path || null;
-      if (!areaPath) continue;
-      // Extract last segment of area_path (e.g. "Flag.Planejamento\\STAGING" → "STAGING")
-      const segments = areaPath.split('\\');
-      const lastSegment = segments[segments.length - 1].trim();
-      // Format: known squads get brackets, others use plain name
-      const SQUAD_AREAS = new Set(['STAGING', 'K8', 'INFRA', 'APP', 'FLEXX']);
-      const upper = lastSegment.toUpperCase();
-      let label: string;
-      if (upper === 'UX/UI' || upper === 'UX' || upper === 'UI') {
-        label = '[UX/UI] ABBN';
-      } else if (SQUAD_AREAS.has(upper)) {
-        label = `[${upper}] - Squad`;
-      } else {
-        label = lastSegment;
-      }
+      const epic = findEpic(tl.work_item_id);
+      const label = epic?.title || 'Sem Epic';
       map[label] = (map[label] || 0) + (tl.time_minutes || 0);
     }
     return Object.entries(map)
