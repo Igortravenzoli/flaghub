@@ -196,18 +196,22 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  // Hours by client (from parent title)
-  const horasPorCliente: TimelogAggregation[] = (() => {
+  // Hours by fábrica/area (from area_path via devops_work_items)
+  const horasPorFabrica: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
     for (const tl of timeLogs) {
       if (!tl.work_item_id) continue;
-      const item = parentMap.get(tl.work_item_id);
-      const client = item ? extractClient(item, parentMap) : 'Sem cliente';
-      map[client] = (map[client] || 0) + (tl.time_minutes || 0);
+      const wi = wiMap.get(tl.work_item_id);
+      const area = extractAreaLabel(wi?.area_path || null);
+      map[area] = (map[area] || 0) + (tl.time_minutes || 0);
     }
     return Object.entries(map)
-      .map(([name, minutes]) => ({ name, hours: Math.round(minutes / 60 * 10) / 10, minutes }))
+      .map(([name, minutes]) => ({
+        name: `${name} ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
+        hours: Math.round(minutes / 60 * 10) / 10,
+        minutes,
+      }))
       .sort((a, b) => b.hours - a.hours);
   })();
 
