@@ -197,18 +197,18 @@ export default function HelpdeskDashboard() {
                 <h3 className="text-sm font-semibold text-foreground mb-3">Ocorrências por Tipo</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
+                     <PieChart>
                       <Pie
-                        data={ocorrenciasPorTipo}
+                        data={ocorrenciasPorTipo.length > 0 ? ocorrenciasPorTipo : [{ nome: 'Sem dados', quantidade: 1 }]}
                         dataKey="quantidade"
                         nameKey="nome"
                         cx="50%"
                         cy="50%"
                         outerRadius={80}
-                        label={({ nome, percent }) => `${nome} ${(percent * 100).toFixed(0)}%`}
+                        label={ocorrenciasPorTipo.length > 0 ? ({ nome, percent }: { nome: string; percent: number }) => `${nome} ${(percent * 100).toFixed(0)}%` : false}
                       >
-                        {ocorrenciasPorTipo.map((_, i) => (
-                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        {(ocorrenciasPorTipo.length > 0 ? ocorrenciasPorTipo : [{ nome: 'Sem dados', quantidade: 1 }]).map((_, i) => (
+                          <Cell key={i} fill={ocorrenciasPorTipo.length > 0 ? CHART_COLORS[i % CHART_COLORS.length] : 'hsl(var(--muted))'} />
                         ))}
                       </Pie>
                       <Tooltip />

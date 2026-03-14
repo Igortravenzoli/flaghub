@@ -45,7 +45,6 @@ const navItems: NavItem[] = [
 ];
 
 const sectorItems: NavItem[] = [
-  { label: 'Produtos', path: '/setor/produtos', icon: Package },
   { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp },
   { label: 'Customer Service', path: '/setor/customer-service', icon: LayoutGrid },
   { label: 'Fábrica', path: '/setor/fabrica', icon: Factory },
