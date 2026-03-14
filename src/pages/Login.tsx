@@ -85,11 +85,29 @@ export default function Login() {
         body: { email: loginData.email, password: loginData.password },
       });
 
+      // Parse error body from FunctionsHttpError when status is non-2xx
+      let errorData: Record<string, unknown> | null = null;
+      if (fnError) {
+        try {
+          // supabase-js wraps non-2xx responses; try to get the JSON body
+          const ctx = (fnError as any).context;
+          if (ctx instanceof Response) {
+            errorData = await ctx.json();
+          } else if (typeof fnError.message === 'string') {
+            // Fallback: message may contain JSON after "Edge function returned ..."
+            const jsonMatch = fnError.message.match(/\{[\s\S]*\}/);
+            if (jsonMatch) errorData = JSON.parse(jsonMatch[0]);
+          }
+        } catch {
+          // ignore parse failures
+        }
+      }
+
       if (fnError || fnData?.error) {
-        const errorData = fnData || {};
+        const errInfo = errorData || fnData || {};
         
-        if (errorData.error === 'rate_limited') {
-          const retryAfter = errorData.retry_after || LOCKOUT_SECONDS;
+        if (errInfo.error === 'rate_limited') {
+          const retryAfter = (errInfo.retry_after as number) || LOCKOUT_SECONDS;
           const until = Date.now() + retryAfter * 1000;
           startLockoutTimer(until);
           toast.error('Conta temporariamente bloqueada', {
@@ -98,9 +116,9 @@ export default function Login() {
           });
         } else {
           attemptsRef.current += 1;
-          const remaining = errorData.remaining_attempts ?? (MAX_ATTEMPTS - attemptsRef.current);
+          const remaining = (errInfo.remaining_attempts as number) ?? (MAX_ATTEMPTS - attemptsRef.current);
           toast.error('Erro no login', {
-            description: `${errorData.message || fnError?.message || 'Credenciais inválidas'}. ${remaining} tentativa(s) restante(s).`,
+            description: `${errInfo.message || fnError?.message || 'Credenciais inválidas'}. ${remaining} tentativa(s) restante(s).`,
           });
         }
       } else if (fnData?.session) {
