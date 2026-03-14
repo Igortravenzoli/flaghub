@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 export interface QualidadeItem {
   id: number | null;
@@ -24,11 +25,9 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['qualidade', 'kpis'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vw_qualidade_kpis')
-        .select('*');
-      if (error) throw error;
-      return (data || []) as QualidadeItem[];
+      return fetchAllRows<QualidadeItem>((from, to) =>
+        supabase.from('vw_qualidade_kpis').select('*').range(from, to)
+      );
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -40,7 +39,6 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date) {
       const qaIds = (query.data || []).map(i => i.id).filter(Boolean) as number[];
       if (qaIds.length === 0) return new Map<number, number>();
       
-      // Fetch in pages of 1000
       const retornoMap = new Map<number, number>();
       for (let i = 0; i < qaIds.length; i += 1000) {
         const chunk = qaIds.slice(i, i + 1000);
@@ -108,7 +106,6 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date) {
     emTeste,
     finalizados,
     taxaVazao,
-    // Retorno QA
     totalRetornos,
     itensComRetorno: itensComRetorno.length,
     taxaRetorno,
