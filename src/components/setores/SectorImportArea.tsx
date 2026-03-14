@@ -24,6 +24,8 @@ function getFileIcon(fileName: string) {
 interface SectorImportAreaProps {
   sectorName: string;
   templateKey?: string;
+  /** Hub area key to filter imports by area */
+  areaKey?: string;
 }
 
 interface ManualBatchHistoryItem {
