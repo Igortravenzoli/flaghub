@@ -507,8 +507,8 @@ export default function FabricaDashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <HeroKpiCard label="Total Horas" value={fab.hasTimeLogs ? Math.round(fab.totalHoursLogged) : null} suffix="h" icon={Timer} isLoading={fab.isLoading} accent="bg-primary" description="Soma de horas registradas no TimeLog" />
               <HeroKpiCard label="Colaboradores" value={fab.horasPorColaborador.length || null} icon={Users} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" description="Com registros no período" />
-              <HeroKpiCard label="Produtos" value={fab.horasPorProduto.length || null} icon={Package} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" description="Identificados via tags do DevOps" />
-              <HeroKpiCard label="Clientes" value={fab.horasPorCliente.length || null} icon={Building2} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(43,85%,46%)]" description="Identificados via parent/título" />
+              <HeroKpiCard label="Produtos" value={fab.horasPorProduto.length || null} icon={Package} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" description="Flexx, ConnectSales, Heishop…" />
+              <HeroKpiCard label="Fábricas" value={fab.horasPorFabrica.length || null} icon={Building2} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(43,85%,46%)]" description="Agrupado por Area Path" />
             </div>
 
             {/* Three ranking cards */}
@@ -530,11 +530,11 @@ export default function FabricaDashboard() {
                 delay={400}
               />
               <HoursRankingCard
-                title="Horas por Cliente"
+                title="Horas por Fábrica"
                 icon={Building2}
-                data={fab.horasPorCliente}
+                data={fab.horasPorFabrica}
                 isLoading={fab.isLoading}
-                emptyMessage="Nenhum cliente identificado"
+                emptyMessage="Nenhuma fábrica identificada"
                 delay={500}
               />
             </div>

@@ -50,30 +50,28 @@ function sprintCompare(a: string, b: string): number {
   return pa.num - pb.num;
 }
 
-/** Extract product tags from a tags string (e.g., "FLEXX; CONNECTSALES") */
+/** Known product tags — only these are considered "products" */
+const KNOWN_PRODUCTS = new Set([
+  'FLEXX', 'FLEXXSALES', 'CONNECTSALES', 'FLEXXGO', 'FLEXXGPS',
+  'HEISHOP', 'PORTAL BROKER', 'FLEXXLEAD', 'QUICKONE',
+]);
+
+/** Extract only known product tags from a tags string */
 function extractProducts(tags: string | null): string[] {
   if (!tags) return [];
-  return tags.split(';').map(t => t.trim()).filter(Boolean);
+  return tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
 }
 
-/** Extract client name from parent_title or title (patterns like "HNK", "NESTLE", OS references) */
-function extractClient(item: FabricaItem, parentMap: Map<number, FabricaItem>): string {
-  // Try parent title for client extraction
-  const parent = item.parent_id ? parentMap.get(item.parent_id) : null;
-  const parentTitle = parent?.title || item.parent_title || '';
-  
-  // Common client patterns in titles
-  const clientMatch = parentTitle.match(/^([A-ZÀ-Ú][A-ZÀ-Ú\s]{2,20})\s*[-–]/);
-  if (clientMatch) return clientMatch[1].trim();
-  
-  // Fallback: use first meaningful part of parent title
-  if (parentTitle) {
-    const cleaned = parentTitle.replace(/^\[.*?\]\s*/, '').trim();
-    if (cleaned.length > 0 && cleaned.length <= 40) return cleaned;
-    return cleaned.substring(0, 40) + '…';
+/** Extract area/squad label from area_path. e.g. "Flag.Planejamento\STAGING\Squad" → "[STAGING]" */
+function extractAreaLabel(areaPath: string | null): string {
+  if (!areaPath) return 'Sem área';
+  const parts = areaPath.split('\\');
+  // Take the second segment (first child under project) as the area label
+  if (parts.length >= 2) {
+    const area = parts[1].trim();
+    return `[${area.toUpperCase()}]`;
   }
-  
-  return 'Sem cliente';
+  return `[${parts[0].trim().toUpperCase()}]`;
 }
 
 export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
@@ -122,7 +120,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('devops_work_items')
-        .select('id, tags, title, parent_id, assigned_to_display');
+        .select('id, tags, title, parent_id, assigned_to_display, area_path');
       if (error) throw error;
       return data || [];
     },
@@ -157,16 +155,10 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 
-  // Build work item lookup for tags/parent mapping
-  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null }>();
+  // Build work item lookup for tags/area_path mapping
+  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null }>();
   for (const wi of (workItemsQuery.data || [])) {
     wiMap.set(wi.id, wi);
-  }
-
-  // Build parent map from items for client extraction
-  const parentMap = new Map<number, FabricaItem>();
-  for (const item of allItems) {
-    if (item.id) parentMap.set(item.id, item);
   }
 
   // Hours by collaborator (from timelog user_name)
@@ -204,18 +196,22 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  // Hours by client (from parent title)
-  const horasPorCliente: TimelogAggregation[] = (() => {
+  // Hours by fábrica/area (from area_path via devops_work_items)
+  const horasPorFabrica: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
     for (const tl of timeLogs) {
       if (!tl.work_item_id) continue;
-      const item = parentMap.get(tl.work_item_id);
-      const client = item ? extractClient(item, parentMap) : 'Sem cliente';
-      map[client] = (map[client] || 0) + (tl.time_minutes || 0);
+      const wi = wiMap.get(tl.work_item_id);
+      const area = extractAreaLabel(wi?.area_path || null);
+      map[area] = (map[area] || 0) + (tl.time_minutes || 0);
     }
     return Object.entries(map)
-      .map(([name, minutes]) => ({ name, hours: Math.round(minutes / 60 * 10) / 10, minutes }))
+      .map(([name, minutes]) => ({
+        name: `${name} ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
+        hours: Math.round(minutes / 60 * 10) / 10,
+        minutes,
+      }))
       .sort((a, b) => b.hours - a.hours);
   })();
 
@@ -330,6 +326,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     // Timelog aggregations
     horasPorColaborador,
     horasPorProduto,
-    horasPorCliente,
+    horasPorFabrica,
   };
 }
