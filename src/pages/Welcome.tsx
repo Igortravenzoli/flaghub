@@ -79,7 +79,7 @@ export default function Welcome() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--flag-navy))] via-[hsl(222,47%,14%)] to-[hsl(var(--flag-navy))] flex flex-col items-center justify-center p-6 overflow-hidden">
+    <div className="min-h-screen bg-[hsl(var(--sidebar-background))] flex flex-col items-center justify-center p-6 overflow-hidden">
       {/* Animation area */}
       <div className="relative w-80 h-80 flex items-center justify-center mb-8">
         {/* Orbiting dashboard cards */}
