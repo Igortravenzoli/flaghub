@@ -230,9 +230,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  // Hours by fábrica/squad (from area_path via devops_work_items)
-  const horasPorFabrica: TimelogAggregation[] = (() => {
-    if (!hasTimeLogs) return [];
   // Hours by fábrica/squad (grouped by parent Epic)
   const horasPorFabrica: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
