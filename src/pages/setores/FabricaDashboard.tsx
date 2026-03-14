@@ -62,7 +62,7 @@ export default function FabricaDashboard() {
 
   const colabChartData = useMemo(() =>
     Object.entries(fab.porColaborador)
-      .sort(([, a], [, b]) => b - a)
+      .sort(([, a], [, b]) => (b as number) - (a as number))
       .slice(0, 10)
       .map(([name, count]) => ({ name: name.split(' ').slice(0, 2).join(' '), count })),
     [fab.porColaborador]
