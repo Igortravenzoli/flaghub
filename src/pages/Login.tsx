@@ -80,34 +80,34 @@ export default function Login() {
     setIsSubmitting(true);
 
     try {
-      // Use server-side rate-limited endpoint
-      const { data: fnData, error: fnError } = await supabase.functions.invoke('auth-rate-limit', {
-        body: { email: loginData.email, password: loginData.password },
-      });
+      // Call rate-limited login endpoint
+      let fnData: Record<string, unknown> | null = null;
+      let fnErrorMsg = '';
 
-      // Parse error body from FunctionsHttpError when status is non-2xx
-      let errorData: Record<string, unknown> | null = null;
-      if (fnError) {
-        try {
-          // supabase-js wraps non-2xx responses; try to get the JSON body
-          const ctx = (fnError as any).context;
-          if (ctx instanceof Response) {
-            errorData = await ctx.json();
-          } else if (typeof fnError.message === 'string') {
-            // Fallback: message may contain JSON after "Edge function returned ..."
-            const jsonMatch = fnError.message.match(/\{[\s\S]*\}/);
-            if (jsonMatch) errorData = JSON.parse(jsonMatch[0]);
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-rate-limit`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+            body: JSON.stringify({ email: loginData.email, password: loginData.password }),
           }
-        } catch {
-          // ignore parse failures
+        );
+        fnData = await res.json();
+        if (!res.ok) {
+          fnErrorMsg = fnData?.message as string || 'Credenciais inválidas';
         }
+      } catch (networkErr) {
+        toast.error('Erro de rede ao tentar fazer login');
+        return;
       }
 
-      if (fnError || fnData?.error) {
-        const errInfo = errorData || fnData || {};
-        
-        if (errInfo.error === 'rate_limited') {
-          const retryAfter = (errInfo.retry_after as number) || LOCKOUT_SECONDS;
+      if (fnData?.error) {
+        if (fnData.error === 'rate_limited') {
+          const retryAfter = (fnData.retry_after as number) || LOCKOUT_SECONDS;
           const until = Date.now() + retryAfter * 1000;
           startLockoutTimer(until);
           toast.error('Conta temporariamente bloqueada', {
@@ -116,16 +116,17 @@ export default function Login() {
           });
         } else {
           attemptsRef.current += 1;
-          const remaining = (errInfo.remaining_attempts as number) ?? (MAX_ATTEMPTS - attemptsRef.current);
+          const remaining = (fnData.remaining_attempts as number) ?? (MAX_ATTEMPTS - attemptsRef.current);
           toast.error('Erro no login', {
-            description: `${errInfo.message || fnError?.message || 'Credenciais inválidas'}. ${remaining} tentativa(s) restante(s).`,
+            description: `${fnErrorMsg || 'Credenciais inválidas'}. ${remaining} tentativa(s) restante(s).`,
           });
         }
       } else if (fnData?.session) {
+        const session = fnData.session as { access_token: string; refresh_token: string };
         // Set session from the edge function response
         await supabase.auth.setSession({
-          access_token: fnData.session.access_token,
-          refresh_token: fnData.session.refresh_token,
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
         });
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
