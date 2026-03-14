@@ -51,7 +51,7 @@ function getBatchStatusLabel(status: string) {
   return labels[status] ?? status;
 }
 
-export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1' }: SectorImportAreaProps) {
+export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1', areaKey }: SectorImportAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
   const [showModeDialog, setShowModeDialog] = useState(false);
