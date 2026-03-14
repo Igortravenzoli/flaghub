@@ -169,7 +169,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const hasTimeLogs = timeLogs.length > 0;
 
   // Build work item lookup for tags/area_path/hierarchy mapping
-  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null }>();
+  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>();
   for (const wi of (workItemsQuery.data || [])) {
     wiMap.set(wi.id, wi);
   }
