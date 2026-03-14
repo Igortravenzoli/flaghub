@@ -35,6 +35,29 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
+const SUPABASE_PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+    const { data, error } = await fetchPage(from, to);
+    if (error) throw error;
+
+    const chunk = data || [];
+    rows.push(...chunk);
+
+    if (chunk.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
 function parseSprintOrder(iterPath: string): { year: number; num: number } {
   const sMatch = iterPath.match(/\\S(\d+)-(\d{4})$/);
   if (sMatch) return { year: parseInt(sMatch[2]), num: parseInt(sMatch[1]) };
@@ -94,11 +117,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['fabrica', 'kpis'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vw_fabrica_kpis')
-        .select('*');
-      if (error) throw error;
-      return (data || []) as FabricaItem[];
+      const data = await fetchAllRows<FabricaItem>((from, to) =>
+        supabase
+          .from('vw_fabrica_kpis')
+          .select('*')
+          .range(from, to)
+      );
+      return data;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -121,11 +146,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const timeLogsQuery = useQuery({
     queryKey: ['fabrica', 'time-logs-full'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('devops_time_logs')
-        .select('work_item_id, time_minutes, user_name, log_date');
-      if (error) throw error;
-      return data || [];
+      const data = await fetchAllRows<{ work_item_id: number | null; time_minutes: number | null; user_name: string | null; log_date: string | null }>((from, to) =>
+        supabase
+          .from('devops_time_logs')
+          .select('work_item_id, time_minutes, user_name, log_date')
+          .range(from, to)
+      );
+      return data;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -134,11 +161,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const workItemsQuery = useQuery({
     queryKey: ['fabrica', 'work-items-tags'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('devops_work_items')
-        .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type, iteration_history');
-      if (error) throw error;
-      return data || [];
+      const data = await fetchAllRows<{ id: number; tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>((from, to) =>
+        supabase
+          .from('devops_work_items')
+          .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type, iteration_history')
+          .range(from, to)
+      );
+      return data;
     },
     staleTime: 5 * 60 * 1000,
   });
