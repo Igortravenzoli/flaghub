@@ -168,10 +168,31 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 
-  // Build work item lookup for tags/area_path mapping
-  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null }>();
+  // Build work item lookup for tags/area_path/hierarchy mapping
+  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null }>();
   for (const wi of (workItemsQuery.data || [])) {
     wiMap.set(wi.id, wi);
+  }
+
+  // Find the top-level Epic for a work item by walking up parent_id
+  function findEpic(wiId: number, maxDepth = 10): { title: string; id: number } | null {
+    let current = wiMap.get(wiId);
+    let depth = 0;
+    while (current && depth < maxDepth) {
+      if (current.work_item_type === 'Epic') {
+        return { title: current.title || `Epic #${wiId}`, id: wiId };
+      }
+      if (!current.parent_id) break;
+      const parentId = current.parent_id;
+      current = wiMap.get(parentId);
+      wiId = parentId;
+      depth++;
+    }
+    // If we reached the top without finding "Epic" type, use the topmost item
+    if (current && depth > 0) {
+      return { title: current.title || `Item #${wiId}`, id: wiId };
+    }
+    return null;
   }
 
   // Hours by collaborator (from timelog user_name)
