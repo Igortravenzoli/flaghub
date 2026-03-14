@@ -169,13 +169,13 @@ export default function Login() {
             </div>
             <span className="text-2xl font-bold text-primary">FLAG</span>
           </div>
-          <CardTitle>Painel Operacional</CardTitle>
+          <CardTitle>FLAG Hub</CardTitle>
           
-          {/* Animated Fusion Text */}
-          <FusionText />
+          {/* Animated Hub Fusion */}
+          <HubFusionAnimation />
           
           <CardDescription>
-            Acesse sua conta para gerenciar tickets e ordens de serviço
+            Central de KPIs e Dashboards Setoriais
           </CardDescription>
         </CardHeader>
         <CardContent>
