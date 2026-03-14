@@ -117,11 +117,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['fabrica', 'kpis'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vw_fabrica_kpis')
-        .select('*');
-      if (error) throw error;
-      return (data || []) as FabricaItem[];
+      const data = await fetchAllRows<FabricaItem>((from, to) =>
+        supabase
+          .from('vw_fabrica_kpis')
+          .select('*')
+          .range(from, to)
+      );
+      return data;
     },
     staleTime: 5 * 60 * 1000,
   });
