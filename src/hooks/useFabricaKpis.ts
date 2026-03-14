@@ -24,11 +24,26 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
-function modeValue(arr: string[]): string | null {
-  if (arr.length === 0) return null;
-  const freq: Record<string, number> = {};
-  for (const v of arr) freq[v] = (freq[v] || 0) + 1;
-  return Object.entries(freq).sort(([, a], [, b]) => b - a)[0][0];
+/**
+ * Parse sprint identifier from iteration_path to enable ordering.
+ * Patterns: "Flag.Planejamento\S5-2026" → { year: 2026, num: 5 }
+ *           "Flag.Planejamento\Sprint 34" → { year: 0, num: 34 }
+ */
+function parseSprintOrder(iterPath: string): { year: number; num: number } {
+  // Pattern: S{num}-{year}
+  const sMatch = iterPath.match(/\\S(\d+)-(\d{4})$/);
+  if (sMatch) return { year: parseInt(sMatch[2]), num: parseInt(sMatch[1]) };
+  // Pattern: Sprint {num}
+  const sprintMatch = iterPath.match(/\\Sprint\s*(\d+)$/);
+  if (sprintMatch) return { year: 0, num: parseInt(sprintMatch[1]) };
+  return { year: 0, num: 0 };
+}
+
+function sprintCompare(a: string, b: string): number {
+  const pa = parseSprintOrder(a);
+  const pb = parseSprintOrder(b);
+  if (pa.year !== pb.year) return pa.year - pb.year;
+  return pa.num - pb.num;
 }
 
 export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
@@ -58,7 +73,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     staleTime: 60 * 1000,
   });
 
-  // Fetch time logs for hours-based KPIs
+  // Fetch time logs for hours-based KPIs (when available)
   const timeLogsQuery = useQuery({
     queryKey: ['fabrica', 'time-logs'],
     queryFn: async () => {
@@ -89,7 +104,9 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     return acc;
   }, {} as Record<string, number>);
 
-  // --- Corporate KPIs ---
+  // ── Corporate KPIs ──────────────────────────────────────────────
+
+  // Check for time_logs data
   const fabricaItemIds = new Set(items.map(i => i.id).filter(Boolean));
   const timeLogs = (timeLogsQuery.data || []).filter(
     tl => tl.work_item_id && fabricaItemIds.has(tl.work_item_id)
@@ -97,42 +114,79 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 
-  // PBIs / User Stories count
+  // PBIs / User Stories
   const pbis = items.filter(
     i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
   );
+  const pbisWithEffort = pbis.filter(i => i.effort != null && i.effort > 0);
 
-  // Lead Time Médio: total hours logged / PBI count
-  const leadTimeMedio = hasTimeLogs && pbis.length > 0
-    ? Math.round((totalHoursLogged / pbis.length) * 10) / 10
-    : null;
+  // ── Lead Time Médio ─────────────────────────────────────────────
+  // Primary: hours from time_logs / PBI count
+  // Fallback: average effort (story points) per PBI from DevOps
+  let leadTimeMedio: number | null = null;
+  let leadTimeSource: 'timelog' | 'effort' | null = null;
 
-  // Velocidade Média Squad: total hours logged / number of distinct sprints
-  const sprintSet = new Set(items.map(i => i.iteration_path).filter(Boolean));
+  if (hasTimeLogs && pbis.length > 0) {
+    leadTimeMedio = Math.round((totalHoursLogged / pbis.length) * 10) / 10;
+    leadTimeSource = 'timelog';
+  } else if (pbisWithEffort.length > 0) {
+    const totalEffort = pbisWithEffort.reduce((sum, i) => sum + (i.effort || 0), 0);
+    leadTimeMedio = Math.round((totalEffort / pbisWithEffort.length) * 10) / 10;
+    leadTimeSource = 'effort';
+  }
+
+  // ── Velocidade Média Squad ──────────────────────────────────────
+  // Primary: hours logged / sprint count
+  // Fallback: total effort per sprint (average)
+  const sprintSet = new Set(items.map(i => i.iteration_path).filter(Boolean) as string[]);
   const sprintCount = sprintSet.size;
-  const velocidadeMedia = hasTimeLogs && sprintCount > 0
-    ? Math.round((totalHoursLogged / sprintCount) * 10) / 10
-    : null;
+  let velocidadeMedia: number | null = null;
+  let velocidadeSource: 'timelog' | 'effort' | null = null;
 
-  // Transbordo (%): items in past sprints that are not done / total items with sprint
-  // Current sprint = the sprint with most active/in-progress items
-  const activeIterations = items
-    .filter(i => i.state === 'In Progress' || i.state === 'Active')
-    .map(i => i.iteration_path)
-    .filter(Boolean) as string[];
-  const currentSprint = modeValue(activeIterations) || [...sprintSet].pop() || null;
+  if (hasTimeLogs && sprintCount > 0) {
+    velocidadeMedia = Math.round((totalHoursLogged / sprintCount) * 10) / 10;
+    velocidadeSource = 'timelog';
+  } else if (sprintCount > 0 && pbisWithEffort.length > 0) {
+    // Sum effort by sprint
+    const effortBySprint: Record<string, number> = {};
+    for (const item of pbisWithEffort) {
+      const sp = item.iteration_path || 'unknown';
+      effortBySprint[sp] = (effortBySprint[sp] || 0) + (item.effort || 0);
+    }
+    const sprintsWithEffort = Object.values(effortBySprint);
+    if (sprintsWithEffort.length > 0) {
+      const avgPerSprint = sprintsWithEffort.reduce((a, b) => a + b, 0) / sprintsWithEffort.length;
+      velocidadeMedia = Math.round(avgPerSprint * 10) / 10;
+      velocidadeSource = 'effort';
+    }
+  }
 
-  const itemsWithSprint = items.filter(i => i.iteration_path);
+  // ── Transbordo (%) ──────────────────────────────────────────────
+  // Items in past sprints that are still active (not Done/Closed/Resolved)
+  // "Current sprint" = the latest sprint by naming convention
+  const sortedSprints = [...sprintSet].sort(sprintCompare);
+  const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
+
   let transbordoPct: number | null = null;
-  if (currentSprint && itemsWithSprint.length > 0) {
-    const pastSprintItems = itemsWithSprint.filter(i => i.iteration_path !== currentSprint);
-    const pastNotDone = pastSprintItems.filter(
+  let transbordoCount = 0;
+  let transbordoTotal = 0;
+
+  if (currentSprint && sortedSprints.length > 1) {
+    // All items in past sprints (not the latest one)
+    const pastSprints = new Set(sortedSprints.slice(0, -1));
+    const pastSprintItems = items.filter(i => i.iteration_path && pastSprints.has(i.iteration_path));
+    transbordoTotal = pastSprintItems.length;
+    transbordoCount = pastSprintItems.filter(
       i => i.state !== 'Done' && i.state !== 'Closed' && i.state !== 'Resolved'
-    );
-    transbordoPct = pastSprintItems.length > 0
-      ? Math.round((pastNotDone.length / pastSprintItems.length) * 100)
+    ).length;
+    transbordoPct = transbordoTotal > 0
+      ? Math.round((transbordoCount / transbordoTotal) * 100)
       : 0;
   }
+
+  // ── Capacidade Plan. vs Util. ───────────────────────────────────
+  // Status: Pendente — requires DevOps Capacity API (Boards → Sprints → Capacity)
+  // Not calculable from current data
 
   return {
     items,
@@ -148,8 +202,12 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     refetch: query.refetch,
     // Corporate KPIs
     leadTimeMedio,
+    leadTimeSource,
     velocidadeMedia,
+    velocidadeSource,
     transbordoPct,
+    transbordoCount,
+    transbordoTotal,
     currentSprint,
     sprintCount,
     hasTimeLogs,
