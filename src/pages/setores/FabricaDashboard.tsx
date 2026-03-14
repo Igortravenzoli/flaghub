@@ -22,6 +22,7 @@ type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items, Sprints' },
+  { name: 'DevOps TimeLog', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Horas alocadas (TechsBCN)' },
 ];
 
 const typeColors: Record<string, string> = {
