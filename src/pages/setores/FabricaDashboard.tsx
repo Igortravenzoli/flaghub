@@ -530,11 +530,11 @@ export default function FabricaDashboard() {
                 delay={400}
               />
               <HoursRankingCard
-                title="Horas por Cliente"
+                title="Horas por Fábrica"
                 icon={Building2}
-                data={fab.horasPorCliente}
+                data={fab.horasPorFabrica}
                 isLoading={fab.isLoading}
-                emptyMessage="Nenhum cliente identificado"
+                emptyMessage="Nenhuma fábrica identificada"
                 delay={500}
               />
             </div>
