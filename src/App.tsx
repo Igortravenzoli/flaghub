@@ -28,7 +28,7 @@ import ComercialDashboard from "@/pages/setores/ComercialDashboard";
 import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
 import FabricaDashboard from "@/pages/setores/FabricaDashboard";
 import InfraestruturaDashboard from "@/pages/setores/InfraestruturaDashboard";
-import ProdutosDashboard from "@/pages/setores/ProdutosDashboard";
+
 import AccessRequests from "@/pages/admin/AccessRequests";
 import Permissions from "@/pages/admin/Permissions";
 import SyncCentral from "@/pages/admin/SyncCentral";
