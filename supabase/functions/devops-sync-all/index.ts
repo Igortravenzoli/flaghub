@@ -307,8 +307,8 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
   let processed = 0
   let withChanges = 0
 
-  for (let i = 0; i < workItemIds.length; i += 10) {
-    const batch = workItemIds.slice(i, i + 10)
+  for (let i = 0; i < workItemIds.length; i += 20) {
+    const batch = workItemIds.slice(i, i + 20)
     const batchResults = await Promise.all(
       batch.map(async (wiId) => {
         try {
@@ -341,8 +341,8 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
       processed++
     }
 
-    if (i + 10 < workItemIds.length) {
-      await new Promise(r => setTimeout(r, 500))
+    if (i + 20 < workItemIds.length) {
+      await new Promise(r => setTimeout(r, 300))
     }
   }
 
@@ -497,6 +497,16 @@ serve(async (req) => {
       let qaRetorno = { processed: 0, withRetornos: 0 }
       let iterHistory = { processed: 0, withChanges: 0 }
 
+      // Run iteration history FIRST (highest priority, newest feature)
+      try {
+        console.log('[DevOpsSyncAll:BG] Starting iteration history sync...')
+        iterHistory = await processIterationHistory(bgAdmin)
+        console.log(`[DevOpsSyncAll:BG] Iteration history done: ${iterHistory.processed} processed, ${iterHistory.withChanges} with changes`)
+      } catch (iterErr) {
+        console.error('[DevOpsSyncAll:BG] Iteration history error:', (iterErr as Error).message)
+      }
+
+      // Then children sync
       try {
         console.log('[DevOpsSyncAll:BG] Fetching child work items (Tasks/Bugs)...')
         const { data: pbiItems } = await bgAdmin
@@ -514,18 +524,12 @@ serve(async (req) => {
         console.error('[DevOpsSyncAll:BG] Children sync error:', (childErr as Error).message)
       }
 
+      // QA retorno last
       try {
         console.log('[DevOpsSyncAll:BG] Starting QA retorno calculation...')
         qaRetorno = await processQaRetornos(bgAdmin)
       } catch (qaErr) {
         console.error('[DevOpsSyncAll:BG] QA retorno error:', (qaErr as Error).message)
-      }
-
-      try {
-        console.log('[DevOpsSyncAll:BG] Starting iteration history sync...')
-        iterHistory = await processIterationHistory(bgAdmin)
-      } catch (iterErr) {
-        console.error('[DevOpsSyncAll:BG] Iteration history error:', (iterErr as Error).message)
       }
 
       // Audit log with full results
