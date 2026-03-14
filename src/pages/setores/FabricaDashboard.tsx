@@ -5,7 +5,7 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useFabricaKpis, FabricaItem, TimelogAggregation } from '@/hooks/useFabricaKpis';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -190,7 +190,7 @@ export default function FabricaDashboard() {
   const [expandedPbis, setExpandedPbis] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
-  const [transbordoOpen, setTransbordoOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
   const PAGE_SIZE = 25;
 
   const colabChartData = useMemo(() =>
@@ -368,13 +368,21 @@ export default function FabricaDashboard() {
       {fab.isError ? (
         <DashboardEmptyState variant="error" onRetry={() => fab.refetch()} />
       ) : (
-        <Tabs defaultValue="overview" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-muted/50 p-1">
             <TabsTrigger value="overview" className="gap-1.5 text-xs">
               <Zap className="h-3.5 w-3.5" />Visão Geral
             </TabsTrigger>
             <TabsTrigger value="timelog" className="gap-1.5 text-xs">
               <Timer className="h-3.5 w-3.5" />Horas (TimeLog)
+            </TabsTrigger>
+            <TabsTrigger value="transbordo" className="gap-1.5 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5" />Transbordo
+              {fab.transbordoCount > 0 && (
+                <Badge variant={fab.transbordoPct != null && fab.transbordoPct > 50 ? 'destructive' : 'secondary'} className="text-[10px] ml-1 px-1.5 py-0">
+                  {fab.transbordoCount}
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="board" className="gap-1.5 text-xs">
               <BarChart3 className="h-3.5 w-3.5" />Sprint Board
@@ -420,7 +428,7 @@ export default function FabricaDashboard() {
                 delay={460}
                 accent={fab.transbordoPct != null && fab.transbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
                 description={fab.transbordoCount > 0 ? `${fab.transbordoCount} de ${fab.transbordoTotal} itens` : 'Itens não entregues na sprint'}
-                onClick={() => fab.transbordoItems.length > 0 && setTransbordoOpen(true)}
+                onClick={() => fab.transbordoItems.length > 0 && setActiveTab('transbordo')}
               />
               <HeroKpiCard 
                 label="Capacidade" 
@@ -568,6 +576,18 @@ export default function FabricaDashboard() {
             )}
           </TabsContent>
 
+          {/* ═══════ TAB: Transbordo ═══════ */}
+          <TabsContent value="transbordo" className="space-y-5 mt-0">
+            <TransbordoTab
+              items={fab.transbordoItems}
+              transbordoPct={fab.transbordoPct}
+              transbordoCount={fab.transbordoCount}
+              transbordoTotal={fab.transbordoTotal}
+              currentSprint={fab.currentSprint}
+              isLoading={fab.isLoading}
+            />
+          </TabsContent>
+
           {/* ═══════ TAB: Sprint Board ═══════ */}
           <TabsContent value="board" className="space-y-4 mt-0">
             {fab.isLoading ? (
@@ -703,73 +723,6 @@ export default function FabricaDashboard() {
         externalUrl={drawerItem?.web_url}
       />
 
-      {/* Transbordo Detail Dialog */}
-      <Dialog open={transbordoOpen} onOpenChange={setTransbordoOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-[hsl(43,85%,46%)]" />
-              PBIs Transbordados
-            </DialogTitle>
-            <DialogDescription>
-              Itens em sprints anteriores que não foram finalizados.
-            </DialogDescription>
-          </DialogHeader>
-
-          {fab.transbordoItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">Nenhum item transbordado encontrado.</p>
-          ) : (
-            <div className="overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="text-xs font-semibold w-16">ID</TableHead>
-                    <TableHead className="text-xs font-semibold">Título</TableHead>
-                    <TableHead className="text-xs font-semibold">Status</TableHead>
-                    <TableHead className="text-xs font-semibold">Responsável</TableHead>
-                    <TableHead className="text-xs font-semibold text-center w-24">Transbordos</TableHead>
-                    <TableHead className="text-xs font-semibold">Sprints</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {fab.transbordoItems
-                    .sort((a, b) => b.overflowCount - a.overflowCount)
-                    .map(item => (
-                      <TableRow key={item.id} className="hover:bg-muted/30 animate-fade-in">
-                        <TableCell className="font-mono text-xs">
-                          {item.web_url ? (
-                            <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.id}</a>
-                          ) : item.id}
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[250px] truncate">{item.title || '—'}</TableCell>
-                        <TableCell>
-                          <Badge className={`text-xs font-mono ${stateColors[item.state || ''] || ''}`}>{item.state || '—'}</Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">{item.assigned_to_display || '—'}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge
-                            variant={item.overflowCount >= 3 ? 'destructive' : 'secondary'}
-                            className="text-xs font-bold"
-                          >
-                            {item.overflowCount}×
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[180px]">
-                          <div className="flex flex-wrap gap-1">
-                            {item.sprintsOverflowed.map(sp => {
-                              const label = sp.split('\\').pop() || sp;
-                              return <Badge key={sp} variant="outline" className="text-[10px] px-1.5 py-0">{label}</Badge>;
-                            })}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </SectorLayout>
   );
 }
