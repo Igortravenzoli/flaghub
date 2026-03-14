@@ -64,7 +64,7 @@ export default function Welcome() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--flag-navy))] via-[hsl(222,47%,14%)] to-[hsl(var(--flag-navy))] flex items-center justify-center">
+      <div className="min-h-screen bg-[hsl(var(--sidebar-background))] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
