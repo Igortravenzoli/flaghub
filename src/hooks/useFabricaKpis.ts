@@ -198,12 +198,12 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       const wi = tl.work_item_id ? wiMap.get(tl.work_item_id) : null;
       const products = extractProducts(wi?.tags || null);
       if (products.length === 0) {
-        map['Sem produto'] = (map['Sem produto'] || 0) + (tl.time_minutes || 0);
+        // Skip — don't show "Sem produto"
       } else {
-        // Distribute equally among tagged products
         const share = (tl.time_minutes || 0) / products.length;
         for (const p of products) {
-          map[p] = (map[p] || 0) + share;
+          const normalized = normalizeProduct(p);
+          map[normalized] = (map[normalized] || 0) + share;
         }
       }
     }
@@ -212,19 +212,20 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  // Hours by fábrica/area (from area_path via devops_work_items)
+  // Hours by fábrica/squad (from tags via devops_work_items)
   const horasPorFabrica: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
     for (const tl of timeLogs) {
       if (!tl.work_item_id) continue;
       const wi = wiMap.get(tl.work_item_id);
-      const area = extractAreaLabel(wi?.area_path || null);
-      map[area] = (map[area] || 0) + (tl.time_minutes || 0);
+      const fabrica = extractFabrica(wi?.tags || null);
+      if (!fabrica) continue; // Skip items without a known fábrica tag
+      map[fabrica] = (map[fabrica] || 0) + (tl.time_minutes || 0);
     }
     return Object.entries(map)
       .map(([name, minutes]) => ({
-        name: `${name} ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
+        name: `${name} - Squad ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
         hours: Math.round(minutes / 60 * 10) / 10,
         minutes,
       }))
