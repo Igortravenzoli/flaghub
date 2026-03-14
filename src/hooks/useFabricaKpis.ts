@@ -162,9 +162,15 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     return acc;
   }, {} as Record<string, number>);
 
-  // ── Timelog aggregations (use ALL timelogs, not filtered by view) ──
+  // ── Timelog aggregations (filtered by date range) ──
   const allTimeLogs = timeLogsQuery.data || [];
-  const timeLogs = allTimeLogs;
+  const timeLogs = (dateFrom && dateTo)
+    ? allTimeLogs.filter(tl => {
+        if (!tl.log_date) return false;
+        const d = new Date(tl.log_date);
+        return d >= dateFrom && d <= dateTo;
+      })
+    : allTimeLogs;
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 

@@ -48,8 +48,8 @@ const tableColumnFilters: ColumnFilter[] = [
 
 export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
-  const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter);
   const filters = useDashboardFilters('mes_atual');
+  const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerClient, setDrawerClient] = useState<ComercialClient | null>(null);
 
