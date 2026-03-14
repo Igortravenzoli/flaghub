@@ -77,8 +77,8 @@ export function useHelpdeskKpis() {
   }));
 
   const registrosPorSistema: RegistroPorGrupo[] = (raw.registrosPorSistema || []).map((s: any) => ({
-    nome: s.sistema || s.nome || 'N/A',
-    quantidade: s.quantidade || s.totalRegistros || 0,
+    nome: s.nomeSistema || s.sistema || s.nome || 'N/A',
+    quantidade: s.totalRegistros || s.quantidade || 0,
   }));
 
   const registrosPorBandeira: RegistroPorGrupo[] = (raw.registrosPorBandeira || []).map((b: any) => ({
