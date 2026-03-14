@@ -22,7 +22,6 @@ export default function Login() {
   const { signIn, signInWithAzure, isLoading } = useAuth();
   
   const [loginData, setLoginData] = useState({ email: '', password: '', rememberMe: false });
-  const [signupData, setSignupData] = useState({ email: '', password: '', fullName: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAzureLoading, setIsAzureLoading] = useState(false);
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
