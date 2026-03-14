@@ -8,8 +8,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const TIMELOG_URL =
-  'https://extmgmt.dev.azure.com/FlagIW/_apis/ExtensionManagement/InstalledExtensions/TechsBCN/DevOps-TimeLog/Data/Scopes/Default/Current/Collections/TimeLogData/Documents?api-version=7.1-preview.1'
+const TIMELOG_BASE =
+  'https://extmgmt.dev.azure.com/FlagIW/_apis/ExtensionManagement/InstalledExtensions/TechsBCN/DevOps-TimeLog/Data/Scopes/Default/Current/Collections'
+const COLLECTIONS_TO_TRY = ['TimeLogData', 'TimeLog', 'timelog', 'Logs']
 
 function getSupabaseAdmin() {
   return createClient(
@@ -121,32 +122,54 @@ serve(async (req) => {
       })
     }
 
-    // ── Fetch TimeLog documents ────────────────────────────────────
-    console.log('[timelog] Fetching TimeLog documents from TechsBCN plugin...')
+    // ── Fetch TimeLog documents — try multiple collection names ───
     const base64Pat = btoa(`:${pat}`)
-    const resp = await fetch(TIMELOG_URL, {
-      headers: {
-        'Authorization': `Basic ${base64Pat}`,
-        'Accept': 'application/json',
-      },
-    })
-
-    if (!resp.ok) {
-      const body = await resp.text()
-      console.error(`[timelog] DevOps API error ${resp.status}: ${body.substring(0, 500)}`)
-      return new Response(JSON.stringify({
-        error: `DevOps API returned ${resp.status}`,
-        detail: body.substring(0, 300),
-      }), {
-        status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    const authHeaders = {
+      'Authorization': `Basic ${base64Pat}`,
+      'Accept': 'application/json',
     }
 
-    const payload = await resp.json()
+    // First, list available collections
+    const listUrl = `${TIMELOG_BASE}?api-version=7.1-preview.1`
+    console.log(`[timelog] Listing collections: ${listUrl}`)
+    const listResp = await fetch(listUrl, { headers: authHeaders })
+    if (listResp.ok) {
+      const listPayload = await listResp.json()
+      console.log(`[timelog] Collections response: ${JSON.stringify(listPayload).substring(0, 2000)}`)
+    } else {
+      console.log(`[timelog] Collections list failed: ${listResp.status}`)
+    }
 
-    // The response has a `value` array of documents
-    const documents: TimeLogDocument[] = payload.value || []
-    console.log(`[timelog] Received ${documents.length} documents`)
+    let documents: TimeLogDocument[] = []
+    let usedCollection = ''
+
+    for (const col of COLLECTIONS_TO_TRY) {
+      const url = `${TIMELOG_BASE}/${col}/Documents?api-version=7.1-preview.1`
+      console.log(`[timelog] Trying collection: ${col}`)
+      const resp = await fetch(url, { headers: authHeaders })
+
+      if (!resp.ok) {
+        console.log(`[timelog] Collection '${col}' returned ${resp.status}`)
+        continue
+      }
+
+      const payload = await resp.json()
+      const topKeys = Object.keys(payload)
+      console.log(`[timelog] Collection '${col}' response keys: ${topKeys.join(', ')}`)
+      console.log(`[timelog] Collection '${col}' preview: ${JSON.stringify(payload).substring(0, 2000)}`)
+
+      const docs: TimeLogDocument[] = payload.value || []
+      if (docs.length > 0) {
+        documents = docs
+        usedCollection = col
+        console.log(`[timelog] Found ${docs.length} documents in collection '${col}'`)
+        break
+      } else {
+        console.log(`[timelog] Collection '${col}' has 0 documents`)
+      }
+    }
+
+    console.log(`[timelog] Final: ${documents.length} documents from collection '${usedCollection || 'none'}'`)
 
     // ── Log raw response structure for first run validation ──────
     if (documents.length > 0) {
