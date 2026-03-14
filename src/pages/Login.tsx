@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Separator } from '@/components/ui/separator';
 import { Monitor, Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { FusionText } from '@/components/auth/FusionText';
