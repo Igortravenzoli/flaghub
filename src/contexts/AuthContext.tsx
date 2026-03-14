@@ -316,18 +316,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log("[Auth] setSignedIn called for user:", session.user.email);
     const opId = (opIdRef.current += 1);
 
-    // Fase 1 (rápida): liberar UI imediatamente para não estourar watchdog do ProtectedRoute
+    // Fase 1 (rápida): marcar autenticado mas manter isLoading=true até hydration
     initializedRef.current = true;
     setState((prev) => ({
       ...prev,
       user: session.user,
       session,
-      isLoading: false,
       isAuthenticated: true,
+      // Keep isLoading true until hydration determines pendingApproval
     }));
 
     // Fase 2 (hidratação): carregar role/network/profile com retry
     await hydrateUserData(session, opId);
+
+    // Fase 2.5: Agora que hydration terminou, liberar isLoading
+    if (opId === opIdRef.current) {
+      setState((prev) => ({ ...prev, isLoading: false }));
+    }
 
     // Fase 3: Se hydration não trouxe roleCode, tentar mais uma vez após breve delay
     // (cobre cenário pós-login onde RPC pode falhar na primeira tentativa)
