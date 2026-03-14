@@ -38,7 +38,7 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
 const SUPABASE_PAGE_SIZE = 1000;
 
 async function fetchAllRows<T>(
-  fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>
 ): Promise<T[]> {
   const rows: T[] = [];
   let from = 0;
