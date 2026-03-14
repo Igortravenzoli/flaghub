@@ -132,30 +132,6 @@ export default function Login() {
     }
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      const { error } = await signUp(
-        signupData.email, 
-        signupData.password, 
-        signupData.fullName
-      );
-      
-      if (error) {
-        toast.error('Erro no cadastro', { description: error.message });
-      } else {
-        toast.success('Cadastro realizado!', { 
-          description: 'Verifique seu email para confirmar a conta.' 
-        });
-      }
-    } catch (err) {
-      toast.error('Erro inesperado ao criar conta');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   if (isLoading) {
     return (
