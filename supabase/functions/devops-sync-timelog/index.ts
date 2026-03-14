@@ -91,10 +91,10 @@ function normalizeEntry(entry: TimeLogEntry, docId: string): Record<string, unkn
     log_date: String(logDate).substring(0, 10), // YYYY-MM-DD
     start_time: entry.startTime ?? entry.StartTime ?? null,
     time_minutes: Number(minutes) || 0,
-    user_name: entry.userName ?? entry.UserName ?? (entry as Record<string, unknown>).user ?? null,
+    user_name: entry.user ?? entry.userName ?? entry.UserName ?? (entry as Record<string, unknown>).user ?? null,
     user_id_ext: entry.userId ?? entry.UserId ?? null,
     notes: entry.notes ?? entry.Notes ?? null,
-    etag: entry.__etag ?? docId,
+    etag: entry.__etag != null ? String(entry.__etag) : (entry.id || docId),
     raw: entry,
   }
 }
