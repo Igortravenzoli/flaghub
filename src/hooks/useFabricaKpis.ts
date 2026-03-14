@@ -155,16 +155,10 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 
-  // Build work item lookup for tags/parent mapping
-  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null }>();
+  // Build work item lookup for tags/area_path mapping
+  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null }>();
   for (const wi of (workItemsQuery.data || [])) {
     wiMap.set(wi.id, wi);
-  }
-
-  // Build parent map from items for client extraction
-  const parentMap = new Map<number, FabricaItem>();
-  for (const item of allItems) {
-    if (item.id) parentMap.set(item.id, item);
   }
 
   // Hours by collaborator (from timelog user_name)
