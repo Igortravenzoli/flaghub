@@ -136,7 +136,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('devops_work_items')
-        .select('id, tags, title, parent_id, assigned_to_display, area_path');
+        .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type');
       if (error) throw error;
       return data || [];
     },
@@ -168,10 +168,31 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 
-  // Build work item lookup for tags/area_path mapping
-  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null }>();
+  // Build work item lookup for tags/area_path/hierarchy mapping
+  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null }>();
   for (const wi of (workItemsQuery.data || [])) {
     wiMap.set(wi.id, wi);
+  }
+
+  // Find the top-level Epic for a work item by walking up parent_id
+  function findEpic(startId: number, maxDepth = 10): { title: string; id: number } | null {
+    let currentId = startId;
+    let current = wiMap.get(currentId);
+    let depth = 0;
+    while (current && depth < maxDepth) {
+      if (current.work_item_type === 'Epic') {
+        return { title: current.title || `Epic #${currentId}`, id: currentId };
+      }
+      if (!current.parent_id) break;
+      currentId = current.parent_id;
+      current = wiMap.get(currentId);
+      depth++;
+    }
+    // If we reached the top without finding "Epic" type, use the topmost item
+    if (current && depth > 0) {
+      return { title: current.title || `Item #${currentId}`, id: currentId };
+    }
+    return null;
   }
 
   // Hours by collaborator (from timelog user_name)
@@ -209,29 +230,14 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  // Hours by fábrica/squad (from area_path via devops_work_items)
+  // Hours by fábrica/squad (grouped by parent Epic)
   const horasPorFabrica: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
     for (const tl of timeLogs) {
       if (!tl.work_item_id) continue;
-      const wi = wiMap.get(tl.work_item_id);
-      const areaPath = wi?.area_path || null;
-      if (!areaPath) continue;
-      // Extract last segment of area_path (e.g. "Flag.Planejamento\\STAGING" → "STAGING")
-      const segments = areaPath.split('\\');
-      const lastSegment = segments[segments.length - 1].trim();
-      // Format: known squads get brackets, others use plain name
-      const SQUAD_AREAS = new Set(['STAGING', 'K8', 'INFRA', 'APP', 'FLEXX']);
-      const upper = lastSegment.toUpperCase();
-      let label: string;
-      if (upper === 'UX/UI' || upper === 'UX' || upper === 'UI') {
-        label = '[UX/UI] ABBN';
-      } else if (SQUAD_AREAS.has(upper)) {
-        label = `[${upper}] - Squad`;
-      } else {
-        label = lastSegment;
-      }
+      const epic = findEpic(tl.work_item_id);
+      const label = epic?.title || 'Sem Epic';
       map[label] = (map[label] || 0) + (tl.time_minutes || 0);
     }
     return Object.entries(map)
