@@ -6,6 +6,12 @@ import { SectorImportArea } from './SectorImportArea';
 import { SectorSettings } from './SectorSettings';
 import { SectorIntegrations, Integration } from './SectorIntegrations';
 
+interface SyncFunction {
+  name: string;
+  label: string;
+  payload?: Record<string, unknown>;
+}
+
 interface SectorLayoutProps {
   title: string;
   subtitle?: string;
@@ -13,11 +19,15 @@ interface SectorLayoutProps {
   children: ReactNode;
   integrations?: Integration[];
   templateKey?: string;
+  /** Area key for filtering imports by area */
+  areaKey?: string;
+  /** Edge functions available for immediate sync */
+  syncFunctions?: SyncFunction[];
   /** Additional tab content */
   extraTabs?: { id: string; label: string; icon: ReactNode; content: ReactNode }[];
 }
 
-export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, extraTabs }: SectorLayoutProps) {
+export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs }: SectorLayoutProps) {
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -78,11 +88,11 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
         )}
 
         <TabsContent value="imports" className="mt-4">
-          <SectorImportArea sectorName={title} templateKey={templateKey} />
+          <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-4">
-          <SectorSettings sectorName={title} />
+          <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
         </TabsContent>
       </Tabs>
     </div>
