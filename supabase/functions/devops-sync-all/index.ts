@@ -132,53 +132,83 @@ async function fetchWorkItemsBatch(ids: number[]): Promise<DevOpsWorkItem[]> {
   return allItems
 }
 
-// ── Fetch children of PBIs via WIQL ────────────────────────────────
+// ── Fetch children via WorkItemLinks (Hierarchy-Forward) ──────────
 
 async function fetchChildrenOfItems(parentIds: number[], admin: any): Promise<{ fetched: number; upserted: number }> {
   if (parentIds.length === 0) return { fetched: 0, upserted: 0 }
 
-  // WIQL supports IN clause with up to ~200 IDs at a time, so batch
   let allChildIds: number[] = []
-  
-  for (let i = 0; i < parentIds.length; i += 150) {
-    const chunk = parentIds.slice(i, i + 150)
+
+  // Use WorkItemLinks WIQL for reliable hierarchy traversal
+  for (let i = 0; i < parentIds.length; i += 100) {
+    const chunk = parentIds.slice(i, i + 100)
     const idList = chunk.join(',')
-    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.Parent] IN (${idList}) AND [System.WorkItemType] IN ('Task', 'Bug') ORDER BY [System.ChangedDate] DESC`
-    
+
+    const wiql = `
+      SELECT [System.Id]
+      FROM WorkItemLinks
+      WHERE
+        (
+          [Source].[System.TeamProject] = '${DEVOPS_PROJECT}'
+          AND [Source].[System.Id] IN (${idList})
+        )
+        AND
+        (
+          [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward'
+        )
+        AND
+        (
+          [Target].[System.WorkItemType] IN ('Task', 'Bug')
+        )
+      MODE (MustContain)
+    `
+
     const resp = await devopsFetch(
       `${DEVOPS_PROJECT}/_apis/wit/wiql?api-version=${WIQL_API_VERSION}`,
       { method: 'POST', body: JSON.stringify({ query: wiql }) }
     )
-    
+
     if (!resp.ok) {
-      console.warn(`[ChildrenSync] WIQL failed for chunk ${i}: ${resp.status}`)
+      const errText = await resp.text()
+      console.warn(`[ChildrenSync] WorkItemLinks WIQL failed for chunk ${i}: ${resp.status} - ${errText}`)
       continue
     }
-    
+
     const data = await resp.json()
-    const ids = (data.workItems || []).map((wi: any) => wi.id as number)
+
+    // WorkItemLinks returns workItemRelations with source/target
+    const ids = (data.workItemRelations || [])
+      .map((r: any) => r.target?.id)
+      .filter((id: any) => Number.isInteger(id))
+
     allChildIds.push(...ids)
-    
-    if (i + 150 < parentIds.length) await new Promise(r => setTimeout(r, 300))
+    console.log(`[ChildrenSync] Chunk ${i}: found ${ids.length} children via WorkItemLinks`)
+
+    if (i + 100 < parentIds.length) await new Promise(r => setTimeout(r, 300))
   }
 
   // Deduplicate
   allChildIds = [...new Set(allChildIds)]
-  
+
   if (allChildIds.length === 0) {
-    console.log('[ChildrenSync] No child items found')
+    console.log('[ChildrenSync] No child items found via WorkItemLinks')
     return { fetched: 0, upserted: 0 }
   }
 
-  console.log(`[ChildrenSync] Found ${allChildIds.length} child items (Task/Bug)`)
+  console.log(`[ChildrenSync] Total unique children: ${allChildIds.length} (Task/Bug)`)
 
   // Check existing revs for dedup
-  const { data: existingItems } = await admin
-    .from('devops_work_items')
-    .select('id, rev')
-    .in('id', allChildIds.slice(0, 1000)) // Supabase limit
-
-  const existingRevs = new Map((existingItems || []).map((e: any) => [e.id, e.rev]))
+  let existingRevs = new Map<number, number>()
+  for (let i = 0; i < allChildIds.length; i += 1000) {
+    const chunk = allChildIds.slice(i, i + 1000)
+    const { data: existingItems } = await admin
+      .from('devops_work_items')
+      .select('id, rev')
+      .in('id', chunk)
+    for (const e of (existingItems || [])) {
+      existingRevs.set(e.id, e.rev)
+    }
+  }
 
   // Fetch from DevOps API
   const childItems = await fetchWorkItemsBatch(allChildIds)
