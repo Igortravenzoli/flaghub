@@ -326,6 +326,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     // Timelog aggregations
     horasPorColaborador,
     horasPorProduto,
-    horasPorCliente,
+    horasPorFabrica,
   };
 }
