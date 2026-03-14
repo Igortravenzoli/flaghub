@@ -264,6 +264,92 @@ function countRetornos(updates: any[]): { retornos: number; retornoDetails: Stat
   return { retornos: retornoDetails.length, retornoDetails }
 }
 
+// ── Iteration History helpers ──────────────────────────────────────
+
+interface IterationChange {
+  oldValue: string
+  newValue: string
+  revisedDate: string
+}
+
+function extractIterationChanges(updates: any[]): IterationChange[] {
+  const changes: IterationChange[] = []
+  for (const update of updates) {
+    const iterField = update.fields?.['System.IterationPath']
+    if (!iterField || !iterField.newValue) continue
+    if (iterField.oldValue && iterField.oldValue !== iterField.newValue) {
+      changes.push({
+        oldValue: iterField.oldValue,
+        newValue: iterField.newValue,
+        revisedDate: update.revisedDate,
+      })
+    }
+  }
+  return changes
+}
+
+async function processIterationHistory(admin: any): Promise<{ processed: number; withChanges: number }> {
+  const { data: pbiItems, error } = await admin
+    .from('devops_work_items')
+    .select('id')
+    .in('work_item_type', ['Product Backlog Item', 'User Story'])
+    .limit(3000)
+
+  if (error) {
+    console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
+    return { processed: 0, withChanges: 0 }
+  }
+
+  const workItemIds = (pbiItems || []).map((i: any) => i.id).filter(Boolean) as number[]
+  if (workItemIds.length === 0) return { processed: 0, withChanges: 0 }
+
+  console.log(`[IterHistory] Processing ${workItemIds.length} PBIs for iteration changes`)
+  let processed = 0
+  let withChanges = 0
+
+  for (let i = 0; i < workItemIds.length; i += 10) {
+    const batch = workItemIds.slice(i, i + 10)
+    const batchResults = await Promise.all(
+      batch.map(async (wiId) => {
+        try {
+          const resp = await devopsFetch(
+            `${DEVOPS_PROJECT}/_apis/wit/workitems/${wiId}/updates?api-version=7.1`
+          )
+          if (!resp.ok) return { id: wiId, changes: [] }
+          const data = await resp.json()
+          const changes = extractIterationChanges(data.value || [])
+          return { id: wiId, changes }
+        } catch {
+          return { id: wiId, changes: [] }
+        }
+      })
+    )
+
+    for (const result of batchResults) {
+      if (result.changes.length > 0) {
+        await admin
+          .from('devops_work_items')
+          .update({ iteration_history: result.changes })
+          .eq('id', result.id)
+        withChanges++
+      } else {
+        await admin
+          .from('devops_work_items')
+          .update({ iteration_history: null })
+          .eq('id', result.id)
+      }
+      processed++
+    }
+
+    if (i + 10 < workItemIds.length) {
+      await new Promise(r => setTimeout(r, 500))
+    }
+  }
+
+  console.log(`[IterHistory] Done: ${processed} processed, ${withChanges} with iteration changes`)
+  return { processed, withChanges }
+}
+
 async function processQaRetornos(admin: any): Promise<{ processed: number; withRetornos: number }> {
   const { data: qaItems, error } = await admin
     .from('vw_qualidade_kpis')
@@ -409,6 +495,7 @@ serve(async (req) => {
       const bgAdmin = getSupabaseAdmin()
       let childrenResult = { fetched: 0, upserted: 0 }
       let qaRetorno = { processed: 0, withRetornos: 0 }
+      let iterHistory = { processed: 0, withChanges: 0 }
 
       try {
         console.log('[DevOpsSyncAll:BG] Fetching child work items (Tasks/Bugs)...')
@@ -434,12 +521,19 @@ serve(async (req) => {
         console.error('[DevOpsSyncAll:BG] QA retorno error:', (qaErr as Error).message)
       }
 
+      try {
+        console.log('[DevOpsSyncAll:BG] Starting iteration history sync...')
+        iterHistory = await processIterationHistory(bgAdmin)
+      } catch (iterErr) {
+        console.error('[DevOpsSyncAll:BG] Iteration history error:', (iterErr as Error).message)
+      }
+
       // Audit log with full results
       await bgAdmin.rpc('hub_audit_log', {
         p_action: 'devops_sync_all',
         p_entity_type: 'devops',
         p_entity_id: null,
-        p_metadata: { total: queries!.length, succeeded, failed, children: childrenResult, qa_retorno: qaRetorno },
+        p_metadata: { total: queries!.length, succeeded, failed, children: childrenResult, qa_retorno: qaRetorno, iteration_history: iterHistory },
       })
       console.log('[DevOpsSyncAll:BG] Background work complete')
     }
@@ -454,6 +548,7 @@ serve(async (req) => {
       failed,
       children: 'processing_in_background',
       qa_retorno: 'processing_in_background',
+      iteration_history: 'processing_in_background',
       results,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 

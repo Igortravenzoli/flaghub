@@ -304,6 +304,7 @@ export type Database = {
           custom_fields: Json | null
           effort: number | null
           id: number
+          iteration_history: Json | null
           iteration_path: string | null
           parent_id: number | null
           priority: number | null
@@ -330,6 +331,7 @@ export type Database = {
           custom_fields?: Json | null
           effort?: number | null
           id: number
+          iteration_history?: Json | null
           iteration_path?: string | null
           parent_id?: number | null
           priority?: number | null
@@ -356,6 +358,7 @@ export type Database = {
           custom_fields?: Json | null
           effort?: number | null
           id?: number
+          iteration_history?: Json | null
           iteration_path?: string | null
           parent_id?: number | null
           priority?: number | null
