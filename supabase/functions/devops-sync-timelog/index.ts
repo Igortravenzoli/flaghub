@@ -46,13 +46,22 @@ async function validateAuth(req: Request): Promise<string | null> {
 
 interface TimeLogEntry {
   workItemId?: number
+  WorkItemId?: number
   date?: string       // ISO date
+  Date?: string
   startTime?: string
+  StartTime?: string
   time?: number       // minutes
+  Time?: number
+  user?: string       // TechsBCN uses 'user' not 'userName'
   userName?: string
+  UserName?: string
   userId?: string
+  UserId?: string
   notes?: string
-  __etag?: string
+  Notes?: string
+  id?: string
+  __etag?: number | string
   [key: string]: unknown
 }
 
