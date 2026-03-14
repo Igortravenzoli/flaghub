@@ -35,7 +35,7 @@ async function fetchAllClients(select: string, filter?: { column: string; value:
   return all;
 }
 
-export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos') {
+export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos', dateFrom?: Date, dateTo?: Date) {
   const clientsQuery = useQuery({
     queryKey: ['comercial', 'clientes', statusFilter],
     queryFn: async () => {
@@ -73,7 +73,17 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos') {
     staleTime: 5 * 60 * 1000,
   });
 
-  const clients = clientsQuery.data || [];
+  const allClients = clientsQuery.data || [];
+
+  // Apply date range filter on synced_at
+  const clients = (dateFrom && dateTo)
+    ? allClients.filter(c => {
+        if (!c.synced_at) return false;
+        const d = new Date(c.synced_at);
+        return d >= dateFrom && d <= dateTo;
+      })
+    : allClients;
+
   const totalClientes = clients.length;
   const bandeiras = [...new Set(clients.map(c => c.bandeira).filter(Boolean))];
   const stats = statsQuery.data || { total: 0, ativos: 0, inativos: 0, bloqueados: 0 };
