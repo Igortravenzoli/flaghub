@@ -400,48 +400,60 @@ serve(async (req) => {
       await new Promise(r => setTimeout(r, 500))
     }
 
-    // ── Step 1.5: Fetch child Tasks/Bugs of all synced PBIs ──
-    console.log('[DevOpsSyncAll] Fetching child work items (Tasks/Bugs)...')
-    let childrenResult = { fetched: 0, upserted: 0 }
-    try {
-      // Get all PBI IDs from current query items
-      const { data: pbiItems } = await admin
-        .from('devops_work_items')
-        .select('id')
-        .in('work_item_type', ['Product Backlog Item', 'User Story', 'Feature'])
-        .limit(2000)
-      
-      const pbiIds = (pbiItems || []).map((i: any) => i.id) as number[]
-      console.log(`[DevOpsSyncAll] Found ${pbiIds.length} PBIs/Stories/Features to check for children`)
-      
-      childrenResult = await fetchChildrenOfItems(pbiIds, admin)
-      console.log(`[DevOpsSyncAll] Children sync: ${childrenResult.fetched} found, ${childrenResult.upserted} upserted`)
-    } catch (childErr) {
-      console.error('[DevOpsSyncAll] Children sync error:', (childErr as Error).message)
-    }
-
-    // ── Step 2: QA Retorno calculation ──
-    console.log('[DevOpsSyncAll] Starting QA retorno calculation...')
-    const qaRetorno = await processQaRetornos(admin)
-
     const succeeded = results.filter(r => r.success).length
     const failed = results.filter(r => !r.success).length
 
-    // Audit log
-    await admin.rpc('hub_audit_log', {
-      p_action: 'devops_sync_all',
-      p_entity_type: 'devops',
-      p_entity_id: null,
-      p_metadata: { total: queries.length, succeeded, failed, children: childrenResult, qa_retorno: qaRetorno },
-    })
+    // ── Step 1.5 + 2: Offload heavy work to background ──
+    // Children sync + QA retorno run after response is sent
+    const backgroundWork = async () => {
+      const bgAdmin = getSupabaseAdmin()
+      let childrenResult = { fetched: 0, upserted: 0 }
+      let qaRetorno = { processed: 0, withRetornos: 0 }
+
+      try {
+        console.log('[DevOpsSyncAll:BG] Fetching child work items (Tasks/Bugs)...')
+        const { data: pbiItems } = await bgAdmin
+          .from('devops_work_items')
+          .select('id')
+          .in('work_item_type', ['Product Backlog Item', 'User Story', 'Feature'])
+          .limit(2000)
+
+        const pbiIds = (pbiItems || []).map((i: any) => i.id) as number[]
+        console.log(`[DevOpsSyncAll:BG] Found ${pbiIds.length} PBIs to check for children`)
+
+        childrenResult = await fetchChildrenOfItems(pbiIds, bgAdmin)
+        console.log(`[DevOpsSyncAll:BG] Children sync: ${childrenResult.fetched} found, ${childrenResult.upserted} upserted`)
+      } catch (childErr) {
+        console.error('[DevOpsSyncAll:BG] Children sync error:', (childErr as Error).message)
+      }
+
+      try {
+        console.log('[DevOpsSyncAll:BG] Starting QA retorno calculation...')
+        qaRetorno = await processQaRetornos(bgAdmin)
+      } catch (qaErr) {
+        console.error('[DevOpsSyncAll:BG] QA retorno error:', (qaErr as Error).message)
+      }
+
+      // Audit log with full results
+      await bgAdmin.rpc('hub_audit_log', {
+        p_action: 'devops_sync_all',
+        p_entity_type: 'devops',
+        p_entity_id: null,
+        p_metadata: { total: queries!.length, succeeded, failed, children: childrenResult, qa_retorno: qaRetorno },
+      })
+      console.log('[DevOpsSyncAll:BG] Background work complete')
+    }
+
+    // @ts-ignore - EdgeRuntime.waitUntil available in Supabase Edge Functions
+    EdgeRuntime.waitUntil(backgroundWork())
 
     return new Response(JSON.stringify({
       success: failed === 0,
       total: queries.length,
       succeeded,
       failed,
-      children: childrenResult,
-      qa_retorno: qaRetorno,
+      children: 'processing_in_background',
+      qa_retorno: 'processing_in_background',
       results,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
