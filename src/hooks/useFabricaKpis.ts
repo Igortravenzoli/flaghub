@@ -289,8 +289,8 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     }
   }
 
-  // Transbordo — only PBIs count; a PBI is "transbordo" if it's in a past sprint
-  // and was NOT completed (Done/Closed/Resolved) in that sprint.
+  // Transbordo — only PBIs with "changed Iteration Path" in their history count.
+  // iteration_history is an array of { oldValue, newValue, revisedDate } from the Updates API.
   const sortedSprints = [...sprintSet].sort(sprintCompare);
   const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
 
@@ -299,45 +299,45 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   let transbordoTotal = 0;
   let transbordoItems: TransbordoItem[] = [];
 
-  if (currentSprint && sortedSprints.length > 1) {
-    const pastSprints = new Set(sortedSprints.slice(0, -1));
+  // All PBIs in scope
+  const allPbis = items.filter(
+    i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
+  );
+  transbordoTotal = allPbis.length;
 
-    // Only PBIs (Product Backlog Item / User Story)
-    const pastSprintPbis = items.filter(
-      i => i.iteration_path && pastSprints.has(i.iteration_path)
-        && (i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story')
-    );
-    transbordoTotal = pastSprintPbis.length;
+  // A PBI is transbordo if it has iteration_history with at least one change
+  const overflowedPbis = allPbis.filter(i => {
+    if (!i.id) return false;
+    const wi = wiMap.get(i.id);
+    const history = wi?.iteration_history;
+    return Array.isArray(history) && history.length > 0;
+  });
 
-    // PBIs not completed = transbordo (carried over to another sprint)
-    const overflowedPbis = pastSprintPbis.filter(
-      i => i.state !== 'Done' && i.state !== 'Closed' && i.state !== 'Resolved'
-    );
-    transbordoCount = overflowedPbis.length;
-    transbordoPct = transbordoTotal > 0
-      ? Math.round((transbordoCount / transbordoTotal) * 100)
-      : 0;
+  transbordoCount = overflowedPbis.length;
+  transbordoPct = transbordoTotal > 0
+    ? Math.round((transbordoCount / transbordoTotal) * 100)
+    : 0;
 
-    // Track which sprints each PBI appeared in (for overflow counter)
-    const itemSprintMap = new Map<number, Set<string>>();
-    for (const item of pastSprintPbis) {
-      if (!item.id || !item.iteration_path) continue;
-      if (!itemSprintMap.has(item.id)) itemSprintMap.set(item.id, new Set());
-      itemSprintMap.get(item.id)!.add(item.iteration_path);
-    }
-
-    const seen = new Set<number>();
-    transbordoItems = overflowedPbis
-      .filter(i => {
-        if (!i.id || seen.has(i.id)) return false;
-        seen.add(i.id);
-        return true;
-      })
-      .map(i => ({
+  const seen = new Set<number>();
+  transbordoItems = overflowedPbis
+    .filter(i => {
+      if (!i.id || seen.has(i.id)) return false;
+      seen.add(i.id);
+      return true;
+    })
+    .map(i => {
+      const wi = wiMap.get(i.id!);
+      const history = (wi?.iteration_history || []) as Array<{ oldValue: string; newValue: string; revisedDate: string }>;
+      const sprintsMoved = history.map(h => h.oldValue);
+      // Add current iteration too
+      if (i.iteration_path) sprintsMoved.push(i.iteration_path);
+      const uniqueSprints = [...new Set(sprintsMoved)].sort(sprintCompare);
+      return {
         ...i,
-        overflowCount: itemSprintMap.get(i.id!)?.size ?? 1,
-        sprintsOverflowed: [...(itemSprintMap.get(i.id!) ?? [])].sort(sprintCompare),
-      }));
+        overflowCount: history.length, // number of times iteration was changed
+        sprintsOverflowed: uniqueSprints,
+      };
+    });
   }
 
   return {
