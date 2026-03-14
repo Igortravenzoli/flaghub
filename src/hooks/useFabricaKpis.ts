@@ -161,11 +161,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const workItemsQuery = useQuery({
     queryKey: ['fabrica', 'work-items-tags'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('devops_work_items')
-        .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type, iteration_history');
-      if (error) throw error;
-      return data || [];
+      const data = await fetchAllRows<{ id: number; tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>((from, to) =>
+        supabase
+          .from('devops_work_items')
+          .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type, iteration_history')
+          .range(from, to)
+      );
+      return data;
     },
     staleTime: 5 * 60 * 1000,
   });
