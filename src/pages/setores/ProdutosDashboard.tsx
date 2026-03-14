@@ -19,6 +19,9 @@ export default function ProdutosDashboard() {
         preset={filters.preset}
         onPresetChange={filters.setPreset}
         presetLabel={filters.presetLabel}
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        onCustomRange={filters.setCustomRange}
       />
 
       <DashboardEmptyState
