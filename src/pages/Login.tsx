@@ -122,10 +122,11 @@ export default function Login() {
           });
         }
       } else if (fnData?.session) {
+        const session = fnData.session as { access_token: string; refresh_token: string };
         // Set session from the edge function response
         await supabase.auth.setSession({
-          access_token: fnData.session.access_token,
-          refresh_token: fnData.session.refresh_token,
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
         });
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
