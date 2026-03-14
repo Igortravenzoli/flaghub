@@ -338,7 +338,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
         sprintsOverflowed: uniqueSprints,
       };
     });
-  }
 
   return {
     items,
