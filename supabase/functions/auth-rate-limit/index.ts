@@ -8,46 +8,14 @@ const corsHeaders = {
 
 /**
  * Rate-limited login proxy.
- * 
- * Tracks failed attempts per IP+email in an in-memory map.
- * Rejects requests when threshold is exceeded.
- * 
- * NOTE: In-memory store resets on cold start. For persistence,
- * migrate to a DB table or KV store.
+ *
+ * Tracks failed attempts per email in the `login_attempts` DB table.
+ * Persists across cold starts and shared across all edge function instances.
  */
-
-interface AttemptRecord {
-  count: number;
-  firstAttempt: number;
-  lockedUntil: number | null;
-}
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 5 * 60 * 1000; // 5 min window
 const LOCKOUT_MS = 60 * 1000; // 60s lockout
-const CLEANUP_INTERVAL = 10 * 60 * 1000; // cleanup every 10min
-
-const attempts = new Map<string, AttemptRecord>();
-let lastCleanup = Date.now();
-
-function cleanupOldEntries() {
-  const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL) return;
-  lastCleanup = now;
-  for (const [key, record] of attempts) {
-    if (now - record.firstAttempt > WINDOW_MS && (!record.lockedUntil || now > record.lockedUntil)) {
-      attempts.delete(key);
-    }
-  }
-}
-
-function getClientIp(req: Request): string {
-  return (
-    req.headers.get("cf-connecting-ip") ||
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "unknown"
-  );
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -61,9 +29,14 @@ Deno.serve(async (req) => {
     });
   }
 
-  cleanupOldEntries();
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-  const ip = getClientIp(req);
+  // Service role client for login_attempts table (bypasses RLS)
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  // Anon client for auth (signInWithPassword)
+  const anonClient = createClient(supabaseUrl, supabaseAnonKey);
 
   let email: string;
   let password: string;
@@ -80,55 +53,72 @@ Deno.serve(async (req) => {
     );
   }
 
-  // Rate limit key: IP + email (prevents both IP-based and account-based brute force)
-  const key = `${ip}:${email}`;
-  const now = Date.now();
-  const record = attempts.get(key);
+  // Cleanup old entries periodically (best-effort, non-blocking)
+  adminClient.rpc("cleanup_login_attempts").then(() => {}).catch(() => {});
+
+  const now = new Date();
+
+  // Fetch current attempt record from DB
+  const { data: record } = await adminClient
+    .from("login_attempts")
+    .select("*")
+    .eq("email", email)
+    .maybeSingle();
 
   // Check lockout
-  if (record?.lockedUntil && now < record.lockedUntil) {
-    const retryAfter = Math.ceil((record.lockedUntil - now) / 1000);
-    return new Response(
-      JSON.stringify({
-        error: "rate_limited",
-        message: `Muitas tentativas. Tente novamente em ${retryAfter}s.`,
-        retry_after: retryAfter,
-      }),
-      {
-        status: 429,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-          "Retry-After": String(retryAfter),
-        },
-      }
-    );
+  if (record?.locked_until) {
+    const lockedUntil = new Date(record.locked_until);
+    if (now < lockedUntil) {
+      const retryAfter = Math.ceil((lockedUntil.getTime() - now.getTime()) / 1000);
+      return new Response(
+        JSON.stringify({
+          error: "rate_limited",
+          message: `Muitas tentativas. Tente novamente em ${retryAfter}s.`,
+          retry_after: retryAfter,
+        }),
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Retry-After": String(retryAfter),
+          },
+        }
+      );
+    }
   }
 
   // Reset window if expired
-  if (record && now - record.firstAttempt > WINDOW_MS) {
-    attempts.delete(key);
+  if (record) {
+    const firstAttempt = new Date(record.first_attempt_at);
+    if (now.getTime() - firstAttempt.getTime() > WINDOW_MS) {
+      await adminClient.from("login_attempts").delete().eq("email", email);
+    }
   }
 
   // Attempt login via Supabase Auth
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await anonClient.auth.signInWithPassword({
     email,
     password,
   });
 
   if (error) {
-    // Record failed attempt
-    const current = attempts.get(key) || { count: 0, firstAttempt: now, lockedUntil: null };
-    current.count += 1;
+    // Record failed attempt in DB
+    const currentCount = record?.attempt_count ?? 0;
+    const newCount = currentCount + 1;
 
-    if (current.count >= MAX_ATTEMPTS) {
-      current.lockedUntil = now + LOCKOUT_MS;
-      attempts.set(key, current);
+    if (newCount >= MAX_ATTEMPTS) {
+      // Lock the account
+      const lockedUntil = new Date(now.getTime() + LOCKOUT_MS).toISOString();
+
+      await adminClient
+        .from("login_attempts")
+        .upsert({
+          email,
+          attempt_count: newCount,
+          first_attempt_at: record?.first_attempt_at ?? now.toISOString(),
+          locked_until: lockedUntil,
+        }, { onConflict: "email" });
 
       return new Response(
         JSON.stringify({
@@ -147,13 +137,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    attempts.set(key, current);
-    const remaining = MAX_ATTEMPTS - current.count;
+    // Increment counter
+    await adminClient
+      .from("login_attempts")
+      .upsert({
+        email,
+        attempt_count: newCount,
+        first_attempt_at: record?.first_attempt_at ?? now.toISOString(),
+        locked_until: null,
+      }, { onConflict: "email" });
+
+    const remaining = MAX_ATTEMPTS - newCount;
 
     return new Response(
       JSON.stringify({
         error: "invalid_credentials",
-        message: error.message,
+        message: "Invalid login credentials",
         remaining_attempts: remaining,
       }),
       {
@@ -164,9 +163,9 @@ Deno.serve(async (req) => {
   }
 
   // Success — clear attempts
-  attempts.delete(key);
+  await adminClient.from("login_attempts").delete().eq("email", email);
 
-  // Return ONLY the tokens needed for setSession — never echo user details or credentials
+  // Return ONLY the tokens needed for setSession
   return new Response(
     JSON.stringify({
       session: {
