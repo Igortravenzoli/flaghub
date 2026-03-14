@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 export interface TransbordoItem extends FabricaItem {
   overflowCount: number;
@@ -35,29 +36,6 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
-const SUPABASE_PAGE_SIZE = 1000;
-
-async function fetchAllRows<T>(
-  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>
-): Promise<T[]> {
-  const rows: T[] = [];
-  let from = 0;
-
-  while (true) {
-    const to = from + SUPABASE_PAGE_SIZE - 1;
-    const { data, error } = await fetchPage(from, to);
-    if (error) throw error;
-
-    const chunk = data || [];
-    rows.push(...chunk);
-
-    if (chunk.length < SUPABASE_PAGE_SIZE) break;
-    from += SUPABASE_PAGE_SIZE;
-  }
-
-  return rows;
-}
-
 function parseSprintOrder(iterPath: string): { year: number; num: number } {
   const sMatch = iterPath.match(/\\S(\d+)-(\d{4})$/);
   if (sMatch) return { year: parseInt(sMatch[2]), num: parseInt(sMatch[1]) };
@@ -85,7 +63,6 @@ function normalizeProduct(tag: string): string {
   const upper = tag.toUpperCase();
   if (upper === 'PORTALBROKER' || upper === 'PORTAL BROKER') return 'Portal Broker';
   if (upper === 'CONNECTMERCHAN') return 'ConnectMerchan';
-  // Title case
   return tag.charAt(0).toUpperCase() + tag.slice(1);
 }
 
@@ -95,35 +72,13 @@ function extractProducts(tags: string | null): string[] {
   return tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
 }
 
-/** Known fábrica/squad tags */
-const KNOWN_FABRICAS = new Set([
-  'STAGING', 'K8', 'INFRA', 'APP', 'FLEXX', 'UX/UI', 'UX', 'UI',
-]);
-
-/** Extract fábrica/squad from tags */
-function extractFabrica(tags: string | null): string | null {
-  if (!tags) return null;
-  const parts = tags.split(';').map(t => t.trim().toUpperCase());
-  for (const p of parts) {
-    if (KNOWN_FABRICAS.has(p)) {
-      if (p === 'UX' || p === 'UI') return '[UX/UI]';
-      return `[${p}]`;
-    }
-  }
-  return null;
-}
-
 export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['fabrica', 'kpis'],
     queryFn: async () => {
-      const data = await fetchAllRows<FabricaItem>((from, to) =>
-        supabase
-          .from('vw_fabrica_kpis')
-          .select('*')
-          .range(from, to)
+      return fetchAllRows<FabricaItem>((from, to) =>
+        supabase.from('vw_fabrica_kpis').select('*').range(from, to)
       );
-      return data;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -142,32 +97,33 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     staleTime: 60 * 1000,
   });
 
-  // Fetch time logs with full details for aggregation
+  // ── Time logs: server-side filtered by date range (97K+ rows!) ──
   const timeLogsQuery = useQuery({
-    queryKey: ['fabrica', 'time-logs-full'],
+    queryKey: ['fabrica', 'time-logs-full', dateFrom?.toISOString(), dateTo?.toISOString()],
     queryFn: async () => {
-      const data = await fetchAllRows<{ work_item_id: number | null; time_minutes: number | null; user_name: string | null; log_date: string | null }>((from, to) =>
-        supabase
+      return fetchAllRows<{ work_item_id: number | null; time_minutes: number | null; user_name: string | null; log_date: string | null }>((from, to) => {
+        let q = supabase
           .from('devops_time_logs')
-          .select('work_item_id, time_minutes, user_name, log_date')
-          .range(from, to)
-      );
-      return data;
+          .select('work_item_id, time_minutes, user_name, log_date');
+        // Server-side date filter — critical for performance with 97K+ rows
+        if (dateFrom) q = q.gte('log_date', dateFrom.toISOString().split('T')[0]);
+        if (dateTo) q = q.lte('log_date', dateTo.toISOString().split('T')[0]);
+        return q.range(from, to);
+      });
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch work items with tags for product mapping
+  // Work items with tags for product mapping & iteration_history
   const workItemsQuery = useQuery({
     queryKey: ['fabrica', 'work-items-tags'],
     queryFn: async () => {
-      const data = await fetchAllRows<{ id: number; tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>((from, to) =>
+      return fetchAllRows<{ id: number; tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>((from, to) =>
         supabase
           .from('devops_work_items')
           .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type, iteration_history')
           .range(from, to)
       );
-      return data;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -191,25 +147,18 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     return acc;
   }, {} as Record<string, number>);
 
-  // ── Timelog aggregations (filtered by date range) ──
-  const allTimeLogs = timeLogsQuery.data || [];
-  const timeLogs = (dateFrom && dateTo)
-    ? allTimeLogs.filter(tl => {
-        if (!tl.log_date) return false;
-        const d = new Date(tl.log_date);
-        return d >= dateFrom && d <= dateTo;
-      })
-    : allTimeLogs;
+  // ── Timelog aggregations (already server-side filtered) ──
+  const timeLogs = timeLogsQuery.data || [];
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 
-  // Build work item lookup for tags/area_path/hierarchy mapping
+  // Build work item lookup
   const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>();
   for (const wi of (workItemsQuery.data || [])) {
     wiMap.set(wi.id, wi);
   }
 
-  // Find the top-level Epic for a work item by walking up parent_id
+  // Find top-level Epic by walking parent_id
   function findEpic(startId: number, maxDepth = 10): { title: string; id: number } | null {
     let currentId = startId;
     let current = wiMap.get(currentId);
@@ -223,14 +172,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       current = wiMap.get(currentId);
       depth++;
     }
-    // If we reached the top without finding "Epic" type, use the topmost item
     if (current && depth > 0) {
       return { title: current.title || `Item #${currentId}`, id: currentId };
     }
     return null;
   }
 
-  // Hours by collaborator (from timelog user_name)
+  // Hours by collaborator
   const horasPorColaborador: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
@@ -243,16 +191,14 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  // Hours by product (from work item tags)
+  // Hours by product
   const horasPorProduto: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
     for (const tl of timeLogs) {
       const wi = tl.work_item_id ? wiMap.get(tl.work_item_id) : null;
       const products = extractProducts(wi?.tags || null);
-      if (products.length === 0) {
-        // Skip — don't show "Sem produto"
-      } else {
+      if (products.length > 0) {
         const share = (tl.time_minutes || 0) / products.length;
         for (const p of products) {
           const normalized = normalizeProduct(p);
@@ -284,7 +230,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  // ── Corporate KPIs ──────────────────────────────────────────────
+  // ── Corporate KPIs ──
   const pbis = items.filter(
     i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
   );
@@ -324,8 +270,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     }
   }
 
-  // Transbordo — only PBIs with "changed Iteration Path" in their history count.
-  // iteration_history is an array of { oldValue, newValue, revisedDate } from the Updates API.
+  // Transbordo — PBIs with iteration_history changes
   const sortedSprints = [...sprintSet].sort(sprintCompare);
   const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
 
@@ -334,13 +279,11 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   let transbordoTotal = 0;
   let transbordoItems: TransbordoItem[] = [];
 
-  // All PBIs in scope
   const allPbis = items.filter(
     i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
   );
   transbordoTotal = allPbis.length;
 
-  // A PBI is transbordo if it has iteration_history with at least one change
   const overflowedPbis = allPbis.filter(i => {
     if (!i.id) return false;
     const wi = wiMap.get(i.id);
@@ -364,12 +307,11 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       const wi = wiMap.get(i.id!);
       const history = (wi?.iteration_history || []) as Array<{ oldValue: string; newValue: string; revisedDate: string }>;
       const sprintsMoved = history.map(h => h.oldValue);
-      // Add current iteration too
       if (i.iteration_path) sprintsMoved.push(i.iteration_path);
       const uniqueSprints = [...new Set(sprintsMoved)].sort(sprintCompare);
       return {
         ...i,
-        overflowCount: history.length, // number of times iteration was changed
+        overflowCount: history.length,
         sprintsOverflowed: uniqueSprints,
       };
     });
