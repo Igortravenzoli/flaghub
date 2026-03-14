@@ -272,7 +272,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[Auth] Elevated role MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
         }
 
-        const isPending = !obfuscatedRole && userData.profile != null;
+        // Check if user has active hub_area_members (means admin approved)
+        let hasAreaMemberships = false;
+        try {
+          const { count } = await supabase
+            .from('hub_area_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', session.user.id)
+            .eq('is_active', true);
+          hasAreaMemberships = (count ?? 0) > 0;
+        } catch (e) {
+          console.warn('[Auth] Failed to check hub_area_members:', e);
+        }
+
+        // User is pending only if: no role, has profile, AND no active area memberships
+        const isPending = !obfuscatedRole && userData.profile != null && !hasAreaMemberships;
 
         setState((prev) => {
           const nextRoleCode = obfuscatedRole ?? prev.roleCode;
