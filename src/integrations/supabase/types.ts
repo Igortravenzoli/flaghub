@@ -1190,6 +1190,27 @@ export type Database = {
           },
         ]
       }
+      login_attempts: {
+        Row: {
+          attempt_count: number
+          email: string
+          first_attempt_at: string
+          locked_until: string | null
+        }
+        Insert: {
+          attempt_count?: number
+          email: string
+          first_attempt_at?: string
+          locked_until?: string | null
+        }
+        Update: {
+          attempt_count?: number
+          email?: string
+          first_attempt_at?: string
+          locked_until?: string | null
+        }
+        Relationships: []
+      }
       manual_import_batches: {
         Row: {
           area_id: string | null
@@ -1888,6 +1909,7 @@ export type Database = {
           ticket_external_id: string
         }[]
       }
+      cleanup_login_attempts: { Args: never; Returns: undefined }
       get_batch_statistics: { Args: { p_batch_id: number }; Returns: Json }
       get_correlation_stats: {
         Args: { p_network_id?: number }
