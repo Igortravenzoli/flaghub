@@ -146,11 +146,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const timeLogsQuery = useQuery({
     queryKey: ['fabrica', 'time-logs-full'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('devops_time_logs')
-        .select('work_item_id, time_minutes, user_name, log_date');
-      if (error) throw error;
-      return data || [];
+      const data = await fetchAllRows<{ work_item_id: number | null; time_minutes: number | null; user_name: string | null; log_date: string | null }>((from, to) =>
+        supabase
+          .from('devops_time_logs')
+          .select('work_item_id, time_minutes, user_name, log_date')
+          .range(from, to)
+      );
+      return data;
     },
     staleTime: 5 * 60 * 1000,
   });
