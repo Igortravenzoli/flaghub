@@ -272,7 +272,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[Auth] Elevated role MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
         }
 
-        const isPending = !obfuscatedRole && userData.profile != null;
+        // Check if user has active hub_area_members (means admin approved)
+        let hasAreaMemberships = false;
+        try {
+          const { count } = await supabase
+            .from('hub_area_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', session.user.id)
+            .eq('is_active', true);
+          hasAreaMemberships = (count ?? 0) > 0;
+        } catch (e) {
+          console.warn('[Auth] Failed to check hub_area_members:', e);
+        }
+
+        // User is pending only if: no role, has profile, AND no active area memberships
+        const isPending = !obfuscatedRole && userData.profile != null && !hasAreaMemberships;
 
         setState((prev) => {
           const nextRoleCode = obfuscatedRole ?? prev.roleCode;
@@ -316,18 +330,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log("[Auth] setSignedIn called for user:", session.user.email);
     const opId = (opIdRef.current += 1);
 
-    // Fase 1 (rápida): liberar UI imediatamente para não estourar watchdog do ProtectedRoute
+    // Fase 1 (rápida): marcar autenticado mas manter isLoading=true até hydration
     initializedRef.current = true;
     setState((prev) => ({
       ...prev,
       user: session.user,
       session,
-      isLoading: false,
       isAuthenticated: true,
+      // Keep isLoading true until hydration determines pendingApproval
     }));
 
     // Fase 2 (hidratação): carregar role/network/profile com retry
     await hydrateUserData(session, opId);
+
+    // Fase 2.5: Agora que hydration terminou, liberar isLoading
+    if (opId === opIdRef.current) {
+      setState((prev) => ({ ...prev, isLoading: false }));
+    }
 
     // Fase 3: Se hydration não trouxe roleCode, tentar mais uma vez após breve delay
     // (cobre cenário pós-login onde RPC pode falhar na primeira tentativa)
