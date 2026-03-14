@@ -91,6 +91,8 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     staleTime: 5 * 60 * 1000,
   });
 
+  const allItems = query.data || [];
+
   // Exclude INFRA items — controlled only in Infraestrutura sector
   const INFRA_PREFIX = '[INFRA]';
   const nonInfraItems = allItems.filter(i => !i.title?.startsWith(INFRA_PREFIX));
