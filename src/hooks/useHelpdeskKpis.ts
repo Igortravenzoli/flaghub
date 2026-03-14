@@ -99,7 +99,7 @@ export function useHelpdeskKpis() {
 
   const ocorrenciasPorTipo: RegistroPorGrupo[] = (raw.ocorrenciasPorTipo || []).map((o: any) => ({
     nome: o.tipo || o.nome || 'N/A',
-    quantidade: o.quantidade || o.totalRegistros || 0,
+    quantidade: o.total || o.quantidade || o.totalRegistros || 0,
   }));
 
   // Acumulado
