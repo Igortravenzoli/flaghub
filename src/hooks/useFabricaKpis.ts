@@ -23,22 +23,21 @@ export interface FabricaItem {
   web_url: string | null;
 }
 
+export interface TimelogAggregation {
+  name: string;
+  hours: number;
+  minutes: number;
+}
+
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
   return d >= from && d <= to;
 }
 
-/**
- * Parse sprint identifier from iteration_path to enable ordering.
- * Patterns: "Flag.Planejamento\S5-2026" → { year: 2026, num: 5 }
- *           "Flag.Planejamento\Sprint 34" → { year: 0, num: 34 }
- */
 function parseSprintOrder(iterPath: string): { year: number; num: number } {
-  // Pattern: S{num}-{year}
   const sMatch = iterPath.match(/\\S(\d+)-(\d{4})$/);
   if (sMatch) return { year: parseInt(sMatch[2]), num: parseInt(sMatch[1]) };
-  // Pattern: Sprint {num}
   const sprintMatch = iterPath.match(/\\Sprint\s*(\d+)$/);
   if (sprintMatch) return { year: 0, num: parseInt(sprintMatch[1]) };
   return { year: 0, num: 0 };
@@ -49,6 +48,32 @@ function sprintCompare(a: string, b: string): number {
   const pb = parseSprintOrder(b);
   if (pa.year !== pb.year) return pa.year - pb.year;
   return pa.num - pb.num;
+}
+
+/** Extract product tags from a tags string (e.g., "FLEXX; CONNECTSALES") */
+function extractProducts(tags: string | null): string[] {
+  if (!tags) return [];
+  return tags.split(';').map(t => t.trim()).filter(Boolean);
+}
+
+/** Extract client name from parent_title or title (patterns like "HNK", "NESTLE", OS references) */
+function extractClient(item: FabricaItem, parentMap: Map<number, FabricaItem>): string {
+  // Try parent title for client extraction
+  const parent = item.parent_id ? parentMap.get(item.parent_id) : null;
+  const parentTitle = parent?.title || item.parent_title || '';
+  
+  // Common client patterns in titles
+  const clientMatch = parentTitle.match(/^([A-ZÀ-Ú][A-ZÀ-Ú\s]{2,20})\s*[-–]/);
+  if (clientMatch) return clientMatch[1].trim();
+  
+  // Fallback: use first meaningful part of parent title
+  if (parentTitle) {
+    const cleaned = parentTitle.replace(/^\[.*?\]\s*/, '').trim();
+    if (cleaned.length > 0 && cleaned.length <= 40) return cleaned;
+    return cleaned.substring(0, 40) + '…';
+  }
+  
+  return 'Sem cliente';
 }
 
 export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
@@ -78,13 +103,26 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     staleTime: 60 * 1000,
   });
 
-  // Fetch time logs for hours-based KPIs (when available)
+  // Fetch time logs with full details for aggregation
   const timeLogsQuery = useQuery({
-    queryKey: ['fabrica', 'time-logs'],
+    queryKey: ['fabrica', 'time-logs-full'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('devops_time_logs')
-        .select('work_item_id, time_minutes');
+        .select('work_item_id, time_minutes, user_name, log_date');
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch work items with tags for product mapping
+  const workItemsQuery = useQuery({
+    queryKey: ['fabrica', 'work-items-tags'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('devops_work_items')
+        .select('id, tags, title, parent_id, assigned_to_display');
       if (error) throw error;
       return data || [];
     },
@@ -92,12 +130,9 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   });
 
   const allItems = query.data || [];
-
-  // Exclude INFRA items — controlled only in Infraestrutura sector
   const INFRA_PREFIX = '[INFRA]';
   const nonInfraItems = allItems.filter(i => !i.title?.startsWith(INFRA_PREFIX));
 
-  // Apply date filter
   const items = (dateFrom && dateTo)
     ? nonInfraItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
     : nonInfraItems;
@@ -113,25 +148,83 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     return acc;
   }, {} as Record<string, number>);
 
-  // ── Corporate KPIs ──────────────────────────────────────────────
-
-  // Check for time_logs data
+  // ── Timelog aggregations ───────────────────────────────────────
   const fabricaItemIds = new Set(items.map(i => i.id).filter(Boolean));
-  const timeLogs = (timeLogsQuery.data || []).filter(
+  const allTimeLogs = timeLogsQuery.data || [];
+  const timeLogs = allTimeLogs.filter(
     tl => tl.work_item_id && fabricaItemIds.has(tl.work_item_id)
   );
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 
-  // PBIs / User Stories
+  // Build work item lookup for tags/parent mapping
+  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null }>();
+  for (const wi of (workItemsQuery.data || [])) {
+    wiMap.set(wi.id, wi);
+  }
+
+  // Build parent map from items for client extraction
+  const parentMap = new Map<number, FabricaItem>();
+  for (const item of allItems) {
+    if (item.id) parentMap.set(item.id, item);
+  }
+
+  // Hours by collaborator (from timelog user_name)
+  const horasPorColaborador: TimelogAggregation[] = (() => {
+    if (!hasTimeLogs) return [];
+    const map: Record<string, number> = {};
+    for (const tl of timeLogs) {
+      const name = tl.user_name || 'Desconhecido';
+      map[name] = (map[name] || 0) + (tl.time_minutes || 0);
+    }
+    return Object.entries(map)
+      .map(([name, minutes]) => ({ name, hours: Math.round(minutes / 60 * 10) / 10, minutes }))
+      .sort((a, b) => b.hours - a.hours);
+  })();
+
+  // Hours by product (from work item tags)
+  const horasPorProduto: TimelogAggregation[] = (() => {
+    if (!hasTimeLogs) return [];
+    const map: Record<string, number> = {};
+    for (const tl of timeLogs) {
+      const wi = tl.work_item_id ? wiMap.get(tl.work_item_id) : null;
+      const products = extractProducts(wi?.tags || null);
+      if (products.length === 0) {
+        map['Sem produto'] = (map['Sem produto'] || 0) + (tl.time_minutes || 0);
+      } else {
+        // Distribute equally among tagged products
+        const share = (tl.time_minutes || 0) / products.length;
+        for (const p of products) {
+          map[p] = (map[p] || 0) + share;
+        }
+      }
+    }
+    return Object.entries(map)
+      .map(([name, minutes]) => ({ name, hours: Math.round(minutes / 60 * 10) / 10, minutes }))
+      .sort((a, b) => b.hours - a.hours);
+  })();
+
+  // Hours by client (from parent title)
+  const horasPorCliente: TimelogAggregation[] = (() => {
+    if (!hasTimeLogs) return [];
+    const map: Record<string, number> = {};
+    for (const tl of timeLogs) {
+      if (!tl.work_item_id) continue;
+      const item = parentMap.get(tl.work_item_id);
+      const client = item ? extractClient(item, parentMap) : 'Sem cliente';
+      map[client] = (map[client] || 0) + (tl.time_minutes || 0);
+    }
+    return Object.entries(map)
+      .map(([name, minutes]) => ({ name, hours: Math.round(minutes / 60 * 10) / 10, minutes }))
+      .sort((a, b) => b.hours - a.hours);
+  })();
+
+  // ── Corporate KPIs ──────────────────────────────────────────────
   const pbis = items.filter(
     i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
   );
   const pbisWithEffort = pbis.filter(i => i.effort != null && i.effort > 0);
 
-  // ── Lead Time Médio ─────────────────────────────────────────────
-  // Primary: hours from time_logs / PBI count
-  // Fallback: average effort (story points) per PBI from DevOps
   let leadTimeMedio: number | null = null;
   let leadTimeSource: 'timelog' | 'effort' | null = null;
 
@@ -144,9 +237,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     leadTimeSource = 'effort';
   }
 
-  // ── Velocidade Média Squad ──────────────────────────────────────
-  // Primary: hours logged / sprint count
-  // Fallback: total effort per sprint (average)
   const sprintSet = new Set(items.map(i => i.iteration_path).filter(Boolean) as string[]);
   const sprintCount = sprintSet.size;
   let velocidadeMedia: number | null = null;
@@ -156,7 +246,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     velocidadeMedia = Math.round((totalHoursLogged / sprintCount) * 10) / 10;
     velocidadeSource = 'timelog';
   } else if (sprintCount > 0 && pbisWithEffort.length > 0) {
-    // Sum effort by sprint
     const effortBySprint: Record<string, number> = {};
     for (const item of pbisWithEffort) {
       const sp = item.iteration_path || 'unknown';
@@ -170,9 +259,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     }
   }
 
-  // ── Transbordo (%) ──────────────────────────────────────────────
-  // Items in past sprints that are still active (not Done/Closed/Resolved)
-  // "Current sprint" = the latest sprint by naming convention
+  // Transbordo
   const sortedSprints = [...sprintSet].sort(sprintCompare);
   const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
 
@@ -186,7 +273,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     const pastSprintItems = items.filter(i => i.iteration_path && pastSprints.has(i.iteration_path));
     transbordoTotal = pastSprintItems.length;
 
-    // Items not done in past sprints
     const overflowedItems = pastSprintItems.filter(
       i => i.state !== 'Done' && i.state !== 'Closed' && i.state !== 'Resolved'
     );
@@ -195,8 +281,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       ? Math.round((transbordoCount / transbordoTotal) * 100)
       : 0;
 
-    // Count how many past sprints each item appeared in (overflow count)
-    // Group by item id across all past sprints
     const itemSprintMap = new Map<number, Set<string>>();
     for (const item of pastSprintItems) {
       if (!item.id || !item.iteration_path) continue;
@@ -204,7 +288,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       itemSprintMap.get(item.id)!.add(item.iteration_path);
     }
 
-    // For overflowed items, count sprints they've been in
     const seen = new Set<number>();
     transbordoItems = overflowedItems
       .filter(i => {
@@ -218,10 +301,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
         sprintsOverflowed: [...(itemSprintMap.get(i.id!) ?? [])].sort(sprintCompare),
       }));
   }
-
-  // ── Capacidade Plan. vs Util. ───────────────────────────────────
-  // Status: Pendente — requires DevOps Capacity API (Boards → Sprints → Capacity)
-  // Not calculable from current data
 
   return {
     items,
@@ -247,5 +326,10 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     currentSprint,
     sprintCount,
     hasTimeLogs,
+    totalHoursLogged,
+    // Timelog aggregations
+    horasPorColaborador,
+    horasPorProduto,
+    horasPorCliente,
   };
 }
