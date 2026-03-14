@@ -261,7 +261,11 @@ export default function FabricaDashboard() {
               </p>
             </Card>
 
-            <Card className={`p-4 animate-fade-in ${fab.transbordoPct != null && fab.transbordoPct > 50 ? 'ring-1 ring-destructive/30' : ''}`} style={{ animationDelay: '160ms' }}>
+            <Card
+              className={`p-4 animate-fade-in cursor-pointer hover:shadow-md transition-shadow ${fab.transbordoPct != null && fab.transbordoPct > 50 ? 'ring-1 ring-destructive/30' : ''}`}
+              style={{ animationDelay: '160ms' }}
+              onClick={() => fab.transbordoItems.length > 0 && setTransbordoOpen(true)}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-2 rounded-xl bg-[hsl(43,85%,46%)]/10">
                   <AlertTriangle className="h-4 w-4 text-[hsl(43,85%,46%)]" />
