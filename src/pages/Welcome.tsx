@@ -127,10 +127,10 @@ export default function Welcome() {
       >
         <div className="space-y-2">
           <h1 className="text-4xl font-bold text-primary tracking-tight">FLAG Hub</h1>
-          <p className="text-lg text-slate-400">
+          <p className="text-lg text-sidebar-foreground/60">
             Central de KPIs e Dashboards Setoriais
           </p>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-sidebar-foreground/40">
             Todas as métricas da operação em um único lugar
           </p>
         </div>
