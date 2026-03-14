@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+export interface TransbordoItem extends FabricaItem {
+  overflowCount: number;
+  sprintsOverflowed: string[];
+}
+
 export interface FabricaItem {
   id: number | null;
   title: string | null;
@@ -170,18 +175,44 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   let transbordoPct: number | null = null;
   let transbordoCount = 0;
   let transbordoTotal = 0;
+  let transbordoItems: TransbordoItem[] = [];
 
   if (currentSprint && sortedSprints.length > 1) {
-    // All items in past sprints (not the latest one)
     const pastSprints = new Set(sortedSprints.slice(0, -1));
     const pastSprintItems = items.filter(i => i.iteration_path && pastSprints.has(i.iteration_path));
     transbordoTotal = pastSprintItems.length;
-    transbordoCount = pastSprintItems.filter(
+
+    // Items not done in past sprints
+    const overflowedItems = pastSprintItems.filter(
       i => i.state !== 'Done' && i.state !== 'Closed' && i.state !== 'Resolved'
-    ).length;
+    );
+    transbordoCount = overflowedItems.length;
     transbordoPct = transbordoTotal > 0
       ? Math.round((transbordoCount / transbordoTotal) * 100)
       : 0;
+
+    // Count how many past sprints each item appeared in (overflow count)
+    // Group by item id across all past sprints
+    const itemSprintMap = new Map<number, Set<string>>();
+    for (const item of pastSprintItems) {
+      if (!item.id || !item.iteration_path) continue;
+      if (!itemSprintMap.has(item.id)) itemSprintMap.set(item.id, new Set());
+      itemSprintMap.get(item.id)!.add(item.iteration_path);
+    }
+
+    // For overflowed items, count sprints they've been in
+    const seen = new Set<number>();
+    transbordoItems = overflowedItems
+      .filter(i => {
+        if (!i.id || seen.has(i.id)) return false;
+        seen.add(i.id);
+        return true;
+      })
+      .map(i => ({
+        ...i,
+        overflowCount: itemSprintMap.get(i.id!)?.size ?? 1,
+        sprintsOverflowed: [...(itemSprintMap.get(i.id!) ?? [])].sort(sprintCompare),
+      }));
   }
 
   // ── Capacidade Plan. vs Util. ───────────────────────────────────
@@ -208,6 +239,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     transbordoPct,
     transbordoCount,
     transbordoTotal,
+    transbordoItems,
     currentSprint,
     sprintCount,
     hasTimeLogs,

@@ -6,6 +6,7 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useFabricaKpis, FabricaItem } from '@/hooks/useFabricaKpis';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Card } from '@/components/ui/card';
@@ -56,6 +57,7 @@ export default function FabricaDashboard() {
   const [expandedPbis, setExpandedPbis] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  const [transbordoOpen, setTransbordoOpen] = useState(false);
   const PAGE_SIZE = 25;
 
   const colabChartData = useMemo(() =>
@@ -259,7 +261,11 @@ export default function FabricaDashboard() {
               </p>
             </Card>
 
-            <Card className={`p-4 animate-fade-in ${fab.transbordoPct != null && fab.transbordoPct > 50 ? 'ring-1 ring-destructive/30' : ''}`} style={{ animationDelay: '160ms' }}>
+            <Card
+              className={`p-4 animate-fade-in cursor-pointer hover:shadow-md transition-shadow ${fab.transbordoPct != null && fab.transbordoPct > 50 ? 'ring-1 ring-destructive/30' : ''}`}
+              style={{ animationDelay: '160ms' }}
+              onClick={() => fab.transbordoItems.length > 0 && setTransbordoOpen(true)}
+            >
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-2 rounded-xl bg-[hsl(43,85%,46%)]/10">
                   <AlertTriangle className="h-4 w-4 text-[hsl(43,85%,46%)]" />
@@ -419,6 +425,74 @@ export default function FabricaDashboard() {
         fields={drawerFields}
         externalUrl={drawerItem?.web_url}
       />
+
+      {/* Transbordo Detail Dialog */}
+      <Dialog open={transbordoOpen} onOpenChange={setTransbordoOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-[hsl(43,85%,46%)]" />
+              PBIs Transbordados
+            </DialogTitle>
+            <DialogDescription>
+              Itens em sprints anteriores que não foram finalizados. O contador indica em quantas sprints o item já apareceu.
+            </DialogDescription>
+          </DialogHeader>
+
+          {fab.transbordoItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">Nenhum item transbordado encontrado.</p>
+          ) : (
+            <div className="overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="text-xs font-semibold w-16">ID</TableHead>
+                    <TableHead className="text-xs font-semibold">Título</TableHead>
+                    <TableHead className="text-xs font-semibold">Status</TableHead>
+                    <TableHead className="text-xs font-semibold">Responsável</TableHead>
+                    <TableHead className="text-xs font-semibold text-center w-24">Transbordos</TableHead>
+                    <TableHead className="text-xs font-semibold">Sprints</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fab.transbordoItems
+                    .sort((a, b) => b.overflowCount - a.overflowCount)
+                    .map(item => (
+                      <TableRow key={item.id} className="hover:bg-muted/30">
+                        <TableCell className="font-mono text-xs">
+                          {item.web_url ? (
+                            <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.id}</a>
+                          ) : item.id}
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[250px] truncate">{item.title || '—'}</TableCell>
+                        <TableCell>
+                          <Badge className={`text-xs font-mono ${stateColors[item.state || ''] || ''}`}>{item.state || '—'}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">{item.assigned_to_display || '—'}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant={item.overflowCount >= 3 ? 'destructive' : 'secondary'}
+                            className="text-xs font-bold"
+                          >
+                            {item.overflowCount}×
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[180px]">
+                          <div className="flex flex-wrap gap-1">
+                            {item.sprintsOverflowed.map(sp => {
+                              const label = sp.split('\\').pop() || sp;
+                              return <Badge key={sp} variant="outline" className="text-[10px] px-1.5 py-0">{label}</Badge>;
+                            })}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </SectorLayout>
   );
 }
