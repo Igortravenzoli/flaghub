@@ -77,8 +77,8 @@ export function useHelpdeskKpis() {
   }));
 
   const registrosPorSistema: RegistroPorGrupo[] = (raw.registrosPorSistema || []).map((s: any) => ({
-    nome: s.sistema || s.nome || 'N/A',
-    quantidade: s.quantidade || s.totalRegistros || 0,
+    nome: s.nomeSistema || s.sistema || s.nome || 'N/A',
+    quantidade: s.totalRegistros || s.quantidade || 0,
   }));
 
   const registrosPorBandeira: RegistroPorGrupo[] = (raw.registrosPorBandeira || []).map((b: any) => ({
@@ -99,7 +99,7 @@ export function useHelpdeskKpis() {
 
   const ocorrenciasPorTipo: RegistroPorGrupo[] = (raw.ocorrenciasPorTipo || []).map((o: any) => ({
     nome: o.tipo || o.nome || 'N/A',
-    quantidade: o.quantidade || o.totalRegistros || 0,
+    quantidade: o.total || o.quantidade || o.totalRegistros || 0,
   }));
 
   // Acumulado
