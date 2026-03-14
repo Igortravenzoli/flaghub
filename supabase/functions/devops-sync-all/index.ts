@@ -495,6 +495,7 @@ serve(async (req) => {
       const bgAdmin = getSupabaseAdmin()
       let childrenResult = { fetched: 0, upserted: 0 }
       let qaRetorno = { processed: 0, withRetornos: 0 }
+      let iterHistory = { processed: 0, withChanges: 0 }
 
       try {
         console.log('[DevOpsSyncAll:BG] Fetching child work items (Tasks/Bugs)...')
@@ -520,12 +521,19 @@ serve(async (req) => {
         console.error('[DevOpsSyncAll:BG] QA retorno error:', (qaErr as Error).message)
       }
 
+      try {
+        console.log('[DevOpsSyncAll:BG] Starting iteration history sync...')
+        iterHistory = await processIterationHistory(bgAdmin)
+      } catch (iterErr) {
+        console.error('[DevOpsSyncAll:BG] Iteration history error:', (iterErr as Error).message)
+      }
+
       // Audit log with full results
       await bgAdmin.rpc('hub_audit_log', {
         p_action: 'devops_sync_all',
         p_entity_type: 'devops',
         p_entity_id: null,
-        p_metadata: { total: queries!.length, succeeded, failed, children: childrenResult, qa_retorno: qaRetorno },
+        p_metadata: { total: queries!.length, succeeded, failed, children: childrenResult, qa_retorno: qaRetorno, iteration_history: iterHistory },
       })
       console.log('[DevOpsSyncAll:BG] Background work complete')
     }
