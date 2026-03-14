@@ -22,6 +22,7 @@ type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items, Sprints' },
+  { name: 'DevOps TimeLog', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Horas alocadas (TechsBCN)' },
 ];
 
 const typeColors: Record<string, string> = {
@@ -197,7 +198,7 @@ export default function FabricaDashboard() {
   );
 
   return (
-    <SectorLayout title="Fábrica" subtitle="Programação — Sprint Board" lastUpdate="" integrations={integrations} areaKey="fabrica" syncFunctions={[{ name: 'devops-sync-all', label: 'Sincronizar Work Items (DevOps)' }]}>
+    <SectorLayout title="Fábrica" subtitle="Programação — Sprint Board" lastUpdate="" integrations={integrations} areaKey="fabrica" syncFunctions={[{ name: 'devops-sync-all', label: 'Sincronizar Work Items (DevOps)' }, { name: 'devops-sync-timelog', label: 'Sincronizar TimeLog (Horas)' }]}>
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={fab.lastSync} status="ok" />
       </div>
