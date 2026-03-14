@@ -222,6 +222,59 @@ export default function FabricaDashboard() {
             <DashboardKpiCard label="Done" value={fab.done} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
           </div>
 
+          {/* Corporate KPIs */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card className="p-4 animate-fade-in">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-2 rounded-xl bg-primary/10">
+                  <Clock className="h-4 w-4 text-primary" />
+                </div>
+                <p className="text-xs text-muted-foreground font-medium">Lead Time Médio</p>
+              </div>
+              <p className="text-2xl font-bold text-foreground">
+                {fab.isLoading ? '—' : fab.leadTimeMedio != null ? `${fab.leadTimeMedio}h` : <span className="text-sm font-normal text-muted-foreground">Sem dados de horas</span>}
+              </p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Horas trabalhadas / PBI</p>
+            </Card>
+
+            <Card className="p-4 animate-fade-in" style={{ animationDelay: '80ms' }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-2 rounded-xl bg-[hsl(var(--info))]/10">
+                  <Gauge className="h-4 w-4 text-[hsl(var(--info))]" />
+                </div>
+                <p className="text-xs text-muted-foreground font-medium">Velocidade Média</p>
+              </div>
+              <p className="text-2xl font-bold text-foreground">
+                {fab.isLoading ? '—' : fab.velocidadeMedia != null ? `${fab.velocidadeMedia}h` : <span className="text-sm font-normal text-muted-foreground">Sem dados de horas</span>}
+              </p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Horas / Sprint{fab.sprintCount > 0 ? ` (${fab.sprintCount} sprints)` : ''}</p>
+            </Card>
+
+            <Card className="p-4 animate-fade-in" style={{ animationDelay: '160ms' }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-2 rounded-xl bg-[hsl(43,85%,46%)]/10">
+                  <AlertTriangle className="h-4 w-4 text-[hsl(43,85%,46%)]" />
+                </div>
+                <p className="text-xs text-muted-foreground font-medium">Transbordo</p>
+              </div>
+              <p className="text-2xl font-bold text-foreground">
+                {fab.isLoading ? '—' : fab.transbordoPct != null ? `${fab.transbordoPct}%` : <span className="text-sm font-normal text-muted-foreground">Sem dados</span>}
+              </p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Não entregues na sprint planejada</p>
+            </Card>
+
+            <Card className="p-4 animate-fade-in opacity-60" style={{ animationDelay: '240ms' }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-2 rounded-xl bg-muted">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className="text-xs text-muted-foreground font-medium">Capacidade Plan. vs Util.</p>
+              </div>
+              <p className="text-sm font-normal text-muted-foreground">Pendente</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Requer API Capacity do DevOps</p>
+            </Card>
+          </div>
+
           {colabChartData.length > 0 && (
             <Card className="p-5 animate-fade-in">
               <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
