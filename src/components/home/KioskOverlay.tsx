@@ -55,7 +55,6 @@ export default function KioskOverlay({ activeSectors, currentIndex, rotateEnable
   // Auto-refresh data periodically (every 2 minutes)
   useEffect(() => {
     const interval = setInterval(() => {
-      // Dispatch a custom event that React Query hooks can listen to, or just refocus to trigger refetch
       window.dispatchEvent(new Event('focus'));
     }, 120_000);
     return () => clearInterval(interval);
@@ -73,9 +72,9 @@ export default function KioskOverlay({ activeSectors, currentIndex, rotateEnable
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background overflow-auto">
-      {/* Top bar */}
-      <div className="fixed top-4 right-4 z-[110] flex items-center gap-2">
+    <div className="fixed inset-0 z-[100] bg-background overflow-auto" data-kiosk="true">
+      {/* Top bar — minimal, only exit */}
+      <div className="fixed top-4 right-4 z-[110] flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity duration-300">
         {rotateEnabled && activeSectors.length > 1 && (
           <Badge variant="secondary" className="font-mono text-xs bg-card/80 backdrop-blur-sm">
             {currentSector.name} • {(currentIndex % activeSectors.length) + 1}/{activeSectors.length}

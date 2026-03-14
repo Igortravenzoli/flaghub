@@ -19,15 +19,37 @@ interface SectorLayoutProps {
   children: ReactNode;
   integrations?: Integration[];
   templateKey?: string;
-  /** Area key for filtering imports by area */
   areaKey?: string;
-  /** Edge functions available for immediate sync */
   syncFunctions?: SyncFunction[];
-  /** Additional tab content */
   extraTabs?: { id: string; label: string; icon: ReactNode; content: ReactNode }[];
+  /** When true, only shows dashboard content (no tabs for settings/imports/integrations) */
+  kioskMode?: boolean;
 }
 
-export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs }: SectorLayoutProps) {
+export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, kioskMode }: SectorLayoutProps) {
+  // Detect kiosk mode from parent or prop
+  const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
+
+  if (isKiosk) {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+            {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+          </div>
+          {lastUpdate && (
+            <Badge variant="outline" className="gap-1">
+              <Clock className="h-3 w-3" />
+              {lastUpdate}
+            </Badge>
+          )}
+        </div>
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
