@@ -144,7 +144,7 @@ export default function Welcome() {
           <ArrowRight className="ml-2 h-5 w-5" />
         </Button>
 
-        <p className="text-xs text-slate-600 pt-4">
+        <p className="text-xs text-sidebar-foreground/30 pt-4">
           FLAG Hub • KPIs em tempo real
         </p>
       </div>
