@@ -239,6 +239,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     transbordoPct,
     transbordoCount,
     transbordoTotal,
+    transbordoItems,
     currentSprint,
     sprintCount,
     hasTimeLogs,
