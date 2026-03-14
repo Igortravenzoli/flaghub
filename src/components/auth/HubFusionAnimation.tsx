@@ -91,7 +91,7 @@ export function HubFusionAnimation() {
               WebkitTextFillColor: 'transparent',
             }}
           >
-            KPI Hub
+            Flag Hub
           </span>
         </div>
 
