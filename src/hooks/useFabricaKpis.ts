@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+export interface TransbordoItem extends FabricaItem {
+  overflowCount: number;
+  sprintsOverflowed: string[];
+}
+
 export interface FabricaItem {
   id: number | null;
   title: string | null;
