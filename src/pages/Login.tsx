@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Monitor, Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { FusionText } from '@/components/auth/FusionText';
+import { HubFusionAnimation } from '@/components/auth/HubFusionAnimation';
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 60;
