@@ -331,6 +331,9 @@ export default function HelpdeskDashboard() {
         preset={filters.preset}
         onPresetChange={filters.setPreset}
         presetLabel={filters.presetLabel}
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        onCustomRange={filters.setCustomRange}
         onRefresh={() => refetch()}
         onExportCSV={handleExportCSV}
         onExportPDF={handleExportPDF}

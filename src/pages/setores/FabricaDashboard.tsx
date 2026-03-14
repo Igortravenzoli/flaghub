@@ -357,6 +357,9 @@ export default function FabricaDashboard() {
         preset={filters.preset}
         onPresetChange={(p) => { filters.setPreset(p); setFabKpiFilter('all'); setPage(0); }}
         presetLabel={filters.presetLabel}
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        onCustomRange={filters.setCustomRange}
         onRefresh={() => fab.refetch()}
         onExportCSV={handleExportCSV}
         onExportPDF={handleExportPDF}

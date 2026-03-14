@@ -1,8 +1,15 @@
+import { useState } from 'react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
-import { Calendar, Download, FileText, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarIcon, Download, FileText, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import type { FilterPreset } from '@/hooks/useDashboardFilters';
+import type { DateRange } from 'react-day-picker';
 
 interface FilterBarProps {
   preset: FilterPreset;
@@ -14,6 +21,9 @@ interface FilterBarProps {
   isRefreshing?: boolean;
   onExportCSV?: () => void;
   onExportPDF?: () => void;
+  dateFrom?: Date;
+  dateTo?: Date;
+  onCustomRange?: (from: Date, to: Date) => void;
 }
 
 const DEFAULT_PRESETS: Array<{ value: FilterPreset; label: string }> = [
@@ -33,7 +43,25 @@ export function DashboardFilterBar({
   isRefreshing,
   onExportCSV,
   onExportPDF,
+  dateFrom,
+  dateTo,
+  onCustomRange,
 }: FilterBarProps) {
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [range, setRange] = useState<DateRange | undefined>(
+    dateFrom && dateTo ? { from: dateFrom, to: dateTo } : undefined
+  );
+
+  const handleRangeSelect = (selected: DateRange | undefined) => {
+    setRange(selected);
+    if (selected?.from && selected?.to && onCustomRange) {
+      onCustomRange(selected.from, selected.to);
+      setCalendarOpen(false);
+    }
+  };
+
+  const isCustom = preset === 'custom';
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {/* Period presets */}
@@ -49,6 +77,35 @@ export function DashboardFilterBar({
             {p.label}
           </Button>
         ))}
+
+        {/* Custom date range picker */}
+        {onCustomRange && (
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant={isCustom ? 'default' : 'ghost'}
+                size="sm"
+                className={cn('h-7 text-xs gap-1.5')}
+              >
+                <CalendarIcon className="h-3 w-3" />
+                {isCustom && dateFrom && dateTo
+                  ? `${format(dateFrom, 'dd/MM', { locale: ptBR })} – ${format(dateTo, 'dd/MM', { locale: ptBR })}`
+                  : 'Personalizado'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={range}
+                onSelect={handleRangeSelect}
+                numberOfMonths={2}
+                locale={ptBR}
+                disabled={{ after: new Date() }}
+                className={cn('p-3 pointer-events-auto')}
+              />
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
 
       <div className="flex-1" />
@@ -56,7 +113,7 @@ export function DashboardFilterBar({
       {/* Last sync */}
       {lastSync && (
         <Badge variant="outline" className="gap-1 text-xs font-normal text-muted-foreground">
-          <Calendar className="h-3 w-3" />
+          <CalendarIcon className="h-3 w-3" />
           Sync: {lastSync}
         </Badge>
       )}

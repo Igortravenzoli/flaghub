@@ -94,6 +94,9 @@ export default function InfraestruturaDashboard() {
         preset={filters.preset}
         onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
         presetLabel={filters.presetLabel}
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        onCustomRange={filters.setCustomRange}
         onRefresh={() => refetch()}
         onExportCSV={handleExportCSV}
         onExportPDF={handleExportPDF}
