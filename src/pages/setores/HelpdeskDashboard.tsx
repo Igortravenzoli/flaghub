@@ -106,7 +106,16 @@ export default function HelpdeskDashboard() {
   const hasData = totalRegistros > 0 || registrosPorConsultor.length > 0;
 
   return (
-    <SectorLayout title="Helpdesk" subtitle="KPIs de Atendimento — VDesk" lastUpdate="" integrations={integrations}>
+    <SectorLayout
+      title="Helpdesk"
+      subtitle="KPIs de Atendimento — VDesk"
+      lastUpdate=""
+      integrations={integrations}
+      areaKey="helpdesk"
+      syncFunctions={[
+        { name: 'vdesk-sync-helpdesk', label: 'Sincronizar Helpdesk (VDesk)' },
+      ]}
+    >
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>

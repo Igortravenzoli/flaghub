@@ -139,8 +139,8 @@ export default function Home() {
           <Monitor className="h-6 w-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Hub de Operações</h1>
-          <p className="text-sm text-muted-foreground">Selecione uma área para acessar o dashboard</p>
+          <h1 className="text-2xl font-bold text-foreground">FLAG Hub</h1>
+          <p className="text-sm text-muted-foreground">Central de KPIs — Selecione uma área para acessar o dashboard</p>
         </div>
       </div>
 

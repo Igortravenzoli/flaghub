@@ -24,6 +24,8 @@ function getFileIcon(fileName: string) {
 interface SectorImportAreaProps {
   sectorName: string;
   templateKey?: string;
+  /** Hub area key to filter imports by area */
+  areaKey?: string;
 }
 
 interface ManualBatchHistoryItem {
@@ -49,7 +51,7 @@ function getBatchStatusLabel(status: string) {
   return labels[status] ?? status;
 }
 
-export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1' }: SectorImportAreaProps) {
+export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1', areaKey }: SectorImportAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
   const [showModeDialog, setShowModeDialog] = useState(false);
@@ -63,22 +65,30 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
   });
 
   const { data: history = [], isLoading: isHistoryLoading } = useQuery({
-    queryKey: ['manual_import_batches', templateKey],
+    queryKey: ['manual_import_batches', templateKey, areaKey],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('manual_import_batches')
-        .select('id, status, total_rows, valid_rows, invalid_rows, imported_at, published_at, manual_import_templates!manual_import_batches_template_id_fkey(key)')
+        .select('id, status, total_rows, valid_rows, invalid_rows, imported_at, published_at, area_id, manual_import_templates!manual_import_batches_template_id_fkey(key), hub_areas:hub_areas!manual_import_batches_area_id_fkey(key)')
         .order('imported_at', { ascending: false })
         .limit(50);
 
+      const { data, error } = await query;
       if (error) throw error;
 
-      const rows = (data ?? []) as ManualBatchHistoryItem[];
-      const filtered = templateKey
-        ? rows.filter((row) => row.manual_import_templates?.key === templateKey)
-        : rows;
+      let rows = (data ?? []) as (ManualBatchHistoryItem & { hub_areas?: { key: string } | null })[];
 
-      return filtered.slice(0, 10);
+      // Filter by area key if provided
+      if (areaKey) {
+        rows = rows.filter((row) => row.hub_areas?.key === areaKey);
+      }
+
+      // Filter by template key
+      if (templateKey) {
+        rows = rows.filter((row) => row.manual_import_templates?.key === templateKey);
+      }
+
+      return rows.slice(0, 10);
     },
   });
 

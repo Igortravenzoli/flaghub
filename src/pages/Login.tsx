@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Monitor, Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { FusionText } from '@/components/auth/FusionText';
+import { HubFusionAnimation } from '@/components/auth/HubFusionAnimation';
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 60;
@@ -169,13 +169,13 @@ export default function Login() {
             </div>
             <span className="text-2xl font-bold text-primary">FLAG</span>
           </div>
-          <CardTitle>Painel Operacional</CardTitle>
+          <CardTitle>FLAG Hub</CardTitle>
           
-          {/* Animated Fusion Text */}
-          <FusionText />
+          {/* Animated Hub Fusion */}
+          <HubFusionAnimation />
           
           <CardDescription>
-            Acesse sua conta para gerenciar tickets e ordens de serviço
+            Central de KPIs e Dashboards Setoriais
           </CardDescription>
         </CardHeader>
         <CardContent>
