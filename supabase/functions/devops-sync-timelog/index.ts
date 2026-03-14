@@ -144,6 +144,11 @@ serve(async (req) => {
 
     const payload = await resp.json()
 
+    // Log full response keys for debugging
+    const topKeys = Object.keys(payload)
+    console.log(`[timelog] Response top-level keys: ${topKeys.join(', ')}`)
+    console.log(`[timelog] Response preview: ${JSON.stringify(payload).substring(0, 1000)}`)
+
     // The response has a `value` array of documents
     const documents: TimeLogDocument[] = payload.value || []
     console.log(`[timelog] Received ${documents.length} documents`)
