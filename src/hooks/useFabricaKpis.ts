@@ -175,22 +175,22 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   }
 
   // Find the top-level Epic for a work item by walking up parent_id
-  function findEpic(wiId: number, maxDepth = 10): { title: string; id: number } | null {
-    let current = wiMap.get(wiId);
+  function findEpic(startId: number, maxDepth = 10): { title: string; id: number } | null {
+    let currentId = startId;
+    let current = wiMap.get(currentId);
     let depth = 0;
     while (current && depth < maxDepth) {
       if (current.work_item_type === 'Epic') {
-        return { title: current.title || `Epic #${wiId}`, id: wiId };
+        return { title: current.title || `Epic #${currentId}`, id: currentId };
       }
       if (!current.parent_id) break;
-      const parentId = current.parent_id;
-      current = wiMap.get(parentId);
-      wiId = parentId;
+      currentId = current.parent_id;
+      current = wiMap.get(currentId);
       depth++;
     }
     // If we reached the top without finding "Epic" type, use the topmost item
     if (current && depth > 0) {
-      return { title: current.title || `Item #${wiId}`, id: wiId };
+      return { title: current.title || `Item #${currentId}`, id: currentId };
     }
     return null;
   }
