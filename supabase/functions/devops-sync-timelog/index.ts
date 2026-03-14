@@ -284,14 +284,14 @@ serve(async (req) => {
     await sb.from('hub_raw_ingestions').insert({
       source_type: 'devops_timelog',
       source_key: 'TechsBCN/DevOps-TimeLog',
-      payload: { document_count: documents.length, entry_count: allRows.length, skipped },
+      payload: { entry_count: allRows.length, skipped, collection: usedCollection },
       status: 'processed',
       processed_at: new Date().toISOString(),
     })
 
     return new Response(JSON.stringify({
       ok: true,
-      documents: documents.length,
+      entries_total: rawEntries.length,
       entries_found: allRows.length,
       entries_skipped: skipped,
       upserted,
