@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft } from 'lucide-react';
+import { Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, Clock, Gauge, AlertTriangle, HelpCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
