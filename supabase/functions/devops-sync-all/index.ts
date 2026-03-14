@@ -1,4 +1,4 @@
-// devops-sync-all v2.0 — Orquestra sync de todas as queries DevOps ativas + cálculo retorno QA
+// devops-sync-all v3.0 — Orquestra sync de todas as queries DevOps ativas + children + retorno QA
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -11,6 +11,17 @@ const corsHeaders = {
 const DEVOPS_ORG = 'FlagIW'
 const DEVOPS_PROJECT = 'Flag.Planejamento'
 const EM_TESTE_STATE = 'Em Teste'
+const BATCH_SIZE = 200
+const DEVOPS_API_VERSION = '7.0'
+const WIQL_API_VERSION = '7.1'
+
+const CORE_FIELDS = [
+  'System.Id', 'System.TeamProject', 'System.WorkItemType', 'System.Title',
+  'System.State', 'System.AssignedTo', 'System.Tags',
+  'Microsoft.VSTS.Common.Priority', 'Microsoft.VSTS.Scheduling.Effort',
+  'System.Parent', 'System.AreaPath', 'System.IterationPath',
+  'System.CreatedDate', 'System.ChangedDate',
+]
 
 function getSupabaseAdmin() {
   return createClient(
@@ -26,9 +37,7 @@ function validateCronSecret(req: Request): boolean {
 }
 
 async function validateAuth(req: Request): Promise<string | null> {
-  // Allow pg_cron calls via shared secret
   if (validateCronSecret(req)) return 'cron'
-
   const authHeader = req.headers.get('authorization')
   if (!authHeader?.startsWith('Bearer ')) return null
   const token = authHeader.replace('Bearer ', '')
@@ -42,19 +51,165 @@ async function validateAuth(req: Request): Promise<string | null> {
   return data.claims.sub as string
 }
 
-// ── QA Retorno helpers ─────────────────────────────────────────────
+// ── DevOps API helpers ─────────────────────────────────────────────
 
-async function devopsFetch(path: string): Promise<Response> {
+async function devopsFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const pat = Deno.env.get('DEVOPS_PAT')!
   const base64Pat = btoa(`:${pat}`)
   const url = path.startsWith('http') ? path : `https://dev.azure.com/${DEVOPS_ORG}/${path}`
   return await fetch(url, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Basic ${base64Pat}`,
+      ...(options.headers || {}),
     },
   })
 }
+
+interface DevOpsWorkItem {
+  id: number
+  rev: number
+  fields: Record<string, any>
+  url: string
+  _links?: { html?: { href?: string } }
+}
+
+function mapWorkItem(wi: DevOpsWorkItem) {
+  const f = wi.fields || {}
+  const assignedTo = f['System.AssignedTo']
+  const coreFieldSet = new Set(CORE_FIELDS.map(ff => ff.toLowerCase()))
+  const customFields: Record<string, any> = {}
+  for (const [key, val] of Object.entries(f)) {
+    if (!coreFieldSet.has(key.toLowerCase())) customFields[key] = val
+  }
+  return {
+    id: wi.id,
+    rev: wi.rev,
+    team_project: f['System.TeamProject'] ?? null,
+    work_item_type: f['System.WorkItemType'] ?? null,
+    title: f['System.Title'] ?? null,
+    state: f['System.State'] ?? null,
+    assigned_to: assignedTo?.displayName ?? assignedTo ?? null,
+    assigned_to_display: assignedTo?.displayName ?? null,
+    assigned_to_unique: assignedTo?.uniqueName ?? null,
+    assigned_to_id: assignedTo?.id ?? null,
+    tags: f['System.Tags'] ?? null,
+    priority: f['Microsoft.VSTS.Common.Priority'] ?? null,
+    effort: f['Microsoft.VSTS.Scheduling.Effort'] ?? null,
+    parent_id: f['System.Parent'] ?? null,
+    area_path: f['System.AreaPath'] ?? null,
+    iteration_path: f['System.IterationPath'] ?? null,
+    created_date: f['System.CreatedDate'] ?? null,
+    changed_date: f['System.ChangedDate'] ?? null,
+    web_url: wi._links?.html?.href ?? `https://dev.azure.com/${DEVOPS_ORG}/${encodeURIComponent(f['System.TeamProject'] || DEVOPS_PROJECT)}/_workitems/edit/${wi.id}`,
+    api_url: wi.url ?? null,
+    custom_fields: Object.keys(customFields).length > 0 ? customFields : null,
+    raw: wi,
+    synced_at: new Date().toISOString(),
+  }
+}
+
+async function fetchWorkItemsBatch(ids: number[]): Promise<DevOpsWorkItem[]> {
+  const allItems: DevOpsWorkItem[] = []
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const chunk = ids.slice(i, i + BATCH_SIZE)
+    const resp = await devopsFetch(
+      `_apis/wit/workitemsbatch?api-version=${DEVOPS_API_VERSION}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ids: chunk, fields: CORE_FIELDS, $expand: 'none' }),
+      }
+    )
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`WorkItemsBatch failed (${resp.status}): ${text}`)
+    }
+    const data = await resp.json()
+    allItems.push(...(data.value || []))
+    if (i + BATCH_SIZE < ids.length) await new Promise(r => setTimeout(r, 200))
+  }
+  return allItems
+}
+
+// ── Fetch children of PBIs via WIQL ────────────────────────────────
+
+async function fetchChildrenOfItems(parentIds: number[], admin: any): Promise<{ fetched: number; upserted: number }> {
+  if (parentIds.length === 0) return { fetched: 0, upserted: 0 }
+
+  // WIQL supports IN clause with up to ~200 IDs at a time, so batch
+  let allChildIds: number[] = []
+  
+  for (let i = 0; i < parentIds.length; i += 150) {
+    const chunk = parentIds.slice(i, i + 150)
+    const idList = chunk.join(',')
+    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.Parent] IN (${idList}) AND [System.WorkItemType] IN ('Task', 'Bug') ORDER BY [System.ChangedDate] DESC`
+    
+    const resp = await devopsFetch(
+      `${DEVOPS_PROJECT}/_apis/wit/wiql?api-version=${WIQL_API_VERSION}`,
+      { method: 'POST', body: JSON.stringify({ query: wiql }) }
+    )
+    
+    if (!resp.ok) {
+      console.warn(`[ChildrenSync] WIQL failed for chunk ${i}: ${resp.status}`)
+      continue
+    }
+    
+    const data = await resp.json()
+    const ids = (data.workItems || []).map((wi: any) => wi.id as number)
+    allChildIds.push(...ids)
+    
+    if (i + 150 < parentIds.length) await new Promise(r => setTimeout(r, 300))
+  }
+
+  // Deduplicate
+  allChildIds = [...new Set(allChildIds)]
+  
+  if (allChildIds.length === 0) {
+    console.log('[ChildrenSync] No child items found')
+    return { fetched: 0, upserted: 0 }
+  }
+
+  console.log(`[ChildrenSync] Found ${allChildIds.length} child items (Task/Bug)`)
+
+  // Check existing revs for dedup
+  const { data: existingItems } = await admin
+    .from('devops_work_items')
+    .select('id, rev')
+    .in('id', allChildIds.slice(0, 1000)) // Supabase limit
+
+  const existingRevs = new Map((existingItems || []).map((e: any) => [e.id, e.rev]))
+
+  // Fetch from DevOps API
+  const childItems = await fetchWorkItemsBatch(allChildIds)
+  const mapped = childItems.map(mapWorkItem)
+
+  // Filter only changed items
+  const toUpsert = mapped.filter(m => {
+    const existingRev = existingRevs.get(m.id)
+    return existingRev === undefined || existingRev < m.rev
+  })
+
+  console.log(`[ChildrenSync] ${toUpsert.length} children need upsert (${mapped.length - toUpsert.length} unchanged)`)
+
+  // Upsert
+  let upsertedCount = 0
+  for (let i = 0; i < toUpsert.length; i += 100) {
+    const chunk = toUpsert.slice(i, i + 100)
+    const { error: upsertErr } = await admin
+      .from('devops_work_items')
+      .upsert(chunk, { onConflict: 'id' })
+    if (upsertErr) {
+      console.error('[ChildrenSync] Upsert error:', upsertErr.message)
+    } else {
+      upsertedCount += chunk.length
+    }
+  }
+
+  return { fetched: allChildIds.length, upserted: upsertedCount }
+}
+
+// ── QA Retorno helpers ─────────────────────────────────────────────
 
 interface StateChange {
   newValue: string
@@ -215,6 +370,26 @@ serve(async (req) => {
       await new Promise(r => setTimeout(r, 500))
     }
 
+    // ── Step 1.5: Fetch child Tasks/Bugs of all synced PBIs ──
+    console.log('[DevOpsSyncAll] Fetching child work items (Tasks/Bugs)...')
+    let childrenResult = { fetched: 0, upserted: 0 }
+    try {
+      // Get all PBI IDs from current query items
+      const { data: pbiItems } = await admin
+        .from('devops_work_items')
+        .select('id')
+        .in('work_item_type', ['Product Backlog Item', 'User Story', 'Feature'])
+        .limit(2000)
+      
+      const pbiIds = (pbiItems || []).map((i: any) => i.id) as number[]
+      console.log(`[DevOpsSyncAll] Found ${pbiIds.length} PBIs/Stories/Features to check for children`)
+      
+      childrenResult = await fetchChildrenOfItems(pbiIds, admin)
+      console.log(`[DevOpsSyncAll] Children sync: ${childrenResult.fetched} found, ${childrenResult.upserted} upserted`)
+    } catch (childErr) {
+      console.error('[DevOpsSyncAll] Children sync error:', (childErr as Error).message)
+    }
+
     // ── Step 2: QA Retorno calculation ──
     console.log('[DevOpsSyncAll] Starting QA retorno calculation...')
     const qaRetorno = await processQaRetornos(admin)
@@ -227,7 +402,7 @@ serve(async (req) => {
       p_action: 'devops_sync_all',
       p_entity_type: 'devops',
       p_entity_id: null,
-      p_metadata: { total: queries.length, succeeded, failed, qa_retorno: qaRetorno },
+      p_metadata: { total: queries.length, succeeded, failed, children: childrenResult, qa_retorno: qaRetorno },
     })
 
     return new Response(JSON.stringify({
@@ -235,6 +410,7 @@ serve(async (req) => {
       total: queries.length,
       succeeded,
       failed,
+      children: childrenResult,
       qa_retorno: qaRetorno,
       results,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
