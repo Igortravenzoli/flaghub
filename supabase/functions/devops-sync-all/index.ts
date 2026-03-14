@@ -548,6 +548,7 @@ serve(async (req) => {
       failed,
       children: 'processing_in_background',
       qa_retorno: 'processing_in_background',
+      iteration_history: 'processing_in_background',
       results,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
