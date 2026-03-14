@@ -162,12 +162,9 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     return acc;
   }, {} as Record<string, number>);
 
-  // ── Timelog aggregations ───────────────────────────────────────
-  const fabricaItemIds = new Set(items.map(i => i.id).filter(Boolean));
+  // ── Timelog aggregations (use ALL timelogs, not filtered by view) ──
   const allTimeLogs = timeLogsQuery.data || [];
-  const timeLogs = allTimeLogs.filter(
-    tl => tl.work_item_id && fabricaItemIds.has(tl.work_item_id)
-  );
+  const timeLogs = allTimeLogs;
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
 
@@ -212,20 +209,34 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  // Hours by fábrica/squad (from tags via devops_work_items)
+  // Hours by fábrica/squad (from area_path via devops_work_items)
   const horasPorFabrica: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
     for (const tl of timeLogs) {
       if (!tl.work_item_id) continue;
       const wi = wiMap.get(tl.work_item_id);
-      const fabrica = extractFabrica(wi?.tags || null);
-      if (!fabrica) continue; // Skip items without a known fábrica tag
-      map[fabrica] = (map[fabrica] || 0) + (tl.time_minutes || 0);
+      const areaPath = wi?.area_path || null;
+      if (!areaPath) continue;
+      // Extract last segment of area_path (e.g. "Flag.Planejamento\\STAGING" → "STAGING")
+      const segments = areaPath.split('\\');
+      const lastSegment = segments[segments.length - 1].trim();
+      // Format: known squads get brackets, others use plain name
+      const SQUAD_AREAS = new Set(['STAGING', 'K8', 'INFRA', 'APP', 'FLEXX']);
+      const upper = lastSegment.toUpperCase();
+      let label: string;
+      if (upper === 'UX/UI' || upper === 'UX' || upper === 'UI') {
+        label = '[UX/UI] ABBN';
+      } else if (SQUAD_AREAS.has(upper)) {
+        label = `[${upper}] - Squad`;
+      } else {
+        label = lastSegment;
+      }
+      map[label] = (map[label] || 0) + (tl.time_minutes || 0);
     }
     return Object.entries(map)
       .map(([name, minutes]) => ({
-        name: `${name} - Squad ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
+        name: `${name} ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
         hours: Math.round(minutes / 60 * 10) / 10,
         minutes,
       }))
