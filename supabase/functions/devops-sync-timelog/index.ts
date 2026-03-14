@@ -46,13 +46,22 @@ async function validateAuth(req: Request): Promise<string | null> {
 
 interface TimeLogEntry {
   workItemId?: number
+  WorkItemId?: number
   date?: string       // ISO date
+  Date?: string
   startTime?: string
+  StartTime?: string
   time?: number       // minutes
+  Time?: number
+  user?: string       // TechsBCN uses 'user' not 'userName'
   userName?: string
+  UserName?: string
   userId?: string
+  UserId?: string
   notes?: string
-  __etag?: string
+  Notes?: string
+  id?: string
+  __etag?: number | string
   [key: string]: unknown
 }
 
@@ -91,10 +100,10 @@ function normalizeEntry(entry: TimeLogEntry, docId: string): Record<string, unkn
     log_date: String(logDate).substring(0, 10), // YYYY-MM-DD
     start_time: entry.startTime ?? entry.StartTime ?? null,
     time_minutes: Number(minutes) || 0,
-    user_name: entry.userName ?? entry.UserName ?? (entry as Record<string, unknown>).user ?? null,
+    user_name: entry.user ?? entry.userName ?? entry.UserName ?? (entry as Record<string, unknown>).user ?? null,
     user_id_ext: entry.userId ?? entry.UserId ?? null,
     notes: entry.notes ?? entry.Notes ?? null,
-    etag: entry.__etag ?? docId,
+    etag: entry.__etag != null ? String(entry.__etag) : (entry.id || docId),
     raw: entry,
   }
 }
@@ -140,7 +149,7 @@ serve(async (req) => {
       console.log(`[timelog] Collections list failed: ${listResp.status}`)
     }
 
-    let documents: TimeLogDocument[] = []
+    let rawEntries: TimeLogEntry[] = []
     let usedCollection = ''
 
     for (const col of COLLECTIONS_TO_TRY) {
@@ -154,49 +163,61 @@ serve(async (req) => {
       }
 
       const payload = await resp.json()
-      const topKeys = Object.keys(payload)
-      console.log(`[timelog] Collection '${col}' response keys: ${topKeys.join(', ')}`)
-      console.log(`[timelog] Collection '${col}' preview: ${JSON.stringify(payload).substring(0, 2000)}`)
 
-      const docs: TimeLogDocument[] = payload.value || []
-      if (docs.length > 0) {
-        documents = docs
+      // The API may return:
+      // 1. A plain array of entries (keys are 0,1,2...)
+      // 2. An object with { value: [...] }
+      let entries: TimeLogEntry[] = []
+
+      if (Array.isArray(payload)) {
+        entries = payload
+      } else if (payload && typeof payload === 'object') {
+        if (Array.isArray(payload.value)) {
+          // Could be documents or direct entries
+          const firstVal = payload.value[0]
+          if (firstVal && ('workItemId' in firstVal || 'user' in firstVal || 'date' in firstVal)) {
+            // Direct entries inside value
+            entries = payload.value
+          } else {
+            // Documents with nested entries
+            for (const doc of payload.value) {
+              entries.push(...extractEntries(doc))
+            }
+          }
+        } else {
+          // Object with numeric keys = array-like from JSON parse
+          const numericKeys = Object.keys(payload).filter(k => /^\d+$/.test(k))
+          if (numericKeys.length > 0) {
+            entries = numericKeys.map(k => payload[k] as TimeLogEntry)
+          }
+        }
+      }
+
+      if (entries.length > 0) {
+        rawEntries = entries
         usedCollection = col
-        console.log(`[timelog] Found ${docs.length} documents in collection '${col}'`)
+        console.log(`[timelog] Found ${entries.length} entries in collection '${col}'`)
+        if (entries.length > 0) {
+          console.log(`[timelog] Sample entry keys: ${Object.keys(entries[0]).join(', ')}`)
+        }
         break
       } else {
-        console.log(`[timelog] Collection '${col}' has 0 documents`)
+        console.log(`[timelog] Collection '${col}' has 0 entries`)
       }
     }
 
-    console.log(`[timelog] Final: ${documents.length} documents from collection '${usedCollection || 'none'}'`)
-
-    // ── Log raw response structure for first run validation ──────
-    if (documents.length > 0) {
-      const sample = documents[0]
-      console.log(`[timelog] Sample document keys: ${Object.keys(sample).join(', ')}`)
-      const sampleEntries = extractEntries(sample)
-      if (sampleEntries.length > 0) {
-        console.log(`[timelog] Sample entry keys: ${Object.keys(sampleEntries[0]).join(', ')}`)
-      } else {
-        console.log(`[timelog] Sample doc value type: ${typeof sample.value}, isArray: ${Array.isArray(sample.value)}`)
-        console.log(`[timelog] Sample doc value preview: ${JSON.stringify(sample.value).substring(0, 500)}`)
-      }
-    }
+    console.log(`[timelog] Final: ${rawEntries.length} entries from collection '${usedCollection || 'none'}'`)
 
     // ── Extract & normalize entries ────────────────────────────────
     const allRows: Record<string, unknown>[] = []
     let skipped = 0
 
-    for (const doc of documents) {
-      const entries = extractEntries(doc)
-      for (const entry of entries) {
-        const normalized = normalizeEntry(entry, doc.id)
-        if (normalized) {
-          allRows.push(normalized)
-        } else {
-          skipped++
-        }
+    for (const entry of rawEntries) {
+      const normalized = normalizeEntry(entry, entry.id || usedCollection)
+      if (normalized) {
+        allRows.push(normalized)
+      } else {
+        skipped++
       }
     }
 
