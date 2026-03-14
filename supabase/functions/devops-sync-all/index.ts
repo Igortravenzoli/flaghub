@@ -307,8 +307,8 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
   let processed = 0
   let withChanges = 0
 
-  for (let i = 0; i < workItemIds.length; i += 10) {
-    const batch = workItemIds.slice(i, i + 10)
+  for (let i = 0; i < workItemIds.length; i += 20) {
+    const batch = workItemIds.slice(i, i + 20)
     const batchResults = await Promise.all(
       batch.map(async (wiId) => {
         try {
