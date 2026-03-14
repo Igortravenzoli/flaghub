@@ -576,6 +576,18 @@ export default function FabricaDashboard() {
             )}
           </TabsContent>
 
+          {/* ═══════ TAB: Transbordo ═══════ */}
+          <TabsContent value="transbordo" className="space-y-5 mt-0">
+            <TransbordoTab
+              items={fab.transbordoItems}
+              transbordoPct={fab.transbordoPct}
+              transbordoCount={fab.transbordoCount}
+              transbordoTotal={fab.transbordoTotal}
+              currentSprint={fab.currentSprint}
+              isLoading={fab.isLoading}
+            />
+          </TabsContent>
+
           {/* ═══════ TAB: Sprint Board ═══════ */}
           <TabsContent value="board" className="space-y-4 mt-0">
             {fab.isLoading ? (
