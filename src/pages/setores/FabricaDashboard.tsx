@@ -368,7 +368,7 @@ export default function FabricaDashboard() {
       {fab.isError ? (
         <DashboardEmptyState variant="error" onRetry={() => fab.refetch()} />
       ) : (
-        <Tabs defaultValue="overview" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-muted/50 p-1">
             <TabsTrigger value="overview" className="gap-1.5 text-xs">
               <Zap className="h-3.5 w-3.5" />Visão Geral
