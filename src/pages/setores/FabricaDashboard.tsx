@@ -24,40 +24,27 @@ const integrations: Integration[] = [
   { name: 'Azure DevOps API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items, Sprints' },
 ];
 
-const fabricaColumns: DataTableColumn<FabricaItem>[] = [
-  { key: 'id', header: 'ID', className: 'font-mono text-xs w-16', render: r => r.web_url ? (
-    <a href={r.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono" onClick={e => e.stopPropagation()}>{r.id}</a>
-  ) : <span>{r.id}</span> },
-  { key: 'work_item_type', header: 'Tipo', render: r => {
-    const typeColors: Record<string, string> = {
-      'Product Backlog Item': 'bg-primary/15 text-primary border-primary/30',
-      'Task': 'bg-accent text-accent-foreground',
-      'Bug': 'bg-destructive/15 text-destructive border-destructive/30',
-    };
-    const typeLabels: Record<string, string> = {
-      'Product Backlog Item': 'PBI',
-      'Task': 'Task',
-      'Bug': 'Bug',
-    };
-    return <Badge variant="outline" className={`text-xs ${typeColors[r.work_item_type || ''] || ''}`}>{typeLabels[r.work_item_type || ''] || r.work_item_type || '—'}</Badge>;
-  }},
-  { key: 'title', header: 'Título', className: 'max-w-[350px] truncate' },
-  { key: 'assigned_to_display', header: 'Colaborador' },
-  { key: 'state', header: 'Status', render: r => {
-    const colors: Record<string, string> = {
-      'In Progress': 'bg-[hsl(var(--info))] text-white',
-      'Active': 'bg-[hsl(var(--info))] text-white',
-      'To Do': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
-      'New': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
-      'Done': 'bg-[hsl(var(--success))] text-white',
-      'Closed': 'bg-[hsl(var(--success))] text-white',
-      'Resolved': 'bg-[hsl(var(--success))] text-white',
-    };
-    return <Badge className={`text-xs font-mono ${colors[r.state || ''] || ''}`}>{r.state || '—'}</Badge>;
-  }},
-  { key: 'priority', header: 'Prior.', render: r => r.priority != null ? <Badge variant="secondary" className="text-xs">P{r.priority}</Badge> : '—' },
-  { key: 'iteration_path', header: 'Sprint', className: 'text-xs text-muted-foreground max-w-[120px] truncate' },
-];
+const typeColors: Record<string, string> = {
+  'Product Backlog Item': 'bg-primary/15 text-primary border-primary/30',
+  'Task': 'bg-accent text-accent-foreground',
+  'Bug': 'bg-destructive/15 text-destructive border-destructive/30',
+  'User Story': 'bg-[hsl(var(--info))]/15 text-[hsl(var(--info))]',
+};
+const typeLabels: Record<string, string> = {
+  'Product Backlog Item': 'PBI',
+  'Task': 'Task',
+  'Bug': 'Bug',
+  'User Story': 'Story',
+};
+const stateColors: Record<string, string> = {
+  'In Progress': 'bg-[hsl(var(--info))] text-white',
+  'Active': 'bg-[hsl(var(--info))] text-white',
+  'To Do': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
+  'New': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
+  'Done': 'bg-[hsl(var(--success))] text-white',
+  'Closed': 'bg-[hsl(var(--success))] text-white',
+  'Resolved': 'bg-[hsl(var(--success))] text-white',
+};
 
 export default function FabricaDashboard() {
   const filters = useDashboardFilters('mes_atual');
