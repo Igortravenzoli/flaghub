@@ -24,6 +24,13 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
+function modeValue(arr: string[]): string | null {
+  if (arr.length === 0) return null;
+  const freq: Record<string, number> = {};
+  for (const v of arr) freq[v] = (freq[v] || 0) + 1;
+  return Object.entries(freq).sort(([, a], [, b]) => b - a)[0][0];
+}
+
 export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['fabrica', 'kpis'],
@@ -51,6 +58,19 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     staleTime: 60 * 1000,
   });
 
+  // Fetch time logs for hours-based KPIs
+  const timeLogsQuery = useQuery({
+    queryKey: ['fabrica', 'time-logs'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('devops_time_logs')
+        .select('work_item_id, time_minutes');
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   const allItems = query.data || [];
 
   // Apply date filter
@@ -69,6 +89,51 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     return acc;
   }, {} as Record<string, number>);
 
+  // --- Corporate KPIs ---
+  const fabricaItemIds = new Set(items.map(i => i.id).filter(Boolean));
+  const timeLogs = (timeLogsQuery.data || []).filter(
+    tl => tl.work_item_id && fabricaItemIds.has(tl.work_item_id)
+  );
+  const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
+  const hasTimeLogs = timeLogs.length > 0;
+
+  // PBIs / User Stories count
+  const pbis = items.filter(
+    i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
+  );
+
+  // Lead Time Médio: total hours logged / PBI count
+  const leadTimeMedio = hasTimeLogs && pbis.length > 0
+    ? Math.round((totalHoursLogged / pbis.length) * 10) / 10
+    : null;
+
+  // Velocidade Média Squad: total hours logged / number of distinct sprints
+  const sprintSet = new Set(items.map(i => i.iteration_path).filter(Boolean));
+  const sprintCount = sprintSet.size;
+  const velocidadeMedia = hasTimeLogs && sprintCount > 0
+    ? Math.round((totalHoursLogged / sprintCount) * 10) / 10
+    : null;
+
+  // Transbordo (%): items in past sprints that are not done / total items with sprint
+  // Current sprint = the sprint with most active/in-progress items
+  const activeIterations = items
+    .filter(i => i.state === 'In Progress' || i.state === 'Active')
+    .map(i => i.iteration_path)
+    .filter(Boolean) as string[];
+  const currentSprint = modeValue(activeIterations) || [...sprintSet].pop() || null;
+
+  const itemsWithSprint = items.filter(i => i.iteration_path);
+  let transbordoPct: number | null = null;
+  if (currentSprint && itemsWithSprint.length > 0) {
+    const pastSprintItems = itemsWithSprint.filter(i => i.iteration_path !== currentSprint);
+    const pastNotDone = pastSprintItems.filter(
+      i => i.state !== 'Done' && i.state !== 'Closed' && i.state !== 'Resolved'
+    );
+    transbordoPct = pastSprintItems.length > 0
+      ? Math.round((pastNotDone.length / pastSprintItems.length) * 100)
+      : 0;
+  }
+
   return {
     items,
     total,
@@ -81,5 +146,12 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,
+    // Corporate KPIs
+    leadTimeMedio,
+    velocidadeMedia,
+    transbordoPct,
+    currentSprint,
+    sprintCount,
+    hasTimeLogs,
   };
 }
