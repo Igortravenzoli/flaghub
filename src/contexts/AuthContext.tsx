@@ -285,8 +285,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[Auth] Failed to check hub_area_members:', e);
         }
 
-        // User is pending only if: no role, has profile, AND no active area memberships
-        const isPending = !obfuscatedRole && userData.profile != null && !hasAreaMemberships;
+        // User is pending if: (no role OR role is operacional) AND has profile AND no active area memberships
+        const isPending = (!obfuscatedRole || obfuscatedRole === 's4') && userData.profile != null && !hasAreaMemberships;
 
         setState((prev) => {
           const nextRoleCode = obfuscatedRole ?? prev.roleCode;

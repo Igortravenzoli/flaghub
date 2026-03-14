@@ -49,11 +49,6 @@ export default function Home() {
   // Build sector cards with real data
   const sectorCards: SectorCardData[] = [
     {
-      slug: 'produtos', name: 'Produtos', icon: 'Package',
-      kpiLabel: 'Dashboard', kpiValue: null, isLoading: false,
-      path: '/setor/produtos',
-    },
-    {
       slug: 'comercial', name: 'Comercial', icon: 'TrendingUp',
       kpiLabel: 'Clientes Ativos', kpiValue: comercial.totalClientes || null,
       isLoading: comercial.isLoading, path: '/setor/comercial',
