@@ -653,6 +653,13 @@ export type Database = {
             referencedRelation: "hub_integrations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "hub_integration_endpoints_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "vw_hub_integrations_safe"
+            referencedColumns: ["id"]
+          },
         ]
       }
       hub_integrations: {
@@ -885,6 +892,13 @@ export type Database = {
             referencedRelation: "hub_integrations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "hub_raw_ingestions_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "vw_hub_integrations_safe"
+            referencedColumns: ["id"]
+          },
         ]
       }
       hub_sync_jobs: {
@@ -943,6 +957,13 @@ export type Database = {
             columns: ["integration_id"]
             isOneToOne: false
             referencedRelation: "hub_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hub_sync_jobs_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "vw_hub_integrations_safe"
             referencedColumns: ["id"]
           },
         ]
@@ -1779,6 +1800,45 @@ export type Database = {
           raw?: Json | null
           total_minutos?: number | null
           total_registros?: number | null
+        }
+        Relationships: []
+      }
+      vw_hub_integrations_safe: {
+        Row: {
+          auth_type: string | null
+          base_url: string | null
+          config: Json | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          key: string | null
+          last_health_at: string | null
+          name: string | null
+          type: string | null
+        }
+        Insert: {
+          auth_type?: string | null
+          base_url?: string | null
+          config?: never
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          key?: string | null
+          last_health_at?: string | null
+          name?: string | null
+          type?: string | null
+        }
+        Update: {
+          auth_type?: string | null
+          base_url?: string | null
+          config?: never
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          key?: string | null
+          last_health_at?: string | null
+          name?: string | null
+          type?: string | null
         }
         Relationships: []
       }
