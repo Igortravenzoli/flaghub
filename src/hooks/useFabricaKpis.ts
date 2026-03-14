@@ -120,7 +120,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('devops_work_items')
-        .select('id, tags, title, parent_id, assigned_to_display');
+        .select('id, tags, title, parent_id, assigned_to_display, area_path');
       if (error) throw error;
       return data || [];
     },
