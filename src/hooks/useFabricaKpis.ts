@@ -53,8 +53,18 @@ function sprintCompare(a: string, b: string): number {
 /** Known product tags — only these are considered "products" */
 const KNOWN_PRODUCTS = new Set([
   'FLEXX', 'FLEXXSALES', 'CONNECTSALES', 'FLEXXGO', 'FLEXXGPS',
-  'HEISHOP', 'PORTAL BROKER', 'FLEXXLEAD', 'QUICKONE',
+  'HEISHOP', 'PORTALBROKER', 'PORTAL BROKER', 'FLEXXLEAD', 'QUICKONE',
+  'CONNECTMERCHAN',
 ]);
+
+/** Canonical product name normalization */
+function normalizeProduct(tag: string): string {
+  const upper = tag.toUpperCase();
+  if (upper === 'PORTALBROKER' || upper === 'PORTAL BROKER') return 'Portal Broker';
+  if (upper === 'CONNECTMERCHAN') return 'ConnectMerchan';
+  // Title case
+  return tag.charAt(0).toUpperCase() + tag.slice(1);
+}
 
 /** Extract only known product tags from a tags string */
 function extractProducts(tags: string | null): string[] {
@@ -62,16 +72,22 @@ function extractProducts(tags: string | null): string[] {
   return tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
 }
 
-/** Extract area/squad label from area_path. e.g. "Flag.Planejamento\STAGING\Squad" → "[STAGING]" */
-function extractAreaLabel(areaPath: string | null): string {
-  if (!areaPath) return 'Sem área';
-  const parts = areaPath.split('\\');
-  // Take the second segment (first child under project) as the area label
-  if (parts.length >= 2) {
-    const area = parts[1].trim();
-    return `[${area.toUpperCase()}]`;
+/** Known fábrica/squad tags */
+const KNOWN_FABRICAS = new Set([
+  'STAGING', 'K8', 'INFRA', 'APP', 'FLEXX', 'UX/UI', 'UX', 'UI',
+]);
+
+/** Extract fábrica/squad from tags */
+function extractFabrica(tags: string | null): string | null {
+  if (!tags) return null;
+  const parts = tags.split(';').map(t => t.trim().toUpperCase());
+  for (const p of parts) {
+    if (KNOWN_FABRICAS.has(p)) {
+      if (p === 'UX' || p === 'UI') return '[UX/UI]';
+      return `[${p}]`;
+    }
   }
-  return `[${parts[0].trim().toUpperCase()}]`;
+  return null;
 }
 
 export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
