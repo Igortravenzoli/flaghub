@@ -497,6 +497,16 @@ serve(async (req) => {
       let qaRetorno = { processed: 0, withRetornos: 0 }
       let iterHistory = { processed: 0, withChanges: 0 }
 
+      // Run iteration history FIRST (highest priority, newest feature)
+      try {
+        console.log('[DevOpsSyncAll:BG] Starting iteration history sync...')
+        iterHistory = await processIterationHistory(bgAdmin)
+        console.log(`[DevOpsSyncAll:BG] Iteration history done: ${iterHistory.processed} processed, ${iterHistory.withChanges} with changes`)
+      } catch (iterErr) {
+        console.error('[DevOpsSyncAll:BG] Iteration history error:', (iterErr as Error).message)
+      }
+
+      // Then children sync
       try {
         console.log('[DevOpsSyncAll:BG] Fetching child work items (Tasks/Bugs)...')
         const { data: pbiItems } = await bgAdmin
@@ -514,18 +524,12 @@ serve(async (req) => {
         console.error('[DevOpsSyncAll:BG] Children sync error:', (childErr as Error).message)
       }
 
+      // QA retorno last
       try {
         console.log('[DevOpsSyncAll:BG] Starting QA retorno calculation...')
         qaRetorno = await processQaRetornos(bgAdmin)
       } catch (qaErr) {
         console.error('[DevOpsSyncAll:BG] QA retorno error:', (qaErr as Error).message)
-      }
-
-      try {
-        console.log('[DevOpsSyncAll:BG] Starting iteration history sync...')
-        iterHistory = await processIterationHistory(bgAdmin)
-      } catch (iterErr) {
-        console.error('[DevOpsSyncAll:BG] Iteration history error:', (iterErr as Error).message)
       }
 
       // Audit log with full results
