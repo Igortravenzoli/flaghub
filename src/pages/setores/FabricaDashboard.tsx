@@ -219,6 +219,26 @@ export default function FabricaDashboard() {
     return fab.items.filter(i => i.iteration_path === sprintFilter);
   }, [fab.items, sprintFilter]);
 
+  // Sprint-aware KPI counts
+  const sprintTotal = sprintFilteredItems.length;
+  const sprintInProgress = sprintFilteredItems.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
+  const sprintToDo = sprintFilteredItems.filter(i => i.state === 'To Do' || i.state === 'New').length;
+  const sprintDone = sprintFilteredItems.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
+
+  // Sprint-filtered transbordo items
+  const sprintTransbordoItems = useMemo(() => {
+    if (sprintFilter === 'all') return fab.transbordoItems;
+    return fab.transbordoItems.filter(i => i.iteration_path === sprintFilter || i.sprintsOverflowed.includes(sprintFilter));
+  }, [fab.transbordoItems, sprintFilter]);
+
+  const sprintTransbordoCount = sprintTransbordoItems.length;
+  const sprintTransbordoTotal = sprintFilteredItems.filter(
+    i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
+  ).length;
+  const sprintTransbordoPct = sprintTransbordoTotal > 0
+    ? Math.round((sprintTransbordoCount / sprintTransbordoTotal) * 100)
+    : 0;
+
   const filteredFabItems = useMemo(() => {
     switch (fabKpiFilter) {
       case 'in_progress': return sprintFilteredItems.filter(i => i.state === 'In Progress' || i.state === 'Active');
