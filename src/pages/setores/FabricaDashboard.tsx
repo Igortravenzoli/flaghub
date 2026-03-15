@@ -396,6 +396,17 @@ export default function FabricaDashboard() {
       <TableCell>
         {item.priority != null ? <Badge variant="secondary" className="text-xs">P{item.priority}</Badge> : '—'}
       </TableCell>
+      <TableCell className="text-center">
+        {(() => {
+          const count = item.id != null ? transbordoMap.get(item.id) || 0 : 0;
+          if (count === 0) return <span className="text-muted-foreground/40">—</span>;
+          return (
+            <Badge variant={count >= 3 ? 'destructive' : 'secondary'} className="text-xs font-mono">
+              {count}
+            </Badge>
+          );
+        })()}
+      </TableCell>
       <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{item.iteration_path || '—'}</TableCell>
     </>
   );
