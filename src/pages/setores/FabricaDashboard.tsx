@@ -193,6 +193,8 @@ export default function FabricaDashboard() {
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
+  const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
 
   const colabChartData = useMemo(() =>
@@ -298,7 +300,26 @@ export default function FabricaDashboard() {
     return { parentRows: filteredParents, childrenMap: filteredCMap, orphanRows: filteredOrphans };
   }, [filteredFabItems, search]);
 
-  const allTopLevel = useMemo(() => [...parentRows, ...orphanRows], [parentRows, orphanRows]);
+  // Transbordo lookup: item id -> overflow count
+  const transbordoMap = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const t of fab.transbordoItems) {
+      if (t.id != null) m.set(t.id, t.overflowCount);
+    }
+    return m;
+  }, [fab.transbordoItems]);
+
+  const allTopLevel = useMemo(() => {
+    const items = [...parentRows, ...orphanRows];
+    if (boardSortField === 'transbordo') {
+      items.sort((a, b) => {
+        const ta = transbordoMap.get(a.id!) || 0;
+        const tb = transbordoMap.get(b.id!) || 0;
+        return boardSortDir === 'desc' ? tb - ta : ta - tb;
+      });
+    }
+    return items;
+  }, [parentRows, orphanRows, boardSortField, boardSortDir, transbordoMap]);
   const totalPages = Math.max(1, Math.ceil(allTopLevel.length / PAGE_SIZE));
   const pagedTopLevel = allTopLevel.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -312,6 +333,16 @@ export default function FabricaDashboard() {
   }, []);
 
   const toggleFab = (f: FabKpiFilter) => { setFabKpiFilter(prev => prev === f ? 'all' : f); setPage(0); };
+
+  const toggleBoardSort = (field: 'transbordo') => {
+    if (boardSortField === field) {
+      setBoardSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    } else {
+      setBoardSortField(field);
+      setBoardSortDir('desc');
+    }
+    setPage(0);
+  };
 
   const handleExportCSV = () => exportCSV({
     title: 'Sprint Board', area: 'Fábrica', periodLabel: filters.presetLabel,
@@ -364,6 +395,17 @@ export default function FabricaDashboard() {
       </TableCell>
       <TableCell>
         {item.priority != null ? <Badge variant="secondary" className="text-xs">P{item.priority}</Badge> : '—'}
+      </TableCell>
+      <TableCell className="text-center">
+        {(() => {
+          const count = item.id != null ? transbordoMap.get(item.id) || 0 : 0;
+          if (count === 0) return <span className="text-muted-foreground/40">—</span>;
+          return (
+            <Badge variant={count >= 3 ? 'destructive' : 'secondary'} className="text-xs font-mono">
+              {count}
+            </Badge>
+          );
+        })()}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{item.iteration_path || '—'}</TableCell>
     </>
@@ -697,6 +739,17 @@ export default function FabricaDashboard() {
                             <TableHead className="text-xs font-semibold">Colaborador</TableHead>
                             <TableHead className="text-xs font-semibold">Status</TableHead>
                             <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                            <TableHead 
+                              className="text-xs font-semibold cursor-pointer select-none hover:text-primary transition-colors text-center"
+                              onClick={() => toggleBoardSort('transbordo')}
+                            >
+                              <span className="inline-flex items-center gap-1">
+                                Transb.
+                                {boardSortField === 'transbordo' && (
+                                  <span className="text-primary">{boardSortDir === 'desc' ? '↓' : '↑'}</span>
+                                )}
+                              </span>
+                            </TableHead>
                             <TableHead className="text-xs font-semibold">Sprint</TableHead>
                           </TableRow>
                         </TableHeader>
