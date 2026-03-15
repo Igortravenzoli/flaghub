@@ -300,7 +300,26 @@ export default function FabricaDashboard() {
     return { parentRows: filteredParents, childrenMap: filteredCMap, orphanRows: filteredOrphans };
   }, [filteredFabItems, search]);
 
-  const allTopLevel = useMemo(() => [...parentRows, ...orphanRows], [parentRows, orphanRows]);
+  // Transbordo lookup: item id -> overflow count
+  const transbordoMap = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const t of fab.transbordoItems) {
+      if (t.id != null) m.set(t.id, t.overflowCount);
+    }
+    return m;
+  }, [fab.transbordoItems]);
+
+  const allTopLevel = useMemo(() => {
+    const items = [...parentRows, ...orphanRows];
+    if (boardSortField === 'transbordo') {
+      items.sort((a, b) => {
+        const ta = transbordoMap.get(a.id!) || 0;
+        const tb = transbordoMap.get(b.id!) || 0;
+        return boardSortDir === 'desc' ? tb - ta : ta - tb;
+      });
+    }
+    return items;
+  }, [parentRows, orphanRows, boardSortField, boardSortDir, transbordoMap]);
   const totalPages = Math.max(1, Math.ceil(allTopLevel.length / PAGE_SIZE));
   const pagedTopLevel = allTopLevel.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
