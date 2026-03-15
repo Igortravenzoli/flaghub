@@ -639,8 +639,6 @@ export default function FabricaDashboard() {
                 <div className="p-4 border-b border-border"><Skeleton className="h-5 w-40" /></div>
                 <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
               </Card>
-            ) : allTopLevel.length === 0 ? (
-              <DashboardEmptyState description="Nenhum work item encontrado para o período selecionado." />
             ) : (
               <Card className="overflow-hidden animate-fade-in">
                 <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
@@ -674,83 +672,99 @@ export default function FabricaDashboard() {
                   </div>
                 </div>
 
-                <div className="overflow-auto max-h-[600px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30">
-                        <TableHead className="w-8" />
-                        <TableHead className="text-xs font-semibold w-16">ID</TableHead>
-                        <TableHead className="text-xs font-semibold">Tipo</TableHead>
-                        <TableHead className="text-xs font-semibold">Título</TableHead>
-                        <TableHead className="text-xs font-semibold">Colaborador</TableHead>
-                        <TableHead className="text-xs font-semibold">Status</TableHead>
-                        <TableHead className="text-xs font-semibold">Prior.</TableHead>
-                        <TableHead className="text-xs font-semibold">Sprint</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pagedTopLevel.map(item => {
-                        const children = childrenMap.get(item.id!) || [];
-                        const hasChildren = children.length > 0;
-                        const isExpanded = expandedPbis.has(item.id!);
-
-                        return (
-                          <>{/* Parent row */}
-                            <TableRow
-                              key={`p-${item.id!}`}
-                              className={`hover:bg-muted/30 transition-colors cursor-pointer ${hasChildren ? 'font-medium' : ''}`}
-                              onClick={() => setDrawerItem(item)}
-                            >
-                              <TableCell className="w-8 px-2">
-                                {hasChildren ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                    onClick={e => { e.stopPropagation(); toggleExpand(item.id!); }}
-                                  >
-                                    {isExpanded
-                                      ? <ChevronDown className="h-4 w-4" />
-                                      : <div className="flex items-center gap-0.5"><ChevronRight className="h-4 w-4" /><span className="text-[10px] text-muted-foreground">{children.length}</span></div>
-                                    }
-                                  </Button>
-                                ) : <span className="inline-block w-6" />}
-                              </TableCell>
-                              {renderItemCells(item)}
-                            </TableRow>
-
-                            {/* Child rows */}
-                            {hasChildren && isExpanded && children.map(child => (
-                              <TableRow
-                                key={`c-${child.id!}`}
-                                className="hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5 border-l-2 border-l-primary/20"
-                                onClick={() => setDrawerItem(child)}
-                              >
-                                <TableCell className="w-8 px-2">
-                                  <span className="inline-block w-6 text-center text-muted-foreground/40 text-xs">└</span>
-                                </TableCell>
-                                {renderItemCells(child, true)}
-                              </TableRow>
-                            ))}
-                          </>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {allTopLevel.length > PAGE_SIZE && (
-                  <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{allTopLevel.length} itens • Página {page + 1} de {totalPages}</span>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-                        <ChevronLeft className="h-4 w-4" />
+                {allTopLevel.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Search className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      {search ? `Nenhum resultado para "${search}"` : 'Nenhum work item encontrado para o período selecionado.'}
+                    </p>
+                    {search && (
+                      <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => setSearch('')}>
+                        Limpar busca
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    )}
                   </div>
+                ) : (
+                  <>
+                    <div className="overflow-auto max-h-[600px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead className="w-8" />
+                            <TableHead className="text-xs font-semibold w-16">ID</TableHead>
+                            <TableHead className="text-xs font-semibold">Tipo</TableHead>
+                            <TableHead className="text-xs font-semibold">Título</TableHead>
+                            <TableHead className="text-xs font-semibold">Colaborador</TableHead>
+                            <TableHead className="text-xs font-semibold">Status</TableHead>
+                            <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                            <TableHead className="text-xs font-semibold">Sprint</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pagedTopLevel.map(item => {
+                            const children = childrenMap.get(item.id!) || [];
+                            const hasChildren = children.length > 0;
+                            const isExpanded = expandedPbis.has(item.id!);
+
+                            return (
+                              <>{/* Parent row */}
+                                <TableRow
+                                  key={`p-${item.id!}`}
+                                  className={`hover:bg-muted/30 transition-colors cursor-pointer ${hasChildren ? 'font-medium' : ''}`}
+                                  onClick={() => setDrawerItem(item)}
+                                >
+                                  <TableCell className="w-8 px-2">
+                                    {hasChildren ? (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                        onClick={e => { e.stopPropagation(); toggleExpand(item.id!); }}
+                                      >
+                                        {isExpanded
+                                          ? <ChevronDown className="h-4 w-4" />
+                                          : <div className="flex items-center gap-0.5"><ChevronRight className="h-4 w-4" /><span className="text-[10px] text-muted-foreground">{children.length}</span></div>
+                                        }
+                                      </Button>
+                                    ) : <span className="inline-block w-6" />}
+                                  </TableCell>
+                                  {renderItemCells(item)}
+                                </TableRow>
+
+                                {/* Child rows */}
+                                {hasChildren && isExpanded && children.map(child => (
+                                  <TableRow
+                                    key={`c-${child.id!}`}
+                                    className="hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5 border-l-2 border-l-primary/20"
+                                    onClick={() => setDrawerItem(child)}
+                                  >
+                                    <TableCell className="w-8 px-2">
+                                      <span className="inline-block w-6 text-center text-muted-foreground/40 text-xs">└</span>
+                                    </TableCell>
+                                    {renderItemCells(child, true)}
+                                  </TableRow>
+                                ))}
+                              </>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {allTopLevel.length > PAGE_SIZE && (
+                      <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{allTopLevel.length} itens • Página {page + 1} de {totalPages}</span>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </Card>
             )}
