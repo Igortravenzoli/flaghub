@@ -84,7 +84,32 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
   // KPI derivations
   const criticalCount = items.filter(i => i.overflowCount >= 3).length;
   const avgOverflow = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.overflowCount, 0) / items.length * 10) / 10 : 0;
-  const topOffender = items.length > 0 ? items.reduce((a, b) => a.overflowCount > b.overflowCount ? a : b) : null;
+
+  // Top 10 by recurrence
+  const top10 = useMemo(() =>
+    [...items].sort((a, b) => b.overflowCount - a.overflowCount).slice(0, 10),
+    [items]
+  );
+
+  // Transbordos por Sprint (replaces frequency distribution)
+  const bySprint = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of items) {
+      for (const sp of item.sprintsOverflowed) {
+        const label = sp.split('\\').pop() || sp;
+        map[label] = (map[label] || 0) + 1;
+      }
+    }
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => {
+        // Try to sort by sprint number
+        const numA = parseInt(a.name.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.name.replace(/\D/g, '')) || 0;
+        return numA - numB;
+      })
+      .slice(-15); // last 15 sprints
+  }, [items]);
 
   // By responsible
   const byResponsible = useMemo(() => {
@@ -101,17 +126,6 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
       .slice(0, 10);
   }, [items]);
 
-  // By overflow frequency distribution
-  const frequencyDist = useMemo(() => {
-    const map: Record<number, number> = {};
-    for (const item of items) {
-      map[item.overflowCount] = (map[item.overflowCount] || 0) + 1;
-    }
-    return Object.entries(map)
-      .map(([count, qty]) => ({ name: `${count}×`, value: qty, count: Number(count) }))
-      .sort((a, b) => a.count - b.count);
-  }, [items]);
-
   // By state
   const byState = useMemo(() => {
     const map: Record<string, number> = {};
@@ -126,11 +140,9 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
   const processedItems = useMemo(() => {
     let result = [...items];
     
-    // Filter by severity
     if (filterSeverity === 'critical') result = result.filter(i => i.overflowCount >= 3);
     else if (filterSeverity === 'warning') result = result.filter(i => i.overflowCount >= 2 && i.overflowCount < 3);
 
-    // Search
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(i =>
@@ -139,7 +151,6 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
       );
     }
 
-    // Sort
     result.sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
@@ -227,27 +238,27 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Frequency distribution */}
-        {frequencyDist.length > 0 && (
-          <Card className="animate-fade-in" style={{ animationDelay: '300ms' }}>
+        {/* Transbordos por Sprint (replaces frequency) */}
+        {bySprint.length > 0 && (
+          <Card className="lg:col-span-2 animate-fade-in" style={{ animationDelay: '300ms' }}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Repeat className="h-4 w-4 text-primary" />Distribuição por Frequência
+                <Repeat className="h-4 w-4 text-primary" />Transbordos por Sprint
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={frequencyDist}>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={bySprint}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                  <XAxis dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" angle={-35} textAnchor="end" height={60} />
                   <YAxis fontSize={11} stroke="hsl(var(--muted-foreground))" />
                   <Tooltip
                     contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                    formatter={(v: number) => [`${v} PBIs`, 'Quantidade']}
+                    formatter={(v: number) => [`${v} PBIs`, 'Transbordos']}
                   />
                   <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                    {frequencyDist.map((entry, idx) => (
-                      <Cell key={idx} fill={entry.count >= 3 ? 'hsl(var(--destructive))' : entry.count >= 2 ? 'hsl(43, 85%, 46%)' : 'hsl(var(--primary))'} />
+                    {bySprint.map((_, idx) => (
+                      <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -256,34 +267,9 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
           </Card>
         )}
 
-        {/* By responsible */}
-        {byResponsible.length > 0 && (
-          <Card className="animate-fade-in" style={{ animationDelay: '400ms' }}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Users className="h-4 w-4 text-primary" />Por Responsável
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={byResponsible} layout="vertical" margin={{ left: 0, right: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                  <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={90} />
-                  <Tooltip
-                    contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                    formatter={(v: number) => [`${v} PBIs`, 'Itens']}
-                  />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-
         {/* By state pie */}
         {byState.length > 0 && (
-          <Card className="animate-fade-in" style={{ animationDelay: '500ms' }}>
+          <Card className="animate-fade-in" style={{ animationDelay: '400ms' }}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Filter className="h-4 w-4 text-primary" />Por Estado
@@ -312,17 +298,87 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
         )}
       </div>
 
-      {/* Top offender callout */}
-      {topOffender && topOffender.overflowCount >= 3 && (
-        <Card className="border-destructive/30 bg-destructive/5 animate-fade-in">
-          <CardContent className="p-4 flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-foreground">Maior Recorrência</p>
-              <p className="text-sm text-muted-foreground">
-                <a href={topOffender.web_url || '#'} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono">#{topOffender.id}</a>
-                {' '}{topOffender.title} — <strong>{topOffender.overflowCount} transbordos</strong> por {topOffender.sprintsOverflowed.length} sprints
-              </p>
+      {/* By responsible chart */}
+      {byResponsible.length > 0 && (
+        <Card className="animate-fade-in" style={{ animationDelay: '450ms' }}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" />Transbordos por Responsável
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={Math.max(180, byResponsible.length * 28)}>
+              <BarChart data={byResponsible} layout="vertical" margin={{ left: 0, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={90} />
+                <Tooltip
+                  contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                  formatter={(v: number) => [`${v} PBIs`, 'Itens']}
+                />
+                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Top 10 maior recorrência */}
+      {top10.length > 0 && (
+        <Card className="border-destructive/20 animate-fade-in" style={{ animationDelay: '500ms' }}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              Top 10 — Maior Recorrência de Transbordo
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-destructive/5">
+                    <TableHead className="text-xs font-semibold w-10">#</TableHead>
+                    <TableHead className="text-xs font-semibold w-16">ID</TableHead>
+                    <TableHead className="text-xs font-semibold">Título</TableHead>
+                    <TableHead className="text-xs font-semibold">Responsável</TableHead>
+                    <TableHead className="text-xs font-semibold">Estado</TableHead>
+                    <TableHead className="text-xs font-semibold text-center">Transbordos</TableHead>
+                    <TableHead className="text-xs font-semibold">Sprints</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {top10.map((item, idx) => (
+                    <TableRow key={item.id} className={`hover:bg-muted/30 ${idx < 3 ? 'bg-destructive/5' : ''}`}>
+                      <TableCell className="font-bold text-sm text-muted-foreground">{idx + 1}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {item.web_url ? (
+                          <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.id}</a>
+                        ) : item.id}
+                      </TableCell>
+                      <TableCell className="text-sm max-w-[250px]"><span className="line-clamp-1">{item.title || '—'}</span></TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{item.assigned_to_display || '—'}</TableCell>
+                      <TableCell>
+                        <Badge className={`text-xs font-mono ${stateColors[item.state || ''] || ''}`}>{item.state || '—'}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="destructive" className="text-xs font-bold">{item.overflowCount}×</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {item.sprintsOverflowed.slice(0, 4).map((sp, i) => (
+                            <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0 whitespace-nowrap">
+                              {sp.split('\\').pop()}
+                            </Badge>
+                          ))}
+                          {item.sprintsOverflowed.length > 4 && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">+{item.sprintsOverflowed.length - 4}</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>

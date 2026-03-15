@@ -97,17 +97,19 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     staleTime: 60 * 1000,
   });
 
-  // ── Time logs: server-side filtered by date range (97K+ rows!) ──
+  // ── Time logs: server-side filtered by date range ──
+  const fromStr = dateFrom ? dateFrom.toISOString().split('T')[0] : undefined;
+  const toStr = dateTo ? dateTo.toISOString().split('T')[0] : undefined;
+
   const timeLogsQuery = useQuery({
-    queryKey: ['fabrica', 'time-logs-full', dateFrom?.toISOString(), dateTo?.toISOString()],
+    queryKey: ['fabrica', 'time-logs', fromStr, toStr],
     queryFn: async () => {
       return fetchAllRows<{ work_item_id: number | null; time_minutes: number | null; user_name: string | null; log_date: string | null }>((from, to) => {
         let q = supabase
           .from('devops_time_logs')
           .select('work_item_id, time_minutes, user_name, log_date');
-        // Server-side date filter — critical for performance with 97K+ rows
-        if (dateFrom) q = q.gte('log_date', dateFrom.toISOString().split('T')[0]);
-        if (dateTo) q = q.lte('log_date', dateTo.toISOString().split('T')[0]);
+        if (fromStr) q = q.gte('log_date', fromStr);
+        if (toStr) q = q.lte('log_date', toStr);
         return q.range(from, to);
       });
     },
@@ -147,7 +149,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     return acc;
   }, {} as Record<string, number>);
 
-  // ── Timelog aggregations (already server-side filtered) ──
+  // ── Timelog aggregations ──
   const timeLogs = timeLogsQuery.data || [];
   const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = timeLogs.length > 0;
@@ -250,6 +252,9 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
 
   const sprintSet = new Set(items.map(i => i.iteration_path).filter(Boolean) as string[]);
   const sprintCount = sprintSet.size;
+  const sortedSprints = [...sprintSet].sort(sprintCompare);
+  const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
+
   let velocidadeMedia: number | null = null;
   let velocidadeSource: 'timelog' | 'effort' | null = null;
 
@@ -271,9 +276,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   }
 
   // Transbordo — PBIs with iteration_history changes
-  const sortedSprints = [...sprintSet].sort(sprintCompare);
-  const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
-
   let transbordoPct: number | null = null;
   let transbordoCount = 0;
   let transbordoTotal = 0;
@@ -338,6 +340,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     transbordoTotal,
     transbordoItems,
     currentSprint,
+    sortedSprints,
     sprintCount,
     hasTimeLogs,
     totalHoursLogged,
