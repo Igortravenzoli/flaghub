@@ -192,6 +192,7 @@ export default function FabricaDashboard() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
+  const [sprintFilter, setSprintFilter] = useState<string>('all');
   const PAGE_SIZE = 25;
 
   const colabChartData = useMemo(() =>
