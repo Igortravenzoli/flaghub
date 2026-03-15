@@ -334,6 +334,16 @@ export default function FabricaDashboard() {
 
   const toggleFab = (f: FabKpiFilter) => { setFabKpiFilter(prev => prev === f ? 'all' : f); setPage(0); };
 
+  const toggleBoardSort = (field: 'transbordo') => {
+    if (boardSortField === field) {
+      setBoardSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    } else {
+      setBoardSortField(field);
+      setBoardSortDir('desc');
+    }
+    setPage(0);
+  };
+
   const handleExportCSV = () => exportCSV({
     title: 'Sprint Board', area: 'Fábrica', periodLabel: filters.presetLabel,
     columns: ['id', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path'],
