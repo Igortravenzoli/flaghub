@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
@@ -191,6 +192,7 @@ export default function FabricaDashboard() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
+  const [sprintFilter, setSprintFilter] = useState<string>('all');
   const PAGE_SIZE = 25;
 
   const colabChartData = useMemo(() =>
@@ -211,14 +213,20 @@ export default function FabricaDashboard() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [fab.items]);
 
+  // Apply sprint filter first, then KPI filter
+  const sprintFilteredItems = useMemo(() => {
+    if (sprintFilter === 'all') return fab.items;
+    return fab.items.filter(i => i.iteration_path === sprintFilter);
+  }, [fab.items, sprintFilter]);
+
   const filteredFabItems = useMemo(() => {
     switch (fabKpiFilter) {
-      case 'in_progress': return fab.items.filter(i => i.state === 'In Progress' || i.state === 'Active');
-      case 'todo': return fab.items.filter(i => i.state === 'To Do' || i.state === 'New');
-      case 'done': return fab.items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
-      default: return fab.items;
+      case 'in_progress': return sprintFilteredItems.filter(i => i.state === 'In Progress' || i.state === 'Active');
+      case 'todo': return sprintFilteredItems.filter(i => i.state === 'To Do' || i.state === 'New');
+      case 'done': return sprintFilteredItems.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
+      default: return sprintFilteredItems;
     }
-  }, [fab.items, fabKpiFilter]);
+  }, [sprintFilteredItems, fabKpiFilter]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
@@ -353,17 +361,33 @@ export default function FabricaDashboard() {
         )}
       </div>
 
-      <DashboardFilterBar
-        preset={filters.preset}
-        onPresetChange={(p) => { filters.setPreset(p); setFabKpiFilter('all'); setPage(0); }}
-        presetLabel={filters.presetLabel}
-        dateFrom={filters.dateFrom}
-        dateTo={filters.dateTo}
-        onCustomRange={filters.setCustomRange}
-        onRefresh={() => fab.refetch()}
-        onExportCSV={handleExportCSV}
-        onExportPDF={handleExportPDF}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <DashboardFilterBar
+          preset={filters.preset}
+          onPresetChange={(p) => { filters.setPreset(p); setFabKpiFilter('all'); setPage(0); }}
+          presetLabel={filters.presetLabel}
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
+          onCustomRange={filters.setCustomRange}
+          onRefresh={() => fab.refetch()}
+          onExportCSV={handleExportCSV}
+          onExportPDF={handleExportPDF}
+        />
+        {/* Sprint filter */}
+        {fab.sortedSprints.length > 0 && (
+          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setFabKpiFilter('all'); setPage(0); }}>
+            <SelectTrigger className="w-[200px] h-8 text-xs">
+              <SelectValue placeholder="Sprint" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Sprints</SelectItem>
+              {[...fab.sortedSprints].reverse().map(sp => (
+                <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       {fab.isError ? (
         <DashboardEmptyState variant="error" onRetry={() => fab.refetch()} />
