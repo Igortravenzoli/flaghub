@@ -134,9 +134,9 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const INFRA_PREFIX = '[INFRA]';
   const nonInfraItems = allItems.filter(i => !i.title?.startsWith(INFRA_PREFIX));
 
-  const items = (dateFrom && dateTo)
-    ? nonInfraItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
-    : nonInfraItems;
+  // Don't filter work items by date — the view already returns relevant items.
+  // Date filtering applies only to time logs. Sprint filter handles sprint-level filtering.
+  const items = nonInfraItems;
 
   const total = items.length;
   const inProgress = items.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
