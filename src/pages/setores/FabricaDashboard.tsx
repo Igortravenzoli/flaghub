@@ -213,14 +213,20 @@ export default function FabricaDashboard() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [fab.items]);
 
+  // Apply sprint filter first, then KPI filter
+  const sprintFilteredItems = useMemo(() => {
+    if (sprintFilter === 'all') return fab.items;
+    return fab.items.filter(i => i.iteration_path === sprintFilter);
+  }, [fab.items, sprintFilter]);
+
   const filteredFabItems = useMemo(() => {
     switch (fabKpiFilter) {
-      case 'in_progress': return fab.items.filter(i => i.state === 'In Progress' || i.state === 'Active');
-      case 'todo': return fab.items.filter(i => i.state === 'To Do' || i.state === 'New');
-      case 'done': return fab.items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
-      default: return fab.items;
+      case 'in_progress': return sprintFilteredItems.filter(i => i.state === 'In Progress' || i.state === 'Active');
+      case 'todo': return sprintFilteredItems.filter(i => i.state === 'To Do' || i.state === 'New');
+      case 'done': return sprintFilteredItems.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
+      default: return sprintFilteredItems;
     }
-  }, [fab.items, fabKpiFilter]);
+  }, [sprintFilteredItems, fabKpiFilter]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
