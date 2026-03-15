@@ -739,6 +739,17 @@ export default function FabricaDashboard() {
                             <TableHead className="text-xs font-semibold">Colaborador</TableHead>
                             <TableHead className="text-xs font-semibold">Status</TableHead>
                             <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                            <TableHead 
+                              className="text-xs font-semibold cursor-pointer select-none hover:text-primary transition-colors text-center"
+                              onClick={() => toggleBoardSort('transbordo')}
+                            >
+                              <span className="inline-flex items-center gap-1">
+                                Transb.
+                                {boardSortField === 'transbordo' && (
+                                  <span className="text-primary">{boardSortDir === 'desc' ? '↓' : '↑'}</span>
+                                )}
+                              </span>
+                            </TableHead>
                             <TableHead className="text-xs font-semibold">Sprint</TableHead>
                           </TableRow>
                         </TableHeader>
