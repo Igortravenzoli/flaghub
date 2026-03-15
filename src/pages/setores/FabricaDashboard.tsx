@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
