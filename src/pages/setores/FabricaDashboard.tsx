@@ -361,17 +361,33 @@ export default function FabricaDashboard() {
         )}
       </div>
 
-      <DashboardFilterBar
-        preset={filters.preset}
-        onPresetChange={(p) => { filters.setPreset(p); setFabKpiFilter('all'); setPage(0); }}
-        presetLabel={filters.presetLabel}
-        dateFrom={filters.dateFrom}
-        dateTo={filters.dateTo}
-        onCustomRange={filters.setCustomRange}
-        onRefresh={() => fab.refetch()}
-        onExportCSV={handleExportCSV}
-        onExportPDF={handleExportPDF}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <DashboardFilterBar
+          preset={filters.preset}
+          onPresetChange={(p) => { filters.setPreset(p); setFabKpiFilter('all'); setPage(0); }}
+          presetLabel={filters.presetLabel}
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
+          onCustomRange={filters.setCustomRange}
+          onRefresh={() => fab.refetch()}
+          onExportCSV={handleExportCSV}
+          onExportPDF={handleExportPDF}
+        />
+        {/* Sprint filter */}
+        {fab.sortedSprints.length > 0 && (
+          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setFabKpiFilter('all'); setPage(0); }}>
+            <SelectTrigger className="w-[200px] h-8 text-xs">
+              <SelectValue placeholder="Sprint" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Sprints</SelectItem>
+              {[...fab.sortedSprints].reverse().map(sp => (
+                <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       {fab.isError ? (
         <DashboardEmptyState variant="error" onRetry={() => fab.refetch()} />
