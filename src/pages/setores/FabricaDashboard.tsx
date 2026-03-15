@@ -219,6 +219,26 @@ export default function FabricaDashboard() {
     return fab.items.filter(i => i.iteration_path === sprintFilter);
   }, [fab.items, sprintFilter]);
 
+  // Sprint-aware KPI counts
+  const sprintTotal = sprintFilteredItems.length;
+  const sprintInProgress = sprintFilteredItems.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
+  const sprintToDo = sprintFilteredItems.filter(i => i.state === 'To Do' || i.state === 'New').length;
+  const sprintDone = sprintFilteredItems.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
+
+  // Sprint-filtered transbordo items
+  const sprintTransbordoItems = useMemo(() => {
+    if (sprintFilter === 'all') return fab.transbordoItems;
+    return fab.transbordoItems.filter(i => i.iteration_path === sprintFilter || i.sprintsOverflowed.includes(sprintFilter));
+  }, [fab.transbordoItems, sprintFilter]);
+
+  const sprintTransbordoCount = sprintTransbordoItems.length;
+  const sprintTransbordoTotal = sprintFilteredItems.filter(
+    i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
+  ).length;
+  const sprintTransbordoPct = sprintTransbordoTotal > 0
+    ? Math.round((sprintTransbordoCount / sprintTransbordoTotal) * 100)
+    : 0;
+
   const filteredFabItems = useMemo(() => {
     switch (fabKpiFilter) {
       case 'in_progress': return sprintFilteredItems.filter(i => i.state === 'In Progress' || i.state === 'Active');
@@ -402,9 +422,9 @@ export default function FabricaDashboard() {
             </TabsTrigger>
             <TabsTrigger value="transbordo" className="gap-1.5 text-xs">
               <AlertTriangle className="h-3.5 w-3.5" />Transbordo
-              {fab.transbordoCount > 0 && (
-                <Badge variant={fab.transbordoPct != null && fab.transbordoPct > 50 ? 'destructive' : 'secondary'} className="text-[10px] ml-1 px-1.5 py-0">
-                  {fab.transbordoCount}
+              {sprintTransbordoCount > 0 && (
+                <Badge variant={sprintTransbordoPct != null && sprintTransbordoPct > 50 ? 'destructive' : 'secondary'} className="text-[10px] ml-1 px-1.5 py-0">
+                  {sprintTransbordoCount}
                 </Badge>
               )}
             </TabsTrigger>
@@ -417,10 +437,10 @@ export default function FabricaDashboard() {
           <TabsContent value="overview" className="space-y-5 mt-0">
             {/* Hero KPI row */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <HeroKpiCard label="Total" value={fab.total} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
-              <HeroKpiCard label="Em Progresso" value={fab.inProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
-              <HeroKpiCard label="To Do" value={fab.toDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
-              <HeroKpiCard label="Done" value={fab.done} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
+              <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
+              <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
+              <HeroKpiCard label="To Do" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
+              <HeroKpiCard label="Done" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
             </div>
 
             {/* Corporate KPIs */}
@@ -446,13 +466,13 @@ export default function FabricaDashboard() {
               />
               <HeroKpiCard 
                 label="Transbordo" 
-                value={fab.transbordoPct != null ? `${fab.transbordoPct}%` : null} 
+                value={sprintTransbordoPct != null ? `${sprintTransbordoPct}%` : null} 
                 icon={AlertTriangle} 
                 isLoading={fab.isLoading} 
                 delay={460}
-                accent={fab.transbordoPct != null && fab.transbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
-                description={fab.transbordoCount > 0 ? `${fab.transbordoCount} de ${fab.transbordoTotal} itens` : 'Itens não entregues na sprint'}
-                onClick={() => fab.transbordoItems.length > 0 && setActiveTab('transbordo')}
+                accent={sprintTransbordoPct != null && sprintTransbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
+                description={sprintTransbordoCount > 0 ? `${sprintTransbordoCount} de ${sprintTransbordoTotal} itens` : 'Itens não entregues na sprint'}
+                onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('transbordo')}
               />
               <HeroKpiCard 
                 label="Capacidade" 
@@ -603,11 +623,11 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Transbordo ═══════ */}
           <TabsContent value="transbordo" className="space-y-5 mt-0">
             <TransbordoTab
-              items={fab.transbordoItems}
-              transbordoPct={fab.transbordoPct}
-              transbordoCount={fab.transbordoCount}
-              transbordoTotal={fab.transbordoTotal}
-              currentSprint={fab.currentSprint}
+              items={sprintTransbordoItems}
+              transbordoPct={sprintTransbordoPct}
+              transbordoCount={sprintTransbordoCount}
+              transbordoTotal={sprintTransbordoTotal}
+              currentSprint={sprintFilter !== 'all' ? sprintFilter : fab.currentSprint}
               isLoading={fab.isLoading}
             />
           </TabsContent>
@@ -619,8 +639,6 @@ export default function FabricaDashboard() {
                 <div className="p-4 border-b border-border"><Skeleton className="h-5 w-40" /></div>
                 <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
               </Card>
-            ) : allTopLevel.length === 0 ? (
-              <DashboardEmptyState description="Nenhum work item encontrado para o período selecionado." />
             ) : (
               <Card className="overflow-hidden animate-fade-in">
                 <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
@@ -654,83 +672,99 @@ export default function FabricaDashboard() {
                   </div>
                 </div>
 
-                <div className="overflow-auto max-h-[600px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30">
-                        <TableHead className="w-8" />
-                        <TableHead className="text-xs font-semibold w-16">ID</TableHead>
-                        <TableHead className="text-xs font-semibold">Tipo</TableHead>
-                        <TableHead className="text-xs font-semibold">Título</TableHead>
-                        <TableHead className="text-xs font-semibold">Colaborador</TableHead>
-                        <TableHead className="text-xs font-semibold">Status</TableHead>
-                        <TableHead className="text-xs font-semibold">Prior.</TableHead>
-                        <TableHead className="text-xs font-semibold">Sprint</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pagedTopLevel.map(item => {
-                        const children = childrenMap.get(item.id!) || [];
-                        const hasChildren = children.length > 0;
-                        const isExpanded = expandedPbis.has(item.id!);
-
-                        return (
-                          <>{/* Parent row */}
-                            <TableRow
-                              key={`p-${item.id!}`}
-                              className={`hover:bg-muted/30 transition-colors cursor-pointer ${hasChildren ? 'font-medium' : ''}`}
-                              onClick={() => setDrawerItem(item)}
-                            >
-                              <TableCell className="w-8 px-2">
-                                {hasChildren ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                    onClick={e => { e.stopPropagation(); toggleExpand(item.id!); }}
-                                  >
-                                    {isExpanded
-                                      ? <ChevronDown className="h-4 w-4" />
-                                      : <div className="flex items-center gap-0.5"><ChevronRight className="h-4 w-4" /><span className="text-[10px] text-muted-foreground">{children.length}</span></div>
-                                    }
-                                  </Button>
-                                ) : <span className="inline-block w-6" />}
-                              </TableCell>
-                              {renderItemCells(item)}
-                            </TableRow>
-
-                            {/* Child rows */}
-                            {hasChildren && isExpanded && children.map(child => (
-                              <TableRow
-                                key={`c-${child.id!}`}
-                                className="hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5 border-l-2 border-l-primary/20"
-                                onClick={() => setDrawerItem(child)}
-                              >
-                                <TableCell className="w-8 px-2">
-                                  <span className="inline-block w-6 text-center text-muted-foreground/40 text-xs">└</span>
-                                </TableCell>
-                                {renderItemCells(child, true)}
-                              </TableRow>
-                            ))}
-                          </>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {allTopLevel.length > PAGE_SIZE && (
-                  <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{allTopLevel.length} itens • Página {page + 1} de {totalPages}</span>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-                        <ChevronLeft className="h-4 w-4" />
+                {allTopLevel.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <Search className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      {search ? `Nenhum resultado para "${search}"` : 'Nenhum work item encontrado para o período selecionado.'}
+                    </p>
+                    {search && (
+                      <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => setSearch('')}>
+                        Limpar busca
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    )}
                   </div>
+                ) : (
+                  <>
+                    <div className="overflow-auto max-h-[600px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead className="w-8" />
+                            <TableHead className="text-xs font-semibold w-16">ID</TableHead>
+                            <TableHead className="text-xs font-semibold">Tipo</TableHead>
+                            <TableHead className="text-xs font-semibold">Título</TableHead>
+                            <TableHead className="text-xs font-semibold">Colaborador</TableHead>
+                            <TableHead className="text-xs font-semibold">Status</TableHead>
+                            <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                            <TableHead className="text-xs font-semibold">Sprint</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pagedTopLevel.map(item => {
+                            const children = childrenMap.get(item.id!) || [];
+                            const hasChildren = children.length > 0;
+                            const isExpanded = expandedPbis.has(item.id!);
+
+                            return (
+                              <>{/* Parent row */}
+                                <TableRow
+                                  key={`p-${item.id!}`}
+                                  className={`hover:bg-muted/30 transition-colors cursor-pointer ${hasChildren ? 'font-medium' : ''}`}
+                                  onClick={() => setDrawerItem(item)}
+                                >
+                                  <TableCell className="w-8 px-2">
+                                    {hasChildren ? (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                        onClick={e => { e.stopPropagation(); toggleExpand(item.id!); }}
+                                      >
+                                        {isExpanded
+                                          ? <ChevronDown className="h-4 w-4" />
+                                          : <div className="flex items-center gap-0.5"><ChevronRight className="h-4 w-4" /><span className="text-[10px] text-muted-foreground">{children.length}</span></div>
+                                        }
+                                      </Button>
+                                    ) : <span className="inline-block w-6" />}
+                                  </TableCell>
+                                  {renderItemCells(item)}
+                                </TableRow>
+
+                                {/* Child rows */}
+                                {hasChildren && isExpanded && children.map(child => (
+                                  <TableRow
+                                    key={`c-${child.id!}`}
+                                    className="hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5 border-l-2 border-l-primary/20"
+                                    onClick={() => setDrawerItem(child)}
+                                  >
+                                    <TableCell className="w-8 px-2">
+                                      <span className="inline-block w-6 text-center text-muted-foreground/40 text-xs">└</span>
+                                    </TableCell>
+                                    {renderItemCells(child, true)}
+                                  </TableRow>
+                                ))}
+                              </>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {allTopLevel.length > PAGE_SIZE && (
+                      <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{allTopLevel.length} itens • Página {page + 1} de {totalPages}</span>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </Card>
             )}
