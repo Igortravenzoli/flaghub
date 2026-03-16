@@ -36,6 +36,7 @@ Done now:
 - Regra anti-dupla-contagem Task/PBI via `count_in_kpi` em `vw_fabrica_kpis`
 - Harden de dedup de timelog com `ext_entry_id` + unique partial index
 - Tabela de normalizacao de colaborador (`devops_collaborator_map`)
+- Home otimizada para nao disparar carga pesada de `devops_time_logs` fora do dashboard de Fabrica
 
 Remaining:
 - Atualizar tipos gerados do Supabase para incluir novas tabelas/colunas
