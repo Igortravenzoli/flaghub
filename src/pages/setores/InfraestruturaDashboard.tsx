@@ -7,9 +7,11 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useInfraestruturaKpis, InfraItem } from '@/hooks/useInfraestruturaKpis';
+import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
@@ -32,10 +34,12 @@ const columns: DataTableColumn<InfraItem>[] = [
 
 export default function InfraestruturaDashboard() {
   const filters = useDashboardFilters('mes_atual');
-  const { items, total, pendentes, emAndamento, concluidos, melhorias, iso27001, transbordo, backlog, dev, lastSync, isLoading, isError, refetch } = useInfraestruturaKpis(filters.dateFrom, filters.dateTo);
+  const [kpiFilter, setKpiFilter] = useState<InfraKpiFilter>('all');
+  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const { items, total, pendentes, emAndamento, concluidos, melhorias, iso27001, transbordo, backlog, dev, lastSync, isLoading, isError, refetch } = useInfraestruturaKpis(filters.dateFrom, filters.dateTo, sprintFilter);
+  const { sortedSprints } = useSprintFilter(items);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<InfraItem | null>(null);
-  const [kpiFilter, setKpiFilter] = useState<InfraKpiFilter>('all');
 
   const toggleKpi = (f: InfraKpiFilter) => setKpiFilter(prev => prev === f ? 'all' : f);
 
@@ -90,17 +94,32 @@ export default function InfraestruturaDashboard() {
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
 
-      <DashboardFilterBar
-        preset={filters.preset}
-        onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
-        presetLabel={filters.presetLabel}
-        dateFrom={filters.dateFrom}
-        dateTo={filters.dateTo}
-        onCustomRange={filters.setCustomRange}
-        onRefresh={() => refetch()}
-        onExportCSV={handleExportCSV}
-        onExportPDF={handleExportPDF}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <DashboardFilterBar
+          preset={filters.preset}
+          onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
+          presetLabel={filters.presetLabel}
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
+          onCustomRange={filters.setCustomRange}
+          onRefresh={() => refetch()}
+          onExportCSV={handleExportCSV}
+          onExportPDF={handleExportPDF}
+        />
+        {sortedSprints.length > 0 && (
+          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setKpiFilter('all'); }}>
+            <SelectTrigger className="w-[220px] h-8 text-xs">
+              <SelectValue placeholder="Sprint" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Sprints</SelectItem>
+              {[...sortedSprints].reverse().map(sp => (
+                <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       {isError ? (
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />

@@ -5,6 +5,7 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useFabricaKpis, FabricaItem, TimelogAggregation } from '@/hooks/useFabricaKpis';
+import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
@@ -184,7 +185,12 @@ function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, de
 
 export default function FabricaDashboard() {
   const filters = useDashboardFilters('mes_atual');
-  const fab = useFabricaKpis(filters.dateFrom, filters.dateTo);
+  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const fab = useFabricaKpis(filters.dateFrom, filters.dateTo, sprintFilter);
+  const operational = useDevopsOperationalQueue([
+    '03-Em Fila Backlog para Priorizar',
+    '05-Em Fila UX-UI',
+  ]);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<FabricaItem | null>(null);
   const [fabKpiFilter, setFabKpiFilter] = useState<FabKpiFilter>('all');
@@ -192,7 +198,6 @@ export default function FabricaDashboard() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
-  const [sprintFilter, setSprintFilter] = useState<string>('all');
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
@@ -240,6 +245,61 @@ export default function FabricaDashboard() {
   const sprintTransbordoPct = sprintTransbordoTotal > 0
     ? Math.round((sprintTransbordoCount / sprintTransbordoTotal) * 100)
     : 0;
+
+  const sprintAviaoCount = useMemo(() => {
+    const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
+    return sprintFilteredItems.filter(i => {
+      if (!i.id) return false;
+      const isTrackedType = i.work_item_type === 'Task' || i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story';
+      if (!isTrackedType) return false;
+      const tags = fab.tagsByWorkItemId[i.id] || '';
+      return AVIAO_REGEX.test(tags);
+    }).length;
+  }, [sprintFilteredItems, fab.tagsByWorkItemId]);
+
+  const backlogPriorizarItems = useMemo(() => {
+    return operational.items
+      .filter(i => i.query_name === '03-Em Fila Backlog para Priorizar')
+      .filter(i => sprintFilter === 'all' || i.iteration_path === sprintFilter)
+      .map((i): FabricaItem => ({
+        id: i.work_item_id,
+        title: i.title,
+        work_item_type: i.work_item_type,
+        state: i.state,
+        assigned_to_display: i.assigned_to_display,
+        priority: i.priority,
+        effort: i.effort,
+        iteration_path: i.iteration_path,
+        created_date: i.created_date,
+        changed_date: i.changed_date,
+        parent_id: null,
+        parent_title: null,
+        parent_type: null,
+        web_url: i.web_url,
+      }));
+  }, [operational.items, sprintFilter]);
+
+  const uxuiItems = useMemo(() => {
+    return operational.items
+      .filter(i => i.query_name === '05-Em Fila UX-UI')
+      .filter(i => sprintFilter === 'all' || i.iteration_path === sprintFilter)
+      .map((i): FabricaItem => ({
+        id: i.work_item_id,
+        title: i.title,
+        work_item_type: i.work_item_type,
+        state: i.state,
+        assigned_to_display: i.assigned_to_display,
+        priority: i.priority,
+        effort: i.effort,
+        iteration_path: i.iteration_path,
+        created_date: i.created_date,
+        changed_date: i.changed_date,
+        parent_id: null,
+        parent_title: null,
+        parent_type: null,
+        web_url: i.web_url,
+      }));
+  }, [operational.items, sprintFilter]);
 
   const filteredFabItems = useMemo(() => {
     switch (fabKpiFilter) {
@@ -421,6 +481,10 @@ export default function FabricaDashboard() {
             {Math.round(fab.totalHoursLogged)}h registradas
           </Badge>
         )}
+        <Badge variant="secondary" className="gap-1 text-xs animate-fade-in">
+          <Package className="h-3 w-3" />
+          AVIAO na sprint: {sprintAviaoCount}
+        </Badge>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -472,6 +536,12 @@ export default function FabricaDashboard() {
             </TabsTrigger>
             <TabsTrigger value="board" className="gap-1.5 text-xs">
               <BarChart3 className="h-3.5 w-3.5" />Sprint Board
+            </TabsTrigger>
+            <TabsTrigger value="backlog-priorizar" className="gap-1.5 text-xs">
+              <ListTodo className="h-3.5 w-3.5" />Backlog Priorizar
+            </TabsTrigger>
+            <TabsTrigger value="uxui-fila" className="gap-1.5 text-xs">
+              <TrendingUp className="h-3.5 w-3.5" />Fila Design / UX-UI
             </TabsTrigger>
           </TabsList>
 
@@ -821,6 +891,82 @@ export default function FabricaDashboard() {
                 )}
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="backlog-priorizar" className="space-y-4 mt-0">
+            <Card className="overflow-hidden animate-fade-in">
+              <div className="p-4 border-b border-border">
+                <h3 className="font-semibold text-foreground text-sm">Visão Operacional: Backlog para Priorizar</h3>
+                <p className="text-xs text-muted-foreground">Fonte operacional: query 03-Em Fila Backlog para Priorizar</p>
+              </div>
+              <div className="overflow-auto max-h-[600px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="text-xs font-semibold w-16">ID</TableHead>
+                      <TableHead className="text-xs font-semibold">Tipo</TableHead>
+                      <TableHead className="text-xs font-semibold">Título</TableHead>
+                      <TableHead className="text-xs font-semibold">Colaborador</TableHead>
+                      <TableHead className="text-xs font-semibold">Status</TableHead>
+                      <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                      <TableHead className="text-xs font-semibold text-center">Transb.</TableHead>
+                      <TableHead className="text-xs font-semibold">Sprint</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {operational.isLoading ? (
+                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                    ) : backlogPriorizarItems.length === 0 ? (
+                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Sem itens para o filtro atual</TableCell></TableRow>
+                    ) : (
+                      backlogPriorizarItems.map((item, idx) => (
+                        <TableRow key={`bp-${item.id || idx}`} className="cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
+                          {renderItemCells(item)}
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="uxui-fila" className="space-y-4 mt-0">
+            <Card className="overflow-hidden animate-fade-in">
+              <div className="p-4 border-b border-border">
+                <h3 className="font-semibold text-foreground text-sm">Visão Operacional: Fila Design / UX-UI</h3>
+                <p className="text-xs text-muted-foreground">Fonte operacional: query 05-Em Fila UX-UI</p>
+              </div>
+              <div className="overflow-auto max-h-[600px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="text-xs font-semibold w-16">ID</TableHead>
+                      <TableHead className="text-xs font-semibold">Tipo</TableHead>
+                      <TableHead className="text-xs font-semibold">Título</TableHead>
+                      <TableHead className="text-xs font-semibold">Colaborador</TableHead>
+                      <TableHead className="text-xs font-semibold">Status</TableHead>
+                      <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                      <TableHead className="text-xs font-semibold text-center">Transb.</TableHead>
+                      <TableHead className="text-xs font-semibold">Sprint</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {operational.isLoading ? (
+                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                    ) : uxuiItems.length === 0 ? (
+                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Sem itens para o filtro atual</TableCell></TableRow>
+                    ) : (
+                      uxuiItems.map((item, idx) => (
+                        <TableRow key={`ux-${item.id || idx}`} className="cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
+                          {renderItemCells(item)}
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
           </TabsContent>
         </Tabs>
       )}

@@ -94,6 +94,8 @@ interface NormalizedRow {
   user_id_ext: string | null
   notes: string | null
   etag: string
+  /** Official per-entry ID from TechsBCN API — used as primary dedup key when present */
+  ext_entry_id: string | null
   raw: TimeLogEntry
 }
 
@@ -111,6 +113,11 @@ function normalizeEntry(entry: TimeLogEntry, docId: string): NormalizedRow | nul
     user_id_ext: (entry.userId ?? entry.UserId ?? null) as string | null,
     notes: (entry.notes ?? entry.Notes ?? null) as string | null,
     etag: entry.__etag != null ? String(entry.__etag) : (entry.id || docId),
+    // Use entry.id as the official per-entry dedup key when it differs from the
+    // document-level docId (i.e. the entry has its own unique identifier).
+    ext_entry_id: (entry.id && typeof entry.id === 'string' && entry.id !== docId)
+      ? entry.id
+      : null,
     raw: entry,
   }
 }
@@ -193,22 +200,60 @@ async function processTimeLogs(pat: string) {
 
   console.log(`[timelog] Normalized ${allRows.length} entries (${skipped} invalid, ${dedupSkipped} in-memory dupes)`)
 
-  // ── Batch upsert using hash-based dedup ─────────────────────────
-  // Instead of checking each row individually (N queries), we:
-  // 1. Fetch all existing dedup keys in one query
-  // 2. Filter to only truly new rows
-  // 3. Insert in batches
+  // ── Two-phase upsert ────────────────────────────────────────────────────────
+  // Phase A — rows WITH ext_entry_id: UPSERT on the unique index.
+  //   Handles both new and updated entries (e.g. admin edits time_minutes).
+  // Phase B — rows WITHOUT ext_entry_id: content-based insert-only dedup.
+  //   Fetches existing content keys in bulk, inserts only truly new rows.
   const sb = getSupabaseAdmin()
+  const BATCH_SIZE = 500
+  let inserted = 0
+  let upserted = 0
 
-  // Fetch existing dedup keys (work_item_id|log_date|user_name|start_time|time_minutes)
-  // We fetch only the columns needed for dedup comparison
+  // ── Phase A: UPSERT rows that carry an official entry ID ────────────────────
+  const rowsWithId    = allRows.filter(r => r.ext_entry_id != null)
+  const rowsWithoutId = allRows.filter(r => r.ext_entry_id == null)
+
+  console.log(`[timelog] ${rowsWithId.length} rows with ext_entry_id (UPSERT), ${rowsWithoutId.length} without (content dedup)`)
+
+  for (let i = 0; i < rowsWithId.length; i += BATCH_SIZE) {
+    const batch = rowsWithId.slice(i, i + BATCH_SIZE).map(row => ({
+      work_item_id: row.work_item_id,
+      log_date:     row.log_date,
+      start_time:   row.start_time,
+      time_minutes: row.time_minutes,
+      user_name:    row.user_name,
+      user_id_ext:  row.user_id_ext,
+      notes:        row.notes,
+      etag:         row.etag,
+      ext_entry_id: row.ext_entry_id,
+      raw:          row.raw as any,
+    }))
+
+    const { error, count } = await sb
+      .from('devops_time_logs')
+      .upsert(batch, {
+        onConflict:        'ext_entry_id',
+        ignoreDuplicates:  false,
+        count:             'exact',
+      })
+
+    if (error) {
+      console.warn(`[timelog] Phase A upsert error: ${error.message}`)
+    } else {
+      upserted += count ?? batch.length
+    }
+  }
+
+  // ── Phase B: content-based insert-only for entries without official IDs ─────
   const existingKeys = new Set<string>()
   let from = 0
   const PAGE = 1000
-  while (true) {
+  while (rowsWithoutId.length > 0) {
     const { data } = await sb
       .from('devops_time_logs')
       .select('work_item_id, log_date, user_name, start_time, time_minutes')
+      .is('ext_entry_id', null)
       .range(from, from + PAGE - 1)
     const chunk = data || []
     for (const r of chunk) {
@@ -218,36 +263,32 @@ async function processTimeLogs(pat: string) {
     from += PAGE
   }
 
-  console.log(`[timelog] Fetched ${existingKeys.size} existing dedup keys`)
+  console.log(`[timelog] Phase B: fetched ${existingKeys.size} existing content keys`)
 
-  // Filter to only new rows
-  const newRows = allRows.filter(row => !existingKeys.has(dedupKey(row)))
-  console.log(`[timelog] ${newRows.length} new rows to insert (${allRows.length - newRows.length} already exist)`)
-
-  // Batch insert new rows only
-  let inserted = 0
-  const BATCH_SIZE = 500
+  const newRows = rowsWithoutId.filter(row => !existingKeys.has(dedupKey(row)))
+  console.log(`[timelog] Phase B: ${newRows.length} new rows to insert (${rowsWithoutId.length - newRows.length} already exist)`)
 
   for (let i = 0; i < newRows.length; i += BATCH_SIZE) {
     const batch = newRows.slice(i, i + BATCH_SIZE).map(row => ({
       work_item_id: row.work_item_id,
-      log_date: row.log_date,
-      start_time: row.start_time,
+      log_date:     row.log_date,
+      start_time:   row.start_time,
       time_minutes: row.time_minutes,
-      user_name: row.user_name,
-      user_id_ext: row.user_id_ext,
-      notes: row.notes,
-      etag: row.etag,
-      raw: row.raw as any,
+      user_name:    row.user_name,
+      user_id_ext:  row.user_id_ext,
+      notes:        row.notes,
+      etag:         row.etag,
+      ext_entry_id: null,
+      raw:          row.raw as any,
     }))
 
-    const { error, count } = await sb
+    const { error } = await sb
       .from('devops_time_logs')
       .insert(batch)
 
     if (error) {
-      console.warn(`[timelog] Batch insert error: ${error.message}`)
-      // Fallback: insert one-by-one for this batch to skip dupes
+      console.warn(`[timelog] Phase B insert error: ${error.message}`)
+      // Fallback: insert one-by-one to skip individual constraint conflicts
       for (const row of batch) {
         const { error: singleErr } = await sb.from('devops_time_logs').insert(row)
         if (!singleErr) inserted++
@@ -258,8 +299,8 @@ async function processTimeLogs(pat: string) {
   }
 
   const durationMs = Date.now() - startMs
-  const unchanged = allRows.length - newRows.length
-  console.log(`[timelog] Sync complete: ${inserted} inserted, ${unchanged} unchanged in ${durationMs}ms`)
+  const unchanged = allRows.length - upserted - newRows.length
+  console.log(`[timelog] Sync complete: ${upserted} upserted (Phase A), ${inserted} inserted (Phase B), ~${unchanged} unchanged in ${durationMs}ms`)
 
   // ── Audit ────────────────────────────────────────────────────
   await sb.from('hub_raw_ingestions').insert({
@@ -269,8 +310,8 @@ async function processTimeLogs(pat: string) {
       entry_count: allRows.length,
       skipped,
       dedupSkipped,
-      inserted,
-      updated: 0,
+      phase_a_upserted: upserted,
+      phase_b_inserted: inserted,
       unchanged,
       collection: usedCollection,
       duration_ms: durationMs,

@@ -11,6 +11,7 @@ export interface QualidadeItem {
   priority: number | null;
   created_date: string | null;
   changed_date: string | null;
+  iteration_path?: string | null;
   web_url: string | null;
   qa_retorno_count?: number;
 }
@@ -21,7 +22,7 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
-export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date) {
+export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
   const query = useQuery({
     queryKey: ['qualidade', 'kpis'],
     queryFn: async () => {
@@ -84,9 +85,13 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date) {
     qa_retorno_count: item.id ? (retornoMap.get(item.id) ?? 0) : 0,
   }));
 
+  const sprintScopedItems = sprintFilter === 'all'
+    ? enrichedItems
+    : enrichedItems.filter(i => i.iteration_path === sprintFilter);
+
   const items = (dateFrom && dateTo)
-    ? enrichedItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
-    : enrichedItems;
+    ? sprintScopedItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    : sprintScopedItems;
 
   const total = items.length;
   const filaQA = items.filter(i => i.state === 'New' || i.state === 'To Do' || i.state === 'Active').length;

@@ -12,6 +12,7 @@ export interface CSKpiItem {
   priority: number | null;
   created_date: string | null;
   changed_date: string | null;
+  iteration_path?: string | null;
   data_referencia: string | null;
   consultor_impl: string | null;
   solucao: string | null;
@@ -25,7 +26,7 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
-export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date) {
+export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
   const query = useQuery({
     queryKey: ['customer-service', 'kpis'],
     queryFn: async () => {
@@ -69,10 +70,52 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date) {
   const allItems = query.data || [];
   const filaManual = filaQuery.data || [];
 
-  // Apply date filter client-side using created_date/changed_date.
-  // Manual uploads without date fields should remain visible.
+  const devopsIds = allItems
+    .filter(i => i.source === 'devops_queue' && i.work_item_id != null)
+    .map(i => i.work_item_id as number);
+
+  const sprintMapQuery = useQuery({
+    queryKey: ['customer-service', 'sprint-map', devopsIds.slice().sort((a, b) => a - b).join(',')],
+    queryFn: async () => {
+      if (devopsIds.length === 0) return new Map<number, string | null>();
+      const map = new Map<number, string | null>();
+      for (let i = 0; i < devopsIds.length; i += 1000) {
+        const chunk = devopsIds.slice(i, i + 1000);
+        const { data } = await supabase
+          .from('devops_work_items')
+          .select('id, iteration_path')
+          .in('id', chunk);
+
+        for (const row of (data || [])) {
+          map.set(row.id, row.iteration_path);
+        }
+      }
+      return map;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const sprintMap = sprintMapQuery.data || new Map<number, string | null>();
+
+  const allItemsWithSprint = allItems.map((i) => {
+    if (i.source !== 'devops_queue' || !i.work_item_id) return i;
+    return {
+      ...i,
+      iteration_path: sprintMap.get(i.work_item_id) || null,
+    };
+  });
+
+  // Sprint é filtro primário para itens DevOps; registros manuais permanecem visíveis.
+  const sprintScopedItems = allItemsWithSprint.filter((i) => {
+    if (i.source !== 'devops_queue') return true;
+    if (sprintFilter === 'all') return true;
+    if (!i.work_item_id) return false;
+    return sprintMap.get(i.work_item_id) === sprintFilter;
+  });
+
+  // Date filter atua como drill-down após sprint filter.
   const items = (dateFrom && dateTo)
-    ? allItems.filter((i) => {
+    ? sprintScopedItems.filter((i) => {
         const inMainRange = isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo);
         if (i.source !== 'manual_implantacao') return inMainRange;
 
@@ -81,7 +124,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date) {
 
         return inMainRange || inReferenceRange || !hasAnyDate;
       })
-    : allItems;
+    : sprintScopedItems;
 
   // Separate DevOps items and implantacoes
   const devopsItems = items.filter(i => i.source === 'devops_queue');
@@ -118,9 +161,9 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date) {
     allDevopsCount: allDevops.length,
     allImplCount: allImplantacoes.length,
     lastSync: lastSyncQuery.data,
-    isLoading: query.isLoading || filaQuery.isLoading,
+    isLoading: query.isLoading || filaQuery.isLoading || sprintMapQuery.isLoading,
     isError: query.isError,
     error: query.error,
-    refetch: () => { query.refetch(); filaQuery.refetch(); },
+    refetch: () => { query.refetch(); filaQuery.refetch(); sprintMapQuery.refetch(); },
   };
 }

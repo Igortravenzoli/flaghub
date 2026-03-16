@@ -23,6 +23,24 @@ const CORE_FIELDS = [
   'System.CreatedDate', 'System.ChangedDate',
 ]
 
+function toDateOrNull(value: string | null | undefined): Date | null {
+  if (!value) return null
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function shouldRefreshByChange(
+  changedDate: string | null | undefined,
+  lastSyncedAt: string | null | undefined
+): boolean {
+  if (!lastSyncedAt) return true
+  const changed = toDateOrNull(changedDate)
+  if (!changed) return false
+  const synced = toDateOrNull(lastSyncedAt)
+  if (!synced) return true
+  return changed > synced
+}
+
 function getSupabaseAdmin() {
   return createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -291,7 +309,7 @@ function extractIterationChanges(updates: any[]): IterationChange[] {
 async function processIterationHistory(admin: any): Promise<{ processed: number; withChanges: number }> {
   const { data: pbiItems, error } = await admin
     .from('devops_work_items')
-    .select('id')
+    .select('id, changed_date, iteration_history_synced_at')
     .in('work_item_type', ['Product Backlog Item', 'User Story'])
     .limit(3000)
 
@@ -300,8 +318,15 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
     return { processed: 0, withChanges: 0 }
   }
 
-  const workItemIds = (pbiItems || []).map((i: any) => i.id).filter(Boolean) as number[]
-  if (workItemIds.length === 0) return { processed: 0, withChanges: 0 }
+  const candidates = (pbiItems || []).filter((item: any) =>
+    shouldRefreshByChange(item.changed_date, item.iteration_history_synced_at)
+  )
+
+  const workItemIds = candidates.map((i: any) => i.id).filter(Boolean) as number[]
+  if (workItemIds.length === 0) {
+    console.log('[IterHistory] No PBIs with changes since last iteration sync')
+    return { processed: 0, withChanges: 0 }
+  }
 
   console.log(`[IterHistory] Processing ${workItemIds.length} PBIs for iteration changes`)
   let processed = 0
@@ -325,17 +350,24 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
       })
     )
 
+    const nowIso = new Date().toISOString()
     for (const result of batchResults) {
       if (result.changes.length > 0) {
         await admin
           .from('devops_work_items')
-          .update({ iteration_history: result.changes })
+          .update({
+            iteration_history: result.changes,
+            iteration_history_synced_at: nowIso,
+          })
           .eq('id', result.id)
         withChanges++
       } else {
         await admin
           .from('devops_work_items')
-          .update({ iteration_history: null })
+          .update({
+            iteration_history: null,
+            iteration_history_synced_at: nowIso,
+          })
           .eq('id', result.id)
       }
       processed++
@@ -353,7 +385,7 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
 async function processQaRetornos(admin: any): Promise<{ processed: number; withRetornos: number }> {
   const { data: qaItems, error } = await admin
     .from('vw_qualidade_kpis')
-    .select('id')
+    .select('id, changed_date')
   if (error) {
     console.warn('[QA-Retorno] Failed to fetch QA items:', error.message)
     return { processed: 0, withRetornos: 0 }
@@ -362,14 +394,39 @@ async function processQaRetornos(admin: any): Promise<{ processed: number; withR
   const workItemIds = (qaItems || []).map((i: any) => i.id).filter(Boolean) as number[]
   if (workItemIds.length === 0) return { processed: 0, withRetornos: 0 }
 
-  console.log(`[QA-Retorno] Processing ${workItemIds.length} work items`)
+  const existingFields = new Map<number, Record<string, any>>()
+  for (let i = 0; i < workItemIds.length; i += 1000) {
+    const chunk = workItemIds.slice(i, i + 1000)
+    const { data: existingChunk } = await admin
+      .from('devops_work_items')
+      .select('id, custom_fields')
+      .in('id', chunk)
+
+    for (const item of existingChunk || []) {
+      existingFields.set(item.id, (item.custom_fields as Record<string, any>) || {})
+    }
+  }
+
+  const candidates = (qaItems || []).filter((item: any) => {
+    const cf = existingFields.get(item.id) || {}
+    const lastSyncedAt = (cf['qa_retorno_synced_at'] as string | undefined) || null
+    return shouldRefreshByChange(item.changed_date, lastSyncedAt)
+  })
+
+  if (candidates.length === 0) {
+    console.log('[QA-Retorno] No QA items with changes since last retorno sync')
+    return { processed: 0, withRetornos: 0 }
+  }
+
+  console.log(`[QA-Retorno] Processing ${candidates.length} work items`)
   let processed = 0
   let withRetornos = 0
 
-  for (let i = 0; i < workItemIds.length; i += 10) {
-    const batch = workItemIds.slice(i, i + 10)
+  for (let i = 0; i < candidates.length; i += 10) {
+    const batch = candidates.slice(i, i + 10)
     const batchResults = await Promise.all(
-      batch.map(async (wiId) => {
+      batch.map(async (item: any) => {
+        const wiId = item.id as number
         try {
           const resp = await devopsFetch(
             `${DEVOPS_PROJECT}/_apis/wit/workitems/${wiId}/updates?api-version=7.1`
@@ -384,28 +441,25 @@ async function processQaRetornos(admin: any): Promise<{ processed: number; withR
       })
     )
 
+    const nowIso = new Date().toISOString()
     for (const result of batchResults) {
-      const { data: existing } = await admin
-        .from('devops_work_items')
-        .select('custom_fields')
-        .eq('id', result.id)
-        .single()
-
-      const customFields = (existing?.custom_fields as Record<string, any>) || {}
+      const customFields = { ...(existingFields.get(result.id) || {}) }
       customFields['qa_retorno_count'] = result.retornos
       customFields['qa_retorno_details'] = result.details
-      customFields['qa_retorno_synced_at'] = new Date().toISOString()
+      customFields['qa_retorno_synced_at'] = nowIso
 
       await admin
         .from('devops_work_items')
         .update({ custom_fields: customFields })
         .eq('id', result.id)
 
+      existingFields.set(result.id, customFields)
+
       processed++
       if (result.retornos > 0) withRetornos++
     }
 
-    if (i + 10 < workItemIds.length) {
+    if (i + 10 < candidates.length) {
       await new Promise(r => setTimeout(r, 500))
     }
   }
@@ -416,7 +470,7 @@ async function processQaRetornos(admin: any): Promise<{ processed: number; withR
 
 // ── Main handler ───────────────────────────────────────────────────
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }

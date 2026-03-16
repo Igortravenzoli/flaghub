@@ -237,7 +237,15 @@ serve(async (req) => {
       const workItemIds = await runWiql(wiqlInput, sourceMode)
       console.log(`[DevOpsSync] Found ${workItemIds.length} work items`)
 
+      const snapshotAt = new Date().toISOString()
+
+      // Keep snapshot table in sync even when query returns no items.
       if (workItemIds.length === 0) {
+        await admin
+          .from('devops_query_items_current')
+          .delete()
+          .eq('query_id', queryId)
+
         const duration = Date.now() - startTime
         if (runId) {
           await admin.from('hub_sync_runs').update({
@@ -285,21 +293,49 @@ serve(async (req) => {
         upsertedCount += chunk.length
       }
 
-      // 7. Update devops_query_items_current (replace set for this query)
-      await admin
-        .from('devops_query_items_current')
-        .delete()
-        .eq('query_id', queryId)
-
+      // 7. Update devops_query_items_current (incremental upsert + cleanup)
       const currentItems = workItemIds.map(id => ({
         query_id: queryId,
         work_item_id: id,
-        synced_at: new Date().toISOString(),
+        synced_at: snapshotAt,
       }))
 
       for (let i = 0; i < currentItems.length; i += 500) {
         const chunk = currentItems.slice(i, i + 500)
-        await admin.from('devops_query_items_current').insert(chunk)
+        const { error: currentErr } = await admin
+          .from('devops_query_items_current')
+          .upsert(chunk, { onConflict: 'query_id,work_item_id' })
+
+        if (currentErr) {
+          throw new Error(`Current snapshot upsert failed: ${currentErr.message}`)
+        }
+      }
+
+      const { data: existingCurrent, error: existingCurrentErr } = await admin
+        .from('devops_query_items_current')
+        .select('work_item_id')
+        .eq('query_id', queryId)
+
+      if (existingCurrentErr) {
+        throw new Error(`Current snapshot lookup failed: ${existingCurrentErr.message}`)
+      }
+
+      const currentSet = new Set(workItemIds)
+      const toDelete = (existingCurrent || [])
+        .map(row => row.work_item_id)
+        .filter(id => !currentSet.has(id))
+
+      for (let i = 0; i < toDelete.length; i += 1000) {
+        const chunk = toDelete.slice(i, i + 1000)
+        const { error: deleteErr } = await admin
+          .from('devops_query_items_current')
+          .delete()
+          .eq('query_id', queryId)
+          .in('work_item_id', chunk)
+
+        if (deleteErr) {
+          throw new Error(`Current snapshot cleanup failed: ${deleteErr.message}`)
+        }
       }
 
       // 8. Fetch missing parents (1 level)
@@ -337,7 +373,11 @@ serve(async (req) => {
         await admin.from('hub_sync_runs').update({
           status: 'ok', finished_at: new Date().toISOString(),
           duration_ms: duration, items_found: workItemIds.length, items_upserted: upsertedCount,
-          meta: { parents_fetched: parentsFetched, unchanged: mapped.length - toUpsert.length },
+          meta: {
+            parents_fetched: parentsFetched,
+            unchanged: mapped.length - toUpsert.length,
+            current_snapshot_deleted: toDelete.length,
+          },
         }).eq('id', runId)
       }
 

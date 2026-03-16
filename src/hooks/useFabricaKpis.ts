@@ -22,6 +22,15 @@ export interface FabricaItem {
   parent_title: string | null;
   parent_type: string | null;
   web_url: string | null;
+  /** Tags string (semicolon-separated) — populated from vw_fabrica_kpis */
+  tags?: string | null;
+  /**
+   * false for Tasks/Bugs whose parent PBI is also in the queue,
+   * and for child Tasks pulled in via the second UNION.
+   * Use kpiItems (count_in_kpi !== false) for metric counts to avoid
+   * double-counting PBIs alongside their child Tasks.
+   */
+  count_in_kpi?: boolean;
 }
 
 export interface TimelogAggregation {
@@ -72,7 +81,18 @@ function extractProducts(tags: string | null): string[] {
   return tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
 }
 
-export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
+/** Normalise a raw user name for dedup: strip diacritics, lowercase, collapse spaces */
+function normalizeUserName(name: string | null): string {
+  if (!name) return 'Desconhecido';
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+export function useFabricaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
   const query = useQuery({
     queryKey: ['fabrica', 'kpis'],
     queryFn: async () => {
@@ -130,18 +150,40 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Persistent collaborator name map — admin-managed, overrides in-memory normalisation
+  const collabMapQuery = useQuery({
+    queryKey: ['devops', 'collaborator-map'],
+    queryFn: async () => {
+        // Table not yet in generated types (migration pending) — cast to any
+        const { data } = await (supabase as any)
+          .from('devops_collaborator_map')
+          .select('timelog_name, canonical_name') as { data: Array<{ timelog_name: string; canonical_name: string }> | null };
+      const map = new Map<string, string>();
+      for (const r of (data || [])) {
+        map.set(r.timelog_name.toLowerCase(), r.canonical_name);
+      }
+      return map;
+    },
+      staleTime: 10 * 60 * 1000, // 10 min — rarely changes
+  });
+
   const allItems = query.data || [];
   const INFRA_PREFIX = '[INFRA]';
   const nonInfraItems = allItems.filter(i => !i.title?.startsWith(INFRA_PREFIX));
 
-  // Don't filter work items by date — the view already returns relevant items.
-  // Date filtering applies only to time logs. Sprint filter handles sprint-level filtering.
-  const items = nonInfraItems;
+  // Sprint is the primary filter; date range is a drill-down on time logs only.
+  const items = sprintFilter === 'all'
+    ? nonInfraItems
+    : nonInfraItems.filter(i => i.iteration_path === sprintFilter);
 
-  const total = items.length;
-  const inProgress = items.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
-  const toDo = items.filter(i => i.state === 'To Do' || i.state === 'New').length;
-  const done = items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
+  // kpiItems: exclude Tasks/Bugs whose parent PBI is also in the view (count_in_kpi flag)
+  // This prevents double-counting PBIs + their child Tasks in KPI metric totals.
+  const kpiItems = items.filter(i => i.count_in_kpi !== false);
+
+  const total      = kpiItems.length;
+  const inProgress = kpiItems.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
+  const toDo       = kpiItems.filter(i => i.state === 'To Do' || i.state === 'New').length;
+  const done       = kpiItems.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
 
   const porColaborador = items.reduce((acc, item) => {
     const name = item.assigned_to_display || 'Não atribuído';
@@ -151,13 +193,21 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
 
   // ── Timelog aggregations ──
   const timeLogs = timeLogsQuery.data || [];
-  const totalHoursLogged = timeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
-  const hasTimeLogs = timeLogs.length > 0;
+  // Scope time logs to the work items currently in sprint (when a sprint filter is active)
+  const itemIdsInScope = new Set(items.map(i => i.id).filter((id): id is number => id != null));
+  const scopedTimeLogs = sprintFilter === 'all'
+    ? timeLogs
+    : timeLogs.filter(tl => tl.work_item_id != null && itemIdsInScope.has(tl.work_item_id));
+
+  const totalHoursLogged = scopedTimeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
+  const hasTimeLogs = scopedTimeLogs.length > 0;
 
   // Build work item lookup
   const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>();
+  const tagsByWorkItemId: Record<number, string> = {};
   for (const wi of (workItemsQuery.data || [])) {
     wiMap.set(wi.id, wi);
+    if (wi.tags) tagsByWorkItemId[wi.id] = wi.tags;
   }
 
   // Find top-level Epic by walking parent_id
@@ -184,12 +234,26 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const horasPorColaborador: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
-    for (const tl of timeLogs) {
-      const name = tl.user_name || 'Desconhecido';
-      map[name] = (map[name] || 0) + (tl.time_minutes || 0);
+    const labelMap: Record<string, string> = {};
+    const collabMap = collabMapQuery.data || new Map<string, string>();
+    for (const tl of scopedTimeLogs) {
+      const rawName = tl.user_name || 'Desconhecido';
+      const normalized = normalizeUserName(rawName);
+      // Persistent map takes precedence over first-seen heuristic
+      const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
+      if (canonical) {
+        labelMap[normalized] = canonical;
+      } else {
+        labelMap[normalized] = labelMap[normalized] ?? rawName;
+      }
+      map[normalized] = (map[normalized] || 0) + (tl.time_minutes || 0);
     }
     return Object.entries(map)
-      .map(([name, minutes]) => ({ name, hours: Math.round(minutes / 60 * 10) / 10, minutes }))
+      .map(([normalized, minutes]) => ({
+        name: labelMap[normalized] || normalized,
+        hours: Math.round(minutes / 60 * 10) / 10,
+        minutes,
+      }))
       .sort((a, b) => b.hours - a.hours);
   })();
 
@@ -197,7 +261,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const horasPorProduto: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
-    for (const tl of timeLogs) {
+    for (const tl of scopedTimeLogs) {
       const wi = tl.work_item_id ? wiMap.get(tl.work_item_id) : null;
       const products = extractProducts(wi?.tags || null);
       if (products.length > 0) {
@@ -217,7 +281,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
   const horasPorFabrica: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
-    for (const tl of timeLogs) {
+    for (const tl of scopedTimeLogs) {
       if (!tl.work_item_id) continue;
       const epic = findEpic(tl.work_item_id);
       const label = epic?.title || 'Sem Epic';
@@ -330,6 +394,8 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,
+      // Phase 4: roll-up — kpiItems excludes double-counted Tasks whose parent is in view
+      kpiItems,
     // Corporate KPIs
     leadTimeMedio,
     leadTimeSource,
@@ -348,5 +414,6 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date) {
     horasPorColaborador,
     horasPorProduto,
     horasPorFabrica,
+    tagsByWorkItemId,
   };
 }

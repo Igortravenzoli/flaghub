@@ -71,6 +71,8 @@ operations-hub/
 
 Consulte a pasta `/docs` para documentação detalhada:
 
+- [.lovable/plan.md](.lovable/plan.md) - Source of truth do roadmap (estado atual e proximas fases)
+
 - [COMECE_AQUI_TESTES.md](docs/COMECE_AQUI_TESTES.md) - Guia rápido de testes
 - [TESTE_LOCAL.md](docs/TESTE_LOCAL.md) - Setup de desenvolvimento
 - [SETUP_API_REST.md](docs/SETUP_API_REST.md) - Integração API REST

@@ -10,6 +10,7 @@ export interface InfraItem {
   priority: number | null;
   effort: number | null;
   tags: string | null;
+  iteration_path?: string | null;
   created_date: string | null;
   changed_date: string | null;
   web_url: string | null;
@@ -21,7 +22,7 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
-export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date) {
+export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
   const query = useQuery({
     queryKey: ['infraestrutura', 'kpis'],
     queryFn: async () => {
@@ -51,9 +52,13 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date) {
 
   const allItems = query.data || [];
 
+  const sprintScopedItems = sprintFilter === 'all'
+    ? allItems
+    : allItems.filter(i => i.iteration_path === sprintFilter);
+
   const items = (dateFrom && dateTo)
-    ? allItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
-    : allItems;
+    ? sprintScopedItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    : sprintScopedItems;
 
   const total = items.length;
   const pendentes = items.filter(i => i.state === 'New' || i.state === 'To Do').length;

@@ -9,11 +9,13 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useCustomerServiceKpis, CSKpiItem } from '@/hooks/useCustomerServiceKpis';
+import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
@@ -47,7 +49,9 @@ const implColumns: DataTableColumn<CSKpiItem>[] = [
 
 export default function CustomerServiceDashboard() {
   const filters = useDashboardFilters('mes_atual');
-  const { devopsItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo);
+  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const { devopsItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo, sprintFilter);
+  const { sortedSprints } = useSprintFilter(devopsItems.map(i => ({ iteration_path: i.iteration_path || null })));
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
@@ -135,17 +139,32 @@ export default function CustomerServiceDashboard() {
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
 
-      <DashboardFilterBar
-        preset={filters.preset}
-        onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
-        presetLabel={filters.presetLabel}
-        dateFrom={filters.dateFrom}
-        dateTo={filters.dateTo}
-        onCustomRange={filters.setCustomRange}
-        onRefresh={() => refetch()}
-        onExportCSV={handleExportCSV}
-        onExportPDF={handleExportPDF}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <DashboardFilterBar
+          preset={filters.preset}
+          onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
+          presetLabel={filters.presetLabel}
+          dateFrom={filters.dateFrom}
+          dateTo={filters.dateTo}
+          onCustomRange={filters.setCustomRange}
+          onRefresh={() => refetch()}
+          onExportCSV={handleExportCSV}
+          onExportPDF={handleExportPDF}
+        />
+        {sortedSprints.length > 0 && (
+          <Select value={sprintFilter} onValueChange={(v) => setSprintFilter(v)}>
+            <SelectTrigger className="w-[220px] h-8 text-xs">
+              <SelectValue placeholder="Sprint" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Sprints</SelectItem>
+              {[...sortedSprints].reverse().map(sp => (
+                <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       {isError ? (
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />

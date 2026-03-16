@@ -1,5 +1,8 @@
 # 🏗️ Arquitetura do Sistema de Correlação Ticket-OS
 
+> Nota de alinhamento (2026-03-16): este documento descreve principalmente o modulo Ticket-OS.
+> Para roadmap e evolucao do hub (Fases 1-4), consulte [.lovable/plan.md](../.lovable/plan.md).
+
 ## Visão Geral da Arquitetura
 
 ```

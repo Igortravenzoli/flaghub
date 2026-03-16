@@ -89,7 +89,30 @@ SELECT cron.schedule(
   ) AS request_id;
   $$
 );
+
+-- 4. DevOps TimeLog — a cada 15 minutos
+SELECT cron.schedule(
+  'sync-devops-timelog',
+  '*/15 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://PROJECT_REF.supabase.co/functions/v1/devops-sync-timelog',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', public.get_cron_secret()
+    ),
+    body := '{}'::jsonb
+  ) AS request_id;
+  $$
+);
 ```
+
+## Observação (retenção)
+
+Os jobs de retenção abaixo sao gerenciados por migration e nao precisam ser criados manualmente neste documento:
+
+- `cleanup-helpdesk-snapshots-daily` (90 dias)
+- `cleanup-hub-raw-ingestions-daily` (30 dias)
 
 ## 4. Verificar
 
@@ -107,6 +130,7 @@ SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 20;
 SELECT cron.unschedule('sync-devops-all');
 SELECT cron.unschedule('sync-vdesk-clientes');
 SELECT cron.unschedule('sync-vdesk-helpdesk');
+SELECT cron.unschedule('sync-devops-timelog');
 ```
 
 ---
