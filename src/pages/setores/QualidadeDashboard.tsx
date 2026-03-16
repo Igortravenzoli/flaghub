@@ -12,8 +12,9 @@ import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw } from 'lucide-react';
+import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
 type QaKpiFilter = 'all' | 'fila_qa' | 'finalizados' | 'com_retorno';
 
@@ -52,10 +53,15 @@ export default function QualidadeDashboard() {
   const filters = useDashboardFilters('mes_atual');
   const [kpiFilter, setKpiFilter] = useState<QaKpiFilter>('all');
   const [sprintFilter, setSprintFilter] = useState<string>('all');
-  const { items, total, filaQA, emTeste, finalizados, taxaVazao, totalRetornos, itensComRetorno, taxaRetorno, lastSync, isLoading, isError, refetch } = useQualidadeKpis(filters.dateFrom, filters.dateTo, sprintFilter);
-  const { sortedSprints } = useSprintFilter(items);
+  const { items, allItems, total, filaQA, emTeste, finalizados, taxaVazao, totalRetornos, itensComRetorno, taxaRetorno, avioesTestados, lastSync, isLoading, isError, refetch } = useQualidadeKpis(filters.dateFrom, filters.dateTo, sprintFilter);
+  const { sortedSprints } = useSprintFilter(allItems);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
+
+  const { minDate, maxDate } = useMemo(
+    () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
+    [allItems]
+  );
 
   const toggleKpi = (f: QaKpiFilter) => setKpiFilter(prev => prev === f ? 'all' : f);
 
@@ -112,8 +118,11 @@ export default function QualidadeDashboard() {
           preset={filters.preset}
           onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
           presetLabel={filters.presetLabel}
+          presets={[]}
           dateFrom={filters.dateFrom}
           dateTo={filters.dateTo}
+          minDate={minDate}
+          maxDate={maxDate}
           onCustomRange={filters.setCustomRange}
           onRefresh={() => refetch()}
           onExportCSV={handleExportCSV}
@@ -138,7 +147,7 @@ export default function QualidadeDashboard() {
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
             <DashboardKpiCard label="Total QA" value={total} icon={FileCheck} isLoading={isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
             <DashboardKpiCard label="Fila QA (WIP)" value={filaQA} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
             <DashboardKpiCard label="Taxa Vazão QA" value={taxaVazao} suffix="%" icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
@@ -154,6 +163,7 @@ export default function QualidadeDashboard() {
               onClick={() => toggleKpi('com_retorno')} 
               active={kpiFilter === 'com_retorno'} 
             />
+            <DashboardKpiCard label="Aviões testados" value={avioesTestados} icon={Plane} isLoading={isLoading} delay={360} accent="bg-[hsl(210,80%,52%)]" />
           </div>
 
           {!isLoading && filteredItems.length === 0 ? (

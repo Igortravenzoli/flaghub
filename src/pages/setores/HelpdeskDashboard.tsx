@@ -27,6 +27,7 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
 const integrations: Integration[] = [
   { name: 'VDesk Helpdesk API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Dashboard Helpdesk' },
@@ -162,8 +163,8 @@ function ChartTooltip({ active, payload, label }: any) {
 type ActiveView = 'consultores' | 'sistemas' | 'bandeiras' | 'clientes' | 'tipos' | 'chamados' | null;
 
 export default function HelpdeskDashboard() {
-  const kpis = useHelpdeskKpis();
-  const filters = useDashboardFilters('mes_atual');
+  const filters = useDashboardFilters('30d');
+  const kpis = useHelpdeskKpis(filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [activeView, setActiveView] = useState<ActiveView>(null);
   const [drawerItem, setDrawerItem] = useState<any>(null);
@@ -171,12 +172,18 @@ export default function HelpdeskDashboard() {
   const [chartTab, setChartTab] = useState('consultores');
 
   const {
+    allSnapshots,
     registrosPorConsultor, tipoChamadoTempoMedio, registrosPorSistema,
     registrosPorBandeira, registrosPorCliente, ocorrenciasPorTipo,
     horasTotaisPorDia,
     totalRegistros, totalHoras, horasDiaTotal, totalConsultores,
     lastSync, isLoading, isError, refetch,
   } = kpis;
+
+  const { minDate, maxDate } = useMemo(
+    () => getDateBoundsFromItems(allSnapshots || [], [(s: any) => s.collected_at]),
+    [allSnapshots]
+  );
 
   // -- Apply consultant filter --
   const filteredConsultores = useMemo(() => {
@@ -331,8 +338,20 @@ export default function HelpdeskDashboard() {
         preset={filters.preset}
         onPresetChange={filters.setPreset}
         presetLabel={filters.presetLabel}
+        presetControl="dropdown"
+        presetsLabel="Período"
+        presets={[
+          { value: '7d', label: '7d' },
+          { value: '30d', label: '30d' },
+          { value: '90d', label: '90d' },
+          { value: '6m', label: '6m' },
+          { value: '1y', label: '1a' },
+          { value: 'all', label: 'Todos' },
+        ]}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
+        minDate={minDate}
+        maxDate={maxDate}
         onCustomRange={filters.setCustomRange}
         onRefresh={() => refetch()}
         onExportCSV={handleExportCSV}

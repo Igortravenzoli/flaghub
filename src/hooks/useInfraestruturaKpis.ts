@@ -75,6 +75,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
 
   return {
     items,
+    allItems,
     total,
     pendentes,
     emAndamento,

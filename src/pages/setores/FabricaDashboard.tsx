@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
@@ -201,6 +202,11 @@ export default function FabricaDashboard() {
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
+
+  const { minDate, maxDate } = useMemo(
+    () => getDateBoundsFromItems(fab.items, [(i) => i.created_date, (i) => i.changed_date]),
+    [fab.items]
+  );
 
   const colabChartData = useMemo(() =>
     Object.entries(fab.porColaborador)
@@ -492,8 +498,11 @@ export default function FabricaDashboard() {
           preset={filters.preset}
           onPresetChange={(p) => { filters.setPreset(p); setFabKpiFilter('all'); setPage(0); }}
           presetLabel={filters.presetLabel}
+          presets={[]}
           dateFrom={filters.dateFrom}
           dateTo={filters.dateTo}
+          minDate={minDate}
+          maxDate={maxDate}
           onCustomRange={filters.setCustomRange}
           onRefresh={() => fab.refetch()}
           onExportCSV={handleExportCSV}
@@ -740,6 +749,7 @@ export default function FabricaDashboard() {
               transbordoCount={sprintTransbordoCount}
               transbordoTotal={sprintTransbordoTotal}
               currentSprint={sprintFilter !== 'all' ? sprintFilter : fab.currentSprint}
+              selectedSprint={sprintFilter}
               isLoading={fab.isLoading}
             />
           </TabsContent>

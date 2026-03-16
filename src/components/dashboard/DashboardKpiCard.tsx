@@ -2,6 +2,8 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCountUp } from '@/hooks/useCountUp';
 import { ArrowUp, ArrowDown } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMetricMetadata } from '@/contexts/MetricMetadataContext';
 
 interface DashboardKpiCardProps {
   label: string;
@@ -16,7 +18,26 @@ interface DashboardKpiCardProps {
   delay?: number;
   onClick?: () => void;
   active?: boolean;
+  tooltipTitle?: string;
+  metricKey?: string;
+  tooltipFormula?: string;
+  tooltipDescription?: string;
 }
+
+const KPI_TOOLTIP_MAP: Record<string, { formula: string; description: string }> = {
+  'Total': { formula: 'COUNT(itens no escopo do filtro)', description: 'Quantidade total de itens no intervalo e filtros aplicados.' },
+  'Total QA': { formula: 'COUNT(itens QA no escopo)', description: 'Total de itens de qualidade no recorte atual.' },
+  'Fila QA (WIP)': { formula: 'COUNT(state IN New, To Do, Active)', description: 'Itens em fila de QA aguardando ou em trabalho ativo.' },
+  'Taxa Vazão QA': { formula: '(Finalizados / Total QA) * 100', description: 'Percentual de itens finalizados no escopo selecionado.' },
+  'Finalizados': { formula: 'COUNT(state IN Done, Closed, Resolved)', description: 'Itens concluídos no período/sprint filtrado.' },
+  'Retorno QA': { formula: 'COUNT(itens com qa_retorno_count > 0)', description: 'Itens que retornaram para nova rodada de testes.' },
+  'Aviões testados': { formula: "COUNT(tags ILIKE '%AVIAO%' AND state IN Testing, Done, Closed, Resolved)", description: 'Itens com tag AVIAO que já passaram por etapa de teste.' },
+  'Horas Acumuladas': { formula: 'SUM(time_minutes) / 60', description: 'Soma de horas registradas em TimeLog no escopo.' },
+  'Horas Hoje': { formula: 'SUM(time_minutes do dia atual) / 60', description: 'Horas registradas no dia corrente.' },
+  'Volume Total na Fila': { formula: 'COUNT(work items em fila)', description: 'Volume de itens ativos na fila operacional.' },
+  'Implantações Ativas': { formula: 'COUNT(implantacoes com status não encerrado)', description: 'Implantações em progresso no recorte atual.' },
+  'Implantações Finalizadas': { formula: 'COUNT(implantacoes com status encerrado)', description: 'Implantações concluídas no recorte atual.' },
+};
 
 export function DashboardKpiCard({
   label,
@@ -31,10 +52,21 @@ export function DashboardKpiCard({
   delay = 0,
   onClick,
   active,
+  tooltipTitle,
+  metricKey,
+  tooltipFormula,
+  tooltipDescription,
 }: DashboardKpiCardProps) {
   const numericValue = typeof value === 'number' ? value : 0;
   const animated = useCountUp(numericValue);
   const isPositive = (change ?? 0) >= 0;
+  const metricMeta = useMetricMetadata();
+  const persistedMeta = metricMeta?.getMetricInfo(label, metricKey);
+  const fallback = KPI_TOOLTIP_MAP[label];
+  const effectiveTitle = tooltipTitle || label;
+  const effectiveFormula = tooltipFormula || persistedMeta?.formula || fallback?.formula;
+  const effectiveDescription = tooltipDescription || persistedMeta?.description || fallback?.description;
+  const hasTooltip = Boolean(effectiveFormula || effectiveDescription);
 
   if (isLoading) {
     return (
@@ -74,7 +106,24 @@ export function DashboardKpiCard({
         <p className="text-3xl font-bold text-foreground tracking-tight">
           {prefix}{typeof value === 'number' ? animated : value}{suffix}
         </p>
-        <p className="text-xs text-muted-foreground mt-1 font-medium">{label}</p>
+        {hasTooltip ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-xs text-muted-foreground mt-1 font-medium underline decoration-dotted cursor-help">
+                  {label}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm text-xs">
+                <p className="font-semibold mb-1">{effectiveTitle}</p>
+                {effectiveFormula && <p className="mb-1"><span className="font-medium">Fórmula:</span> {effectiveFormula}</p>}
+                {effectiveDescription && <p><span className="font-medium">Descrição:</span> {effectiveDescription}</p>}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <p className="text-xs text-muted-foreground mt-1 font-medium">{label}</p>
+        )}
         {changeLabel && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{changeLabel}</p>}
       </div>
     </Card>

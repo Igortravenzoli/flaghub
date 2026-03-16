@@ -137,14 +137,18 @@ export function useFabricaKpis(
   const timeLogsQuery = useQuery({
     queryKey: ['fabrica', 'time-logs', fromStr, toStr, includeTimeLogs],
     queryFn: async () => {
-      return fetchAllRows<{ work_item_id: number | null; time_minutes: number | null; user_name: string | null; log_date: string | null }>((from, to) => {
-        let q = supabase
-          .from('devops_time_logs')
-          .select('work_item_id, time_minutes, user_name, log_date');
-        if (fromStr) q = q.gte('log_date', fromStr);
-        if (toStr) q = q.lte('log_date', toStr);
-        return q.range(from, to);
+      const { data, error } = await (supabase as any).rpc('rpc_devops_timelog_agg', {
+        p_from: fromStr ?? null,
+        p_to: toStr ?? null,
+        p_work_item_ids: null,
       });
+      if (error) throw error;
+      return (data || []).map((row: any) => ({
+        work_item_id: row.work_item_id as number | null,
+        time_minutes: row.total_minutes as number | null,
+        user_name: row.user_name as string | null,
+        log_date: row.max_log_date as string | null,
+      }));
     },
     enabled: includeTimeLogs,
     staleTime: 5 * 60 * 1000,

@@ -49,6 +49,33 @@ Remaining:
 - Finalizar ajustes de calculo/denominador nos KPIs remanescentes
 - Validar cenarios de periodo (dia/mes/ano/custom) por setor
 
+Status desta rodada (estabilizacao UX/filtros/performance): in progress
+
+Implementado nesta rodada:
+- Filtro padrao por setor:
+	- Comercial, Customer Service e Helpdesk com dropdown `Periodo` (7d/30d/90d/6m/1a/Todos/Custom)
+	- Fabrica, Infraestrutura e Qualidade com foco em `Sprint + Custom` (sem presets diarios como principal)
+- Transparencia do filtro com badge de intervalo real (de/ate) no `DashboardFilterBar`
+- Calendar custom com bloqueio de datas fora do range permitido (quando min/max informado)
+- Correcoes de UX da sprint list (nao colapsa para apenas sprint selecionada apos filtro)
+- KPI novo em Qualidade: `Avioes testados`
+- Estabilizacao de views Qualidade/Infra via migration para deduplicacao por work_item
+- Tooltips de formula/descricao em KPIs (camada transversal via `DashboardKpiCard`)
+
+Implementado na batida seguinte (prioridade solicitada):
+- Transbordo por sprint com regra historica coerente:
+	- sprint unica: mostra sprint selecionada + historico imediato (mesmo ano)
+	- todas as sprints: visao historica ampla
+- TimeLog com camada agregada no backend:
+	- RPC `rpc_devops_timelog_agg` para reduzir carga de leitura bruta em `devops_time_logs`
+	- consumo da Fabrica migrado para agregacao via RPC
+- Kiosk simplificado:
+	- `DashboardFilterBar` oculta controles interativos de periodo/refresh/export quando em modo kiosk
+	- mantem badge de intervalo para transparencia
+- Tooltips com metadata persistida:
+	- provider por setor lendo formulas/notas de `hub_metrics_registry` via view `vw_hub_metric_formulas`
+	- `DashboardKpiCard` prioriza metadata persistida e usa mapa estatico como fallback
+
 ### Phase 6 — Campos custom DevOps (Cliente/SistemaProduto)
 Status: postponed
 

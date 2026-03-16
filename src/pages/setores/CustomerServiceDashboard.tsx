@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
 type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas';
 
@@ -48,13 +49,18 @@ const implColumns: DataTableColumn<CSKpiItem>[] = [
 ];
 
 export default function CustomerServiceDashboard() {
-  const filters = useDashboardFilters('mes_atual');
+  const filters = useDashboardFilters('30d');
   const [sprintFilter, setSprintFilter] = useState<string>('all');
-  const { devopsItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo, sprintFilter);
-  const { sortedSprints } = useSprintFilter(devopsItems.map(i => ({ iteration_path: i.iteration_path || null })));
+  const { devopsItems, allItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo, sprintFilter);
+  const allDevopsItems = allItems.filter(i => i.source === 'devops_queue');
+  const { sortedSprints } = useSprintFilter(allDevopsItems.map(i => ({ iteration_path: i.iteration_path || null })));
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
+  const { minDate, maxDate } = useMemo(
+    () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date, (i) => i.data_referencia]),
+    [allItems]
+  );
 
   // Import history for compact view in Implantações tab
   const { data: recentBatches = [], isLoading: batchesLoading } = useQuery({
@@ -144,8 +150,20 @@ export default function CustomerServiceDashboard() {
           preset={filters.preset}
           onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
           presetLabel={filters.presetLabel}
+          presetControl="dropdown"
+          presetsLabel="Período"
+          presets={[
+            { value: '7d', label: '7d' },
+            { value: '30d', label: '30d' },
+            { value: '90d', label: '90d' },
+            { value: '6m', label: '6m' },
+            { value: '1y', label: '1a' },
+            { value: 'all', label: 'Todos' },
+          ]}
           dateFrom={filters.dateFrom}
           dateTo={filters.dateTo}
+          minDate={minDate}
+          maxDate={maxDate}
           onCustomRange={filters.setCustomRange}
           onRefresh={() => refetch()}
           onExportCSV={handleExportCSV}

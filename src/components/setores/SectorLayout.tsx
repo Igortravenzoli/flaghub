@@ -5,6 +5,7 @@ import { Clock, LayoutDashboard, Upload, Settings, Plug } from 'lucide-react';
 import { SectorImportArea } from './SectorImportArea';
 import { SectorSettings } from './SectorSettings';
 import { SectorIntegrations, Integration } from './SectorIntegrations';
+import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
 
 interface SyncFunction {
   name: string;
@@ -32,7 +33,29 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
 
   if (isKiosk) {
     return (
-      <div className="space-y-4 animate-fade-in">
+      <MetricMetadataProvider areaKey={areaKey}>
+        <div className="space-y-4 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+              {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+            </div>
+            {lastUpdate && (
+              <Badge variant="outline" className="gap-1">
+                <Clock className="h-3 w-3" />
+                {lastUpdate}
+              </Badge>
+            )}
+          </div>
+          {children}
+        </div>
+      </MetricMetadataProvider>
+    );
+  }
+
+  return (
+    <MetricMetadataProvider areaKey={areaKey}>
+      <div className="p-6 space-y-6 animate-fade-in">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">{title}</h1>
@@ -45,27 +68,8 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
             </Badge>
           )}
         </div>
-        {children}
-      </div>
-    );
-  }
 
-  return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-          {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
-        </div>
-        {lastUpdate && (
-          <Badge variant="outline" className="gap-1">
-            <Clock className="h-3 w-3" />
-            {lastUpdate}
-          </Badge>
-        )}
-      </div>
-
-      <Tabs defaultValue="dashboard" className="w-full">
+        <Tabs defaultValue="dashboard" className="w-full">
         <TabsList>
           <TabsTrigger value="dashboard" className="gap-1">
             <LayoutDashboard className="h-3.5 w-3.5" />
@@ -116,7 +120,8 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
         <TabsContent value="settings" className="mt-4">
           <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
         </TabsContent>
-      </Tabs>
-    </div>
+        </Tabs>
+      </div>
+    </MetricMetadataProvider>
   );
 }

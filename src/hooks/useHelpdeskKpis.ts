@@ -36,7 +36,7 @@ export interface HorasDia {
   totalHoras: number;
 }
 
-export function useHelpdeskKpis() {
+export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
   const query = useQuery({
     queryKey: ['helpdesk', 'kpis'],
     queryFn: async () => {
@@ -51,9 +51,16 @@ export function useHelpdeskKpis() {
   });
 
   const snapshots = query.data || [];
+  const scopedSnapshots = (dateFrom && dateTo)
+    ? snapshots.filter(s => {
+        if (!s.collected_at) return false;
+        const d = new Date(s.collected_at);
+        return d >= dateFrom && d <= dateTo;
+      })
+    : snapshots;
 
   // Get the latest snapshot with POPULATED raw data (not empty arrays)
-  const latestWithRaw = snapshots.find(s => {
+  const latestWithRaw = scopedSnapshots.find(s => {
     if (!s.raw || typeof s.raw !== 'object') return false;
     const r = s.raw as any;
     // Check if at least one KPI array has data
@@ -116,11 +123,12 @@ export function useHelpdeskKpis() {
   const horasDiaTotal = horasHoje ? horasHoje.totalHoras : 
     horasTotaisPorDia.length > 0 ? horasTotaisPorDia[horasTotaisPorDia.length - 1].totalHoras : 0;
 
-  const lastCollected = snapshots[0]?.collected_at || null;
+  const lastCollected = scopedSnapshots[0]?.collected_at || null;
   const periodo = raw.periodo || null;
 
   return {
-    snapshots,
+    snapshots: scopedSnapshots,
+    allSnapshots: snapshots,
     raw,
     // Parsed KPIs
     registrosPorConsultor,

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
 type InfraKpiFilter = 'all' | 'pendentes' | 'em_andamento' | 'concluidos' | 'melhorias' | 'iso27001' | 'transbordo';
 
@@ -36,10 +37,15 @@ export default function InfraestruturaDashboard() {
   const filters = useDashboardFilters('mes_atual');
   const [kpiFilter, setKpiFilter] = useState<InfraKpiFilter>('all');
   const [sprintFilter, setSprintFilter] = useState<string>('all');
-  const { items, total, pendentes, emAndamento, concluidos, melhorias, iso27001, transbordo, backlog, dev, lastSync, isLoading, isError, refetch } = useInfraestruturaKpis(filters.dateFrom, filters.dateTo, sprintFilter);
-  const { sortedSprints } = useSprintFilter(items);
+  const { items, allItems, total, pendentes, emAndamento, concluidos, melhorias, iso27001, transbordo, backlog, dev, lastSync, isLoading, isError, refetch } = useInfraestruturaKpis(filters.dateFrom, filters.dateTo, sprintFilter);
+  const { sortedSprints } = useSprintFilter(allItems);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<InfraItem | null>(null);
+
+  const { minDate, maxDate } = useMemo(
+    () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
+    [allItems]
+  );
 
   const toggleKpi = (f: InfraKpiFilter) => setKpiFilter(prev => prev === f ? 'all' : f);
 
@@ -99,8 +105,11 @@ export default function InfraestruturaDashboard() {
           preset={filters.preset}
           onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
           presetLabel={filters.presetLabel}
+          presets={[]}
           dateFrom={filters.dateFrom}
           dateTo={filters.dateTo}
+          minDate={minDate}
+          maxDate={maxDate}
           onCustomRange={filters.setCustomRange}
           onRefresh={() => refetch()}
           onExportCSV={handleExportCSV}

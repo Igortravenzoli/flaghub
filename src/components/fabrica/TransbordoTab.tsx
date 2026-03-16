@@ -42,7 +42,14 @@ interface TransbordoTabProps {
   transbordoCount: number;
   transbordoTotal: number;
   currentSprint: string | null;
+  selectedSprint: string;
   isLoading: boolean;
+}
+
+function parseSprintLabel(label: string): { year: number; num: number } {
+  const sMatch = label.match(/S(\d+)-(\d{4})/i);
+  if (sMatch) return { year: parseInt(sMatch[2], 10), num: parseInt(sMatch[1], 10) };
+  return { year: 0, num: 0 };
 }
 
 function KpiCard({ label, value, suffix, icon: Icon, accent, description, delay = 0, isLoading }: {
@@ -73,7 +80,7 @@ function KpiCard({ label, value, suffix, icon: Icon, accent, description, delay 
   );
 }
 
-export function TransbordoTab({ items, transbordoPct, transbordoCount, transbordoTotal, currentSprint, isLoading }: TransbordoTabProps) {
+export function TransbordoTab({ items, transbordoPct, transbordoCount, transbordoTotal, currentSprint, selectedSprint, isLoading }: TransbordoTabProps) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [sortField, setSortField] = useState<SortField>('overflowCount');
@@ -100,16 +107,30 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
         map[label] = (map[label] || 0) + 1;
       }
     }
-    return Object.entries(map)
+    let rows = Object.entries(map)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => {
-        // Try to sort by sprint number
-        const numA = parseInt(a.name.replace(/\D/g, '')) || 0;
-        const numB = parseInt(b.name.replace(/\D/g, '')) || 0;
-        return numA - numB;
-      })
-      .slice(-15); // last 15 sprints
-  }, [items]);
+        const pa = parseSprintLabel(a.name);
+        const pb = parseSprintLabel(b.name);
+        if (pa.year !== pb.year) return pa.year - pb.year;
+        return pa.num - pb.num;
+      });
+
+    if (selectedSprint !== 'all') {
+      const selectedLabel = selectedSprint.split('\\').pop() || selectedSprint;
+      const ps = parseSprintLabel(selectedLabel);
+      rows = rows.filter((r) => {
+        const pr = parseSprintLabel(r.name);
+        if (ps.year === 0 || pr.year === 0) return r.name === selectedLabel;
+        if (pr.year !== ps.year) return false;
+        return pr.num <= ps.num && pr.num >= Math.max(1, ps.num - 5);
+      });
+    } else {
+      rows = rows.slice(-15);
+    }
+
+    return rows;
+  }, [items, selectedSprint]);
 
   // By responsible
   const byResponsible = useMemo(() => {

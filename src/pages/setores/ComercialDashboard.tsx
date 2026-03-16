@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
@@ -16,6 +16,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
 const integrations: Integration[] = [
@@ -53,11 +54,16 @@ const tableColumnFilters: ColumnFilter[] = [
 export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
   const [activeTab, setActiveTab] = useState('kpi-oficial');
-  const filters = useDashboardFilters('mes_atual');
+  const filters = useDashboardFilters('30d');
   const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerClient, setDrawerClient] = useState<ComercialClient | null>(null);
+
+  const { minDate, maxDate } = useMemo(
+    () => getDateBoundsFromItems(clients, [(c) => c.synced_at]),
+    [clients]
+  );
 
   const operacionalItems = operational.items.filter(i => i.query_name === '04-Em Fila Comercial');
 
@@ -103,8 +109,20 @@ export default function ComercialDashboard() {
         preset={filters.preset}
         onPresetChange={filters.setPreset}
         presetLabel={filters.presetLabel}
+        presetControl="dropdown"
+        presetsLabel="Período"
+        presets={[
+          { value: '7d', label: '7d' },
+          { value: '30d', label: '30d' },
+          { value: '90d', label: '90d' },
+          { value: '6m', label: '6m' },
+          { value: '1y', label: '1a' },
+          { value: 'all', label: 'Todos' },
+        ]}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
+        minDate={minDate}
+        maxDate={maxDate}
         onCustomRange={filters.setCustomRange}
         onRefresh={() => refetch()}
         onExportCSV={handleExportCSV}

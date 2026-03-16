@@ -9,6 +9,7 @@ export interface QualidadeItem {
   state: string | null;
   assigned_to_display: string | null;
   priority: number | null;
+  tags?: string | null;
   created_date: string | null;
   changed_date: string | null;
   iteration_path?: string | null;
@@ -104,8 +105,16 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
   const totalRetornos = items.reduce((sum, i) => sum + (i.qa_retorno_count ?? 0), 0);
   const taxaRetorno = total > 0 ? Math.round((itensComRetorno.length / total) * 100) : 0;
 
+  const avioesTestados = items.filter(i => {
+    const hasAviaoTag = (i.tags || '').toUpperCase().includes('AVIAO');
+    const testedState = ['TESTING', 'DONE', 'CLOSED', 'RESOLVED'].includes((i.state || '').toUpperCase());
+    return hasAviaoTag && testedState;
+  }).length;
+
   return {
     items,
+    allItems,
+    enrichedItems,
     total,
     filaQA,
     emTeste,
@@ -114,6 +123,7 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
     totalRetornos,
     itensComRetorno: itensComRetorno.length,
     taxaRetorno,
+    avioesTestados,
     lastSync: lastSyncQuery.data,
     isLoading: query.isLoading,
     isError: query.isError,
