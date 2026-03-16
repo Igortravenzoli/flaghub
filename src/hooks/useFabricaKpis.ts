@@ -39,6 +39,11 @@ export interface TimelogAggregation {
   minutes: number;
 }
 
+interface UseFabricaKpisOptions {
+  includeTimeLogs?: boolean;
+  includeWorkItemMeta?: boolean;
+}
+
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
@@ -92,7 +97,15 @@ function normalizeUserName(name: string | null): string {
     .toLowerCase();
 }
 
-export function useFabricaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
+export function useFabricaKpis(
+  dateFrom?: Date,
+  dateTo?: Date,
+  sprintFilter: string = 'all',
+  options?: UseFabricaKpisOptions,
+) {
+  const includeTimeLogs = options?.includeTimeLogs ?? true;
+  const includeWorkItemMeta = options?.includeWorkItemMeta ?? true;
+
   const query = useQuery({
     queryKey: ['fabrica', 'kpis'],
     queryFn: async () => {
@@ -122,7 +135,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: str
   const toStr = dateTo ? dateTo.toISOString().split('T')[0] : undefined;
 
   const timeLogsQuery = useQuery({
-    queryKey: ['fabrica', 'time-logs', fromStr, toStr],
+    queryKey: ['fabrica', 'time-logs', fromStr, toStr, includeTimeLogs],
     queryFn: async () => {
       return fetchAllRows<{ work_item_id: number | null; time_minutes: number | null; user_name: string | null; log_date: string | null }>((from, to) => {
         let q = supabase
@@ -133,12 +146,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: str
         return q.range(from, to);
       });
     },
+    enabled: includeTimeLogs,
     staleTime: 5 * 60 * 1000,
   });
 
   // Work items with tags for product mapping & iteration_history
   const workItemsQuery = useQuery({
-    queryKey: ['fabrica', 'work-items-tags'],
+    queryKey: ['fabrica', 'work-items-tags', includeWorkItemMeta],
     queryFn: async () => {
       return fetchAllRows<{ id: number; tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>((from, to) =>
         supabase
@@ -147,12 +161,13 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: str
           .range(from, to)
       );
     },
+    enabled: includeWorkItemMeta,
     staleTime: 5 * 60 * 1000,
   });
 
   // Persistent collaborator name map — admin-managed, overrides in-memory normalisation
   const collabMapQuery = useQuery({
-    queryKey: ['devops', 'collaborator-map'],
+    queryKey: ['devops', 'collaborator-map', includeTimeLogs],
     queryFn: async () => {
         // Table not yet in generated types (migration pending) — cast to any
         const { data } = await (supabase as any)
@@ -164,6 +179,7 @@ export function useFabricaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: str
       }
       return map;
     },
+    enabled: includeTimeLogs,
       staleTime: 10 * 60 * 1000, // 10 min — rarely changes
   });
 

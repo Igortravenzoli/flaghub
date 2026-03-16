@@ -41,7 +41,10 @@ export default function Home() {
   // Real data hooks
   const comercial = useComercialKpis();
   const helpdesk = useHelpdeskKpis();
-  const fabrica = useFabricaKpis();
+  const fabrica = useFabricaKpis(undefined, undefined, 'all', {
+    includeTimeLogs: false,
+    includeWorkItemMeta: false,
+  });
   const qualidade = useQualidadeKpis();
   const cs = useCustomerServiceKpis();
   const infra = useInfraestruturaKpis();
