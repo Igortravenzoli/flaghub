@@ -130,6 +130,12 @@ export default function Login() {
             refresh_token: session.refresh_token,
           });
           console.log('[Login] Session set successfully');
+          console.log('[Login] Token preview:', session.access_token?.substring(0, 50));
+          
+          // Verify token is set in client
+          const { data: { session: verifySession } } = await supabase.auth.getSession();
+          console.log('[Login] Verified session set:', !!verifySession?.access_token);
+          console.log('[Login] Stored token preview:', verifySession?.access_token?.substring(0, 50));
         } catch (setSessionErr) {
           console.error('[Login] setSession failed:', setSessionErr);
           throw setSessionErr;
