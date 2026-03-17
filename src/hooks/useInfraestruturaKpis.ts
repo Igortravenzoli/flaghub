@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 
 export interface InfraItem {
   id: number | null;
@@ -11,6 +12,7 @@ export interface InfraItem {
   effort: number | null;
   tags: string | null;
   iteration_path?: string | null;
+  transbordo_count?: number;
   created_date: string | null;
   changed_date: string | null;
   web_url: string | null;
@@ -52,9 +54,52 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
 
   const allItems = query.data || [];
 
+  const transbordoMapQuery = useQuery({
+    queryKey: ['infraestrutura', 'transbordo-map', allItems.map(i => i.id).filter(Boolean).join(',')],
+    queryFn: async () => {
+      const ids = allItems.map(i => i.id).filter((id): id is number => id != null);
+      if (ids.length === 0) return new Map<number, number>();
+
+      const map = new Map<number, number>();
+      for (let i = 0; i < ids.length; i += 1000) {
+        const chunk = ids.slice(i, i + 1000);
+        const { data } = await (supabase as any)
+          .from('devops_work_items')
+          .select('id, iteration_history')
+          .in('id', chunk);
+
+        for (const row of (data || [])) {
+          const history = (row.iteration_history || []) as Array<{ oldValue: string; newValue: string }>;
+          const relevantChanges = history.filter((h) => {
+            const oldValue = h.oldValue || '';
+            const newValue = h.newValue || '';
+            const oldCode = extractSprintCodeFromPath(oldValue);
+            const newCode = extractSprintCodeFromPath(newValue);
+
+            if (!newCode) return false;
+            if (oldCode) return oldCode !== newCode;
+            return !/backlog/i.test(oldValue);
+          });
+          map.set(row.id, relevantChanges.length);
+        }
+      }
+
+      return map;
+    },
+    enabled: allItems.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const transbordoMap = transbordoMapQuery.data || new Map<number, number>();
+
+  const allItemsEnriched = allItems.map((item) => ({
+    ...item,
+    transbordo_count: item.id ? (transbordoMap.get(item.id) || 0) : 0,
+  }));
+
   const sprintScopedItems = sprintFilter === 'all'
-    ? allItems
-    : allItems.filter(i => i.iteration_path === sprintFilter);
+    ? allItemsEnriched
+    : allItemsEnriched.filter(i => i.iteration_path === sprintFilter);
 
   const items = (dateFrom && dateTo)
     ? sprintScopedItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
@@ -68,14 +113,14 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
   const countByTag = (tag: string) => items.filter(i => i.tags?.toUpperCase().includes(tag.toUpperCase())).length;
   const melhorias = countByTag('MELHORIA');
   const iso27001 = countByTag('ISO27001') + countByTag('ISO');
-  const transbordo = countByTag('TRANSBORDO');
+  const transbordo = items.reduce((sum, i) => sum + (i.transbordo_count || 0), 0);
 
   const backlog = pendentes;
   const dev = emAndamento;
 
   return {
     items,
-    allItems,
+    allItems: allItemsEnriched,
     total,
     pendentes,
     emAndamento,
@@ -86,7 +131,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
     backlog,
     dev,
     lastSync: lastSyncQuery.data,
-    isLoading: query.isLoading,
+    isLoading: query.isLoading || transbordoMapQuery.isLoading,
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,

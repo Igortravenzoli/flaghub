@@ -47,12 +47,13 @@ const CHART_COLORS = [
 ];
 
 const STORAGE_KEY = 'helpdesk_consultant_filter';
+const DEFAULT_COLLABORATORS = ['Ailton', 'Italo', 'Leandro', 'Vagner', 'Bruna', 'Ronaldo'];
 
 function loadConsultantFilter(): string[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch { return []; }
+    return stored ? JSON.parse(stored) : DEFAULT_COLLABORATORS;
+  } catch { return DEFAULT_COLLABORATORS; }
 }
 
 function saveConsultantFilter(selected: string[]) {
@@ -353,7 +354,6 @@ export default function HelpdeskDashboard() {
         minDate={minDate}
         maxDate={maxDate}
         onCustomRange={filters.setCustomRange}
-        onRefresh={() => refetch()}
         onExportCSV={handleExportCSV}
         onExportPDF={handleExportPDF}
       />

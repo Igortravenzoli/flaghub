@@ -293,7 +293,7 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
           <Card className="animate-fade-in" style={{ animationDelay: '400ms' }}>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Filter className="h-4 w-4 text-primary" />Por Estado
+                <Filter className="h-4 w-4 text-primary" />Por Estado Product Backlog Item
               </CardTitle>
             </CardHeader>
             <CardContent>

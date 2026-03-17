@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 
 export interface TransbordoItem extends FabricaItem {
   overflowCount: number;
@@ -189,11 +190,19 @@ export function useFabricaKpis(
 
   const allItems = query.data || [];
   const INFRA_PREFIX = '[INFRA]';
-  const nonInfraItems = allItems.filter(i => !i.title?.startsWith(INFRA_PREFIX));
+  const EXCLUDED_INFRA_PBI_ID = 2700;
+  const nonInfraItems = allItems.filter((i) => {
+    if (i.id === EXCLUDED_INFRA_PBI_ID || i.parent_id === EXCLUDED_INFRA_PBI_ID) return false;
+    return !i.title?.startsWith(INFRA_PREFIX);
+  });
 
-  // Sprint is the primary filter; date range is a drill-down on time logs only.
+  const dateScopedItems = (dateFrom && dateTo)
+    ? nonInfraItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+    : nonInfraItems;
+
+  // Sprint is the primary filter. In custom mode (all sprints), date range scopes work items.
   const items = sprintFilter === 'all'
-    ? nonInfraItems
+    ? dateScopedItems
     : nonInfraItems.filter(i => i.iteration_path === sprintFilter);
 
   // kpiItems: exclude Tasks/Bugs whose parent PBI is also in the view (count_in_kpi flag)
@@ -334,7 +343,7 @@ export function useFabricaKpis(
     leadTimeSource = 'effort';
   }
 
-  const sprintSet = new Set(items.map(i => i.iteration_path).filter(Boolean) as string[]);
+  const sprintSet = new Set(nonInfraItems.map(i => i.iteration_path).filter(Boolean) as string[]);
   const sprintCount = sprintSet.size;
   const sortedSprints = [...sprintSet].sort(sprintCompare);
   const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
@@ -373,8 +382,22 @@ export function useFabricaKpis(
   const overflowedPbis = allPbis.filter(i => {
     if (!i.id) return false;
     const wi = wiMap.get(i.id);
-    const history = wi?.iteration_history;
-    return Array.isArray(history) && history.length > 0;
+    const history = (wi?.iteration_history || []) as Array<{ oldValue: string; newValue: string; revisedDate: string }>;
+
+    const relevantChanges = history.filter((h) => {
+      const oldValue = h.oldValue || '';
+      const newValue = h.newValue || '';
+      const oldCode = extractSprintCodeFromPath(oldValue);
+      const newCode = extractSprintCodeFromPath(newValue);
+
+      if (!newCode) return false;
+      if (oldCode) return oldCode !== newCode;
+
+      const isBacklogEntry = /backlog/i.test(oldValue);
+      return !isBacklogEntry;
+    });
+
+    return relevantChanges.length > 0;
   });
 
   transbordoCount = overflowedPbis.length;
@@ -392,18 +415,31 @@ export function useFabricaKpis(
     .map(i => {
       const wi = wiMap.get(i.id!);
       const history = (wi?.iteration_history || []) as Array<{ oldValue: string; newValue: string; revisedDate: string }>;
-      const sprintsMoved = history.map(h => h.oldValue);
+      const relevantChanges = history.filter((h) => {
+        const oldValue = h.oldValue || '';
+        const newValue = h.newValue || '';
+        const oldCode = extractSprintCodeFromPath(oldValue);
+        const newCode = extractSprintCodeFromPath(newValue);
+
+        if (!newCode) return false;
+        if (oldCode) return oldCode !== newCode;
+
+        return !/backlog/i.test(oldValue);
+      });
+
+      const sprintsMoved = relevantChanges.map(h => h.oldValue);
       if (i.iteration_path) sprintsMoved.push(i.iteration_path);
       const uniqueSprints = [...new Set(sprintsMoved)].sort(sprintCompare);
       return {
         ...i,
-        overflowCount: history.length,
+        overflowCount: relevantChanges.length,
         sprintsOverflowed: uniqueSprints,
       };
     });
 
   return {
     items,
+    allItems: nonInfraItems,
     total,
     inProgress,
     toDo,

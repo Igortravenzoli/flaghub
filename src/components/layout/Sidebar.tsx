@@ -67,7 +67,6 @@ const sectorItems: NavItem[] = [
         ],
       },
       { label: 'Acompanhamento', path: '/acompanhamento', icon: Eye },
-      { label: 'Importações', path: '/importacoes', icon: Upload },
     ],
   },
 ];
@@ -78,6 +77,7 @@ const adminItems: NavItem[] = [
   { label: 'Permissões', path: '/admin/permissions', icon: Shield, adminOnly: true },
   { label: 'Central de Sync', path: '/admin/sync', icon: RefreshCw, adminOnly: true },
   { label: 'Uploads Manuais', path: '/admin/uploads', icon: Upload, adminOnly: true },
+  { label: 'Retenção de Dados', path: '/configuracoes', icon: Settings, adminOnly: true },
   { label: 'IP Allowlist', path: '/admin/ip-allowlist', icon: Globe, adminOnly: true },
   { label: 'Audit Log', path: '/admin/audit', icon: ScrollText, adminOnly: true },
 ];
@@ -92,7 +92,7 @@ export function Sidebar() {
   const { isAuthenticated, isLoading, isAdmin, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
-  const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/importacoes', '/configuracoes'];
+  const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/configuracoes'];
   const isHelpdeskActive = helpdeskPaths.includes(location.pathname);
   const isPesquisarActive = ['/tickets', '/ticket-busca'].includes(location.pathname);
   const isTicketsActive = ['/dashboard', '/configuracoes'].includes(location.pathname);

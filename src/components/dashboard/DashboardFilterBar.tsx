@@ -4,7 +4,7 @@ import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, Download, FileText, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, FileText, FileSpreadsheet } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,6 +30,7 @@ interface FilterBarProps {
   minDate?: Date;
   maxDate?: Date;
   showRangeBadge?: boolean;
+  availableDateKeys?: Set<string>;
 }
 
 const DEFAULT_PRESETS: Array<{ value: FilterPreset; label: string }> = [
@@ -49,8 +50,6 @@ export function DashboardFilterBar({
   presetLabel,
   presets = DEFAULT_PRESETS,
   lastSync,
-  onRefresh,
-  isRefreshing,
   onExportCSV,
   onExportPDF,
   dateFrom,
@@ -61,6 +60,7 @@ export function DashboardFilterBar({
   minDate,
   maxDate,
   showRangeBadge = true,
+  availableDateKeys,
 }: FilterBarProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const isKiosk = typeof document !== 'undefined' && document.querySelector('[data-kiosk="true"]') !== null;
@@ -78,9 +78,19 @@ export function DashboardFilterBar({
 
   const isCustom = preset === 'custom';
   const maxAllowed = maxDate || new Date();
-  const disabledDays = {
-    ...(minDate ? { before: minDate } : {}),
-    after: maxAllowed,
+  const disabledDays = (day: Date) => {
+    if (minDate && day < minDate) return true;
+    if (day > maxAllowed) return true;
+
+    if (availableDateKeys && availableDateKeys.size > 0) {
+      const y = day.getFullYear();
+      const m = String(day.getMonth() + 1).padStart(2, '0');
+      const d = String(day.getDate()).padStart(2, '0');
+      const key = `${y}-${m}-${d}`;
+      return !availableDateKeys.has(key);
+    }
+
+    return false;
   };
 
   return (
@@ -122,6 +132,7 @@ export function DashboardFilterBar({
                   numberOfMonths={2}
                   locale={ptBR}
                   disabled={disabledDays}
+                  modifiersClassNames={{ disabled: 'opacity-35' }}
                   className={cn('p-3 pointer-events-auto')}
                 />
               </PopoverContent>
@@ -177,6 +188,7 @@ export function DashboardFilterBar({
                   numberOfMonths={2}
                   locale={ptBR}
                   disabled={disabledDays}
+                  modifiersClassNames={{ disabled: 'opacity-35' }}
                   className={cn('p-3 pointer-events-auto')}
                 />
               </PopoverContent>
@@ -199,13 +211,6 @@ export function DashboardFilterBar({
           <CalendarIcon className="h-3 w-3" />
           Sync: {lastSync}
         </Badge>
-      )}
-
-      {/* Refresh */}
-      {onRefresh && !isKiosk && (
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onRefresh} disabled={isRefreshing}>
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-        </Button>
       )}
 
       {/* Export */}

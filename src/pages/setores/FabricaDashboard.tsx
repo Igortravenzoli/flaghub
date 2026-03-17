@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
@@ -7,7 +7,6 @@ import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSync
 import { useFabricaKpis, FabricaItem, TimelogAggregation } from '@/hooks/useFabricaKpis';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
-import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,14 +16,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getDateBoundsFromItems } from '@/lib/dateBounds';
+import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
-  TrendingUp, BarChart3, Zap
+  TrendingUp, BarChart3, Zap, Plane
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done';
 
@@ -185,9 +185,13 @@ function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, de
 }
 
 export default function FabricaDashboard() {
-  const filters = useDashboardFilters('mes_atual');
   const [sprintFilter, setSprintFilter] = useState<string>('all');
-  const fab = useFabricaKpis(filters.dateFrom, filters.dateTo, sprintFilter);
+  const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
+  const [customActive, setCustomActive] = useState(false);
+  const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
+  const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
+  const effectiveRange = customActive && customRange ? customRange : sprintRange;
+  const fab = useFabricaKpis(effectiveRange?.from, effectiveRange?.to, customActive ? 'all' : sprintFilter);
   const operational = useDevopsOperationalQueue([
     '03-Em Fila Backlog para Priorizar',
     '05-Em Fila UX-UI',
@@ -204,9 +208,23 @@ export default function FabricaDashboard() {
   const PAGE_SIZE = 25;
 
   const { minDate, maxDate } = useMemo(
-    () => getDateBoundsFromItems(fab.items, [(i) => i.created_date, (i) => i.changed_date]),
-    [fab.items]
+    () => getDateBoundsFromItems(fab.allItems, [(i) => i.created_date, (i) => i.changed_date]),
+    [fab.allItems]
   );
+
+  const availableDateKeys = useMemo(
+    () => getAvailableDateKeysFromItems(fab.allItems, [(i) => i.created_date, (i) => i.changed_date]),
+    [fab.allItems]
+  );
+
+  useEffect(() => {
+    if (fab.sortedSprints.length === 0) return;
+    if (sprintFilter !== 'all' && fab.sortedSprints.includes(sprintFilter)) return;
+
+    const officialCurrentCode = getCurrentOfficialSprintCode();
+    const currentSprintPath = fab.sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+    setSprintFilter(currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]);
+  }, [fab.sortedSprints, sprintFilter]);
 
   const colabChartData = useMemo(() =>
     Object.entries(fab.porColaborador)
@@ -410,19 +428,23 @@ export default function FabricaDashboard() {
     setPage(0);
   };
 
+  const periodLabel = customActive
+    ? 'Custom'
+    : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint');
+
   const handleExportCSV = () => exportCSV({
-    title: 'Sprint Board', area: 'Fábrica', periodLabel: filters.presetLabel,
+    title: 'Sprint Board', area: 'Fábrica', periodLabel,
     columns: ['id', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path'],
     rows: fab.items as any[],
   });
 
   const handleExportPDF = () => exportPDF({
-    title: 'Dashboard Fábrica', area: 'Fábrica', periodLabel: filters.presetLabel,
+    title: 'Dashboard Fábrica', area: 'Fábrica', periodLabel,
     kpis: [
       { label: 'Total', value: fab.total },
       { label: 'Em Progresso', value: fab.inProgress },
-      { label: 'To Do', value: fab.toDo },
-      { label: 'Done', value: fab.done },
+      { label: 'A Fazer', value: fab.toDo },
+      { label: 'Finalizados', value: fab.done },
     ],
     columns: ['id', 'title', 'assigned_to_display', 'state', 'priority'],
     rows: fab.items as any[],
@@ -457,7 +479,9 @@ export default function FabricaDashboard() {
       </TableCell>
       <TableCell className="text-sm">{item.assigned_to_display || '—'}</TableCell>
       <TableCell>
-        <Badge className={`text-xs font-mono ${stateColors[item.state || ''] || ''}`}>{item.state || '—'}</Badge>
+        <Badge className={`text-xs font-mono ${stateColors[item.state || ''] || ''}`}>
+          {item.state === 'To Do' ? 'A Fazer' : item.state === 'Done' ? 'Finalizados' : (item.state || '—')}
+        </Badge>
       </TableCell>
       <TableCell>
         {item.priority != null ? <Badge variant="secondary" className="text-xs">P{item.priority}</Badge> : '—'}
@@ -488,40 +512,38 @@ export default function FabricaDashboard() {
           </Badge>
         )}
         <Badge variant="secondary" className="gap-1 text-xs animate-fade-in">
-          <Package className="h-3 w-3" />
+          <Plane className="h-3.5 w-3.5" />
           AVIAO na sprint: {sprintAviaoCount}
         </Badge>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <DashboardFilterBar
-          preset={filters.preset}
-          onPresetChange={(p) => { filters.setPreset(p); setFabKpiFilter('all'); setPage(0); }}
-          presetLabel={filters.presetLabel}
-          presets={[]}
-          dateFrom={filters.dateFrom}
-          dateTo={filters.dateTo}
-          minDate={minDate}
-          maxDate={maxDate}
-          onCustomRange={filters.setCustomRange}
-          onRefresh={() => fab.refetch()}
-          onExportCSV={handleExportCSV}
-          onExportPDF={handleExportPDF}
-        />
-        {/* Sprint filter */}
         {fab.sortedSprints.length > 0 && (
-          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setFabKpiFilter('all'); setPage(0); }}>
+          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setCustomActive(false); setFabKpiFilter('all'); setPage(0); }}>
             <SelectTrigger className="w-[200px] h-8 text-xs">
               <SelectValue placeholder="Sprint" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas as Sprints</SelectItem>
               {[...fab.sortedSprints].reverse().map(sp => (
                 <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         )}
+        <DashboardFilterBar
+          preset={customActive ? 'custom' : 'all'}
+          onPresetChange={() => { setCustomActive(false); setFabKpiFilter('all'); setPage(0); }}
+          presetLabel={customActive ? 'Custom' : 'Sprint'}
+          presets={[]}
+          dateFrom={effectiveRange?.from}
+          dateTo={effectiveRange?.to}
+          minDate={minDate}
+          maxDate={maxDate}
+          availableDateKeys={availableDateKeys}
+          onCustomRange={(from, to) => { setCustomRange({ from, to }); setCustomActive(true); setFabKpiFilter('all'); setPage(0); }}
+          onExportCSV={handleExportCSV}
+          onExportPDF={handleExportPDF}
+        />
       </div>
 
       {fab.isError ? (
@@ -543,9 +565,6 @@ export default function FabricaDashboard() {
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="board" className="gap-1.5 text-xs">
-              <BarChart3 className="h-3.5 w-3.5" />Sprint Board
-            </TabsTrigger>
             <TabsTrigger value="backlog-priorizar" className="gap-1.5 text-xs">
               <ListTodo className="h-3.5 w-3.5" />Backlog Priorizar
             </TabsTrigger>
@@ -560,8 +579,8 @@ export default function FabricaDashboard() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
               <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
-              <HeroKpiCard label="To Do" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
-              <HeroKpiCard label="Done" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
+              <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
+              <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
             </div>
 
             {/* Corporate KPIs */}
@@ -666,6 +685,7 @@ export default function FabricaDashboard() {
                       {typeDistribution.map((t, idx) => (
                         <div key={t.name} className="flex items-center gap-1.5 text-xs">
                           <div className="h-2.5 w-2.5 rounded-sm" style={{ background: CHART_COLORS[idx % CHART_COLORS.length] }} />
+                          {t.name === 'PBI' ? <Package className="h-3 w-3 text-muted-foreground" /> : t.name === 'Task' ? <ListTodo className="h-3 w-3 text-muted-foreground" /> : t.name === 'Bug' ? <Bug className="h-3 w-3 text-muted-foreground" /> : null}
                           <span className="text-muted-foreground">{t.name}</span>
                           <span className="font-semibold text-foreground">{t.value}</span>
                         </div>
@@ -754,8 +774,8 @@ export default function FabricaDashboard() {
             />
           </TabsContent>
 
-          {/* ═══════ TAB: Sprint Board ═══════ */}
-          <TabsContent value="board" className="space-y-4 mt-0">
+          {/* ═══════ Sprint Board consolidado na Visão Geral ═══════ */}
+          <TabsContent value="overview" className="space-y-4 mt-0">
             {fab.isLoading ? (
               <Card className="overflow-hidden">
                 <div className="p-4 border-b border-border"><Skeleton className="h-5 w-40" /></div>
@@ -778,7 +798,7 @@ export default function FabricaDashboard() {
                           className="cursor-pointer text-xs transition-all"
                           onClick={() => toggleFab(f)}
                         >
-                          {f === 'all' ? 'Todos' : f === 'in_progress' ? 'Em Progresso' : f === 'todo' ? 'To Do' : 'Done'}
+                          {f === 'all' ? 'Todos' : f === 'in_progress' ? 'Em Progresso' : f === 'todo' ? 'A Fazer' : 'Finalizados'}
                         </Badge>
                       ))}
                     </div>
@@ -927,7 +947,16 @@ export default function FabricaDashboard() {
                     {operational.isLoading ? (
                       <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
                     ) : backlogPriorizarItems.length === 0 ? (
-                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Sem itens para o filtro atual</TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          <div className="space-y-2">
+                            <p>Sem itens para o filtro atual</p>
+                            <Button size="sm" variant="outline" onClick={() => { setCustomActive(false); setSprintFilter('all'); }}>
+                              Clique para exibir backlog
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     ) : (
                       backlogPriorizarItems.map((item, idx) => (
                         <TableRow key={`bp-${item.id || idx}`} className="cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
@@ -965,7 +994,16 @@ export default function FabricaDashboard() {
                     {operational.isLoading ? (
                       <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
                     ) : uxuiItems.length === 0 ? (
-                      <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Sem itens para o filtro atual</TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                          <div className="space-y-2">
+                            <p>Sem itens para o filtro atual</p>
+                            <Button size="sm" variant="outline" onClick={() => { setCustomActive(false); setSprintFilter('all'); }}>
+                              Clique para exibir backlog
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     ) : (
                       uxuiItems.map((item, idx) => (
                         <TableRow key={`ux-${item.id || idx}`} className="cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>

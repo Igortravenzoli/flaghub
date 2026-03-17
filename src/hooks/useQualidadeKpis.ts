@@ -51,8 +51,9 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
         
         for (const item of (data || [])) {
           const cf = item.custom_fields as Record<string, any> | null;
-          if (cf?.qa_retorno_count != null) {
-            retornoMap.set(item.id, cf.qa_retorno_count);
+          const retornoCount = cf?.qa_return_count ?? cf?.qa_retorno_count;
+          if (retornoCount != null) {
+            retornoMap.set(item.id, Number(retornoCount) || 0);
           }
         }
       }

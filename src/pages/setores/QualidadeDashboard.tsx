@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
@@ -8,13 +8,13 @@ import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState'
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useQualidadeKpis, QualidadeItem } from '@/hooks/useQualidadeKpis';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
-import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
-import { getDateBoundsFromItems } from '@/lib/dateBounds';
+import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
+import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
 type QaKpiFilter = 'all' | 'fila_qa' | 'finalizados' | 'com_retorno';
 
@@ -28,10 +28,13 @@ const columns: DataTableColumn<QualidadeItem>[] = [
       {r.id}
     </a>
   ) : <span>{r.id}</span> },
+  { key: 'work_item_type', header: 'Tipo', render: r => <Badge variant="outline" className="text-xs">{r.work_item_type || '—'}</Badge> },
   { key: 'title', header: 'Título', className: 'max-w-[350px] truncate' },
+  { key: 'assigned_to_display', header: 'Colaborador' },
   { key: 'state', header: 'Estado', render: r => <Badge variant="outline" className="text-xs">{r.state || '—'}</Badge> },
-  { key: 'assigned_to_display', header: 'Responsável' },
-  { key: 'priority', header: 'Prior.', render: r => r.priority != null ? <Badge variant="secondary" className="text-xs">P{r.priority}</Badge> : '—' },
+  { key: 'priority', header: 'Prioridade', render: r => r.priority != null ? <Badge variant="secondary" className="text-xs">P{r.priority}</Badge> : '—' },
+  { key: 'transbordo_count' as any, header: 'Transbordo', render: r => /TRANSBORDO/i.test(r.tags || '') ? <Badge variant="destructive" className="text-xs">1</Badge> : <span className="text-muted-foreground">—</span>, className: 'text-center w-20' },
+  { key: 'iteration_path', header: 'Sprint', className: 'text-xs text-muted-foreground max-w-[120px] truncate', render: r => r.iteration_path ? (r.iteration_path.split('\\').pop() || r.iteration_path) : '—' },
   { 
     key: 'qa_retorno_count' as any, 
     header: 'Retorno QA', 
@@ -50,10 +53,12 @@ const columns: DataTableColumn<QualidadeItem>[] = [
 ];
 
 export default function QualidadeDashboard() {
-  const filters = useDashboardFilters('mes_atual');
   const [kpiFilter, setKpiFilter] = useState<QaKpiFilter>('all');
   const [sprintFilter, setSprintFilter] = useState<string>('all');
-  const { items, allItems, total, filaQA, emTeste, finalizados, taxaVazao, totalRetornos, itensComRetorno, taxaRetorno, avioesTestados, lastSync, isLoading, isError, refetch } = useQualidadeKpis(filters.dateFrom, filters.dateTo, sprintFilter);
+  const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
+  const [customActive, setCustomActive] = useState(false);
+  const base = useQualidadeKpis(undefined, undefined, 'all');
+  const { allItems, lastSync, isLoading, isError } = base;
   const { sortedSprints } = useSprintFilter(allItems);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
@@ -63,34 +68,56 @@ export default function QualidadeDashboard() {
     [allItems]
   );
 
+  const availableDateKeys = useMemo(
+    () => getAvailableDateKeysFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
+    [allItems]
+  );
+
+  useEffect(() => {
+    if (sortedSprints.length === 0) return;
+    if (sprintFilter !== 'all' && sortedSprints.includes(sprintFilter)) return;
+
+    const officialCurrentCode = getCurrentOfficialSprintCode();
+    const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+    setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+  }, [sortedSprints, sprintFilter]);
+
+  const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
+  const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
+  const effectiveRange = customActive && customRange
+    ? customRange
+    : sprintRange || { from: minDate || new Date(), to: maxDate || new Date() };
+
+  const scoped = useQualidadeKpis(effectiveRange.from, effectiveRange.to, sprintFilter === 'all' ? 'all' : sprintFilter);
+
   const toggleKpi = (f: QaKpiFilter) => setKpiFilter(prev => prev === f ? 'all' : f);
 
   const filteredItems = useMemo(() => {
     switch (kpiFilter) {
-      case 'fila_qa': return items.filter(i => i.state === 'New' || i.state === 'To Do' || i.state === 'Active');
-      case 'finalizados': return items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
-      case 'com_retorno': return items.filter(i => (i.qa_retorno_count ?? 0) > 0);
-      default: return items;
+      case 'fila_qa': return scoped.items.filter(i => i.state === 'New' || i.state === 'To Do' || i.state === 'Active');
+      case 'finalizados': return scoped.items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
+      case 'com_retorno': return scoped.items.filter(i => (i.qa_retorno_count ?? 0) > 0);
+      default: return scoped.items;
     }
-  }, [items, kpiFilter]);
+  }, [scoped.items, kpiFilter]);
 
   const handleExportCSV = () => exportCSV({
-    title: 'Qualidade QA', area: 'Qualidade', periodLabel: filters.presetLabel,
-    columns: ['id', 'title', 'state', 'assigned_to_display', 'priority', 'qa_retorno_count', 'created_date'],
-    rows: items as any[],
+    title: 'Qualidade QA', area: 'Qualidade', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
+    columns: ['id', 'work_item_type', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path', 'qa_retorno_count', 'created_date'],
+    rows: scoped.items as any[],
   });
 
   const handleExportPDF = () => exportPDF({
-    title: 'Dashboard Qualidade', area: 'Qualidade', periodLabel: filters.presetLabel,
+    title: 'Dashboard Qualidade', area: 'Qualidade', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
     kpis: [
-      { label: 'Total QA', value: total },
-      { label: 'Fila QA (WIP)', value: filaQA },
-      { label: 'Taxa Vazão', value: `${taxaVazao}%` },
-      { label: 'Finalizados', value: finalizados },
-      { label: 'Retorno QA', value: `${itensComRetorno} (${totalRetornos}x)` },
+      { label: 'Total QA', value: scoped.total },
+      { label: 'Fila QA (WIP)', value: scoped.filaQA },
+      { label: 'Taxa Vazão', value: `${scoped.taxaVazao}%` },
+      { label: 'Finalizados', value: scoped.finalizados },
+      { label: 'Retorno QA', value: `${scoped.itensComRetorno} (${scoped.totalRetornos}x)` },
     ],
-    columns: ['id', 'title', 'state', 'assigned_to_display', 'priority', 'qa_retorno_count'],
-    rows: items as any[],
+    columns: ['id', 'work_item_type', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path', 'qa_retorno_count'],
+    rows: scoped.items as any[],
   });
 
   const drawerFields: DrawerField[] = drawerItem ? [
@@ -114,56 +141,55 @@ export default function QualidadeDashboard() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <DashboardFilterBar
-          preset={filters.preset}
-          onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
-          presetLabel={filters.presetLabel}
-          presets={[]}
-          dateFrom={filters.dateFrom}
-          dateTo={filters.dateTo}
-          minDate={minDate}
-          maxDate={maxDate}
-          onCustomRange={filters.setCustomRange}
-          onRefresh={() => refetch()}
-          onExportCSV={handleExportCSV}
-          onExportPDF={handleExportPDF}
-        />
         {sortedSprints.length > 0 && (
-          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setKpiFilter('all'); }}>
+          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setCustomActive(false); setKpiFilter('all'); }}>
             <SelectTrigger className="w-[220px] h-8 text-xs">
               <SelectValue placeholder="Sprint" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas as Sprints</SelectItem>
               {[...sortedSprints].reverse().map(sp => (
                 <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         )}
+        <DashboardFilterBar
+          preset={customActive ? 'custom' : 'all'}
+          onPresetChange={() => { setCustomActive(false); setKpiFilter('all'); }}
+          presetLabel={customActive ? 'Custom' : 'Sprint'}
+          presets={[]}
+          dateFrom={effectiveRange.from}
+          dateTo={effectiveRange.to}
+          minDate={minDate}
+          maxDate={maxDate}
+          availableDateKeys={availableDateKeys}
+          onCustomRange={(from, to) => { setCustomRange({ from, to }); setCustomActive(true); setKpiFilter('all'); }}
+          onExportCSV={handleExportCSV}
+          onExportPDF={handleExportPDF}
+        />
       </div>
 
       {isError ? (
-        <DashboardEmptyState variant="error" onRetry={() => refetch()} />
+        <DashboardEmptyState variant="error" onRetry={() => scoped.refetch()} />
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-            <DashboardKpiCard label="Total QA" value={total} icon={FileCheck} isLoading={isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
-            <DashboardKpiCard label="Fila QA (WIP)" value={filaQA} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
-            <DashboardKpiCard label="Taxa Vazão QA" value={taxaVazao} suffix="%" icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
-            <DashboardKpiCard label="Finalizados" value={finalizados} icon={BarChart3} isLoading={isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('finalizados')} active={kpiFilter === 'finalizados'} />
+            <DashboardKpiCard label="Total QA" value={scoped.total} icon={FileCheck} isLoading={scoped.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
+            <DashboardKpiCard label="Fila QA (WIP)" value={scoped.filaQA} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
+            <DashboardKpiCard label="Taxa Vazão QA" value={scoped.taxaVazao} suffix="%" icon={TrendingUp} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
+            <DashboardKpiCard label="Finalizados" value={scoped.finalizados} icon={BarChart3} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('finalizados')} active={kpiFilter === 'finalizados'} />
             <DashboardKpiCard 
               label="Retorno QA" 
-              value={itensComRetorno} 
-              suffix={totalRetornos > 0 ? ` (${totalRetornos}x)` : ''} 
+              value={scoped.itensComRetorno} 
+              suffix={scoped.totalRetornos > 0 ? ` (${scoped.totalRetornos}x)` : ''} 
               icon={RotateCcw} 
-              isLoading={isLoading} 
+              isLoading={scoped.isLoading} 
               delay={320} 
               accent="bg-[hsl(0,72%,51%)]" 
               onClick={() => toggleKpi('com_retorno')} 
               active={kpiFilter === 'com_retorno'} 
             />
-            <DashboardKpiCard label="Aviões testados" value={avioesTestados} icon={Plane} isLoading={isLoading} delay={360} accent="bg-[hsl(210,80%,52%)]" />
+            <DashboardKpiCard label="Aviões testados" value={scoped.avioesTestados} icon={Plane} isLoading={scoped.isLoading} delay={360} accent="bg-[hsl(210,80%,52%)]" />
           </div>
 
           {!isLoading && filteredItems.length === 0 ? (
@@ -174,7 +200,7 @@ export default function QualidadeDashboard() {
               subtitle={`${filteredItems.length} registros${kpiFilter === 'com_retorno' ? ' com retorno' : ''}`}
               columns={columns}
               data={filteredItems}
-              isLoading={isLoading}
+              isLoading={scoped.isLoading}
               getRowKey={(r) => String(r.id ?? Math.random())}
               onRowClick={(r) => setDrawerItem(r)}
               searchPlaceholder="Buscar item QA..."

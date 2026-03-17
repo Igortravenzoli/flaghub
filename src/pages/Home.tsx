@@ -12,6 +12,7 @@ import { useFabricaKpis } from '@/hooks/useFabricaKpis';
 import { useQualidadeKpis } from '@/hooks/useQualidadeKpis';
 import { useCustomerServiceKpis } from '@/hooks/useCustomerServiceKpis';
 import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
+import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -41,13 +42,24 @@ export default function Home() {
   // Real data hooks
   const comercial = useComercialKpis();
   const helpdesk = useHelpdeskKpis();
-  const fabrica = useFabricaKpis(undefined, undefined, 'all', {
+  const fabricaBase = useFabricaKpis(undefined, undefined, 'all', {
     includeTimeLogs: false,
     includeWorkItemMeta: false,
   });
-  const qualidade = useQualidadeKpis();
+  const fabricaSprint = fabricaBase.currentSprint || 'all';
+  const fabrica = useFabricaKpis(undefined, undefined, fabricaSprint, {
+    includeTimeLogs: false,
+    includeWorkItemMeta: false,
+  });
+
+  const qualidadeBase = useQualidadeKpis();
+  const { currentSprint: qualidadeSprint } = useSprintFilter(qualidadeBase.allItems);
+  const qualidade = useQualidadeKpis(undefined, undefined, qualidadeSprint || 'all');
+
   const cs = useCustomerServiceKpis();
-  const infra = useInfraestruturaKpis();
+  const infraBase = useInfraestruturaKpis();
+  const { currentSprint: infraSprint } = useSprintFilter(infraBase.allItems);
+  const infra = useInfraestruturaKpis(undefined, undefined, infraSprint || 'all');
 
   // Build sector cards with real data
   const sectorCards: SectorCardData[] = [
@@ -59,31 +71,31 @@ export default function Home() {
     },
     {
       slug: 'customer-service', name: 'Customer Service', icon: 'LayoutGrid',
-      kpiLabel: 'Work Items', kpiValue: cs.items?.length || null,
+      kpiLabel: 'Implantações (Total / Em andamento)', kpiValue: `${cs.implTotal || 0} / ${cs.implAndamento || 0}`,
       isLoading: cs.isLoading, path: '/setor/customer-service',
       hasConnection: true, connectionStatus: cs.isError ? 'down' : 'up',
     },
     {
       slug: 'fabrica', name: 'Fábrica', icon: 'Factory',
-      kpiLabel: 'Work Items', kpiValue: fabrica.items?.length || null,
+      kpiLabel: 'Tasks (A Fazer / Em progresso)', kpiValue: `${fabrica.toDo || 0} / ${fabrica.inProgress || 0}`,
       isLoading: fabrica.isLoading, path: '/setor/fabrica',
       hasConnection: true, connectionStatus: fabrica.isError ? 'down' : 'up',
     },
     {
       slug: 'infraestrutura', name: 'Infraestrutura', icon: 'Server',
-      kpiLabel: 'Work Items', kpiValue: infra.total || null,
+      kpiLabel: 'Atividades (Total / Em andamento)', kpiValue: `${infra.total || 0} / ${infra.emAndamento || 0}`,
       isLoading: infra.isLoading, path: '/setor/infraestrutura',
       hasConnection: true, connectionStatus: infra.isError ? 'down' : 'up',
     },
     {
       slug: 'qualidade', name: 'Qualidade', icon: 'ShieldCheck',
-      kpiLabel: 'Itens na Fila', kpiValue: qualidade.filaQA || null,
+      kpiLabel: 'Tasks (Fila / Em andamento)', kpiValue: `${qualidade.filaQA || 0} / ${qualidade.emTeste || 0}`,
       isLoading: qualidade.isLoading, path: '/setor/qualidade',
       hasConnection: true, connectionStatus: qualidade.isError ? 'down' : 'up',
     },
     {
       slug: 'helpdesk', name: 'Helpdesk', icon: 'Headphones',
-      kpiLabel: 'Total Registros', kpiValue: helpdesk.totalRegistros || null,
+      kpiLabel: 'Atendimentos do Dia', kpiValue: helpdesk.totalRegistros || null,
       isLoading: helpdesk.isLoading, path: '/setor/helpdesk',
       hasConnection: true, connectionStatus: helpdesk.isError ? 'down' : 'up',
     },

@@ -114,7 +114,7 @@ export function DashboardKpiCard({
                   {label}
                 </p>
               </TooltipTrigger>
-              <TooltipContent className="max-w-sm text-xs">
+              <TooltipContent side="top" align="start" className="max-w-md text-xs leading-relaxed">
                 <p className="font-semibold mb-1">{effectiveTitle}</p>
                 {effectiveFormula && <p className="mb-1"><span className="font-medium">Fórmula:</span> {effectiveFormula}</p>}
                 {effectiveDescription && <p><span className="font-medium">Descrição:</span> {effectiveDescription}</p>}

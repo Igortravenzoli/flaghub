@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Bell, Clock, RefreshCw, Mail, Shield, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { Bell, Clock, RefreshCw, Mail, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -195,27 +195,11 @@ export function SectorSettings({ sectorName, syncFunctions = [] }: SectorSetting
         </div>
       </Card>
 
-      {/* Data Retention */}
       <Card className="p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="h-4 w-4 text-primary" />
-          <h4 className="font-semibold text-foreground">Retenção de Dados</h4>
-        </div>
-        <p className="text-sm text-muted-foreground mb-3">
-          Período de retenção dos dados importados para este setor.
+        <h4 className="font-semibold text-foreground mb-2">Retenção de Dados</h4>
+        <p className="text-sm text-muted-foreground">
+          A configuração de retenção foi centralizada no menu Admin para controle estruturado.
         </p>
-        <Select defaultValue="90">
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="30">30 dias</SelectItem>
-            <SelectItem value="60">60 dias</SelectItem>
-            <SelectItem value="90">90 dias</SelectItem>
-            <SelectItem value="180">180 dias</SelectItem>
-            <SelectItem value="365">1 ano</SelectItem>
-          </SelectContent>
-        </Select>
       </Card>
 
       <Button onClick={handleSave} className="w-full gap-2">

@@ -1,7 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, LayoutDashboard, Upload, Settings, Plug } from 'lucide-react';
+import { Clock, LayoutDashboard, Upload, Settings } from 'lucide-react';
 import { SectorImportArea } from './SectorImportArea';
 import { SectorSettings } from './SectorSettings';
 import { SectorIntegrations, Integration } from './SectorIntegrations';
@@ -30,6 +30,7 @@ interface SectorLayoutProps {
 export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, kioskMode }: SectorLayoutProps) {
   // Detect kiosk mode from parent or prop
   const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
+  const showImports = areaKey === 'customer-service' || areaKey === 'comercial';
 
   if (isKiosk) {
     return (
@@ -81,16 +82,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
               {tab.label}
             </TabsTrigger>
           ))}
-          {integrations && (
-            <TabsTrigger value="integrations" className="gap-1">
-              <Plug className="h-3.5 w-3.5" />
-              Integrações
+          {showImports && (
+            <TabsTrigger value="imports" className="gap-1">
+              <Upload className="h-3.5 w-3.5" />
+              Importações
             </TabsTrigger>
           )}
-          <TabsTrigger value="imports" className="gap-1">
-            <Upload className="h-3.5 w-3.5" />
-            Importações
-          </TabsTrigger>
           <TabsTrigger value="settings" className="gap-1">
             <Settings className="h-3.5 w-3.5" />
             Configurações
@@ -107,18 +104,19 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
           </TabsContent>
         ))}
 
-        {integrations && (
-          <TabsContent value="integrations" className="mt-4">
-            <SectorIntegrations integrations={integrations} sectorName={title} />
+        {showImports && (
+          <TabsContent value="imports" className="mt-4">
+            <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
           </TabsContent>
         )}
 
-        <TabsContent value="imports" className="mt-4">
-          <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
-        </TabsContent>
-
         <TabsContent value="settings" className="mt-4">
-          <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
+          <div className="space-y-4">
+            <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
+            {integrations && (
+              <SectorIntegrations integrations={integrations} sectorName={title} />
+            )}
+          </div>
         </TabsContent>
         </Tabs>
       </div>
