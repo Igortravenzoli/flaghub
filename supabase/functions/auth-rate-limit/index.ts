@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
   }
 
   // Cleanup old entries periodically (best-effort, non-blocking)
-  adminClient.rpc("cleanup_login_attempts").then(() => {}).catch(() => {});
+  Promise.resolve(adminClient.rpc("cleanup_login_attempts")).then(() => {}).catch(() => {});
 
   const now = new Date();
 
