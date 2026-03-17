@@ -1,28 +1,56 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { Monitor, Loader2 } from 'lucide-react';
+import { Monitor, Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
-import { FusionText } from '@/components/auth/FusionText';
+import { HubFusionAnimation } from '@/components/auth/HubFusionAnimation';
+
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_SECONDS = 60;
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signUp, signInWithAzure, isLoading } = useAuth();
+  const { signIn, signInWithAzure, isLoading } = useAuth();
   
   const [loginData, setLoginData] = useState({ email: '', password: '', rememberMe: false });
-  const [signupData, setSignupData] = useState({ email: '', password: '', fullName: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAzureLoading, setIsAzureLoading] = useState(false);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const attemptsRef = useRef(0);
+  const lockoutTimerRef = useRef<number | null>(null);
 
-  const from = (location.state as { from?: string })?.from || '/dashboard';
+  const from = (location.state as { from?: string })?.from || '/home';
+
+  const isLockedOut = useCallback(() => {
+    if (!lockoutUntil) return false;
+    return Date.now() < lockoutUntil;
+  }, [lockoutUntil]);
+
+  const startLockoutTimer = (until: number) => {
+    setLockoutUntil(until);
+    const tick = () => {
+      const remaining = Math.ceil((until - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockoutUntil(null);
+        setRemainingSeconds(0);
+        attemptsRef.current = 0;
+        if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current);
+        return;
+      }
+      setRemainingSeconds(remaining);
+    };
+    tick();
+    lockoutTimerRef.current = window.setInterval(tick, 1000);
+  };
 
   const handleAzureLogin = async () => {
     setIsAzureLoading(true);
@@ -41,16 +69,79 @@ export default function Login() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isLockedOut()) {
+      toast.error('Muitas tentativas', {
+        description: `Aguarde ${remainingSeconds}s antes de tentar novamente.`,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const { error } = await signIn(loginData.email, loginData.password);
-      
-      if (error) {
-        toast.error('Erro no login', { description: error.message });
-      } else {
+      // Call rate-limited login endpoint
+      let fnData: Record<string, unknown> | null = null;
+      let fnErrorMsg = '';
+
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-rate-limit`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+            body: JSON.stringify({ email: loginData.email, password: loginData.password }),
+          }
+        );
+        fnData = await res.json();
+        if (!res.ok) {
+          fnErrorMsg = fnData?.message as string || 'Credenciais inválidas';
+        }
+      } catch (networkErr) {
+        toast.error('Erro de rede ao tentar fazer login');
+        return;
+      }
+
+      if (fnData?.error) {
+        if (fnData.error === 'rate_limited') {
+          const retryAfter = (fnData.retry_after as number) || LOCKOUT_SECONDS;
+          const until = Date.now() + retryAfter * 1000;
+          startLockoutTimer(until);
+          toast.error('Conta temporariamente bloqueada', {
+            description: `Muitas tentativas falharam. Aguarde ${retryAfter} segundos.`,
+            icon: <ShieldAlert className="h-4 w-4" />,
+          });
+        } else {
+          attemptsRef.current += 1;
+          const remaining = (fnData.remaining_attempts as number) ?? (MAX_ATTEMPTS - attemptsRef.current);
+          toast.error('Erro no login', {
+            description: `${fnErrorMsg || 'Credenciais inválidas'}. ${remaining} tentativa(s) restante(s).`,
+          });
+        }
+      } else if (fnData?.session) {
+        const session = fnData.session as { access_token: string; refresh_token: string };
+        // Set session from the edge function response
+        await supabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        });
+        attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
-        navigate(from, { replace: true });
+
+        // Check if user has elevated role → force MFA before navigating
+        try {
+          const { data: maskedCode } = await supabase.rpc("auth_user_role_masked");
+          if (maskedCode === 's1') {
+            navigate('/mfa', { replace: true });
+          } else {
+            navigate(from, { replace: true });
+          }
+        } catch {
+          navigate(from, { replace: true });
+        }
       }
     } catch (err) {
       toast.error('Erro inesperado ao fazer login');
@@ -59,30 +150,6 @@ export default function Login() {
     }
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      const { error } = await signUp(
-        signupData.email, 
-        signupData.password, 
-        signupData.fullName
-      );
-      
-      if (error) {
-        toast.error('Erro no cadastro', { description: error.message });
-      } else {
-        toast.success('Cadastro realizado!', { 
-          description: 'Verifique seu email para confirmar a conta.' 
-        });
-      }
-    } catch (err) {
-      toast.error('Erro inesperado ao criar conta');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -95,20 +162,13 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <div className="p-2 rounded-lg bg-primary">
-              <Monitor className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-2xl font-bold text-primary">FLAG</span>
-          </div>
-          <CardTitle>Painel Operacional</CardTitle>
+        <CardHeader className="text-center space-y-2 pb-2">
           
-          {/* Animated Fusion Text */}
-          <FusionText />
+          {/* Animated Hub Fusion */}
+          <HubFusionAnimation />
           
           <CardDescription>
-            Acesse sua conta para gerenciar tickets e ordens de serviço
+            Central de KPIs e Dashboards Setoriais
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -142,14 +202,7 @@ export default function Login() {
             </div>
           </div>
 
-          <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Entrar</TabsTrigger>
-              <TabsTrigger value="signup">Cadastrar</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="login">
-              <form onSubmit={handleLogin} className="space-y-4 mt-4">
+          <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="login-email">Email</Label>
                   <Input
@@ -184,67 +237,25 @@ export default function Login() {
                     }
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isLockedOut() && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                    <ShieldAlert className="h-4 w-4 flex-shrink-0" />
+                    <span>Bloqueado por {remainingSeconds}s — muitas tentativas falharam.</span>
+                  </div>
+                )}
+                <Button type="submit" className="w-full" disabled={isSubmitting || isLockedOut()}>
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Entrando...
                     </>
+                  ) : isLockedOut() ? (
+                    `Aguarde ${remainingSeconds}s`
                   ) : (
                     'Entrar'
                   )}
                 </Button>
               </form>
-            </TabsContent>
-            
-            <TabsContent value="signup">
-              <form onSubmit={handleSignup} className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-name">Nome Completo</Label>
-                  <Input
-                    id="signup-name"
-                    type="text"
-                    placeholder="Seu nome"
-                    value={signupData.fullName}
-                    onChange={(e) => setSignupData(prev => ({ ...prev, fullName: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    placeholder="seu@email.com"
-                    value={signupData.email}
-                    onChange={(e) => setSignupData(prev => ({ ...prev, email: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Senha</Label>
-                  <Input
-                    id="signup-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={signupData.password}
-                    onChange={(e) => setSignupData(prev => ({ ...prev, password: e.target.value }))}
-                    required
-                    minLength={6}
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Cadastrando...
-                    </>
-                  ) : (
-                    'Criar Conta'
-                  )}
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
 
           <p className="text-xs text-muted-foreground text-center mt-6">
             Ao continuar, você concorda com os termos de uso e política de privacidade.

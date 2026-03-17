@@ -10,13 +10,12 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, role, signOut } = useAuth();
+  const { isAuthenticated, isLoading, role, signOut, mfaRequired, pendingApproval } = useAuth();
   const location = useLocation();
   const [isStuck, setIsStuck] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Sempre limpar timer anterior
     if (timeoutRef.current) {
       window.clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -27,7 +26,6 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
       return;
     }
 
-    // Failsafe: se ficar carregando tempo demais (ex.: request pendurado), forçar logout
     timeoutRef.current = window.setTimeout(() => {
       console.warn('[Auth] ProtectedRoute loading timeout; forcing logout');
       setIsStuck(true);
@@ -62,6 +60,16 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  }
+
+  // MFA enforcement for admins
+  if (mfaRequired && location.pathname !== '/mfa') {
+    return <Navigate to="/mfa" replace />;
+  }
+
+  // Pending approval: user authenticated but no role assigned yet
+  if (pendingApproval && location.pathname !== '/pending-approval') {
+    return <Navigate to="/pending-approval" replace />;
   }
 
   // Verificar roles se especificados

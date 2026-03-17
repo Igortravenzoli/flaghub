@@ -1,10 +1,17 @@
 import { ReactNode, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, LayoutDashboard, Upload, Settings, Plug } from 'lucide-react';
+import { Clock, LayoutDashboard, Upload, Settings } from 'lucide-react';
 import { SectorImportArea } from './SectorImportArea';
 import { SectorSettings } from './SectorSettings';
 import { SectorIntegrations, Integration } from './SectorIntegrations';
+import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
+
+interface SyncFunction {
+  name: string;
+  label: string;
+  payload?: Record<string, unknown>;
+}
 
 interface SectorLayoutProps {
   title: string;
@@ -12,27 +19,58 @@ interface SectorLayoutProps {
   lastUpdate?: string;
   children: ReactNode;
   integrations?: Integration[];
-  /** Additional tab content */
+  templateKey?: string;
+  areaKey?: string;
+  syncFunctions?: SyncFunction[];
   extraTabs?: { id: string; label: string; icon: ReactNode; content: ReactNode }[];
+  /** When true, only shows dashboard content (no tabs for settings/imports/integrations) */
+  kioskMode?: boolean;
 }
 
-export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, extraTabs }: SectorLayoutProps) {
-  return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-          {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
-        </div>
-        {lastUpdate && (
-          <Badge variant="outline" className="gap-1">
-            <Clock className="h-3 w-3" />
-            {lastUpdate}
-          </Badge>
-        )}
-      </div>
+export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, kioskMode }: SectorLayoutProps) {
+  // Detect kiosk mode from parent or prop
+  const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
+  const showImports = areaKey === 'customer-service' || areaKey === 'comercial';
 
-      <Tabs defaultValue="dashboard" className="w-full">
+  if (isKiosk) {
+    return (
+      <MetricMetadataProvider areaKey={areaKey}>
+        <div className="space-y-4 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+              {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+            </div>
+            {lastUpdate && (
+              <Badge variant="outline" className="gap-1">
+                <Clock className="h-3 w-3" />
+                {lastUpdate}
+              </Badge>
+            )}
+          </div>
+          {children}
+        </div>
+      </MetricMetadataProvider>
+    );
+  }
+
+  return (
+    <MetricMetadataProvider areaKey={areaKey}>
+      <div className="p-6 space-y-6 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+            {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+          </div>
+          {lastUpdate && (
+            <Badge variant="outline" className="gap-1">
+              <Clock className="h-3 w-3" />
+              {lastUpdate}
+            </Badge>
+          )}
+        </div>
+
+        <Tabs defaultValue="dashboard" className="w-full">
         <TabsList>
           <TabsTrigger value="dashboard" className="gap-1">
             <LayoutDashboard className="h-3.5 w-3.5" />
@@ -44,16 +82,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
               {tab.label}
             </TabsTrigger>
           ))}
-          {integrations && (
-            <TabsTrigger value="integrations" className="gap-1">
-              <Plug className="h-3.5 w-3.5" />
-              Integrações
+          {showImports && (
+            <TabsTrigger value="imports" className="gap-1">
+              <Upload className="h-3.5 w-3.5" />
+              Importações
             </TabsTrigger>
           )}
-          <TabsTrigger value="imports" className="gap-1">
-            <Upload className="h-3.5 w-3.5" />
-            Importações
-          </TabsTrigger>
           <TabsTrigger value="settings" className="gap-1">
             <Settings className="h-3.5 w-3.5" />
             Configurações
@@ -70,20 +104,22 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
           </TabsContent>
         ))}
 
-        {integrations && (
-          <TabsContent value="integrations" className="mt-4">
-            <SectorIntegrations integrations={integrations} sectorName={title} />
+        {showImports && (
+          <TabsContent value="imports" className="mt-4">
+            <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
           </TabsContent>
         )}
 
-        <TabsContent value="imports" className="mt-4">
-          <SectorImportArea sectorName={title} />
-        </TabsContent>
-
         <TabsContent value="settings" className="mt-4">
-          <SectorSettings sectorName={title} />
+          <div className="space-y-4">
+            <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
+            {integrations && (
+              <SectorIntegrations integrations={integrations} sectorName={title} />
+            )}
+          </div>
         </TabsContent>
-      </Tabs>
-    </div>
+        </Tabs>
+      </div>
+    </MetricMetadataProvider>
   );
 }

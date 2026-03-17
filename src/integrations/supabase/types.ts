@@ -14,6 +14,366 @@ export type Database = {
   }
   public: {
     Tables: {
+      cs_fila_manual_records: {
+        Row: {
+          batch_id: string | null
+          cliente: string | null
+          data_entrada: string | null
+          data_referencia: string | null
+          data_saida: string | null
+          id: string
+          id_origem: string | null
+          observacoes: string | null
+          prioridade: string | null
+          published_at: string | null
+          raw: Json | null
+          responsavel: string | null
+          status: string | null
+        }
+        Insert: {
+          batch_id?: string | null
+          cliente?: string | null
+          data_entrada?: string | null
+          data_referencia?: string | null
+          data_saida?: string | null
+          id?: string
+          id_origem?: string | null
+          observacoes?: string | null
+          prioridade?: string | null
+          published_at?: string | null
+          raw?: Json | null
+          responsavel?: string | null
+          status?: string | null
+        }
+        Update: {
+          batch_id?: string | null
+          cliente?: string | null
+          data_entrada?: string | null
+          data_referencia?: string | null
+          data_saida?: string | null
+          id?: string
+          id_origem?: string | null
+          observacoes?: string | null
+          prioridade?: string | null
+          published_at?: string | null
+          raw?: Json | null
+          responsavel?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cs_fila_manual_records_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "manual_import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cs_implantacoes_records: {
+        Row: {
+          atuacao: string | null
+          batch_id: string | null
+          cliente: string | null
+          consultor: string | null
+          contato: string | null
+          data_fim: string | null
+          data_inicio: string | null
+          data_referencia: string | null
+          horas_totais: number | null
+          id: string
+          licenca: string | null
+          observacoes: string | null
+          published_at: string | null
+          puxada: string | null
+          raw: Json | null
+          solucao: string | null
+          status_implantacao: string | null
+        }
+        Insert: {
+          atuacao?: string | null
+          batch_id?: string | null
+          cliente?: string | null
+          consultor?: string | null
+          contato?: string | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          data_referencia?: string | null
+          horas_totais?: number | null
+          id?: string
+          licenca?: string | null
+          observacoes?: string | null
+          published_at?: string | null
+          puxada?: string | null
+          raw?: Json | null
+          solucao?: string | null
+          status_implantacao?: string | null
+        }
+        Update: {
+          atuacao?: string | null
+          batch_id?: string | null
+          cliente?: string | null
+          consultor?: string | null
+          contato?: string | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          data_referencia?: string | null
+          horas_totais?: number | null
+          id?: string
+          licenca?: string | null
+          observacoes?: string | null
+          published_at?: string | null
+          puxada?: string | null
+          raw?: Json | null
+          solucao?: string | null
+          status_implantacao?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cs_implantacoes_records_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "manual_import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      devops_queries: {
+        Row: {
+          config: Json | null
+          created_at: string
+          id: string
+          is_active: boolean
+          last_synced_at: string | null
+          name: string
+          refresh_minutes: number | null
+          sector: string | null
+          source_mode: string | null
+          wiql_id: string | null
+          wiql_text: string | null
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          name: string
+          refresh_minutes?: number | null
+          sector?: string | null
+          source_mode?: string | null
+          wiql_id?: string | null
+          wiql_text?: string | null
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          name?: string
+          refresh_minutes?: number | null
+          sector?: string | null
+          source_mode?: string | null
+          wiql_id?: string | null
+          wiql_text?: string | null
+        }
+        Relationships: []
+      }
+      devops_query_items_current: {
+        Row: {
+          query_id: string
+          synced_at: string
+          work_item_id: number
+        }
+        Insert: {
+          query_id: string
+          synced_at?: string
+          work_item_id: number
+        }
+        Update: {
+          query_id?: string
+          synced_at?: string
+          work_item_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "devops_query_items_current_query_id_fkey"
+            columns: ["query_id"]
+            isOneToOne: false
+            referencedRelation: "devops_queries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devops_query_items_current_query_id_fkey"
+            columns: ["query_id"]
+            isOneToOne: false
+            referencedRelation: "vw_devops_queue_items"
+            referencedColumns: ["query_id"]
+          },
+          {
+            foreignKeyName: "devops_query_items_current_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "devops_work_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devops_query_items_current_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "vw_devops_queue_items"
+            referencedColumns: ["work_item_id"]
+          },
+          {
+            foreignKeyName: "devops_query_items_current_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "vw_devops_work_items_hierarchy"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devops_query_items_current_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "vw_infraestrutura_kpis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "devops_query_items_current_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "vw_qualidade_kpis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      devops_time_logs: {
+        Row: {
+          etag: string | null
+          id: string
+          ingested_at: string
+          log_date: string
+          notes: string | null
+          raw: Json
+          start_time: string | null
+          time_minutes: number
+          user_id_ext: string | null
+          user_name: string | null
+          work_item_id: number | null
+        }
+        Insert: {
+          etag?: string | null
+          id?: string
+          ingested_at?: string
+          log_date: string
+          notes?: string | null
+          raw?: Json
+          start_time?: string | null
+          time_minutes?: number
+          user_id_ext?: string | null
+          user_name?: string | null
+          work_item_id?: number | null
+        }
+        Update: {
+          etag?: string | null
+          id?: string
+          ingested_at?: string
+          log_date?: string
+          notes?: string | null
+          raw?: Json
+          start_time?: string | null
+          time_minutes?: number
+          user_id_ext?: string | null
+          user_name?: string | null
+          work_item_id?: number | null
+        }
+        Relationships: []
+      }
+      devops_work_items: {
+        Row: {
+          api_url: string | null
+          area_path: string | null
+          assigned_to: string | null
+          assigned_to_display: string | null
+          assigned_to_id: string | null
+          assigned_to_unique: string | null
+          changed_date: string | null
+          created_at: string
+          created_date: string | null
+          custom_fields: Json | null
+          effort: number | null
+          id: number
+          iteration_history: Json | null
+          iteration_path: string | null
+          parent_id: number | null
+          priority: number | null
+          raw: Json
+          rev: number
+          state: string | null
+          synced_at: string
+          tags: string | null
+          team_project: string | null
+          title: string | null
+          web_url: string | null
+          work_item_type: string | null
+        }
+        Insert: {
+          api_url?: string | null
+          area_path?: string | null
+          assigned_to?: string | null
+          assigned_to_display?: string | null
+          assigned_to_id?: string | null
+          assigned_to_unique?: string | null
+          changed_date?: string | null
+          created_at?: string
+          created_date?: string | null
+          custom_fields?: Json | null
+          effort?: number | null
+          id: number
+          iteration_history?: Json | null
+          iteration_path?: string | null
+          parent_id?: number | null
+          priority?: number | null
+          raw?: Json
+          rev?: number
+          state?: string | null
+          synced_at?: string
+          tags?: string | null
+          team_project?: string | null
+          title?: string | null
+          web_url?: string | null
+          work_item_type?: string | null
+        }
+        Update: {
+          api_url?: string | null
+          area_path?: string | null
+          assigned_to?: string | null
+          assigned_to_display?: string | null
+          assigned_to_id?: string | null
+          assigned_to_unique?: string | null
+          changed_date?: string | null
+          created_at?: string
+          created_date?: string | null
+          custom_fields?: Json | null
+          effort?: number | null
+          id?: number
+          iteration_history?: Json | null
+          iteration_path?: string | null
+          parent_id?: number | null
+          priority?: number | null
+          raw?: Json
+          rev?: number
+          state?: string | null
+          synced_at?: string
+          tags?: string | null
+          team_project?: string | null
+          title?: string | null
+          web_url?: string | null
+          work_item_type?: string | null
+        }
+        Relationships: []
+      }
       domain_network_mapping: {
         Row: {
           created_at: string | null
@@ -45,6 +405,632 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      helpdesk_dashboard_snapshots: {
+        Row: {
+          collected_at: string
+          consultor: string | null
+          data_fim: string | null
+          data_inicio: string | null
+          id: number
+          periodo_tipo: string | null
+          raw: Json
+          total_minutos: number | null
+          total_registros: number | null
+        }
+        Insert: {
+          collected_at?: string
+          consultor?: string | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          id?: number
+          periodo_tipo?: string | null
+          raw: Json
+          total_minutos?: number | null
+          total_registros?: number | null
+        }
+        Update: {
+          collected_at?: string
+          consultor?: string | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          id?: number
+          periodo_tipo?: string | null
+          raw?: Json
+          total_minutos?: number | null
+          total_registros?: number | null
+        }
+        Relationships: []
+      }
+      hub_access_requests: {
+        Row: {
+          area_id: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          requested_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          area_id: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          requested_at?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          area_id?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          requested_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_access_requests_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "hub_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_area_members: {
+        Row: {
+          area_id: string
+          area_role: string
+          can_view_confidential: boolean
+          created_at: string
+          id: string
+          is_active: boolean
+          network_id: number | null
+          user_id: string
+        }
+        Insert: {
+          area_id: string
+          area_role?: string
+          can_view_confidential?: boolean
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          network_id?: number | null
+          user_id: string
+        }
+        Update: {
+          area_id?: string
+          area_role?: string
+          can_view_confidential?: boolean
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          network_id?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_area_members_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "hub_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_areas: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          key: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      hub_audit_logs: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: number
+          metadata: Json | null
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: number
+          metadata?: Json | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: number
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
+      hub_dashboards: {
+        Row: {
+          area_id: string
+          created_at: string
+          description: string | null
+          id: string
+          is_confidential: boolean
+          key: string
+          name: string
+        }
+        Insert: {
+          area_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_confidential?: boolean
+          key: string
+          name: string
+        }
+        Update: {
+          area_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_confidential?: boolean
+          key?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_dashboards_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "hub_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_integration_endpoints: {
+        Row: {
+          created_at: string
+          id: string
+          integration_id: string
+          key: string
+          method: string
+          notes: string | null
+          path: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          integration_id: string
+          key: string
+          method?: string
+          notes?: string | null
+          path: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          integration_id?: string
+          key?: string
+          method?: string
+          notes?: string | null
+          path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_integration_endpoints_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "hub_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hub_integration_endpoints_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "vw_hub_integrations_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_integrations: {
+        Row: {
+          auth_type: string | null
+          base_url: string | null
+          config: Json | null
+          created_at: string
+          id: string
+          is_active: boolean
+          key: string
+          last_health_at: string | null
+          name: string
+          type: string | null
+        }
+        Insert: {
+          auth_type?: string | null
+          base_url?: string | null
+          config?: Json | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key: string
+          last_health_at?: string | null
+          name: string
+          type?: string | null
+        }
+        Update: {
+          auth_type?: string | null
+          base_url?: string | null
+          config?: Json | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key?: string
+          last_health_at?: string | null
+          name?: string
+          type?: string | null
+        }
+        Relationships: []
+      }
+      hub_ip_allowlist: {
+        Row: {
+          cidr: unknown
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          label: string | null
+        }
+        Insert: {
+          cidr: unknown
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+        }
+        Update: {
+          cidr?: unknown
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+        }
+        Relationships: []
+      }
+      hub_manual_uploads: {
+        Row: {
+          area_id: string
+          created_at: string
+          error: string | null
+          file_name: string
+          file_type: string
+          id: string
+          raw: Json | null
+          status: string
+          storage_path: string | null
+          uploaded_by: string
+        }
+        Insert: {
+          area_id: string
+          created_at?: string
+          error?: string | null
+          file_name: string
+          file_type: string
+          id?: string
+          raw?: Json | null
+          status?: string
+          storage_path?: string | null
+          uploaded_by: string
+        }
+        Update: {
+          area_id?: string
+          created_at?: string
+          error?: string | null
+          file_name?: string
+          file_type?: string
+          id?: string
+          raw?: Json | null
+          status?: string
+          storage_path?: string | null
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_manual_uploads_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "hub_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_metrics_registry: {
+        Row: {
+          calc_type: string | null
+          created_at: string
+          dashboard_id: string
+          formula_description: string | null
+          id: string
+          is_confidential: boolean
+          key: string
+          name: string
+          notes: string | null
+          owner_name: string | null
+          return_type: string
+          source_reference: string | null
+          source_system: string
+          status: string
+        }
+        Insert: {
+          calc_type?: string | null
+          created_at?: string
+          dashboard_id: string
+          formula_description?: string | null
+          id?: string
+          is_confidential?: boolean
+          key: string
+          name: string
+          notes?: string | null
+          owner_name?: string | null
+          return_type?: string
+          source_reference?: string | null
+          source_system?: string
+          status?: string
+        }
+        Update: {
+          calc_type?: string | null
+          created_at?: string
+          dashboard_id?: string
+          formula_description?: string | null
+          id?: string
+          is_confidential?: boolean
+          key?: string
+          name?: string
+          notes?: string | null
+          owner_name?: string | null
+          return_type?: string
+          source_reference?: string | null
+          source_system?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_metrics_registry_dashboard_id_fkey"
+            columns: ["dashboard_id"]
+            isOneToOne: false
+            referencedRelation: "hub_dashboards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_raw_ingestions: {
+        Row: {
+          collected_at: string
+          endpoint_id: string | null
+          error: string | null
+          external_id: string | null
+          id: number
+          integration_id: string | null
+          payload: Json
+          payload_hash: string | null
+          processed_at: string | null
+          source_key: string | null
+          source_type: string
+          status: string
+        }
+        Insert: {
+          collected_at?: string
+          endpoint_id?: string | null
+          error?: string | null
+          external_id?: string | null
+          id?: number
+          integration_id?: string | null
+          payload: Json
+          payload_hash?: string | null
+          processed_at?: string | null
+          source_key?: string | null
+          source_type: string
+          status?: string
+        }
+        Update: {
+          collected_at?: string
+          endpoint_id?: string | null
+          error?: string | null
+          external_id?: string | null
+          id?: number
+          integration_id?: string | null
+          payload?: Json
+          payload_hash?: string | null
+          processed_at?: string | null
+          source_key?: string | null
+          source_type?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_raw_ingestions_endpoint_id_fkey"
+            columns: ["endpoint_id"]
+            isOneToOne: false
+            referencedRelation: "hub_integration_endpoints"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hub_raw_ingestions_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "hub_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hub_raw_ingestions_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "vw_hub_integrations_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_sync_jobs: {
+        Row: {
+          area_id: string | null
+          config: Json | null
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          id: string
+          integration_id: string
+          job_key: string
+          last_run_at: string | null
+          next_run_at: string | null
+          schedule_cron: string | null
+          schedule_minutes: number | null
+        }
+        Insert: {
+          area_id?: string | null
+          config?: Json | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          integration_id: string
+          job_key: string
+          last_run_at?: string | null
+          next_run_at?: string | null
+          schedule_cron?: string | null
+          schedule_minutes?: number | null
+        }
+        Update: {
+          area_id?: string | null
+          config?: Json | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          integration_id?: string
+          job_key?: string
+          last_run_at?: string | null
+          next_run_at?: string | null
+          schedule_cron?: string | null
+          schedule_minutes?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_sync_jobs_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "hub_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hub_sync_jobs_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "hub_integrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hub_sync_jobs_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "vw_hub_integrations_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_sync_runs: {
+        Row: {
+          duration_ms: number | null
+          error: string | null
+          finished_at: string | null
+          id: number
+          items_found: number | null
+          items_upserted: number | null
+          job_id: string
+          meta: Json | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: number
+          items_found?: number | null
+          items_upserted?: number | null
+          job_id: string
+          meta?: Json | null
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: number
+          items_found?: number | null
+          items_upserted?: number | null
+          job_id?: string
+          meta?: Json | null
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hub_sync_runs_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "hub_sync_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      hub_user_global_roles: {
+        Row: {
+          created_at: string
+          is_local_admin: boolean
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          is_local_admin?: boolean
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          is_local_admin?: boolean
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       import_batches: {
         Row: {
@@ -196,6 +1182,197 @@ export type Database = {
             columns: ["network_id"]
             isOneToOne: false
             referencedRelation: "networks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      login_attempts: {
+        Row: {
+          attempt_count: number
+          email: string
+          first_attempt_at: string
+          locked_until: string | null
+        }
+        Insert: {
+          attempt_count?: number
+          email: string
+          first_attempt_at?: string
+          locked_until?: string | null
+        }
+        Update: {
+          attempt_count?: number
+          email?: string
+          first_attempt_at?: string
+          locked_until?: string | null
+        }
+        Relationships: []
+      }
+      manual_import_batches: {
+        Row: {
+          area_id: string | null
+          error: string | null
+          file_hash: string | null
+          id: string
+          imported_at: string | null
+          imported_by: string | null
+          invalid_rows: number | null
+          meta: Json | null
+          published_at: string | null
+          published_by: string | null
+          status: string
+          template_id: string | null
+          total_rows: number | null
+          upload_id: string | null
+          valid_rows: number | null
+        }
+        Insert: {
+          area_id?: string | null
+          error?: string | null
+          file_hash?: string | null
+          id?: string
+          imported_at?: string | null
+          imported_by?: string | null
+          invalid_rows?: number | null
+          meta?: Json | null
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+          template_id?: string | null
+          total_rows?: number | null
+          upload_id?: string | null
+          valid_rows?: number | null
+        }
+        Update: {
+          area_id?: string | null
+          error?: string | null
+          file_hash?: string | null
+          id?: string
+          imported_at?: string | null
+          imported_by?: string | null
+          invalid_rows?: number | null
+          meta?: Json | null
+          published_at?: string | null
+          published_by?: string | null
+          status?: string
+          template_id?: string | null
+          total_rows?: number | null
+          upload_id?: string | null
+          valid_rows?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_import_batches_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "hub_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_import_batches_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "manual_import_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manual_import_batches_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "hub_manual_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manual_import_rows: {
+        Row: {
+          batch_id: string | null
+          created_at: string | null
+          id: number
+          is_valid: boolean
+          normalized: Json | null
+          raw: Json
+          row_number: number
+          validation_errors: Json | null
+        }
+        Insert: {
+          batch_id?: string | null
+          created_at?: string | null
+          id?: number
+          is_valid?: boolean
+          normalized?: Json | null
+          raw: Json
+          row_number: number
+          validation_errors?: Json | null
+        }
+        Update: {
+          batch_id?: string | null
+          created_at?: string | null
+          id?: number
+          is_valid?: boolean
+          normalized?: Json | null
+          raw?: Json
+          row_number?: number
+          validation_errors?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_import_rows_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "manual_import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manual_import_templates: {
+        Row: {
+          allowed_file_types: string[]
+          area_id: string | null
+          column_mapping: Json | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          key: string
+          name: string
+          optional_columns: Json | null
+          required_columns: Json | null
+          validation_rules: Json | null
+          version: number
+        }
+        Insert: {
+          allowed_file_types?: string[]
+          area_id?: string | null
+          column_mapping?: Json | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          key: string
+          name: string
+          optional_columns?: Json | null
+          required_columns?: Json | null
+          validation_rules?: Json | null
+          version?: number
+        }
+        Update: {
+          allowed_file_types?: string[]
+          area_id?: string | null
+          column_mapping?: Json | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          key?: string
+          name?: string
+          optional_columns?: Json | null
+          required_columns?: Json | null
+          validation_rules?: Json | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_import_templates_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "hub_areas"
             referencedColumns: ["id"]
           },
         ]
@@ -423,6 +1600,45 @@ export type Database = {
         }
         Relationships: []
       }
+      vdesk_clients: {
+        Row: {
+          apelido: string | null
+          bandeira: string | null
+          id: number
+          nome: string
+          raw: Json | null
+          sistemas: Json | null
+          sistemas_label: string | null
+          source_hash: string | null
+          status: string | null
+          synced_at: string | null
+        }
+        Insert: {
+          apelido?: string | null
+          bandeira?: string | null
+          id?: number
+          nome: string
+          raw?: Json | null
+          sistemas?: Json | null
+          sistemas_label?: string | null
+          source_hash?: string | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Update: {
+          apelido?: string | null
+          bandeira?: string | null
+          id?: number
+          nome?: string
+          raw?: Json | null
+          sistemas?: Json | null
+          sistemas_label?: string | null
+          source_hash?: string | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       v_dashboard_summary: {
@@ -445,6 +1661,234 @@ export type Database = {
           },
         ]
       }
+      vw_comercial_clientes_ativos: {
+        Row: {
+          apelido: string | null
+          bandeira: string | null
+          bandeira_cod: string | null
+          id: number | null
+          nome: string | null
+          sistemas: Json | null
+          sistemas_label: string | null
+          status: string | null
+          synced_at: string | null
+        }
+        Insert: {
+          apelido?: string | null
+          bandeira?: never
+          bandeira_cod?: string | null
+          id?: number | null
+          nome?: string | null
+          sistemas?: Json | null
+          sistemas_label?: string | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Update: {
+          apelido?: string | null
+          bandeira?: never
+          bandeira_cod?: string | null
+          id?: number | null
+          nome?: string | null
+          sistemas?: Json | null
+          sistemas_label?: string | null
+          status?: string | null
+          synced_at?: string | null
+        }
+        Relationships: []
+      }
+      vw_customer_service_kpis: {
+        Row: {
+          assigned_to_display: string | null
+          changed_date: string | null
+          consultor_impl: string | null
+          created_date: string | null
+          data_referencia: string | null
+          priority: number | null
+          query_name: string | null
+          solucao: string | null
+          source: string | null
+          state: string | null
+          status_implantacao: string | null
+          title: string | null
+          web_url: string | null
+          work_item_id: number | null
+          work_item_type: string | null
+        }
+        Relationships: []
+      }
+      vw_devops_queue_items: {
+        Row: {
+          area_path: string | null
+          assigned_to_display: string | null
+          assigned_to_unique: string | null
+          changed_date: string | null
+          created_date: string | null
+          effort: number | null
+          iteration_path: string | null
+          parent_id: number | null
+          priority: number | null
+          query_id: string | null
+          query_name: string | null
+          sector: string | null
+          snapshot_at: string | null
+          state: string | null
+          synced_at: string | null
+          tags: string | null
+          title: string | null
+          web_url: string | null
+          work_item_id: number | null
+          work_item_type: string | null
+        }
+        Relationships: []
+      }
+      vw_devops_work_items_hierarchy: {
+        Row: {
+          area_path: string | null
+          assigned_to_display: string | null
+          assigned_to_unique: string | null
+          changed_date: string | null
+          created_date: string | null
+          effort: number | null
+          id: number | null
+          iteration_path: string | null
+          parent_id: number | null
+          parent_state: string | null
+          parent_title: string | null
+          parent_type: string | null
+          priority: number | null
+          state: string | null
+          tags: string | null
+          title: string | null
+          web_url: string | null
+          work_item_type: string | null
+        }
+        Relationships: []
+      }
+      vw_fabrica_kpis: {
+        Row: {
+          assigned_to_display: string | null
+          changed_date: string | null
+          created_date: string | null
+          effort: number | null
+          id: number | null
+          iteration_path: string | null
+          parent_id: number | null
+          parent_title: string | null
+          parent_type: string | null
+          priority: number | null
+          state: string | null
+          title: string | null
+          web_url: string | null
+          work_item_type: string | null
+        }
+        Relationships: []
+      }
+      vw_helpdesk_kpis: {
+        Row: {
+          collected_at: string | null
+          consultor: string | null
+          data_fim: string | null
+          data_inicio: string | null
+          id: number | null
+          periodo_tipo: string | null
+          raw: Json | null
+          total_minutos: number | null
+          total_registros: number | null
+        }
+        Insert: {
+          collected_at?: string | null
+          consultor?: string | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          id?: number | null
+          periodo_tipo?: string | null
+          raw?: Json | null
+          total_minutos?: number | null
+          total_registros?: number | null
+        }
+        Update: {
+          collected_at?: string | null
+          consultor?: string | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          id?: number | null
+          periodo_tipo?: string | null
+          raw?: Json | null
+          total_minutos?: number | null
+          total_registros?: number | null
+        }
+        Relationships: []
+      }
+      vw_hub_integrations_safe: {
+        Row: {
+          auth_type: string | null
+          base_url: string | null
+          config: Json | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          key: string | null
+          last_health_at: string | null
+          name: string | null
+          type: string | null
+        }
+        Insert: {
+          auth_type?: string | null
+          base_url?: string | null
+          config?: never
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          key?: string | null
+          last_health_at?: string | null
+          name?: string | null
+          type?: string | null
+        }
+        Update: {
+          auth_type?: string | null
+          base_url?: string | null
+          config?: never
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          key?: string | null
+          last_health_at?: string | null
+          name?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
+      vw_infraestrutura_kpis: {
+        Row: {
+          assigned_to_display: string | null
+          changed_date: string | null
+          created_date: string | null
+          effort: number | null
+          id: number | null
+          priority: number | null
+          state: string | null
+          tags: string | null
+          title: string | null
+          web_url: string | null
+          work_item_type: string | null
+        }
+        Relationships: []
+      }
+      vw_qualidade_kpis: {
+        Row: {
+          assigned_to_display: string | null
+          changed_date: string | null
+          created_date: string | null
+          id: number | null
+          priority: number | null
+          state: string | null
+          title: string | null
+          web_url: string | null
+          work_item_type: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       auth_network_id: { Args: never; Returns: number }
@@ -452,6 +1896,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"]
       }
+      auth_user_role_masked: { Args: never; Returns: string }
       batch_validate_os: {
         Args: { p_validations: Json }
         Returns: {
@@ -460,6 +1905,7 @@ export type Database = {
           ticket_external_id: string
         }[]
       }
+      cleanup_login_attempts: { Args: never; Returns: undefined }
       get_batch_statistics: { Args: { p_batch_id: number }; Returns: Json }
       get_correlation_stats: {
         Args: { p_network_id?: number }
@@ -473,6 +1919,7 @@ export type Database = {
           total_tickets: number
         }[]
       }
+      get_cron_secret: { Args: never; Returns: string }
       get_dashboard_summary: {
         Args: { p_network_id?: number }
         Returns: {
@@ -625,6 +2072,24 @@ export type Database = {
         Returns: boolean
       }
       hide_imports: { Args: { p_network_id: number }; Returns: number }
+      hub_audit_log: {
+        Args: {
+          p_action: string
+          p_entity_id?: string
+          p_entity_type?: string
+          p_metadata?: Json
+        }
+        Returns: undefined
+      }
+      hub_can_view_confidential: {
+        Args: { p_area_id: string }
+        Returns: boolean
+      }
+      hub_check_my_ip: { Args: never; Returns: Json }
+      hub_is_admin: { Args: never; Returns: boolean }
+      hub_is_ip_allowed: { Args: never; Returns: boolean }
+      hub_request_ip: { Args: never; Returns: string }
+      hub_user_has_area: { Args: { p_area_id: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_gestao: { Args: never; Returns: boolean }
       jsonb_merge: { Args: { current: Json; new_data: Json }; Returns: Json }

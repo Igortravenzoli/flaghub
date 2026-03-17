@@ -1,109 +1,263 @@
+import { useMemo, useState } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
+import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
+import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
+import { DashboardDataTable, DataTableColumn, ColumnFilter } from '@/components/dashboard/DashboardDataTable';
+import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
+import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
+import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
+import { useComercialKpis, ComercialClient, ClientStatusFilter } from '@/hooks/useComercialKpis';
+import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
+import { useDashboardFilters } from '@/hooks/useDashboardFilters';
+import { useDashboardExport } from '@/hooks/useDashboardExport';
+import { Users, Building2, Flag, UserCheck, UserX, ShieldBan } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
-import { TrendingUp, Users, Heart, BarChart3 } from 'lucide-react';
-import { comercialData } from '@/data/mockSectorData';
-import { Progress } from '@/components/ui/progress';
-import { useCountUp } from '@/hooks/useCountUp';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 
 const integrations: Integration[] = [
-  { name: 'CRM API', type: 'api', status: 'up', lastCheck: '20/02/2026 09:00', latency: '150ms', description: 'Pipeline & Clientes' },
-  { name: 'ERP SQL Server', type: 'database', status: 'up', lastCheck: '20/02/2026 09:00', latency: '25ms', description: 'Dados financeiros' },
+  { name: 'Flag.Ai.Gateway', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Clientes VDesk' },
 ];
 
-function AnimatedNumber({ value, prefix, suffix }: { value: number; prefix?: string; suffix?: string }) {
-  const animated = useCountUp(value);
-  return <>{prefix}{animated}{suffix}</>;
-}
+const columns: DataTableColumn<ComercialClient>[] = [
+  { key: 'id', header: 'ID', className: 'font-mono text-xs w-16' },
+  { key: 'nome', header: 'Nome', className: 'max-w-[250px] truncate font-medium' },
+  { key: 'apelido', header: 'Apelido' },
+  { key: 'bandeira', header: 'Bandeira', render: (r) => r.bandeira ? <Badge variant="outline" className="text-xs">{r.bandeira}</Badge> : '—' },
+  { key: 'sistemas_label', header: 'Sistemas', className: 'max-w-[200px] truncate text-xs text-muted-foreground' },
+  {
+    key: 'status', header: 'Status', render: (r) => {
+      const s = r.status?.toLowerCase();
+      const variant = s === 'ativo' ? 'default' : s === 'bloqueado' ? 'destructive' : 'secondary';
+      return <Badge variant={variant} className="text-xs">{r.status || '—'}</Badge>;
+    }
+  },
+];
 
-function BlockCard({ icon: Icon, title, children, delay = 0 }: { icon: React.ComponentType<{ className?: string }>; title: string; children: React.ReactNode; delay?: number }) {
-  return (
-    <Card className="p-5 animate-fade-in hover:shadow-md transition-all duration-500" style={{ animationDelay: `${delay}ms` }}>
-      <div className="flex items-center gap-2 mb-4">
-        <div className="p-2 rounded-lg bg-primary/10">
-          <Icon className="h-5 w-5 text-primary" />
-        </div>
-        <h3 className="font-semibold text-foreground">{title}</h3>
-      </div>
-      {children}
-    </Card>
-  );
-}
+const tableColumnFilters: ColumnFilter[] = [
+  { key: 'nome', label: 'Nome' },
+  { key: 'apelido', label: 'Apelido' },
+  { key: 'bandeira', label: 'Bandeira' },
+  {
+    key: 'sistemas_label',
+    label: 'Sistemas',
+    extractValue: (row: ComercialClient) =>
+      row.sistemas_label ? row.sistemas_label.split(',').map((s: string) => s.trim()).filter(Boolean) : null,
+  },
+  { key: 'status', label: 'Status' },
+];
 
 export default function ComercialDashboard() {
-  const d = comercialData;
+  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
+  const [activeTab, setActiveTab] = useState('kpi-oficial');
+  const filters = useDashboardFilters('30d');
+  const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
+  const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
+  const { exportCSV, exportPDF } = useDashboardExport();
+  const [drawerClient, setDrawerClient] = useState<ComercialClient | null>(null);
+
+  const { minDate, maxDate } = useMemo(
+    () => getDateBoundsFromItems(clients, [(c) => c.synced_at]),
+    [clients]
+  );
+
+  const operacionalItems = operational.items.filter(i => i.query_name === '04-Em Fila Comercial');
+
+  const handleExportCSV = () => exportCSV({
+    title: 'Base de Clientes', area: 'Comercial', periodLabel: filters.presetLabel,
+    columns: ['id', 'nome', 'apelido', 'bandeira', 'sistemas_label', 'status'],
+    rows: clients as any[],
+  });
+
+  const handleExportPDF = () => exportPDF({
+    title: 'Base de Clientes', area: 'Comercial', periodLabel: filters.presetLabel,
+    kpis: [
+      { label: 'Total Clientes', value: stats.total },
+      { label: 'Ativos', value: stats.ativos },
+      { label: 'Inativos', value: stats.inativos },
+      { label: 'Bloqueados', value: stats.bloqueados },
+    ],
+    columns: ['id', 'nome', 'apelido', 'bandeira', 'status'],
+    rows: clients as any[],
+  });
+
+  const drawerFields: DrawerField[] = drawerClient ? [
+    { label: 'ID', value: drawerClient.id },
+    { label: 'Nome', value: drawerClient.nome },
+    { label: 'Apelido', value: drawerClient.apelido },
+    { label: 'Bandeira', value: drawerClient.bandeira },
+    { label: 'Status', value: drawerClient.status },
+    { label: 'Sistemas', value: drawerClient.sistemas_label },
+    { label: 'Última Sync', value: drawerClient.synced_at ? new Date(drawerClient.synced_at).toLocaleString('pt-BR') : '—' },
+  ] : [];
+
+  const handleKpiClick = (filter: ClientStatusFilter) => {
+    setStatusFilter(prev => prev === filter ? 'todos' : filter);
+  };
+
   return (
-    <SectorLayout title="Dashboard Único Q1 2026" subtitle="Comercial — Visão Consolidada" lastUpdate="19/02/2026 09:30" integrations={integrations}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <BlockCard icon={TrendingUp} title="Topo Executivo" delay={0}>
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Receita Q1</p>
-              <p className="text-2xl font-bold text-foreground">R$ <AnimatedNumber value={parseFloat((d.executivo.receitaQ1 / 1e6).toFixed(1)) * 10} suffix="" />
-                <span className="text-lg">{((d.executivo.receitaQ1 / 1e6) % 1).toFixed(1).substring(1)}M</span>
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Meta atingida</p>
-              <div className="flex items-center gap-2">
-                <Progress value={d.executivo.metaAtingida} className="flex-1 transition-all duration-1000" />
-                <span className="text-sm font-semibold text-foreground"><AnimatedNumber value={d.executivo.metaAtingida} suffix="%" /></span>
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Forecast</p>
-              <p className="text-lg font-semibold text-foreground">R$ {(d.executivo.forecast / 1e6).toFixed(1)}M</p>
-            </div>
-          </div>
-        </BlockCard>
-
-        <BlockCard icon={BarChart3} title="Bloco Pipeline" delay={100}>
-          <div className="space-y-2">
-            {d.pipeline.map((p, i) => (
-              <div key={p.etapa} className="flex items-center justify-between animate-fade-in" style={{ animationDelay: `${200 + i * 80}ms` }}>
-                <span className="text-sm text-foreground">{p.etapa}</span>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground">{p.deals} deals</span>
-                  <span className="text-sm font-semibold text-foreground">R$ {(p.valor / 1e3).toFixed(0)}k</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </BlockCard>
-
-        <BlockCard icon={Users} title="Bloco Clientes" delay={200}>
-          <div className="grid grid-cols-2 gap-4 mb-3">
-            <div className="text-center rounded-lg bg-[hsl(var(--success))]/10 p-3 animate-scale-in" style={{ animationDelay: '300ms' }}>
-              <p className="text-2xl font-bold text-[hsl(var(--success))]">+<AnimatedNumber value={d.clientes.novos} /></p>
-              <p className="text-xs text-muted-foreground">Novos</p>
-            </div>
-            <div className="text-center rounded-lg bg-[hsl(var(--critical))]/10 p-3 animate-scale-in" style={{ animationDelay: '400ms' }}>
-              <p className="text-2xl font-bold text-[hsl(var(--critical))]">-<AnimatedNumber value={d.clientes.perdidos} /></p>
-              <p className="text-xs text-muted-foreground">Perdidos</p>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Motivos de Churn</p>
-            {d.clientes.motivosChurn.map((m) => (
-              <div key={m.motivo} className="flex justify-between text-sm">
-                <span className="text-foreground">{m.motivo}</span>
-                <span className="text-muted-foreground">{m.qtd}</span>
-              </div>
-            ))}
-          </div>
-        </BlockCard>
-
-        <BlockCard icon={Heart} title="Bloco Satisfação" delay={300}>
-          <div className="text-center mb-4">
-            <p className="text-4xl font-bold text-primary"><AnimatedNumber value={d.satisfacao.nps} /></p>
-            <p className="text-sm text-muted-foreground">NPS Score</p>
-          </div>
-          <Card className="p-3 bg-[hsl(var(--critical))]/10 border-[hsl(var(--critical))]/20 animate-scale-in" style={{ animationDelay: '500ms' }}>
-            <p className="text-sm font-semibold text-[hsl(var(--critical))]">{d.satisfacao.alertasCriticos} alertas críticos</p>
-            <p className="text-xs text-muted-foreground">Requerem atenção imediata</p>
-          </Card>
-        </BlockCard>
+    <SectorLayout title="Comercial" subtitle="Base de Clientes — Gateway/VDesk" lastUpdate="" integrations={integrations} areaKey="comercial" syncFunctions={[{ name: 'vdesk-sync-base-clientes', label: 'Sincronizar Base de Clientes (VDesk)' }]}>
+      <div className="flex items-center justify-between mb-2">
+        <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
+
+      <DashboardFilterBar
+        preset={filters.preset}
+        onPresetChange={filters.setPreset}
+        presetLabel={filters.presetLabel}
+        presetControl="dropdown"
+        presetsLabel="Período"
+        presets={[
+          { value: '7d', label: '7d' },
+          { value: '30d', label: '30d' },
+          { value: '90d', label: '90d' },
+          { value: '6m', label: '6m' },
+          { value: '1y', label: '1a' },
+          { value: 'all', label: 'Todos' },
+        ]}
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        minDate={minDate}
+        maxDate={maxDate}
+        onCustomRange={filters.setCustomRange}
+        onRefresh={() => refetch()}
+        onExportCSV={handleExportCSV}
+        onExportPDF={handleExportPDF}
+      />
+
+      {isError ? (
+        <DashboardEmptyState variant="error" onRetry={() => refetch()} />
+      ) : (
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="bg-muted/50 p-1">
+            <TabsTrigger value="kpi-oficial" className="text-xs">KPI Oficial</TabsTrigger>
+            <TabsTrigger value="operacional" className="text-xs">Visão Operacional</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <DashboardKpiCard
+                label="Total Clientes"
+                value={stats.total}
+                icon={Users}
+                isLoading={isLoading}
+              />
+              <DashboardKpiCard
+                label="Ativos"
+                value={stats.ativos}
+                icon={UserCheck}
+                isLoading={isLoading}
+                delay={80}
+                active={statusFilter === 'ativo'}
+                onClick={() => handleKpiClick('ativo')}
+              />
+              <DashboardKpiCard
+                label="Inativos"
+                value={stats.inativos}
+                icon={UserX}
+                isLoading={isLoading}
+                delay={160}
+                active={statusFilter === 'inativo'}
+                onClick={() => handleKpiClick('inativo')}
+              />
+              <DashboardKpiCard
+                label="Bloqueados"
+                value={stats.bloqueados}
+                icon={ShieldBan}
+                isLoading={isLoading}
+                delay={240}
+                active={statusFilter === 'bloqueado'}
+                onClick={() => handleKpiClick('bloqueado')}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 mt-1 mb-1">
+              <span className="text-xs text-muted-foreground">Filtrar:</span>
+              <ToggleGroup type="single" value={statusFilter} onValueChange={(v) => setStatusFilter((v || 'todos') as ClientStatusFilter)} size="sm">
+                <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
+                <ToggleGroupItem value="ativo" className="text-xs h-7 px-3">Ativos</ToggleGroupItem>
+                <ToggleGroupItem value="inativo" className="text-xs h-7 px-3">Inativos</ToggleGroupItem>
+                <ToggleGroupItem value="bloqueado" className="text-xs h-7 px-3">Bloqueados</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            {!isLoading && clients.length === 0 ? (
+              <DashboardEmptyState description="Nenhum cliente encontrado com o filtro selecionado." />
+            ) : (
+              <DashboardDataTable
+                title="Base de Clientes"
+                subtitle={`${totalClientes} clientes${statusFilter !== 'todos' ? ` (${statusFilter})` : ''}`}
+                columns={columns}
+                data={clients}
+                isLoading={isLoading}
+                getRowKey={(r) => r.id}
+                onRowClick={(r) => setDrawerClient(r)}
+                searchPlaceholder="Buscar cliente..."
+                columnFilters={tableColumnFilters}
+              />
+            )}
+          </TabsContent>
+
+          <TabsContent value="operacional" className="space-y-4 mt-0">
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b">
+                <h3 className="font-semibold text-sm">Fila Comercial (Operacional)</h3>
+                <p className="text-xs text-muted-foreground">Fonte operacional: query 04-Em Fila Comercial</p>
+              </div>
+              <div className="overflow-auto max-h-[600px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs font-semibold w-16">ID</TableHead>
+                      <TableHead className="text-xs font-semibold">Tipo</TableHead>
+                      <TableHead className="text-xs font-semibold">Título</TableHead>
+                      <TableHead className="text-xs font-semibold">Responsável</TableHead>
+                      <TableHead className="text-xs font-semibold">Status</TableHead>
+                      <TableHead className="text-xs font-semibold">Prior.</TableHead>
+                      <TableHead className="text-xs font-semibold">Sprint</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {operational.isLoading ? (
+                      <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                    ) : operacionalItems.length === 0 ? (
+                      <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Sem itens operacionais no momento</TableCell></TableRow>
+                    ) : (
+                      operacionalItems.map((item, idx) => (
+                        <TableRow key={`com-op-${item.work_item_id || idx}`}>
+                          <TableCell className="font-mono text-xs">
+                            {item.web_url ? <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.work_item_id || '—'}</a> : (item.work_item_id || '—')}
+                          </TableCell>
+                          <TableCell>{item.work_item_type || '—'}</TableCell>
+                          <TableCell className="max-w-[360px] truncate">{item.title || '—'}</TableCell>
+                          <TableCell>{item.assigned_to_display || '—'}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="text-xs">{item.state || '—'}</Badge>
+                          </TableCell>
+                          <TableCell>{item.priority != null ? `P${item.priority}` : '—'}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{item.iteration_path || '—'}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      <DashboardDrawer
+        open={!!drawerClient}
+        onClose={() => setDrawerClient(null)}
+        title={drawerClient?.nome}
+        subtitle={drawerClient?.apelido || undefined}
+        fields={drawerFields}
+      />
     </SectorLayout>
   );
 }

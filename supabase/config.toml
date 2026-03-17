@@ -1,1 +1,34 @@
 project_id = "onpdhywrzjtwxaxuvijw"
+
+[functions.vdesk-tickets-os]
+verify_jwt = false
+
+[functions.consultar-vdesk]
+verify_jwt = false
+
+[functions.devops-sync-query]
+verify_jwt = false
+
+[functions.devops-sync-all]
+verify_jwt = false
+
+[functions.vdesk-sync-base-clientes]
+verify_jwt = false
+
+[functions.vdesk-sync-helpdesk]
+verify_jwt = false
+
+[functions.manual-upload-parse]
+verify_jwt = false
+
+[functions.manual-upload-publish]
+verify_jwt = false
+
+[functions.auth-rate-limit]
+verify_jwt = false
+
+[functions.manage-sync-schedules]
+verify_jwt = false
+
+[functions.devops-sync-timelog]
+verify_jwt = false

@@ -1,110 +1,149 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Monitor, Tv, Play, Shuffle, Minimize2 } from 'lucide-react';
-import { SectorCard } from '@/components/setores/SectorCard';
-import { sectors } from '@/data/mockSectorData';
+import { Monitor, Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Wifi, WifiOff, Server } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import KioskOverlay from '@/components/home/KioskOverlay';
+import KioskConfigDialog from '@/components/home/KioskConfigDialog';
+import { useComercialKpis } from '@/hooks/useComercialKpis';
+import { useHelpdeskKpis } from '@/hooks/useHelpdeskKpis';
+import { useFabricaKpis } from '@/hooks/useFabricaKpis';
+import { useQualidadeKpis } from '@/hooks/useQualidadeKpis';
+import { useCustomerServiceKpis } from '@/hooks/useCustomerServiceKpis';
+import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
+import { useSprintFilter } from '@/hooks/useSprintFilter';
+import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
 
-// Lazy-load sector dashboards for kiosk
-import QualidadeDashboard from '@/pages/setores/QualidadeDashboard';
-import ComercialDashboard from '@/pages/setores/ComercialDashboard';
-import CustomerServiceDashboard from '@/pages/setores/CustomerServiceDashboard';
-import InfraestruturaDashboard from '@/pages/setores/InfraestruturaDashboard';
-import ProgramacaoDashboard from '@/pages/setores/ProgramacaoDashboard';
-import ComunicacaoDashboard from '@/pages/setores/ComunicacaoDashboard';
-import Dashboard from '@/pages/Dashboard';
-
-const sectorComponents: Record<string, React.ComponentType> = {
-  helpdesk: Dashboard,
-  qualidade: QualidadeDashboard,
-  comercial: ComercialDashboard,
-  'customer-service': CustomerServiceDashboard,
-  infraestrutura: InfraestruturaDashboard,
-  programacao: ProgramacaoDashboard,
-  comunicacao: ComunicacaoDashboard,
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Server,
 };
+
+interface SectorCardData {
+  slug: string;
+  name: string;
+  icon: string;
+  kpiLabel: string;
+  kpiValue: string | number | null;
+  isLoading: boolean;
+  path: string;
+  hasConnection?: boolean;
+  connectionStatus?: 'up' | 'down';
+}
 
 export default function Home() {
   const navigate = useNavigate();
-  const [kioskOpen, setKioskOpen] = useState(false);
-  const [kioskRandom, setKioskRandom] = useState(false);
-  const [kioskInterval, setKioskInterval] = useState('30');
-  const [selectedSectors, setSelectedSectors] = useState<string[]>(sectors.map(s => s.slug));
-
-  // Kiosk fullscreen state
   const [kioskActive, setKioskActive] = useState(false);
   const [kioskCurrentIndex, setKioskCurrentIndex] = useState(0);
+  const [kioskRotate, setKioskRotate] = useState(false);
+  const [kioskInterval, setKioskInterval] = useState(30);
+  const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
 
-  const activeSectors = sectors.filter(s => selectedSectors.includes(s.slug));
+  // Real data hooks
+  const comercial = useComercialKpis();
+  const helpdesk = useHelpdeskKpis();
+  const fabricaBase = useFabricaKpis(undefined, undefined, 'all', {
+    includeTimeLogs: false,
+    includeWorkItemMeta: false,
+  });
+  const fabricaSprint = fabricaBase.currentSprint || 'all';
+  const fabrica = useFabricaKpis(undefined, undefined, fabricaSprint, {
+    includeTimeLogs: false,
+    includeWorkItemMeta: false,
+  });
+
+  const qualidadeBase = useQualidadeKpis();
+  const { currentSprint: qualidadeSprint } = useSprintFilter(qualidadeBase.allItems);
+  const qualidade = useQualidadeKpis(undefined, undefined, qualidadeSprint || 'all');
+
+  const cs = useCustomerServiceKpis();
+  const infraBase = useInfraestruturaKpis();
+  const { currentSprint: infraSprint } = useSprintFilter(infraBase.allItems);
+  const infra = useInfraestruturaKpis(undefined, undefined, infraSprint || 'all');
+
+  // Build sector cards with real data
+  const sectorCards: SectorCardData[] = [
+    {
+      slug: 'comercial', name: 'Comercial', icon: 'TrendingUp',
+      kpiLabel: 'Clientes Ativos', kpiValue: comercial.totalClientes || null,
+      isLoading: comercial.isLoading, path: '/setor/comercial',
+      hasConnection: true, connectionStatus: comercial.isError ? 'down' : 'up',
+    },
+    {
+      slug: 'customer-service', name: 'Customer Service', icon: 'LayoutGrid',
+      kpiLabel: 'Implantações (Total / Em andamento)', kpiValue: `${cs.implTotal || 0} / ${cs.implAndamento || 0}`,
+      isLoading: cs.isLoading, path: '/setor/customer-service',
+      hasConnection: true, connectionStatus: cs.isError ? 'down' : 'up',
+    },
+    {
+      slug: 'fabrica', name: 'Fábrica', icon: 'Factory',
+      kpiLabel: 'Tasks (A Fazer / Em progresso)', kpiValue: `${fabrica.toDo || 0} / ${fabrica.inProgress || 0}`,
+      isLoading: fabrica.isLoading, path: '/setor/fabrica',
+      hasConnection: true, connectionStatus: fabrica.isError ? 'down' : 'up',
+    },
+    {
+      slug: 'infraestrutura', name: 'Infraestrutura', icon: 'Server',
+      kpiLabel: 'Atividades (Total / Em andamento)', kpiValue: `${infra.total || 0} / ${infra.emAndamento || 0}`,
+      isLoading: infra.isLoading, path: '/setor/infraestrutura',
+      hasConnection: true, connectionStatus: infra.isError ? 'down' : 'up',
+    },
+    {
+      slug: 'qualidade', name: 'Qualidade', icon: 'ShieldCheck',
+      kpiLabel: 'Tasks (Fila / Em andamento)', kpiValue: `${qualidade.filaQA || 0} / ${qualidade.emTeste || 0}`,
+      isLoading: qualidade.isLoading, path: '/setor/qualidade',
+      hasConnection: true, connectionStatus: qualidade.isError ? 'down' : 'up',
+    },
+    {
+      slug: 'helpdesk', name: 'Helpdesk', icon: 'Headphones',
+      kpiLabel: 'Atendimentos do Dia', kpiValue: helpdesk.totalRegistros || null,
+      isLoading: helpdesk.isLoading, path: '/setor/helpdesk',
+      hasConnection: true, connectionStatus: helpdesk.isError ? 'down' : 'up',
+    },
+  ];
+
+  const activeSectors = mockSectors.filter((s) => kioskSelectedSlugs.includes(s.slug));
 
   const exitKiosk = useCallback(() => {
     setKioskActive(false);
     document.exitFullscreen?.().catch(() => {});
   }, []);
 
-  // Rotation effect
+  // Rotation timer
   useEffect(() => {
-    if (!kioskActive || !kioskRandom || activeSectors.length <= 1) return;
+    if (!kioskActive || !kioskRotate || activeSectors.length <= 1) return;
     const interval = setInterval(() => {
-      setKioskCurrentIndex(prev => (prev + 1) % activeSectors.length);
-    }, parseInt(kioskInterval) * 1000);
+      setKioskCurrentIndex((prev) => (prev + 1) % activeSectors.length);
+    }, kioskInterval * 1000);
     return () => clearInterval(interval);
-  }, [kioskActive, kioskRandom, kioskInterval, activeSectors.length]);
+  }, [kioskActive, kioskRotate, kioskInterval, activeSectors.length]);
 
-  // Escape key to exit
+  // ESC to exit
   useEffect(() => {
     if (!kioskActive) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') exitKiosk(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitKiosk();
+    };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [kioskActive, exitKiosk]);
 
-  const startKiosk = () => {
-    setKioskOpen(false);
+  const startKiosk = (config: { selectedSlugs: string[]; rotateEnabled: boolean; intervalSec: number }) => {
+    setKioskSelectedSlugs(config.selectedSlugs);
+    setKioskRotate(config.rotateEnabled);
+    setKioskInterval(config.intervalSec);
     setKioskCurrentIndex(0);
     setKioskActive(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
 
-  const toggleSector = (slug: string) => {
-    setSelectedSectors(prev =>
-      prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]
-    );
-  };
-
-  const selectAll = () => setSelectedSectors(sectors.map(s => s.slug));
-  const selectNone = () => setSelectedSectors([]);
-
-  // Kiosk fullscreen overlay
   if (kioskActive && activeSectors.length > 0) {
-    const currentSector = activeSectors[kioskCurrentIndex % activeSectors.length];
-    const SectorComponent = sectorComponents[currentSector.slug];
-
     return (
-      <div className="fixed inset-0 z-[100] bg-background overflow-auto">
-        {/* Exit bar */}
-        <div className="fixed top-4 right-4 z-[110] flex items-center gap-2">
-          {kioskRandom && activeSectors.length > 1 && (
-            <Badge variant="secondary" className="font-mono text-xs">
-              {currentSector.name} • {kioskCurrentIndex + 1}/{activeSectors.length}
-            </Badge>
-          )}
-          <Button variant="outline" size="sm" onClick={exitKiosk} className="bg-card/80 backdrop-blur-sm shadow-lg">
-            <Minimize2 className="h-4 w-4 mr-1" /> Sair
-          </Button>
-        </div>
-        {/* Render sector dashboard */}
-        <div className="p-6">
-          {SectorComponent ? <SectorComponent /> : <p>Dashboard não encontrado</p>}
-        </div>
-      </div>
+      <KioskOverlay
+        activeSectors={activeSectors}
+        currentIndex={kioskCurrentIndex}
+        rotateEnabled={kioskRotate}
+        onExit={exitKiosk}
+      />
     );
   }
 
@@ -115,93 +154,58 @@ export default function Home() {
           <Monitor className="h-6 w-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Hub de Operações</h1>
-          <p className="text-sm text-muted-foreground">Selecione um setor para acessar o dashboard</p>
+          <h1 className="text-2xl font-bold text-foreground">FLAG Hub</h1>
+          <p className="text-sm text-muted-foreground">Central de KPIs — Selecione uma área para acessar o dashboard</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {sectors.map((sector) => (
-          <SectorCard key={sector.slug} sector={sector} />
-        ))}
+        {sectorCards.map((sector) => {
+          const Icon = iconMap[sector.icon] || Headphones;
+          return (
+            <Card
+              key={sector.slug}
+              onClick={() => navigate(sector.path)}
+              className="group cursor-pointer p-6 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1 border-border bg-card"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 rounded-xl bg-primary/10">
+                  <Icon className="h-6 w-6 text-primary" />
+                </div>
+                {sector.hasConnection && (
+                  <div className="flex items-center gap-1 text-xs">
+                    {sector.connectionStatus === 'up' ? (
+                      <Badge className="bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]">UP</Badge>
+                    ) : (
+                      <Badge className="bg-[hsl(var(--critical))] text-[hsl(var(--critical-foreground))]">DOWN</Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <h3 className="text-lg font-semibold text-foreground mb-1">{sector.name}</h3>
+
+              <div className="mt-3 space-y-2">
+                <div>
+                  <p className="text-xs text-muted-foreground">{sector.kpiLabel}</p>
+                  {sector.isLoading ? (
+                    <Skeleton className="h-8 w-20 mt-1" />
+                  ) : sector.kpiValue !== null ? (
+                    <p className="text-2xl font-bold text-foreground">{sector.kpiValue}</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground mt-1 italic">Sem dados</p>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
 
         {/* Kiosk Mode Card */}
-        <Dialog open={kioskOpen} onOpenChange={setKioskOpen}>
-          <DialogTrigger asChild>
-            <Card className="p-5 cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 border-2 border-dashed border-primary/30 hover:border-primary/60 flex flex-col items-center justify-center text-center min-h-[160px] group">
-              <div className="p-3 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors mb-3">
-                <Tv className="h-7 w-7 text-primary" />
-              </div>
-              <h3 className="font-bold text-foreground">Modo Kiosk / TV</h3>
-              <p className="text-xs text-muted-foreground mt-1">Exibir dashboards em tela cheia</p>
-            </Card>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Tv className="h-5 w-5 text-primary" />
-                Configurar Modo Kiosk
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-5 py-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-sm font-medium">Modo Rotativo</Label>
-                  <p className="text-xs text-muted-foreground">Alterna entre setores selecionados</p>
-                </div>
-                <Switch checked={kioskRandom} onCheckedChange={setKioskRandom} />
-              </div>
-
-              {kioskRandom && (
-                <div className="flex items-center gap-3">
-                  <Label className="shrink-0 text-sm">Intervalo</Label>
-                  <Select value={kioskInterval} onValueChange={setKioskInterval}>
-                    <SelectTrigger className="w-36">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15">15 segundos</SelectItem>
-                      <SelectItem value="30">30 segundos</SelectItem>
-                      <SelectItem value="60">1 minuto</SelectItem>
-                      <SelectItem value="120">2 minutos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Setores a exibir</Label>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={selectAll}>Todos</Button>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={selectNone}>Nenhum</Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto">
-                  {sectors.map(s => (
-                    <label key={s.slug} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
-                      <Checkbox
-                        checked={selectedSectors.includes(s.slug)}
-                        onCheckedChange={() => toggleSector(s.slug)}
-                      />
-                      <span className="text-sm text-foreground">{s.name}</span>
-                      <Badge variant="outline" className="ml-auto text-[10px]">{s.status}</Badge>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <Button
-                className="w-full gap-2"
-                disabled={selectedSectors.length === 0}
-                onClick={startKiosk}
-              >
-                {kioskRandom ? <Shuffle className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                {kioskRandom ? 'Iniciar Rotação' : 'Abrir Dashboard'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <KioskConfigDialog
+          sectors={sectorCards.map((s) => ({ slug: s.slug, name: s.name }))}
+          onStart={startKiosk}
+        />
       </div>
     </div>
   );

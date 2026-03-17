@@ -4,15 +4,19 @@ import type { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Profile } from "@/types/database";
+import { hasElevated, hasManagement, hasQuality, hasOperational, canPerformImport, canManageConfig } from "@/lib/roleMap";
 
 interface AuthState {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
-  role: AppRole | null;
+  /** Obfuscated role code (s1, s2, s3, s4) — never exposes DB role names */
+  roleCode: string | null;
   networkId: number | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  mfaRequired: boolean;
+  pendingApproval: boolean;
 }
 
 export interface AuthContextValue extends AuthState {
@@ -27,12 +31,17 @@ export interface AuthContextValue extends AuthState {
   ) => ReturnType<typeof supabase.auth.signUp>;
   signOut: () => Promise<{ error: unknown | null }>;
   signInWithAzure: () => ReturnType<typeof supabase.auth.signInWithOAuth>;
+  clearMfaRequired: () => void;
+  /** @deprecated use roleCode-based checks */
+  role: AppRole | null;
   isAdmin: boolean;
   isGestao: boolean;
   isQualidade: boolean;
   isOperacional: boolean;
   canImport: boolean;
   canManageSettings: boolean;
+  mfaRequired: boolean;
+  pendingApproval: boolean;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -124,13 +133,14 @@ async function provisionUser(userId: string) {
 
 async function fetchUserData(userId: string): Promise<{
   profile: Profile | null;
-  role: AppRole | null;
+  /** Already obfuscated role code (s1/s2/s3/s4) */
+  roleCode: string | null;
   networkId: number | null;
 }> {
   try {
     let { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("*")
+      .select("user_id, full_name, network_id, created_at")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -142,7 +152,7 @@ async function fetchUserData(userId: string): Promise<{
 
       const { data: newProfile, error: newProfileError } = await supabase
         .from("profiles")
-        .select("*")
+        .select("user_id, full_name, network_id, created_at")
         .eq("user_id", userId)
         .maybeSingle();
 
@@ -150,39 +160,22 @@ async function fetchUserData(userId: string): Promise<{
       profile = newProfile;
     }
 
-    // Usar RPC get_user_role para obter a role com maior privilégio
-    // (admin > gestao > qualidade > operacional)
-    const { data: roleFromRpc, error: roleError } = await supabase
-      .rpc("get_user_role", { p_user_id: userId });
+    // Use masked RPC — returns obfuscated code (s1/s2/s3/s4), never plain role names
+    const { data: maskedCode, error: roleError } = await supabase
+      .rpc("auth_user_role_masked");
 
     if (roleError) {
-      console.warn("[Auth] get_user_role RPC failed, falling back to direct query:", roleError);
-      // Fallback: query direta com ordenação
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId);
-      
-      const rolePriority: Record<string, number> = { admin: 1, gestao: 2, qualidade: 3, operacional: 4 };
-      const sortedRoles = (roleData || []).sort((a, b) => 
-        (rolePriority[a.role] ?? 99) - (rolePriority[b.role] ?? 99)
-      );
-      
-      return {
-        profile: profile as Profile | null,
-        role: (sortedRoles[0]?.role as AppRole) || null,
-        networkId: profile?.network_id ?? null,
-      };
+      console.warn("[Auth] auth_user_role_masked RPC failed:", roleError);
     }
 
     return {
       profile: profile as Profile | null,
-      role: (roleFromRpc as AppRole) || null,
+      roleCode: (maskedCode as string) || null,
       networkId: profile?.network_id ?? null,
     };
   } catch (error) {
     console.error("[Auth] Error fetching user data:", error);
-    return { profile: null, role: null, networkId: null };
+    return { profile: null, roleCode: null, networkId: null };
   }
 }
 
@@ -191,10 +184,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: null,
     session: null,
     profile: null,
-    role: null,
+    roleCode: null,
     networkId: null,
     isLoading: true,
     isAuthenticated: false,
+    mfaRequired: false,
+    pendingApproval: false,
   });
 
   // Ref para garantir que o estado inicial só seja definido uma vez
@@ -210,74 +205,166 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: null,
       session: null,
       profile: null,
-      role: null,
+      roleCode: null,
       networkId: null,
       isLoading: false,
       isAuthenticated: false,
+      mfaRequired: false,
+      pendingApproval: false,
     });
+  }, []);
+
+  const hydrateUserData = useCallback(async (session: Session, opId: number) => {
+    // Helper to fetch role/profile data with retry
+    const attemptHydration = async (attempt: number): Promise<boolean> => {
+      const timeoutMs = attempt === 1 ? 3500 : 6000;
+      const claimsTimeoutMs = attempt === 1 ? 3000 : 5000;
+
+      try {
+        const [claims, userData] = await Promise.all([
+          withTimeout(
+            Promise.all([supabase.rpc("auth_user_role_masked"), supabase.rpc("auth_network_id")]),
+            claimsTimeoutMs,
+            `auth claims (attempt ${attempt})`
+          )
+            .then(([roleRes, netRes]) => ({
+              roleCode: roleRes.error ? null : (roleRes.data as string | null),
+              networkId: netRes.error ? null : (netRes.data as number | null),
+            }))
+            .catch((error) => {
+              console.warn(`[Auth] auth claims fetch failed (attempt ${attempt}):`, error);
+              return { roleCode: null, networkId: null };
+            }),
+          withTimeout(fetchUserData(session.user.id), timeoutMs, `fetchUserData (attempt ${attempt})`).catch((error) => {
+            console.warn(`[Auth] fetchUserData timed out/failed (attempt ${attempt}):`, error);
+            return { profile: null, roleCode: null, networkId: null };
+          }),
+        ]);
+
+        if (opId !== opIdRef.current) {
+          console.log("[Auth] hydration aborted - newer operation in progress");
+          return false;
+        }
+
+        // Both sources now return obfuscated codes directly — no toCode() needed
+        const mergedRoleCode = userData.roleCode ?? claims.roleCode;
+        const mergedNetworkId = userData.networkId ?? claims.networkId;
+
+        // If both sources returned null, hydration failed
+        if (!mergedRoleCode && !userData.profile) {
+          return false;
+        }
+
+        if (mergedNetworkId === null) {
+          console.warn("[Auth] networkId is null after sign-in (claims+profile)");
+        }
+
+        const obfuscatedRole = mergedRoleCode;
+
+        let mfaRequired = false;
+        if (hasElevated(obfuscatedRole)) {
+          const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (aalData && aalData.currentLevel !== aalData.nextLevel) {
+            mfaRequired = true;
+          } else if (aalData && aalData.currentLevel === "aal1" && aalData.nextLevel === "aal1") {
+            mfaRequired = true;
+          }
+          console.log("[Auth] Elevated role MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
+        }
+
+        // Check if user has active hub_area_members (means admin approved)
+        let hasAreaMemberships = false;
+        try {
+          const { count } = await supabase
+            .from('hub_area_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', session.user.id)
+            .eq('is_active', true);
+          hasAreaMemberships = (count ?? 0) > 0;
+        } catch (e) {
+          console.warn('[Auth] Failed to check hub_area_members:', e);
+        }
+
+        // User is pending if: has profile, no active area memberships, AND either no role or auto-provisioned operacional
+        const isAutoProvisioned = !obfuscatedRole || obfuscatedRole === 's4';
+        const isPending = isAutoProvisioned && userData.profile != null && !hasAreaMemberships;
+
+        setState((prev) => {
+          const nextRoleCode = obfuscatedRole ?? prev.roleCode;
+          const nextNetworkId = mergedNetworkId ?? prev.networkId;
+
+          if (!obfuscatedRole && prev.roleCode) {
+            console.warn("[Auth] Hydration returned empty role; preserving previous roleCode");
+          }
+
+          return {
+            ...prev,
+            profile: userData.profile ?? prev.profile,
+            roleCode: nextRoleCode,
+            networkId: nextNetworkId,
+            mfaRequired: obfuscatedRole ? mfaRequired : prev.mfaRequired,
+            pendingApproval: isPending && !prev.roleCode,
+          };
+        });
+
+        console.log("[Auth] User hydrated successfully:", session.user.email, "role:", obfuscatedRole);
+        return true;
+      } catch (error) {
+        console.error(`[Auth] Hydration attempt ${attempt} failed:`, error);
+        return false;
+      }
+    };
+
+    // Attempt 1
+    const success = await attemptHydration(1);
+    if (!success && opId === opIdRef.current) {
+      // Wait a bit and retry — setSession may still be finalizing
+      console.log("[Auth] Hydration failed, retrying in 1s...");
+      await new Promise((r) => setTimeout(r, 1000));
+      if (opId === opIdRef.current) {
+        await attemptHydration(2);
+      }
+    }
   }, []);
 
   const setSignedIn = useCallback(async (session: Session) => {
     console.log("[Auth] setSignedIn called for user:", session.user.email);
     const opId = (opIdRef.current += 1);
 
-    // Fase 1 (rápida): liberar UI imediatamente para não estourar watchdog do ProtectedRoute
+    // Fase 1 (rápida): marcar autenticado mas manter isLoading=true até hydration
     initializedRef.current = true;
     setState((prev) => ({
       ...prev,
       user: session.user,
       session,
-      isLoading: false,
       isAuthenticated: true,
+      // Keep isLoading true until hydration determines pendingApproval
     }));
 
-    // Fase 2 (hidratação): carregar role/network/profile em paralelo e aplicar quando pronto
-    try {
-      const [claims, userData] = await Promise.all([
-        withTimeout(
-          Promise.all([supabase.rpc("auth_user_role"), supabase.rpc("auth_network_id")]),
-          2500,
-          "auth claims"
-        )
-          .then(([roleRes, netRes]) => ({
-            role: roleRes.error ? null : (roleRes.data as AppRole | null),
-            networkId: netRes.error ? null : (netRes.data as number | null),
-          }))
-          .catch((error) => {
-            console.warn("[Auth] auth claims fetch failed:", error);
-            return { role: null, networkId: null };
-          }),
-        withTimeout(fetchUserData(session.user.id), 4500, "fetchUserData").catch((error) => {
-          console.warn("[Auth] fetchUserData timed out/failed:", error);
-          return { profile: null, role: null, networkId: null };
-        }),
-      ]);
+    // Fase 2 (hidratação): carregar role/network/profile com retry
+    await hydrateUserData(session, opId);
 
-      // Se outra operação começou, ignorar este resultado
-      if (opId !== opIdRef.current) {
-        console.log("[Auth] setSignedIn hydration aborted - newer operation in progress");
-        return;
-      }
-
-      const mergedRole = userData.role ?? claims.role;
-      const mergedNetworkId = userData.networkId ?? claims.networkId;
-      if (mergedNetworkId === null) {
-        console.warn("[Auth] networkId is null after sign-in (claims+profile)");
-      }
-
-      setState((prev) => ({
-        ...prev,
-        profile: userData.profile,
-        role: mergedRole,
-        networkId: mergedNetworkId,
-      }));
-
-      console.log("[Auth] User signed in successfully:", session.user.email);
-    } catch (error) {
-      console.error("[Auth] Error hydrating signed-in user:", error);
-      // manter estado básico autenticado; apenas deixar metadados nulos
+    // Fase 2.5: Agora que hydration terminou, liberar isLoading
+    if (opId === opIdRef.current) {
+      setState((prev) => ({ ...prev, isLoading: false }));
     }
-  }, []);
+
+    // Fase 3: Se hydration não trouxe roleCode, tentar mais uma vez após breve delay
+    // (cobre cenário pós-login onde RPC pode falhar na primeira tentativa)
+    if (opId === opIdRef.current) {
+      setState((prev) => {
+        if (!prev.roleCode && prev.isAuthenticated) {
+          console.warn("[Auth] roleCode still null after hydration, scheduling retry...");
+          setTimeout(async () => {
+            if (opId === opIdRef.current) {
+              await hydrateUserData(session, opId);
+            }
+          }, 2000);
+        }
+        return prev;
+      });
+    }
+  }, [hydrateUserData]);
 
   useEffect(() => {
     let cancelled = false;
@@ -458,44 +545,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider: "azure",
       options: {
         scopes: "email profile openid",
-        redirectTo: window.location.origin + "/dashboard",
+        redirectTo: window.location.origin + "/auth/callback",
       },
     });
   }, []);
 
-  const isAdmin = state.role === "admin";
-  const isGestao = state.role === "gestao";
-  const isQualidade = state.role === "qualidade";
-  const isOperacional = state.role === "operacional";
-  const canImport = isAdmin || isGestao;
-  const canManageSettings = isAdmin;
+  const clearMfaRequired = useCallback(() => {
+    console.log("[Auth] clearMfaRequired called");
+    setState((prev) => ({ ...prev, mfaRequired: false }));
+  }, []);
+
+  const isAdmin = hasElevated(state.roleCode);
+  const isGestao = hasManagement(state.roleCode) && !hasElevated(state.roleCode);
+  const isQualidade = hasQuality(state.roleCode);
+  const isOperacional = hasOperational(state.roleCode);
+  const canImport = canPerformImport(state.roleCode);
+  const canManageSettingsFlag = canManageConfig(state.roleCode);
+
+  // Derive the DB role name from obfuscated code for backward compatibility
+  const roleFromCode = ((): AppRole | null => {
+    if (!state.roleCode) return null;
+    const map: Record<string, AppRole> = { s1: 'admin', s2: 'gestao', s3: 'qualidade', s4: 'operacional' };
+    return map[state.roleCode] ?? null;
+  })();
 
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
+      role: roleFromCode,
       signIn,
       signUp,
       signOut,
       signInWithAzure,
+      clearMfaRequired,
       isAdmin,
       isGestao,
       isQualidade,
       isOperacional,
       canImport,
-      canManageSettings,
+      canManageSettings: canManageSettingsFlag,
+      mfaRequired: state.mfaRequired,
     }),
     [
       state,
+      roleFromCode,
       signIn,
       signUp,
       signOut,
       signInWithAzure,
+      clearMfaRequired,
       isAdmin,
       isGestao,
       isQualidade,
       isOperacional,
       canImport,
-      canManageSettings,
+      canManageSettingsFlag,
     ]
   );
 

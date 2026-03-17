@@ -15,11 +15,17 @@ import {
   Headphones,
   Loader2,
   TrendingUp,
-  Mail,
-  HeadphonesIcon,
+  Package,
+  Factory,
   Server,
-  Code,
   ShieldCheck,
+  Shield,
+  Globe,
+  RefreshCw,
+  UserCheck,
+  LayoutGrid,
+  Eye,
+  ScrollText,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -40,26 +46,40 @@ const navItems: NavItem[] = [
 
 const sectorItems: NavItem[] = [
   { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp },
-  { label: 'Comunicação', path: '/setor/comunicacao', icon: Mail },
-  { label: 'Customer Service', path: '/setor/customer-service', icon: Users },
+  { label: 'Customer Service', path: '/setor/customer-service', icon: LayoutGrid },
+  { label: 'Fábrica', path: '/setor/fabrica', icon: Factory },
+  { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server },
+  { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck },
   {
-    label: 'HelpDesk', path: '/dashboard', icon: Headphones,
+    label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones,
     children: [
-      { label: 'Centro de Operações', path: '/dashboard', icon: LayoutDashboard },
-      { label: 'Tickets', path: '/tickets', icon: Ticket },
-      { label: 'Busca VDESK', path: '/ticket-busca', icon: Search },
-      { label: 'Acompanhamento', path: '/acompanhamento', icon: Headphones },
-      { label: 'Importações', path: '/importacoes', icon: Upload },
-      { label: 'Configurações', path: '/configuracoes', icon: Settings },
+      { label: 'Dashboard Helpdesk', path: '/setor/helpdesk', icon: LayoutDashboard },
+      { label: 'Tickets', path: '/dashboard', icon: Ticket,
+        children: [
+          { label: 'Painel Tickets', path: '/dashboard', icon: Ticket },
+          { label: 'Configurações', path: '/configuracoes', icon: Settings },
+        ],
+      },
+      { label: 'Pesquisar', path: '/tickets', icon: Search,
+        children: [
+          { label: 'Tickets', path: '/tickets', icon: Ticket },
+          { label: 'Busca VDesk', path: '/ticket-busca', icon: Search },
+        ],
+      },
+      { label: 'Acompanhamento', path: '/acompanhamento', icon: Eye },
     ],
   },
-  { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server },
-  { label: 'Programação', path: '/setor/programacao', icon: Code },
-  { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck },
 ];
 
 const adminItems: NavItem[] = [
   { label: 'Usuários', path: '/usuarios', icon: Users, adminOnly: true },
+  { label: 'Solicitações', path: '/admin/requests', icon: UserCheck, adminOnly: true },
+  { label: 'Permissões', path: '/admin/permissions', icon: Shield, adminOnly: true },
+  { label: 'Central de Sync', path: '/admin/sync', icon: RefreshCw, adminOnly: true },
+  { label: 'Uploads Manuais', path: '/admin/uploads', icon: Upload, adminOnly: true },
+  { label: 'Retenção de Dados', path: '/configuracoes', icon: Settings, adminOnly: true },
+  { label: 'IP Allowlist', path: '/admin/ip-allowlist', icon: Globe, adminOnly: true },
+  { label: 'Audit Log', path: '/admin/audit', icon: ScrollText, adminOnly: true },
 ];
 
 export function Sidebar() {
@@ -67,10 +87,15 @@ export function Sidebar() {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [helpdeskOpen, setHelpdeskOpen] = useState(false);
-  const { isAuthenticated, isLoading, profile, signOut } = useAuth();
+  const [pesquisarOpen, setPesquisarOpen] = useState(false);
+  const [ticketsOpen, setTicketsOpen] = useState(false);
+  const { isAuthenticated, isLoading, isAdmin, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
-  const isHelpdeskActive = ['/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/importacoes', '/configuracoes'].includes(location.pathname);
+  const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/configuracoes'];
+  const isHelpdeskActive = helpdeskPaths.includes(location.pathname);
+  const isPesquisarActive = ['/tickets', '/ticket-busca'].includes(location.pathname);
+  const isTicketsActive = ['/dashboard', '/configuracoes'].includes(location.pathname);
 
   const handleAuthAction = async () => {
     if (isLoading) return;
@@ -103,6 +128,76 @@ export function Sidebar() {
       >
         <Icon className="h-4 w-4 flex-shrink-0" />
         {!collapsed && <span className="font-medium">{item.label}</span>}
+      </Link>
+    );
+  };
+
+  const renderChildItem = (child: NavItem, level = 0) => {
+    const ChildIcon = child.icon;
+    const childActive = isActive(child.path);
+
+    // Handle submenus with children (Tickets, Pesquisar)
+    if (child.children) {
+      const isTicketsSub = child.label === 'Tickets';
+      const isOpen = isTicketsSub ? ticketsOpen : pesquisarOpen;
+      const setOpen = isTicketsSub ? setTicketsOpen : setPesquisarOpen;
+      const isSubActive = isTicketsSub ? isTicketsActive : isPesquisarActive;
+
+      return (
+        <div key={child.label}>
+          <button
+            onClick={() => setOpen(!isOpen)}
+            className={cn(
+              "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all w-full",
+              isSubActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+            )}
+          >
+            <ChildIcon className="h-3.5 w-3.5" />
+            <span className="flex-1 text-left">{child.label}</span>
+            <ChevronRight className={cn("h-3 w-3 transition-transform", isOpen && "rotate-90")} />
+          </button>
+          {isOpen && (
+            <div className="ml-3 pl-2 border-l border-sidebar-border space-y-0.5 mt-0.5">
+              {child.children.map((sub) => {
+                const SubIcon = sub.icon;
+                const subActive = isActive(sub.path);
+                return (
+                  <Link
+                    key={sub.path + sub.label}
+                    to={sub.path}
+                    className={cn(
+                      "flex items-center gap-2 px-2 py-1 rounded-md text-[11px] transition-all",
+                      subActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                        : "text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                    )}
+                  >
+                    <SubIcon className="h-3 w-3" />
+                    <span>{sub.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <Link
+        key={child.path}
+        to={child.path}
+        className={cn(
+          "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all",
+          childActive
+            ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+            : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+        )}
+      >
+        <ChildIcon className="h-3.5 w-3.5" />
+        <span>{child.label}</span>
       </Link>
     );
   };
@@ -146,10 +241,10 @@ export function Sidebar() {
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {navItems.map(renderNavItem)}
 
-        {/* Separator: Setores */}
+        {/* Separator: Áreas */}
         {!collapsed && (
           <div className="pt-3 pb-1 px-3">
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Setores</span>
+            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Áreas</span>
           </div>
         )}
         {collapsed && <div className="border-t border-sidebar-border my-2" />}
@@ -160,7 +255,7 @@ export function Sidebar() {
             return (
               <div key={item.label}>
                 <button
-                  onClick={() => { setHelpdeskOpen(!helpdeskOpen); if (collapsed) navigate(item.path); }}
+                  onClick={() => { navigate(item.path); setHelpdeskOpen(!helpdeskOpen); }}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm w-full",
                     isHelpdeskActive
@@ -178,25 +273,7 @@ export function Sidebar() {
                 </button>
                 {!collapsed && helpdeskOpen && (
                   <div className="ml-4 pl-3 border-l border-sidebar-border space-y-0.5 mt-0.5">
-                    {item.children.map((child) => {
-                      const ChildIcon = child.icon;
-                      const childActive = isActive(child.path);
-                      return (
-                        <Link
-                          key={child.path}
-                          to={child.path}
-                          className={cn(
-                            "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all",
-                            childActive
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
-                              : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-                          )}
-                        >
-                          <ChildIcon className="h-3.5 w-3.5" />
-                          <span>{child.label}</span>
-                        </Link>
-                      );
-                    })}
+                    {item.children.map((child) => renderChildItem(child))}
                   </div>
                 )}
               </div>
@@ -205,14 +282,18 @@ export function Sidebar() {
           return renderNavItem(item);
         })}
 
-        {/* Separator: Admin */}
-        {!collapsed && (
-          <div className="pt-3 pb-1 px-3">
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Admin</span>
-          </div>
+        {/* Admin — only visible to admins */}
+        {isAdmin && (
+          <>
+            {!collapsed && (
+              <div className="pt-3 pb-1 px-3">
+                <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Admin</span>
+              </div>
+            )}
+            {collapsed && <div className="border-t border-sidebar-border my-2" />}
+            {adminItems.map(renderNavItem)}
+          </>
         )}
-        {collapsed && <div className="border-t border-sidebar-border my-2" />}
-        {adminItems.map(renderNavItem)}
       </nav>
 
       {/* Footer */}
@@ -243,8 +324,7 @@ export function Sidebar() {
         </Button>
         {!collapsed && (
           <div className="text-xs text-sidebar-foreground/50">
-            <p>Tickets ↔ OS</p>
-            <p>v1.0.0</p>
+            <p>FlagHub v2.0</p>
           </div>
         )}
       </div>
