@@ -213,17 +213,24 @@ export default function SyncCentral() {
             <p className="text-sm text-muted-foreground">Jobs de sincronização e logs de execução</p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['hub_sync_jobs'] });
-            queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
-            queryClient.invalidateQueries({ queryKey: ['devops_queries_sync'] });
-          }}
-        >
-          <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={isDisablingAll}
+            onClick={handleDisableAllSchedules}
+          >
+            {isDisablingAll ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <PowerOff className="h-4 w-4 mr-1" />}
+            Inativar todos
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refreshSyncData}
+          >
+            <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
+          </Button>
+        </div>
       </div>
 
       {/* DevOps Queries Section */}
