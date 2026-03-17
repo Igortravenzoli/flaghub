@@ -124,27 +124,39 @@ export default function Login() {
       } else if (fnData?.session) {
         const session = fnData.session as { access_token: string; refresh_token: string };
         // Set session from the edge function response
-        await supabase.auth.setSession({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-        });
+        try {
+          await supabase.auth.setSession({
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+          });
+          console.log('[Login] Session set successfully');
+        } catch (setSessionErr) {
+          console.error('[Login] setSession failed:', setSessionErr);
+          throw setSessionErr;
+        }
+        
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
 
         // Check if user has elevated role → force MFA before navigating
         try {
-          const { data: maskedCode } = await supabase.rpc("auth_user_role_masked");
+          const { data: maskedCode, error: rpcErr } = await supabase.rpc("auth_user_role_masked");
+          if (rpcErr) {
+            console.error('[Login] RPC auth_user_role_masked failed:', rpcErr);
+          }
           if (maskedCode === 's1') {
             navigate('/mfa', { replace: true });
           } else {
             navigate(from, { replace: true });
           }
-        } catch {
+        } catch (rpcCatchErr) {
+          console.error('[Login] RPC catch error:', rpcCatchErr);
           navigate(from, { replace: true });
         }
       }
     } catch (err) {
-      toast.error('Erro inesperado ao fazer login');
+      console.error('[Login] Full error:', err);
+      toast.error(`Erro ao fazer login: ${err instanceof Error ? err.message : 'desconhecido'}`);
     } finally {
       setIsSubmitting(false);
     }
