@@ -138,6 +138,62 @@ export default function SyncCentral() {
     }
   };
 
+  const refreshSyncData = () => {
+    queryClient.invalidateQueries({ queryKey: ['hub_sync_jobs'] });
+    queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
+    queryClient.invalidateQueries({ queryKey: ['devops_queries_sync'] });
+  };
+
+  const handleToggleJob = async (job: any, enabled: boolean) => {
+    setTogglingJobs(prev => new Set(prev).add(job.id));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-sync-schedules', {
+        body: { action: 'toggle_job', job_key: job.job_key, enabled },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao atualizar agendamento');
+
+      toast.success(`Agendamento ${enabled ? 'ativado' : 'inativado'}`, {
+        description: job.job_key,
+      });
+      refreshSyncData();
+    } catch (err: any) {
+      toast.error('Erro ao atualizar agendamento', {
+        description: err.message,
+      });
+    } finally {
+      setTogglingJobs(prev => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
+  const handleDisableAllSchedules = async () => {
+    setIsDisablingAll(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-sync-schedules', {
+        body: { action: 'disable_all' },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao inativar agendamentos');
+
+      toast.success('Todos os agendamentos foram inativados');
+      refreshSyncData();
+    } catch (err: any) {
+      toast.error('Erro ao inativar todos os agendamentos', {
+        description: err.message,
+      });
+    } finally {
+      setIsDisablingAll(false);
+    }
+  };
+
   const statusIcon = (status: string) => {
     switch (status) {
       case 'ok': return <CheckCircle className="h-3.5 w-3.5 text-green-500" />;
