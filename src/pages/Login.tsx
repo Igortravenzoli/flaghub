@@ -125,21 +125,11 @@ export default function Login() {
         const session = fnData.session as { access_token: string; refresh_token: string };
         // Set session from the edge function response
         try {
-          const { error: setSessionError } = await supabase.auth.setSession({
+          await supabase.auth.setSession({
             access_token: session.access_token,
             refresh_token: session.refresh_token,
           });
-          if (setSessionError) {
-            console.error('[Login] setSession returned error:', setSessionError);
-            throw new Error(setSessionError.message || 'Falha ao salvar sessao');
-          }
           console.log('[Login] Session set successfully');
-          console.log('[Login] Token preview:', session.access_token?.substring(0, 50));
-          
-          // Verify token is set in client
-          const { data: { session: verifySession } } = await supabase.auth.getSession();
-          console.log('[Login] Verified session set:', !!verifySession?.access_token);
-          console.log('[Login] Stored token preview:', verifySession?.access_token?.substring(0, 50));
         } catch (setSessionErr) {
           console.error('[Login] setSession failed:', setSessionErr);
           throw setSessionErr;
