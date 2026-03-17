@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database } from 'lucide-react';
+import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database, Power, PowerOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 
@@ -18,6 +18,8 @@ const JOB_FUNCTION_MAP: Record<string, string> = {
 export default function SyncCentral() {
   const queryClient = useQueryClient();
   const [runningJobs, setRunningJobs] = useState<Set<string>>(new Set());
+  const [togglingJobs, setTogglingJobs] = useState<Set<string>>(new Set());
+  const [isDisablingAll, setIsDisablingAll] = useState(false);
 
   const { data: jobs = [], isLoading: jobsLoading } = useQuery({
     queryKey: ['hub_sync_jobs'],
@@ -136,6 +138,62 @@ export default function SyncCentral() {
     }
   };
 
+  const refreshSyncData = () => {
+    queryClient.invalidateQueries({ queryKey: ['hub_sync_jobs'] });
+    queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
+    queryClient.invalidateQueries({ queryKey: ['devops_queries_sync'] });
+  };
+
+  const handleToggleJob = async (job: any, enabled: boolean) => {
+    setTogglingJobs(prev => new Set(prev).add(job.id));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-sync-schedules', {
+        body: { action: 'toggle_job', job_key: job.job_key, enabled },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao atualizar agendamento');
+
+      toast.success(`Agendamento ${enabled ? 'ativado' : 'inativado'}`, {
+        description: job.job_key,
+      });
+      refreshSyncData();
+    } catch (err: any) {
+      toast.error('Erro ao atualizar agendamento', {
+        description: err.message,
+      });
+    } finally {
+      setTogglingJobs(prev => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
+  const handleDisableAllSchedules = async () => {
+    setIsDisablingAll(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-sync-schedules', {
+        body: { action: 'disable_all' },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao inativar agendamentos');
+
+      toast.success('Todos os agendamentos foram inativados');
+      refreshSyncData();
+    } catch (err: any) {
+      toast.error('Erro ao inativar todos os agendamentos', {
+        description: err.message,
+      });
+    } finally {
+      setIsDisablingAll(false);
+    }
+  };
+
   const statusIcon = (status: string) => {
     switch (status) {
       case 'ok': return <CheckCircle className="h-3.5 w-3.5 text-green-500" />;
@@ -155,17 +213,24 @@ export default function SyncCentral() {
             <p className="text-sm text-muted-foreground">Jobs de sincronização e logs de execução</p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['hub_sync_jobs'] });
-            queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
-            queryClient.invalidateQueries({ queryKey: ['devops_queries_sync'] });
-          }}
-        >
-          <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={isDisablingAll}
+            onClick={handleDisableAllSchedules}
+          >
+            {isDisablingAll ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <PowerOff className="h-4 w-4 mr-1" />}
+            Inativar todos
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refreshSyncData}
+          >
+            <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
+          </Button>
+        </div>
       </div>
 
       {/* DevOps Queries Section */}
@@ -241,6 +306,7 @@ export default function SyncCentral() {
             )}
             {jobs.map((job: any) => {
               const isRunning = runningJobs.has(job.id);
+              const isToggling = togglingJobs.has(job.id);
               const integration = job.hub_integrations;
               return (
                 <TableRow key={job.id}>
@@ -258,16 +324,28 @@ export default function SyncCentral() {
                     {job.last_run_at ? new Date(job.last_run_at).toLocaleString('pt-BR') : '—'}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1"
-                      disabled={isRunning || !JOB_FUNCTION_MAP[job.job_key]}
-                      onClick={() => handleRunNow(job)}
-                    >
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                      {isRunning ? 'Rodando...' : 'Rodar'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        disabled={isToggling}
+                        onClick={() => handleToggleJob(job, !job.enabled)}
+                      >
+                        {isToggling ? <Loader2 className="h-3 w-3 animate-spin" /> : job.enabled ? <PowerOff className="h-3 w-3" /> : <Power className="h-3 w-3" />}
+                        {job.enabled ? 'Off' : 'On'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        disabled={isRunning || isToggling || !JOB_FUNCTION_MAP[job.job_key]}
+                        onClick={() => handleRunNow(job)}
+                      >
+                        {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                        {isRunning ? 'Rodando...' : 'Rodar'}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
