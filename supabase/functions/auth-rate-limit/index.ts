@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
   }
 
   // Cleanup old entries periodically (best-effort, non-blocking)
-  adminClient.rpc("cleanup_login_attempts").then(() => {}).catch(() => {});
+  Promise.resolve(adminClient.rpc("cleanup_login_attempts")).then(() => {}).catch(() => {});
 
   const now = new Date();
 
