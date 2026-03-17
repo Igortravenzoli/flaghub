@@ -306,6 +306,7 @@ export default function SyncCentral() {
             )}
             {jobs.map((job: any) => {
               const isRunning = runningJobs.has(job.id);
+              const isToggling = togglingJobs.has(job.id);
               const integration = job.hub_integrations;
               return (
                 <TableRow key={job.id}>
@@ -323,16 +324,28 @@ export default function SyncCentral() {
                     {job.last_run_at ? new Date(job.last_run_at).toLocaleString('pt-BR') : '—'}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1"
-                      disabled={isRunning || !JOB_FUNCTION_MAP[job.job_key]}
-                      onClick={() => handleRunNow(job)}
-                    >
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                      {isRunning ? 'Rodando...' : 'Rodar'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        disabled={isToggling}
+                        onClick={() => handleToggleJob(job, !job.enabled)}
+                      >
+                        {isToggling ? <Loader2 className="h-3 w-3 animate-spin" /> : job.enabled ? <PowerOff className="h-3 w-3" /> : <Power className="h-3 w-3" />}
+                        {job.enabled ? 'Off' : 'On'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        disabled={isRunning || isToggling || !JOB_FUNCTION_MAP[job.job_key]}
+                        onClick={() => handleRunNow(job)}
+                      >
+                        {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                        {isRunning ? 'Rodando...' : 'Rodar'}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
