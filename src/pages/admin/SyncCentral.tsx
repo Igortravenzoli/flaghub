@@ -18,6 +18,8 @@ const JOB_FUNCTION_MAP: Record<string, string> = {
 export default function SyncCentral() {
   const queryClient = useQueryClient();
   const [runningJobs, setRunningJobs] = useState<Set<string>>(new Set());
+  const [togglingJobs, setTogglingJobs] = useState<Set<string>>(new Set());
+  const [isDisablingAll, setIsDisablingAll] = useState(false);
 
   const { data: jobs = [], isLoading: jobsLoading } = useQuery({
     queryKey: ['hub_sync_jobs'],
