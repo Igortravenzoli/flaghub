@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const PROJECT_REF = "onpdhywrzjtwxaxuvijw";
+const PROJECT_REF = "nxmgppfyltwsqryfxkbm";
 
 const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; functionName: string }> = {
   devops_sync_all_default: {
