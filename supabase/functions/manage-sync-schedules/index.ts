@@ -1,5 +1,5 @@
-import { createClient } from "npm:@supabase/supabase-js@2.49.1";
-import postgres from "npm:postgres@3.4.5";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,45 +8,57 @@ const corsHeaders = {
 };
 
 const PROJECT_REF = "onpdhywrzjtwxaxuvijw";
-const MANAGED_JOBS = {
+
+const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; functionName: string }> = {
   devops_sync_all_default: {
     cronName: "sync-devops-all",
-    schedule: "*/10 * * * *",
+    defaultSchedule: "*/10 * * * *",
     functionName: "devops-sync-all",
   },
   gateway_helpdesk_clients_default: {
     cronName: "sync-vdesk-clientes",
-    schedule: "*/15 * * * *",
+    defaultSchedule: "*/15 * * * *",
     functionName: "vdesk-sync-base-clientes",
   },
   gateway_helpdesk_dashboard_default: {
     cronName: "sync-vdesk-helpdesk",
-    schedule: "*/15 * * * *",
+    defaultSchedule: "*/15 * * * *",
     functionName: "vdesk-sync-helpdesk",
   },
   "devops-sync-timelog": {
     cronName: "sync-devops-timelog",
-    schedule: "*/15 * * * *",
+    defaultSchedule: "*/15 * * * *",
     functionName: "devops-sync-timelog",
   },
-} as const;
+};
 
 const EXTRA_DISABLE_ONLY_JOBS = [
   "cleanup-helpdesk-snapshots-daily",
   "cleanup-hub-raw-ingestions-daily",
 ] as const;
 
-type ManagedJobKey = keyof typeof MANAGED_JOBS;
+const INTERVAL_PRESETS: Record<number, string> = {
+  5: "*/5 * * * *",
+  10: "*/10 * * * *",
+  15: "*/15 * * * *",
+  30: "*/30 * * * *",
+  60: "0 * * * *",
+  120: "0 */2 * * *",
+  360: "0 */6 * * *",
+  720: "0 */12 * * *",
+  1440: "0 0 * * *",
+};
 
 type RequestBody =
-  | { action: "toggle_job"; job_key: ManagedJobKey; enabled: boolean }
-  | { action: "disable_all" };
+  | { action: "toggle_job"; job_key: string; enabled: boolean }
+  | { action: "update_interval"; job_key: string; interval_minutes: number }
+  | { action: "disable_all" }
+  | { action: "list_intervals" };
 
-function getAdminClient(authHeader?: string) {
+function getAdminClient() {
   return createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    authHeader ? { global: { headers: { Authorization: authHeader } } } : undefined,
   );
 }
 
@@ -68,11 +80,9 @@ async function requirePrivilegedUser(req: Request): Promise<string> {
   }
 
   const userClient = getUserClient(authHeader);
-  const token = authHeader.replace("Bearer ", "");
-  const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-  const userId = claimsData?.claims?.sub as string | undefined;
+  const { data: { user }, error } = await userClient.auth.getUser();
 
-  if (claimsError || !userId) {
+  if (error || !user) {
     throw new Response(JSON.stringify({ error: "Sessão inválida" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -83,7 +93,7 @@ async function requirePrivilegedUser(req: Request): Promise<string> {
   const { data: roles, error: rolesError } = await admin
     .from("user_roles")
     .select("role")
-    .eq("user_id", userId)
+    .eq("user_id", user.id)
     .in("role", ["admin", "gestao"]);
 
   if (rolesError || !roles?.length) {
@@ -93,7 +103,7 @@ async function requirePrivilegedUser(req: Request): Promise<string> {
     });
   }
 
-  return userId;
+  return user.id;
 }
 
 function buildCronCommand(functionName: string) {
@@ -107,29 +117,6 @@ function buildCronCommand(functionName: string) {
   ) AS request_id;`;
 }
 
-async function cronJobExists(sql: postgres.Sql, cronName: string) {
-  const rows = await sql<{ exists: boolean }[]>`
-    SELECT EXISTS(
-      SELECT 1
-      FROM cron.job
-      WHERE jobname = ${cronName}
-    ) AS exists
-  `;
-  return rows[0]?.exists ?? false;
-}
-
-async function unscheduleIfExists(sql: postgres.Sql, cronName: string) {
-  if (await cronJobExists(sql, cronName)) {
-    await sql`SELECT cron.unschedule(${cronName})`;
-  }
-}
-
-async function ensureScheduled(sql: postgres.Sql, cronName: string, schedule: string, functionName: string) {
-  if (!(await cronJobExists(sql, cronName))) {
-    await sql`SELECT cron.schedule(${cronName}, ${schedule}, ${buildCronCommand(functionName)})`;
-  }
-}
-
 function getSqlClient() {
   return postgres(Deno.env.get("SUPABASE_DB_URL")!, {
     ssl: "require",
@@ -138,6 +125,37 @@ function getSqlClient() {
     idle_timeout: 5,
     connect_timeout: 10,
   });
+}
+
+async function cronJobExists(sql: any, cronName: string) {
+  const rows = await sql`
+    SELECT EXISTS(
+      SELECT 1 FROM cron.job WHERE jobname = ${cronName}
+    ) AS exists
+  `;
+  return rows[0]?.exists ?? false;
+}
+
+async function unscheduleIfExists(sql: any, cronName: string) {
+  if (await cronJobExists(sql, cronName)) {
+    await sql`SELECT cron.unschedule(${cronName})`;
+  }
+}
+
+async function reschedule(sql: any, cronName: string, schedule: string, functionName: string) {
+  // Always remove first then re-create to update the schedule
+  await unscheduleIfExists(sql, cronName);
+  await sql`SELECT cron.schedule(${cronName}, ${schedule}, ${buildCronCommand(functionName)})`;
+}
+
+function minutesToCron(minutes: number): string {
+  if (INTERVAL_PRESETS[minutes]) return INTERVAL_PRESETS[minutes];
+  if (minutes < 60) return `*/${minutes} * * * *`;
+  if (minutes < 1440) {
+    const hours = Math.floor(minutes / 60);
+    return `0 */${hours} * * *`;
+  }
+  return "0 0 * * *"; // daily fallback
 }
 
 Deno.serve(async (req) => {
@@ -157,6 +175,28 @@ Deno.serve(async (req) => {
 
     const body = await req.json() as RequestBody;
     const admin = getAdminClient();
+
+    // List intervals doesn't need DB connection
+    if (body.action === "list_intervals") {
+      return new Response(JSON.stringify({
+        success: true,
+        presets: Object.entries(INTERVAL_PRESETS).map(([min, cron]) => ({
+          minutes: Number(min),
+          cron,
+          label: Number(min) < 60 ? `${min} min` : Number(min) < 1440 ? `${Number(min) / 60}h` : "Diário",
+        })),
+        jobs: Object.entries(MANAGED_JOBS).map(([key, job]) => ({
+          job_key: key,
+          cron_name: job.cronName,
+          default_schedule: job.defaultSchedule,
+          function_name: job.functionName,
+        })),
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const sql = getSqlClient();
 
     try {
@@ -184,33 +224,95 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (!(body.job_key in MANAGED_JOBS)) {
-        return new Response(JSON.stringify({ error: "Job não suportado" }), {
-          status: 400,
+      if (body.action === "update_interval") {
+        if (!(body.job_key in MANAGED_JOBS)) {
+          return new Response(JSON.stringify({ error: "Job não suportado" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const minutes = body.interval_minutes;
+        if (!minutes || minutes < 5 || minutes > 1440) {
+          return new Response(JSON.stringify({ error: "Intervalo deve ser entre 5 e 1440 minutos" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const job = MANAGED_JOBS[body.job_key];
+        const newCron = minutesToCron(minutes);
+
+        // Check if job is currently enabled
+        const { data: jobRow } = await admin
+          .from("hub_sync_jobs")
+          .select("enabled")
+          .eq("job_key", body.job_key)
+          .maybeSingle();
+
+        // If enabled, reschedule the cron; otherwise just update the DB
+        if (jobRow?.enabled) {
+          await reschedule(sql, job.cronName, newCron, job.functionName);
+        }
+
+        await admin
+          .from("hub_sync_jobs")
+          .update({ schedule_minutes: minutes, schedule_cron: newCron })
+          .eq("job_key", body.job_key);
+
+        return new Response(JSON.stringify({
+          success: true,
+          job_key: body.job_key,
+          interval_minutes: minutes,
+          cron_expression: newCron,
+        }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const job = MANAGED_JOBS[body.job_key];
+      if (body.action === "toggle_job") {
+        if (!(body.job_key in MANAGED_JOBS)) {
+          return new Response(JSON.stringify({ error: "Job não suportado" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
 
-      if (body.enabled) {
-        await ensureScheduled(sql, job.cronName, job.schedule, job.functionName);
-      } else {
-        await unscheduleIfExists(sql, job.cronName);
+        const job = MANAGED_JOBS[body.job_key];
+
+        if (body.enabled) {
+          // Get custom schedule if set
+          const { data: jobRow } = await admin
+            .from("hub_sync_jobs")
+            .select("schedule_cron")
+            .eq("job_key", body.job_key)
+            .maybeSingle();
+
+          const schedule = jobRow?.schedule_cron || job.defaultSchedule;
+          await reschedule(sql, job.cronName, schedule, job.functionName);
+        } else {
+          await unscheduleIfExists(sql, job.cronName);
+        }
+
+        await admin
+          .from("hub_sync_jobs")
+          .update({ enabled: body.enabled, next_run_at: null })
+          .eq("job_key", body.job_key);
+
+        return new Response(JSON.stringify({
+          success: true,
+          job_key: body.job_key,
+          enabled: body.enabled,
+          cron_name: job.cronName,
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
-      await admin
-        .from("hub_sync_jobs")
-        .update({ enabled: body.enabled, next_run_at: null })
-        .eq("job_key", body.job_key);
-
-      return new Response(JSON.stringify({
-        success: true,
-        job_key: body.job_key,
-        enabled: body.enabled,
-        cron_name: job.cronName,
-      }), {
-        status: 200,
+      return new Response(JSON.stringify({ error: "Ação não reconhecida" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     } finally {
