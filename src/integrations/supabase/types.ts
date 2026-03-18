@@ -138,6 +138,30 @@ export type Database = {
           },
         ]
       }
+      devops_collaborator_map: {
+        Row: {
+          canonical_name: string
+          created_at: string
+          notes: string | null
+          timelog_name: string
+          updated_at: string
+        }
+        Insert: {
+          canonical_name: string
+          created_at?: string
+          notes?: string | null
+          timelog_name: string
+          updated_at?: string
+        }
+        Update: {
+          canonical_name?: string
+          created_at?: string
+          notes?: string | null
+          timelog_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       devops_queries: {
         Row: {
           config: Json | null
@@ -251,6 +275,7 @@ export type Database = {
       devops_time_logs: {
         Row: {
           etag: string | null
+          ext_entry_id: string | null
           id: string
           ingested_at: string
           log_date: string
@@ -264,6 +289,7 @@ export type Database = {
         }
         Insert: {
           etag?: string | null
+          ext_entry_id?: string | null
           id?: string
           ingested_at?: string
           log_date: string
@@ -277,6 +303,7 @@ export type Database = {
         }
         Update: {
           etag?: string | null
+          ext_entry_id?: string | null
           id?: string
           ingested_at?: string
           log_date?: string
@@ -305,6 +332,7 @@ export type Database = {
           effort: number | null
           id: number
           iteration_history: Json | null
+          iteration_history_synced_at: string | null
           iteration_path: string | null
           parent_id: number | null
           priority: number | null
@@ -332,6 +360,7 @@ export type Database = {
           effort?: number | null
           id: number
           iteration_history?: Json | null
+          iteration_history_synced_at?: string | null
           iteration_path?: string | null
           parent_id?: number | null
           priority?: number | null
@@ -359,6 +388,7 @@ export type Database = {
           effort?: number | null
           id?: number
           iteration_history?: Json | null
+          iteration_history_synced_at?: string | null
           iteration_path?: string | null
           parent_id?: number | null
           priority?: number | null
@@ -1769,6 +1799,7 @@ export type Database = {
         Row: {
           assigned_to_display: string | null
           changed_date: string | null
+          count_in_kpi: boolean | null
           created_date: string | null
           effort: number | null
           id: number | null
@@ -1778,6 +1809,7 @@ export type Database = {
           parent_type: string | null
           priority: number | null
           state: string | null
+          tags: string | null
           title: string | null
           web_url: string | null
           work_item_type: string | null
@@ -1859,6 +1891,18 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_hub_metric_formulas: {
+        Row: {
+          area_key: string | null
+          dashboard_key: string | null
+          formula_description: string | null
+          metric_key: string | null
+          metric_name: string | null
+          notes: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
       vw_infraestrutura_kpis: {
         Row: {
           assigned_to_display: string | null
@@ -1866,6 +1910,7 @@ export type Database = {
           created_date: string | null
           effort: number | null
           id: number | null
+          iteration_path: string | null
           priority: number | null
           state: string | null
           tags: string | null
@@ -1881,8 +1926,10 @@ export type Database = {
           changed_date: string | null
           created_date: string | null
           id: number | null
+          iteration_path: string | null
           priority: number | null
           state: string | null
+          tags: string | null
           title: string | null
           web_url: string | null
           work_item_type: string | null
@@ -2107,6 +2154,16 @@ export type Database = {
           info_count: number
           updated_count: number
           warning_count: number
+        }[]
+      }
+      rpc_devops_timelog_agg: {
+        Args: { p_from?: string; p_to?: string; p_work_item_ids?: number[] }
+        Returns: {
+          max_log_date: string
+          min_log_date: string
+          total_minutes: number
+          user_name: string
+          work_item_id: number
         }[]
       }
     }
