@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database, Power, PowerOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
@@ -15,10 +16,23 @@ const JOB_FUNCTION_MAP: Record<string, string> = {
   'devops-sync-timelog': 'devops-sync-timelog',
 };
 
+const INTERVAL_OPTIONS = [
+  { value: '5', label: '5 min' },
+  { value: '10', label: '10 min' },
+  { value: '15', label: '15 min' },
+  { value: '30', label: '30 min' },
+  { value: '60', label: '1 hora' },
+  { value: '120', label: '2 horas' },
+  { value: '360', label: '6 horas' },
+  { value: '720', label: '12 horas' },
+  { value: '1440', label: 'Diário' },
+];
+
 export default function SyncCentral() {
   const queryClient = useQueryClient();
   const [runningJobs, setRunningJobs] = useState<Set<string>>(new Set());
   const [togglingJobs, setTogglingJobs] = useState<Set<string>>(new Set());
+  const [updatingInterval, setUpdatingInterval] = useState<Set<string>>(new Set());
   const [isDisablingAll, setIsDisablingAll] = useState(false);
 
   const { data: jobs = [], isLoading: jobsLoading } = useQuery({
@@ -60,6 +74,12 @@ export default function SyncCentral() {
     refetchInterval: 10000,
   });
 
+  const refreshSyncData = () => {
+    queryClient.invalidateQueries({ queryKey: ['hub_sync_jobs'] });
+    queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
+    queryClient.invalidateQueries({ queryKey: ['devops_queries_sync'] });
+  };
+
   const handleRunNow = async (job: any) => {
     const functionName = JOB_FUNCTION_MAP[job.job_key];
     if (!functionName) {
@@ -96,8 +116,7 @@ export default function SyncCentral() {
         next.delete(job.id);
         return next;
       });
-      queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
-      queryClient.invalidateQueries({ queryKey: ['hub_sync_jobs'] });
+      refreshSyncData();
     }
   };
 
@@ -138,12 +157,6 @@ export default function SyncCentral() {
     }
   };
 
-  const refreshSyncData = () => {
-    queryClient.invalidateQueries({ queryKey: ['hub_sync_jobs'] });
-    queryClient.invalidateQueries({ queryKey: ['hub_sync_runs'] });
-    queryClient.invalidateQueries({ queryKey: ['devops_queries_sync'] });
-  };
-
   const handleToggleJob = async (job: any, enabled: boolean) => {
     setTogglingJobs(prev => new Set(prev).add(job.id));
 
@@ -160,11 +173,35 @@ export default function SyncCentral() {
       });
       refreshSyncData();
     } catch (err: any) {
-      toast.error('Erro ao atualizar agendamento', {
-        description: err.message,
-      });
+      toast.error('Erro ao atualizar agendamento', { description: err.message });
     } finally {
       setTogglingJobs(prev => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
+  const handleUpdateInterval = async (job: any, minutes: number) => {
+    setUpdatingInterval(prev => new Set(prev).add(job.id));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-sync-schedules', {
+        body: { action: 'update_interval', job_key: job.job_key, interval_minutes: minutes },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao atualizar intervalo');
+
+      toast.success(`Intervalo atualizado para ${formatInterval(minutes)}`, {
+        description: `${job.job_key} — cron: ${data.cron_expression}`,
+      });
+      refreshSyncData();
+    } catch (err: any) {
+      toast.error('Erro ao atualizar intervalo', { description: err.message });
+    } finally {
+      setUpdatingInterval(prev => {
         const next = new Set(prev);
         next.delete(job.id);
         return next;
@@ -186,12 +223,19 @@ export default function SyncCentral() {
       toast.success('Todos os agendamentos foram inativados');
       refreshSyncData();
     } catch (err: any) {
-      toast.error('Erro ao inativar todos os agendamentos', {
-        description: err.message,
-      });
+      toast.error('Erro ao inativar todos os agendamentos', { description: err.message });
     } finally {
       setIsDisablingAll(false);
     }
+  };
+
+  const formatInterval = (minutes: number | null) => {
+    if (!minutes) return '—';
+    const option = INTERVAL_OPTIONS.find(o => o.value === String(minutes));
+    if (option) return option.label;
+    if (minutes < 60) return `${minutes} min`;
+    if (minutes < 1440) return `${minutes / 60}h`;
+    return 'Diário';
   };
 
   const statusIcon = (status: string) => {
@@ -223,11 +267,7 @@ export default function SyncCentral() {
             {isDisablingAll ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <PowerOff className="h-4 w-4 mr-1" />}
             Inativar todos
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refreshSyncData}
-          >
+          <Button variant="outline" size="sm" onClick={refreshSyncData}>
             <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
           </Button>
         </div>
@@ -291,7 +331,7 @@ export default function SyncCentral() {
             <TableRow>
               <TableHead>Job</TableHead>
               <TableHead>Integração</TableHead>
-              <TableHead>Habilitado</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Intervalo</TableHead>
               <TableHead>Último Run</TableHead>
               <TableHead>Ações</TableHead>
@@ -307,7 +347,11 @@ export default function SyncCentral() {
             {jobs.map((job: any) => {
               const isRunning = runningJobs.has(job.id);
               const isToggling = togglingJobs.has(job.id);
+              const isUpdating = updatingInterval.has(job.id);
               const integration = job.hub_integrations;
+              const isManagedJob = job.job_key in JOB_FUNCTION_MAP;
+              const currentMinutes = job.schedule_minutes || null;
+
               return (
                 <TableRow key={job.id}>
                   <TableCell className="font-mono text-sm">{job.job_key}</TableCell>
@@ -317,24 +361,50 @@ export default function SyncCentral() {
                       {job.enabled ? 'Ativo' : 'Inativo'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {job.schedule_minutes ? `${job.schedule_minutes} min` : job.schedule_cron || '—'}
+                  <TableCell>
+                    {isManagedJob ? (
+                      <div className="flex items-center gap-1">
+                        <Select
+                          value={currentMinutes ? String(currentMinutes) : ''}
+                          onValueChange={(val) => handleUpdateInterval(job, Number(val))}
+                          disabled={isUpdating || isToggling}
+                        >
+                          <SelectTrigger className="w-[120px] h-8 text-xs">
+                            <SelectValue placeholder={job.schedule_cron || '—'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {INTERVAL_OPTIONS.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {isUpdating && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        {currentMinutes ? formatInterval(currentMinutes) : job.schedule_cron || '—'}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {job.last_run_at ? new Date(job.last_run_at).toLocaleString('pt-BR') : '—'}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1"
-                        disabled={isToggling}
-                        onClick={() => handleToggleJob(job, !job.enabled)}
-                      >
-                        {isToggling ? <Loader2 className="h-3 w-3 animate-spin" /> : job.enabled ? <PowerOff className="h-3 w-3" /> : <Power className="h-3 w-3" />}
-                        {job.enabled ? 'Off' : 'On'}
-                      </Button>
+                      {isManagedJob && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1"
+                          disabled={isToggling}
+                          onClick={() => handleToggleJob(job, !job.enabled)}
+                        >
+                          {isToggling ? <Loader2 className="h-3 w-3 animate-spin" /> : job.enabled ? <PowerOff className="h-3 w-3" /> : <Power className="h-3 w-3" />}
+                          {job.enabled ? 'Off' : 'On'}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -376,7 +446,7 @@ export default function SyncCentral() {
             )}
             {runs.map((run: any) => (
               <TableRow key={run.id}>
-                <TableCell className="font-mono text-xs">{(run as any).hub_sync_jobs?.job_key || String(run.job_id).slice(0, 8)}</TableCell>
+                <TableCell className="font-mono text-xs">{run.hub_sync_jobs?.job_key || String(run.job_id).slice(0, 8)}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1.5">
                     {statusIcon(run.status)}
