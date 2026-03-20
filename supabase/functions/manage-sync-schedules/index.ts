@@ -7,7 +7,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+
 const PROJECT_REF = "nxmgppfyltwsqryfxkbm";
+
 
 const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; functionName: string }> = {
   devops_sync_all_default: {
@@ -30,11 +32,13 @@ const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; 
     defaultSchedule: "*/15 * * * *",
     functionName: "devops-sync-timelog",
   },
+
   "devops-sync-qualidade": {
     cronName: "sync-devops-qualidade",
     defaultSchedule: "*/10 * * * *",
     functionName: "devops-sync-qualidade",
   },
+
 };
 
 const EXTRA_DISABLE_ONLY_JOBS = [

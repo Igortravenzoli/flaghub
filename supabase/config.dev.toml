@@ -1,0 +1,4 @@
+# Supabase project config (DEV)
+project_id = "onpdhywrzjtwxaxuvijw"
+supabase_url = "https://onpdhywrzjtwxaxuvijw.supabase.co"
+anon_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ucGRoeXdyemp0d3hheHV2aWp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MDE3MTIsImV4cCI6MjA4Nzk3NzcxMn0.D0N8dtsr7EHsReGCwHV6YNxsAx5z9P3LYoPaX2P-Pb0"
