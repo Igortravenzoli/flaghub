@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
@@ -1966,7 +1966,6 @@ export type Database = {
           total_tickets: number
         }[]
       }
-      get_cron_secret: { Args: never; Returns: string }
       get_dashboard_summary: {
         Args: { p_network_id?: number }
         Returns: {

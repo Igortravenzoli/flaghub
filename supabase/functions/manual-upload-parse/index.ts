@@ -59,15 +59,26 @@ function parseCSV(text: string): Record<string, string>[] {
   })
 }
 
+function normalizeHeader(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
 function normalizeRow(raw: Record<string, any>, columnMapping: Record<string, string> | null): Record<string, any> {
   if (!columnMapping) return raw
 
+  const normalizedRaw = new Map<string, any>()
+  for (const [key, value] of Object.entries(raw)) {
+    normalizedRaw.set(normalizeHeader(key), value)
+  }
+
   const normalized: Record<string, any> = {}
   for (const [targetField, sourceField] of Object.entries(columnMapping)) {
-    // Try exact match, then case-insensitive
-    const value = raw[sourceField] ??
-      raw[Object.keys(raw).find(k => k.toLowerCase() === sourceField.toLowerCase()) ?? ''] ??
-      null
+    const value = raw[sourceField] ?? normalizedRaw.get(normalizeHeader(sourceField)) ?? null
     normalized[targetField] = value
   }
   return normalized
