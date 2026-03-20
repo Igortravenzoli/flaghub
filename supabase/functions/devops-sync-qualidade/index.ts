@@ -110,7 +110,7 @@ async function processQualityDerived(admin: any, queryId: string) {
   for (let i = 0; i < workItemIds.length; i += 10) {
     const batch = workItemIds.slice(i, i + 10)
     const batchResults = await Promise.all(
-      batch.map(async (wiId) => {
+      batch.map(async (wiId: number) => {
         try {
           const resp = await devopsFetch(`Flag.Planejamento/_apis/wit/workitems/${wiId}/updates?api-version=7.1`)
           if (!resp.ok) return { id: wiId, retornos: 0, details: [] }

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.4"
   }
   public: {
     Tables: {
@@ -159,6 +159,54 @@ export type Database = {
           notes?: string | null
           timelog_name?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      devops_lead_area_map: {
+        Row: {
+          area_key: string
+          canonical_name: string | null
+          counts_as_design: boolean
+          counts_as_fabrica: boolean
+          counts_as_qualidade: boolean
+          created_at: string
+          id: number
+          is_active: boolean
+          lead_email: string
+          pipeline_role: string
+          squad_label: string | null
+          updated_at: string
+          visual_priority: number
+        }
+        Insert: {
+          area_key: string
+          canonical_name?: string | null
+          counts_as_design?: boolean
+          counts_as_fabrica?: boolean
+          counts_as_qualidade?: boolean
+          created_at?: string
+          id?: number
+          is_active?: boolean
+          lead_email: string
+          pipeline_role: string
+          squad_label?: string | null
+          updated_at?: string
+          visual_priority?: number
+        }
+        Update: {
+          area_key?: string
+          canonical_name?: string | null
+          counts_as_design?: boolean
+          counts_as_fabrica?: boolean
+          counts_as_qualidade?: boolean
+          created_at?: string
+          id?: number
+          is_active?: boolean
+          lead_email?: string
+          pipeline_role?: string
+          squad_label?: string | null
+          updated_at?: string
+          visual_priority?: number
         }
         Relationships: []
       }
@@ -1425,6 +1473,339 @@ export type Database = {
         }
         Relationships: []
       }
+      pbi_health_summary: {
+        Row: {
+          bottleneck_stage: string | null
+          computed_at: string
+          health_reasons: Json | null
+          health_status: string
+          sector: string | null
+          updated_at: string
+          work_item_id: number
+        }
+        Insert: {
+          bottleneck_stage?: string | null
+          computed_at?: string
+          health_reasons?: Json | null
+          health_status: string
+          sector?: string | null
+          updated_at?: string
+          work_item_id: number
+        }
+        Update: {
+          bottleneck_stage?: string | null
+          computed_at?: string
+          health_reasons?: Json | null
+          health_status?: string
+          sector?: string | null
+          updated_at?: string
+          work_item_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbi_health_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "devops_work_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_health_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_devops_queue_items"
+            referencedColumns: ["work_item_id"]
+          },
+          {
+            foreignKeyName: "pbi_health_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_devops_work_items_hierarchy"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_health_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_infraestrutura_kpis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_health_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_qualidade_kpis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbi_health_thresholds: {
+        Row: {
+          created_at: string
+          critical_days: number
+          id: number
+          is_active: boolean
+          label: string
+          notes: string | null
+          stage_key: string
+          updated_at: string
+          warn_days: number
+        }
+        Insert: {
+          created_at?: string
+          critical_days: number
+          id?: number
+          is_active?: boolean
+          label: string
+          notes?: string | null
+          stage_key: string
+          updated_at?: string
+          warn_days: number
+        }
+        Update: {
+          created_at?: string
+          critical_days?: number
+          id?: number
+          is_active?: boolean
+          label?: string
+          notes?: string | null
+          stage_key?: string
+          updated_at?: string
+          warn_days?: number
+        }
+        Relationships: []
+      }
+      pbi_lifecycle_summary: {
+        Row: {
+          backlog_days: number
+          computed_at: string
+          current_stage: string | null
+          deploy_days: number
+          design_days: number
+          fabrica_days: number
+          first_committed_sprint: string | null
+          has_design_stage: boolean
+          last_committed_sprint: string | null
+          lead_owner_at_commitment: string | null
+          overflow_by_stage: Json | null
+          overflow_count: number
+          overflow_stage: string | null
+          qa_return_count: number
+          qualidade_days: number
+          sector: string | null
+          sprint_migration_count: number
+          total_lead_time_days: number | null
+          updated_at: string
+          work_item_id: number
+        }
+        Insert: {
+          backlog_days?: number
+          computed_at?: string
+          current_stage?: string | null
+          deploy_days?: number
+          design_days?: number
+          fabrica_days?: number
+          first_committed_sprint?: string | null
+          has_design_stage?: boolean
+          last_committed_sprint?: string | null
+          lead_owner_at_commitment?: string | null
+          overflow_by_stage?: Json | null
+          overflow_count?: number
+          overflow_stage?: string | null
+          qa_return_count?: number
+          qualidade_days?: number
+          sector?: string | null
+          sprint_migration_count?: number
+          total_lead_time_days?: number | null
+          updated_at?: string
+          work_item_id: number
+        }
+        Update: {
+          backlog_days?: number
+          computed_at?: string
+          current_stage?: string | null
+          deploy_days?: number
+          design_days?: number
+          fabrica_days?: number
+          first_committed_sprint?: string | null
+          has_design_stage?: boolean
+          last_committed_sprint?: string | null
+          lead_owner_at_commitment?: string | null
+          overflow_by_stage?: Json | null
+          overflow_count?: number
+          overflow_stage?: string | null
+          qa_return_count?: number
+          qualidade_days?: number
+          sector?: string | null
+          sprint_migration_count?: number
+          total_lead_time_days?: number | null
+          updated_at?: string
+          work_item_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbi_lifecycle_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "devops_work_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_lifecycle_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_devops_queue_items"
+            referencedColumns: ["work_item_id"]
+          },
+          {
+            foreignKeyName: "pbi_lifecycle_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_devops_work_items_hierarchy"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_lifecycle_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_infraestrutura_kpis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_lifecycle_summary_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_qualidade_kpis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pbi_stage_config: {
+        Row: {
+          created_at: string
+          fallback_order: number
+          is_active: boolean
+          iteration_suffix_patterns: string[]
+          label_pt: string
+          pipeline_roles: string[]
+          sort_order: number
+          stage_key: string
+          state_patterns: string[]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          fallback_order?: number
+          is_active?: boolean
+          iteration_suffix_patterns?: string[]
+          label_pt: string
+          pipeline_roles?: string[]
+          sort_order: number
+          stage_key: string
+          state_patterns?: string[]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          fallback_order?: number
+          is_active?: boolean
+          iteration_suffix_patterns?: string[]
+          label_pt?: string
+          pipeline_roles?: string[]
+          sort_order?: number
+          stage_key?: string
+          state_patterns?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pbi_stage_events: {
+        Row: {
+          created_at: string
+          duration_days: number | null
+          entered_at: string
+          exited_at: string | null
+          id: number
+          inference_method: string
+          is_overflow: boolean
+          responsible_email: string | null
+          sector: string | null
+          sprint_code: string | null
+          sprint_path: string | null
+          stage_key: string
+          updated_at: string
+          work_item_id: number
+        }
+        Insert: {
+          created_at?: string
+          duration_days?: number | null
+          entered_at: string
+          exited_at?: string | null
+          id?: number
+          inference_method: string
+          is_overflow?: boolean
+          responsible_email?: string | null
+          sector?: string | null
+          sprint_code?: string | null
+          sprint_path?: string | null
+          stage_key: string
+          updated_at?: string
+          work_item_id: number
+        }
+        Update: {
+          created_at?: string
+          duration_days?: number | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: number
+          inference_method?: string
+          is_overflow?: boolean
+          responsible_email?: string | null
+          sector?: string | null
+          sprint_code?: string | null
+          sprint_path?: string | null
+          stage_key?: string
+          updated_at?: string
+          work_item_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pbi_stage_events_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "devops_work_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_stage_events_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "vw_devops_queue_items"
+            referencedColumns: ["work_item_id"]
+          },
+          {
+            foreignKeyName: "pbi_stage_events_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "vw_devops_work_items_hierarchy"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_stage_events_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "vw_infraestrutura_kpis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pbi_stage_events_work_item_id_fkey"
+            columns: ["work_item_id"]
+            isOneToOne: false
+            referencedRelation: "vw_qualidade_kpis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -1925,9 +2306,14 @@ export type Database = {
           assigned_to_display: string | null
           changed_date: string | null
           created_date: string | null
+          has_sprint_code: boolean | null
           id: number | null
+          is_current_queue: boolean | null
+          is_waiting_deploy: boolean | null
           iteration_path: string | null
           priority: number | null
+          snapshot_at: string | null
+          sprint_code: string | null
           state: string | null
           tags: string | null
           title: string | null
@@ -1953,6 +2339,7 @@ export type Database = {
         }[]
       }
       cleanup_login_attempts: { Args: never; Returns: undefined }
+      compute_pbi_health_all: { Args: never; Returns: undefined }
       get_batch_statistics: { Args: { p_batch_id: number }; Returns: Json }
       get_correlation_stats: {
         Args: { p_network_id?: number }
@@ -1966,6 +2353,7 @@ export type Database = {
           total_tickets: number
         }[]
       }
+      get_cron_secret: { Args: never; Returns: string }
       get_dashboard_summary: {
         Args: { p_network_id?: number }
         Returns: {
@@ -2163,6 +2551,59 @@ export type Database = {
           total_minutes: number
           user_name: string
           work_item_id: number
+        }[]
+      }
+      rpc_feature_pbi_summary: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sector?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          amarelo_count: number
+          avg_lead_time_days: number
+          bug_count: number
+          epic_id: number
+          epic_title: string
+          feature_id: number
+          feature_title: string
+          overflow_count: number
+          pbi_count: number
+          verde_count: number
+          vermelho_count: number
+        }[]
+      }
+      rpc_pbi_bottleneck_summary: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sector?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          avg_days_in_stage: number
+          count_in_stage: number
+          count_overtime: number
+          max_days_in_stage: number
+          overflow_count_in_stage: number
+          stage_key: string
+          stage_label: string
+        }[]
+      }
+      rpc_pbi_health_overview: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sector?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          amarelo_count: number
+          items_with_bottleneck: number
+          total_count: number
+          verde_count: number
+          vermelho_count: number
         }[]
       }
     }

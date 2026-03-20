@@ -20,17 +20,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
   TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
-type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done';
+type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aviao';
+type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
@@ -87,6 +89,8 @@ const CHART_COLORS = [
   'hsl(340, 75%, 55%)',
   'hsl(160, 60%, 45%)',
 ];
+
+const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
 
 function AnimatedNumber({ value, suffix = '' }: { value: number | null; suffix?: string }) {
   if (value == null) return <span className="text-sm font-normal text-muted-foreground">Sem dados</span>;
@@ -225,6 +229,7 @@ export default function FabricaDashboard() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
+  const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
@@ -256,7 +261,6 @@ export default function FabricaDashboard() {
     [fab.porColaborador]
   );
 
-  // Pie chart data for work item types
   const typeDistribution = useMemo(() => {
     const map: Record<string, number> = {};
     for (const item of fab.items) {
@@ -266,20 +270,17 @@ export default function FabricaDashboard() {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [fab.items]);
 
-  // Apply sprint filter first, then KPI filter
   const sprintFilteredItems = useMemo(() => {
     if (sprintFilter === 'all') return fab.items;
     return fab.items.filter(i => i.iteration_path === sprintFilter);
   }, [fab.items, sprintFilter]);
 
-  // Sprint-aware KPI counts
   const sprintTotal = sprintFilteredItems.length;
   const sprintInProgress = sprintFilteredItems.filter(i => isFabricaInProgress(i.state)).length;
   const sprintToDo = sprintFilteredItems.filter(i => isFabricaTodo(i.state)).length;
   const sprintDone = sprintFilteredItems.filter(i => isDone(i.state)).length;
   const sprintAguardandoTeste = sprintFilteredItems.filter(i => i.state === 'Aguardando Teste').length;
 
-  // Sprint-filtered transbordo items
   const sprintTransbordoItems = useMemo(() => {
     if (sprintFilter === 'all') return fab.transbordoItems;
     return fab.transbordoItems.filter(i => i.iteration_path === sprintFilter || i.sprintsOverflowed.includes(sprintFilter));
@@ -294,7 +295,6 @@ export default function FabricaDashboard() {
     : 0;
 
   const sprintAviaoCount = useMemo(() => {
-    const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
     return sprintFilteredItems.filter(i => {
       if (!i.id) return false;
       const isTrackedType = i.work_item_type === 'Task' || i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story';
@@ -314,14 +314,12 @@ export default function FabricaDashboard() {
   const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
 
   const bottlenecks = usePbiBottlenecks({
-    sector: 'fabrica',
     sprintCode: selectedSprintCode,
     dateStart: effectiveRange?.from || null,
     dateEnd: effectiveRange?.to || null,
   });
 
   const featureSummary = useFeaturePbiSummary({
-    sector: 'fabrica',
     sprintCode: selectedSprintCode,
     dateStart: effectiveRange?.from || null,
     dateEnd: effectiveRange?.to || null,
@@ -330,7 +328,6 @@ export default function FabricaDashboard() {
   const backlogPriorizarItems = useMemo(() => {
     return operational.items
       .filter(i => i.query_name === '03-Em Fila Backlog para Priorizar')
-      .filter(i => sprintFilter === 'all' || i.iteration_path === sprintFilter)
       .map((i): FabricaItem => ({
         id: i.work_item_id,
         title: i.title,
@@ -347,12 +344,11 @@ export default function FabricaDashboard() {
         parent_type: null,
         web_url: i.web_url,
       }));
-  }, [operational.items, sprintFilter]);
+  }, [operational.items]);
 
   const uxuiItems = useMemo(() => {
     return operational.items
       .filter(i => i.query_name === '05-Em Fila UX-UI')
-      .filter(i => sprintFilter === 'all' || i.iteration_path === sprintFilter)
       .map((i): FabricaItem => ({
         id: i.work_item_id,
         title: i.title,
@@ -369,16 +365,22 @@ export default function FabricaDashboard() {
         parent_type: null,
         web_url: i.web_url,
       }));
-  }, [operational.items, sprintFilter]);
+  }, [operational.items]);
 
   const filteredFabItems = useMemo(() => {
     switch (fabKpiFilter) {
       case 'in_progress': return sprintFilteredItems.filter(i => isFabricaInProgress(i.state));
       case 'todo': return sprintFilteredItems.filter(i => isFabricaTodo(i.state));
       case 'done': return sprintFilteredItems.filter(i => isDone(i.state));
+      case 'aguardando_teste': return sprintFilteredItems.filter(i => i.state === 'Aguardando Teste');
+      case 'aviao': return sprintFilteredItems.filter(i => {
+        if (!i.id) return false;
+        const tags = fab.tagsByWorkItemId[i.id] || '';
+        return AVIAO_REGEX.test(tags);
+      });
       default: return sprintFilteredItems;
     }
-  }, [sprintFilteredItems, fabKpiFilter]);
+  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
@@ -430,7 +432,6 @@ export default function FabricaDashboard() {
     return { parentRows: filteredParents, childrenMap: filteredCMap, orphanRows: filteredOrphans };
   }, [filteredFabItems, search]);
 
-  // Transbordo lookup: item id -> overflow count
   const transbordoMap = useMemo(() => {
     const m = new Map<number, number>();
     for (const t of fab.transbordoItems) {
@@ -556,24 +557,61 @@ export default function FabricaDashboard() {
     </>
   );
 
+  const filterLabel = (f: FabKpiFilter) => {
+    switch (f) {
+      case 'all': return 'Todos';
+      case 'in_progress': return 'Em Progresso';
+      case 'todo': return 'A Fazer';
+      case 'done': return 'Finalizados';
+      case 'aguardando_teste': return 'Aguardando Teste';
+      case 'aviao': return 'Avião';
+    }
+  };
+
   return (
     <SectorLayout title="Fábrica" subtitle="Programação — Sprint Board" lastUpdate="" integrations={integrations} areaKey="fabrica" syncFunctions={[{ name: 'devops-sync-all', label: 'Sincronizar Work Items (DevOps)' }, { name: 'devops-sync-timelog', label: 'Sincronizar TimeLog (Horas)' }]}>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <DashboardLastSyncBadge syncedAt={fab.lastSync} status="ok" />
-        {fab.hasTimeLogs && (
-          <Badge variant="outline" className="gap-1 text-xs animate-fade-in">
-            <Timer className="h-3 w-3" />
-            {Math.round(fab.totalHoursLogged)}h registradas
-          </Badge>
-        )}
-        <Badge variant="secondary" className="gap-1 text-xs animate-fade-in">
-          <Plane className="h-3.5 w-3.5" />
-          AVIAO na sprint: {sprintAviaoCount}
-        </Badge>
-        <Badge variant="outline" className="gap-1 text-xs animate-fade-in border-rose-300 text-rose-700 bg-rose-50">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          Aguardando Teste: {sprintAguardandoTeste}
-        </Badge>
+        <div className="flex items-center gap-2 flex-wrap">
+          {fab.hasTimeLogs && (
+            <Badge variant="outline" className="gap-1 text-xs animate-fade-in">
+              <Timer className="h-3 w-3" />
+              {Math.round(fab.totalHoursLogged)}h registradas
+            </Badge>
+          )}
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  variant={fabKpiFilter === 'aviao' ? 'default' : 'secondary'}
+                  className={`gap-1 text-xs animate-fade-in cursor-pointer transition-all hover:scale-105 ${fabKpiFilter === 'aviao' ? 'ring-2 ring-primary' : ''}`}
+                  onClick={() => toggleFab('aviao')}
+                >
+                  <Plane className="h-3.5 w-3.5" />
+                  AVIÃO na sprint: {sprintAviaoCount}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs max-w-[240px]">
+                Itens marcados com a tag AVIAO na sprint selecionada. Clique para filtrar.
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  variant={fabKpiFilter === 'aguardando_teste' ? 'default' : 'outline'}
+                  className={`gap-1 text-xs animate-fade-in cursor-pointer border-rose-300 text-rose-700 bg-rose-50 transition-all hover:scale-105 ${fabKpiFilter === 'aguardando_teste' ? 'ring-2 ring-primary bg-rose-600 text-white' : ''}`}
+                  onClick={() => toggleFab('aguardando_teste')}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Aguardando Teste: {sprintAguardandoTeste}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs max-w-[280px]">
+                Permanece na Fábrica, impacta saúde/gargalo e não entra automaticamente em Qualidade. Clique para filtrar.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -603,6 +641,11 @@ export default function FabricaDashboard() {
           onExportCSV={handleExportCSV}
           onExportPDF={handleExportPDF}
         />
+        {fabKpiFilter !== 'all' && (
+          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setFabKpiFilter('all')}>
+            Filtro: {filterLabel(fabKpiFilter)} ✕
+          </Badge>
+        )}
       </div>
 
       {fab.isError ? (
@@ -651,16 +694,6 @@ export default function FabricaDashboard() {
               <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
             </div>
 
-            <Card className="border-rose-200 bg-rose-50/60">
-              <CardContent className="flex items-center justify-between gap-3 p-4">
-                <div>
-                  <p className="text-sm font-semibold text-rose-800">Bloqueio de Fábrica: Aguardando Teste</p>
-                  <p className="text-xs text-rose-700/80">Permanece na Fábrica, impacta saúde/gargalo e não entra automaticamente em Qualidade.</p>
-                </div>
-                <Badge className="bg-rose-600 text-white text-sm font-mono">{sprintAguardandoTeste}</Badge>
-              </CardContent>
-            </Card>
-
             {/* Corporate KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <HeroKpiCard 
@@ -705,7 +738,6 @@ export default function FabricaDashboard() {
 
             {/* Charts row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Collaborator chart */}
               {colabChartData.length > 0 && (
                 <Card className="lg:col-span-2 animate-fade-in" style={{ animationDelay: '500ms' }}>
                   <CardHeader className="pb-2">
@@ -719,7 +751,7 @@ export default function FabricaDashboard() {
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                         <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
                         <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={110} />
-                        <Tooltip
+                        <RechartsTooltip
                           contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
                           labelStyle={{ color: 'hsl(var(--foreground))' }}
                         />
@@ -730,7 +762,6 @@ export default function FabricaDashboard() {
                 </Card>
               )}
 
-              {/* Type distribution pie */}
               {typeDistribution.length > 0 && (
                 <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
                   <CardHeader className="pb-2">
@@ -754,7 +785,7 @@ export default function FabricaDashboard() {
                             <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip
+                        <RechartsTooltip
                           contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
                         />
                       </PieChart>
@@ -764,8 +795,7 @@ export default function FabricaDashboard() {
                         <div key={t.name} className="flex items-center gap-1.5 text-xs">
                           <div className="h-2.5 w-2.5 rounded-sm" style={{ background: CHART_COLORS[idx % CHART_COLORS.length] }} />
                           {t.name === 'PBI' ? <Package className="h-3 w-3 text-muted-foreground" /> : t.name === 'Task' ? <ListTodo className="h-3 w-3 text-muted-foreground" /> : t.name === 'Bug' ? <Bug className="h-3 w-3 text-muted-foreground" /> : null}
-                          <span className="text-muted-foreground">{t.name}</span>
-                          <span className="font-semibold text-foreground">{t.value}</span>
+                          <span className="text-muted-foreground">{t.name}: {t.value}</span>
                         </div>
                       ))}
                     </div>
@@ -773,175 +803,8 @@ export default function FabricaDashboard() {
                 </Card>
               )}
             </div>
-          </TabsContent>
 
-          {/* ═══════ TAB: Horas (TimeLog) ═══════ */}
-          <TabsContent value="timelog" className="space-y-5 mt-0">
-            {/* TimeLog hero stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <HeroKpiCard label="Total Horas" value={fab.hasTimeLogs ? Math.round(fab.totalHoursLogged) : null} suffix="h" icon={Timer} isLoading={fab.isLoading} accent="bg-primary" description="Soma de horas registradas no TimeLog" />
-              <HeroKpiCard label="Colaboradores" value={fab.horasPorColaborador.length || null} icon={Users} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" description="Com registros no período" />
-              <HeroKpiCard label="Produtos" value={fab.horasPorProduto.length || null} icon={Package} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" description="Flexx, ConnectSales, Heishop…" />
-              <HeroKpiCard label="Fábricas" value={fab.horasPorFabrica.length || null} icon={Building2} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(43,85%,46%)]" description="Agrupado por Area Path" />
-            </div>
-
-            {/* Three ranking cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <HoursRankingCard
-                title="Horas por Colaborador"
-                icon={Users}
-                data={fab.horasPorColaborador}
-                isLoading={fab.isLoading}
-                emptyMessage="Nenhuma hora registrada"
-                delay={300}
-              />
-              <HoursRankingCard
-                title="Horas por Produto"
-                icon={Package}
-                data={fab.horasPorProduto}
-                isLoading={fab.isLoading}
-                emptyMessage="Nenhum produto identificado"
-                delay={400}
-              />
-              <HoursRankingCard
-                title="Horas por Fábrica"
-                icon={Building2}
-                data={fab.horasPorFabrica}
-                isLoading={fab.isLoading}
-                emptyMessage="Nenhuma fábrica identificada"
-                delay={500}
-              />
-            </div>
-
-            {/* Hours chart (horizontal bars for collaborators) */}
-            {fab.horasPorColaborador.length > 0 && (
-              <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-primary" />Distribuição de Horas por Colaborador
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={Math.max(200, fab.horasPorColaborador.length * 36)}>
-                    <BarChart data={fab.horasPorColaborador.slice(0, 12)} layout="vertical" margin={{ left: 0, right: 16 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                      <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" unit="h" />
-                      <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
-                      <Tooltip
-                        contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                        formatter={(value: number) => [`${value}h`, 'Horas']}
-                      />
-                      <Bar dataKey="hours" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* ═══════ TAB: Transbordo ═══════ */}
-          <TabsContent value="transbordo" className="space-y-5 mt-0">
-            <TransbordoTab
-              items={sprintTransbordoItems}
-              transbordoPct={sprintTransbordoPct}
-              transbordoCount={sprintTransbordoCount}
-              realOverflowItemCount={fab.realOverflowItemCount}
-              realOverflowCount={fab.realOverflowCount}
-              realOverflowPct={fab.realOverflowPct}
-              transbordoTotal={sprintTransbordoTotal}
-              currentSprint={sprintFilter !== 'all' ? sprintFilter : fab.currentSprint}
-              selectedSprint={sprintFilter}
-              isLoading={fab.isLoading}
-            />
-          </TabsContent>
-
-          <TabsContent value="esteira-saude" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <HeroKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={ListTodo} />
-              <HeroKpiCard label="Saúde Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-              <HeroKpiCard label="Saúde Amarela" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-              <HeroKpiCard label="Saúde Vermelha" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" />
-            </div>
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b border-border">
-                <h3 className="font-semibold text-sm">Visão de esteira por item</h3>
-                <p className="text-xs text-muted-foreground">Saúde e estágio atual para PBIs/User Story/Bugs da sprint selecionada.</p>
-              </div>
-              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
-                {sprintFilteredItems
-                  .filter((item) => item.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(item.work_item_type || ''))
-                  .slice(0, 60)
-                  .map((item) => {
-                    const lifecycle = pbiHealthBatch.lifecycleById.get(item.id as number);
-                    return (
-                      <div key={`health-${item.id}`} className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            Estágio: {lifecycle?.current_stage || '—'} • Migrações: {lifecycle?.sprint_migration_count ?? 0} • Overflow real: {lifecycle?.overflow_count ?? 0}
-                          </p>
-                        </div>
-                        <PbiHealthBadge status={pbiHealthBatch.healthById.get(item.id as number)?.health_status} />
-                      </div>
-                    );
-                  })}
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="gargalos" className="space-y-4 mt-0">
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-sm">Resumo de Gargalos da Fábrica</h3>
-                  <p className="text-xs text-muted-foreground">Dados de duração por etapa da esteira (rpc_pbi_bottleneck_summary).</p>
-                </div>
-                <Badge variant="outline">{bottlenecks.bottlenecks.length} etapas</Badge>
-              </div>
-              <div className="p-4 space-y-2">
-                {bottlenecks.bottlenecks.map((row) => (
-                  <div key={`bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
-                    <span className="font-medium text-foreground">{row.stage_label}</span>
-                    <span className="text-muted-foreground">Média: {row.avg_days_in_stage}d</span>
-                    <span className="text-muted-foreground">Máx: {row.max_days_in_stage}d</span>
-                    <span className="text-muted-foreground">Em etapa: {row.count_in_stage}</span>
-                    <span className="text-muted-foreground">Atraso: {row.count_overtime}</span>
-                  </div>
-                ))}
-                {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
-                  <p className="text-sm text-muted-foreground">Sem dados de gargalo para o filtro atual.</p>
-                )}
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="por-feature" className="space-y-4 mt-0">
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-sm">Saúde por Feature</h3>
-                  <p className="text-xs text-muted-foreground">Agregação por feature/epic para leitura de risco funcional.</p>
-                </div>
-                <Badge variant="outline">{featureSummary.rows.length} grupos</Badge>
-              </div>
-              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
-                {featureSummary.rows.slice(0, 80).map((row, idx) => (
-                  <div key={`feat-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-2">
-                    <p className="text-sm font-medium">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      PBIs: {row.pbi_count} • Bugs: {row.bug_count} • Verde: {row.verde_count} • Amarelo: {row.amarelo_count} • Vermelho: {row.vermelho_count} • Overflow: {row.overflow_count}
-                    </p>
-                  </div>
-                ))}
-                {!featureSummary.isLoading && featureSummary.rows.length === 0 && (
-                  <p className="text-sm text-muted-foreground">Sem dados de feature para o período selecionado.</p>
-                )}
-              </div>
-            </Card>
-          </TabsContent>
-
-          {/* ═══════ Sprint Board consolidado na Visão Geral ═══════ */}
-          <TabsContent value="overview" className="space-y-4 mt-0">
+            {/* Sprint Board */}
             {fab.isLoading ? (
               <Card className="overflow-hidden">
                 <div className="p-4 border-b border-border"><Skeleton className="h-5 w-40" /></div>
@@ -955,7 +818,6 @@ export default function FabricaDashboard() {
                     <p className="text-xs text-muted-foreground">{filteredFabItems.length} itens • {parentRows.filter(p => childrenMap.has(p.id!)).length} PBIs com tasks</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* Quick filter badges */}
                     <div className="hidden md:flex gap-1">
                       {(['all', 'in_progress', 'todo', 'done'] as FabKpiFilter[]).map(f => (
                         <Badge 
@@ -964,7 +826,7 @@ export default function FabricaDashboard() {
                           className="cursor-pointer text-xs transition-all"
                           onClick={() => toggleFab(f)}
                         >
-                          {f === 'all' ? 'Todos' : f === 'in_progress' ? 'Em Progresso' : f === 'todo' ? 'A Fazer' : 'Finalizados'}
+                          {filterLabel(f)}
                         </Badge>
                       ))}
                     </div>
@@ -1089,11 +951,211 @@ export default function FabricaDashboard() {
             )}
           </TabsContent>
 
+          {/* ═══════ TAB: Horas (TimeLog) ═══════ */}
+          <TabsContent value="timelog" className="space-y-5 mt-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <HeroKpiCard label="Total horas" value={Math.round(fab.totalHoursLogged)} suffix="h" icon={Timer} isLoading={fab.isLoading} />
+              <HeroKpiCard label="Dias úteis (≈)" value={fab.totalHoursLogged > 0 ? Math.round(fab.totalHoursLogged / 8) : 0} suffix="d" icon={Clock} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" />
+              <HeroKpiCard label="Colaboradores" value={fab.horasPorColaborador.length} icon={Users} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
+              <HeroKpiCard label="Produtos" value={fab.horasPorProduto.length} icon={Package} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(43,85%,46%)]" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <HoursRankingCard
+                title="Horas por Produto"
+                icon={Package}
+                data={fab.horasPorProduto}
+                isLoading={fab.isLoading}
+                emptyMessage="Nenhum produto identificado"
+                delay={400}
+              />
+              <HoursRankingCard
+                title="Horas por Fábrica"
+                icon={Building2}
+                data={fab.horasPorFabrica}
+                isLoading={fab.isLoading}
+                emptyMessage="Nenhuma fábrica identificada"
+                delay={500}
+              />
+            </div>
+
+            {fab.horasPorColaborador.length > 0 && (
+              <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-primary" />Distribuição de Horas por Colaborador
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={Math.max(200, fab.horasPorColaborador.length * 36)}>
+                    <BarChart data={fab.horasPorColaborador.slice(0, 12)} layout="vertical" margin={{ left: 0, right: 16 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                      <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" unit="h" />
+                      <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
+                      <RechartsTooltip
+                        contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                        formatter={(value: number) => [`${value}h`, 'Horas']}
+                      />
+                      <Bar dataKey="hours" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ═══════ TAB: Transbordo ═══════ */}
+          <TabsContent value="transbordo" className="space-y-5 mt-0">
+            <TransbordoTab
+              items={sprintTransbordoItems}
+              transbordoPct={sprintTransbordoPct}
+              transbordoCount={sprintTransbordoCount}
+              realOverflowItemCount={fab.realOverflowItemCount}
+              realOverflowCount={fab.realOverflowCount}
+              realOverflowPct={fab.realOverflowPct}
+              transbordoTotal={sprintTransbordoTotal}
+              currentSprint={sprintFilter !== 'all' ? sprintFilter : fab.currentSprint}
+              selectedSprint={sprintFilter}
+              isLoading={fab.isLoading}
+            />
+          </TabsContent>
+
+          {/* ═══════ TAB: Esteira / Saúde ═══════ */}
+          <TabsContent value="esteira-saude" className="space-y-4 mt-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <HeroKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={ListTodo} onClick={() => setHealthFilter(prev => prev === 'all' ? 'all' : 'all')} active={healthFilter === 'all'} />
+              <HeroKpiCard label="Saúde Boa" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" onClick={() => setHealthFilter(prev => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
+              <HeroKpiCard label="Em Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" onClick={() => setHealthFilter(prev => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
+              <HeroKpiCard label="Críticas" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" onClick={() => setHealthFilter(prev => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
+            </div>
+            {healthFilter !== 'all' && (
+              <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setHealthFilter('all')}>
+                Filtro: {healthFilter === 'verde' ? 'Saúde Boa' : healthFilter === 'amarelo' ? 'Em Atenção' : 'Críticas'} ✕
+              </Badge>
+            )}
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b border-border">
+                <h3 className="font-semibold text-sm">Visão de esteira por item</h3>
+                <p className="text-xs text-muted-foreground">Saúde e estágio atual para PBIs/User Story/Bugs da sprint selecionada.</p>
+              </div>
+              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
+                {sprintFilteredItems
+                  .filter((item) => item.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(item.work_item_type || ''))
+                  .filter((item) => {
+                    if (healthFilter === 'all') return true;
+                    const status = pbiHealthBatch.healthById.get(item.id as number)?.health_status;
+                    return status === healthFilter;
+                  })
+                  .slice(0, 60)
+                  .map((item) => {
+                    const lifecycle = pbiHealthBatch.lifecycleById.get(item.id as number);
+                    return (
+                      <div 
+                        key={`health-${item.id}`} 
+                        className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30 transition-colors"
+                        onClick={() => setDrawerItem(item)}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            Estágio: {lifecycle?.current_stage || item.state || '—'} • Migrações: {lifecycle?.sprint_migration_count ?? 0} • Overflow: {lifecycle?.overflow_count ?? 0}
+                          </p>
+                        </div>
+                        <PbiHealthBadge status={pbiHealthBatch.healthById.get(item.id as number)?.health_status} />
+                      </div>
+                    );
+                  })}
+                {sprintFilteredItems.filter(i => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || '')).length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-6">Nenhum item monitorável na sprint selecionada. Dados de saúde são populados pela sincronização de esteira.</p>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* ═══════ TAB: Gargalos ═══════ */}
+          <TabsContent value="gargalos" className="space-y-4 mt-0">
+            {bottlenecks.overview && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <HeroKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
+                <HeroKpiCard label="Saúde Boa" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                <HeroKpiCard label="Em Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                <HeroKpiCard label="Críticas" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+              </div>
+            )}
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-sm">Resumo de Gargalos da Fábrica</h3>
+                  <p className="text-xs text-muted-foreground">Duração por etapa da esteira de produção.</p>
+                </div>
+                <Badge variant="outline">{bottlenecks.bottlenecks.length} etapas</Badge>
+              </div>
+              <div className="p-4 space-y-2">
+                {bottlenecks.bottlenecks.map((row) => (
+                  <div key={`bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
+                    <span className="font-medium text-foreground">{row.stage_label}</span>
+                    <span className="text-muted-foreground">Média: {row.avg_days_in_stage}d</span>
+                    <span className="text-muted-foreground">Máx: {row.max_days_in_stage}d</span>
+                    <span className="text-muted-foreground">Em etapa: {row.count_in_stage}</span>
+                    <span className="text-muted-foreground">Atraso: {row.count_overtime}</span>
+                  </div>
+                ))}
+                {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
+                  <div className="text-center py-8">
+                    <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Sem dados de gargalo para o filtro atual.</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">Os dados são populados após a sincronização de esteira (pbi_stage_events).</p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* ═══════ TAB: Por Feature ═══════ */}
+          <TabsContent value="por-feature" className="space-y-4 mt-0">
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-sm">Saúde por Feature</h3>
+                  <p className="text-xs text-muted-foreground">Agregação por feature/epic para leitura de risco funcional.</p>
+                </div>
+                <Badge variant="outline">{featureSummary.rows.length} grupos</Badge>
+              </div>
+              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
+                {featureSummary.rows.slice(0, 80).map((row, idx) => (
+                  <div key={`feat-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium truncate">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {row.verde_count > 0 && <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px] px-1.5">{row.verde_count}</Badge>}
+                        {row.amarelo_count > 0 && <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] px-1.5">{row.amarelo_count}</Badge>}
+                        {row.vermelho_count > 0 && <Badge className="bg-red-100 text-red-700 border-red-300 text-[10px] px-1.5">{row.vermelho_count}</Badge>}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      PBIs: {row.pbi_count} • Bugs: {row.bug_count} 
+                      {row.avg_lead_time_days != null ? ` • Lead Time: ${row.avg_lead_time_days}d` : ''}
+                      {row.overflow_count > 0 ? ` • Overflow: ${row.overflow_count}` : ''}
+                    </p>
+                  </div>
+                ))}
+                {!featureSummary.isLoading && featureSummary.rows.length === 0 && (
+                  <div className="text-center py-8">
+                    <Workflow className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Sem dados de feature para o período selecionado.</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">Dados preenchidos automaticamente pela hierarquia do DevOps (Feature → PBI) e saúde da esteira.</p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* ═══════ TAB: Backlog Priorizar ═══════ */}
           <TabsContent value="backlog-priorizar" className="space-y-4 mt-0">
             <Card className="overflow-hidden animate-fade-in">
               <div className="p-4 border-b border-border">
                 <h3 className="font-semibold text-foreground text-sm">Visão Operacional: Backlog para Priorizar</h3>
-                <p className="text-xs text-muted-foreground">Fonte operacional: query 03-Em Fila Backlog para Priorizar</p>
+                <p className="text-xs text-muted-foreground">Fonte operacional: query 03-Em Fila Backlog para Priorizar (todas as sprints)</p>
               </div>
               <div className="overflow-auto max-h-[600px]">
                 <Table>
@@ -1115,12 +1177,7 @@ export default function FabricaDashboard() {
                     ) : backlogPriorizarItems.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                          <div className="space-y-2">
-                            <p>Sem itens para o filtro atual</p>
-                            <Button size="sm" variant="outline" onClick={() => { setCustomActive(false); setSprintFilter('all'); }}>
-                              Clique para exibir backlog
-                            </Button>
-                          </div>
+                          <p>Nenhum item no backlog para priorizar.</p>
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -1136,11 +1193,12 @@ export default function FabricaDashboard() {
             </Card>
           </TabsContent>
 
+          {/* ═══════ TAB: UX-UI Fila ═══════ */}
           <TabsContent value="uxui-fila" className="space-y-4 mt-0">
             <Card className="overflow-hidden animate-fade-in">
               <div className="p-4 border-b border-border">
                 <h3 className="font-semibold text-foreground text-sm">Visão Operacional: Fila Design / UX-UI</h3>
-                <p className="text-xs text-muted-foreground">Fonte operacional: query 05-Em Fila UX-UI</p>
+                <p className="text-xs text-muted-foreground">Fonte operacional: query 05-Em Fila UX-UI (todas as sprints)</p>
               </div>
               <div className="overflow-auto max-h-[600px]">
                 <Table>
@@ -1162,12 +1220,7 @@ export default function FabricaDashboard() {
                     ) : uxuiItems.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                          <div className="space-y-2">
-                            <p>Sem itens para o filtro atual</p>
-                            <Button size="sm" variant="outline" onClick={() => { setCustomActive(false); setSprintFilter('all'); }}>
-                              Clique para exibir backlog
-                            </Button>
-                          </div>
+                          <p>Nenhum item na fila UX-UI.</p>
                         </TableCell>
                       </TableRow>
                     ) : (
