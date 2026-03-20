@@ -1,2 +1,4 @@
 # Supabase project config (PROD)
 project_id = "nxmgppfyltwsqryfxkbm"
+supabase_url = "https://nxmgppfyltwsqryfxkbm.supabase.co"
+anon_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54bWdwcGZ5bHR3c3FyeWZ4a2JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NDEwMDEsImV4cCI6MjA4NTExNzAwMX0.6TqJwx2_8dbFwbvflSZKVe6MSaagmPosQaxpg0l9Waw"
