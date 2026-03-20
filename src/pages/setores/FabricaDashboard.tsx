@@ -1077,9 +1077,9 @@ export default function FabricaDashboard() {
             {bottlenecks.overview && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <HeroKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
-                <HeroKpiCard label="Verde" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                <HeroKpiCard label="Amarelo" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                <HeroKpiCard label="Vermelho" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+                <HeroKpiCard label="Saúde Boa" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                <HeroKpiCard label="Em Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                <HeroKpiCard label="Críticas" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
               </div>
             )}
             <Card className="overflow-hidden">
