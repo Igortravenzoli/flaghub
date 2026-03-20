@@ -290,6 +290,410 @@ interface IterationChange {
   revisedDate: string
 }
 
+interface StageConfigRow {
+  stage_key: string
+  label_pt: string
+  sort_order: number
+  state_patterns: string[] | null
+  pipeline_roles: string[] | null
+  iteration_suffix_patterns: string[] | null
+  fallback_order: number
+  is_active: boolean
+}
+
+interface LeadAreaMapRow {
+  lead_email: string
+  pipeline_role: string
+  is_active: boolean
+}
+
+interface HealthThresholdRow {
+  stage_key: string
+  warn_days: number
+  critical_days: number
+  is_active: boolean
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return (value || '').trim().toLowerCase()
+}
+
+function extractSprintCodeFromPath(path: string | null | undefined): string | null {
+  if (!path) return null
+  const match = path.match(/S\d+-\d{4}/i)
+  return match ? match[0].toUpperCase() : null
+}
+
+function getDurationDays(fromIso: string | null | undefined, toIso: string | null | undefined): number {
+  const from = toDateOrNull(fromIso)
+  const to = toDateOrNull(toIso)
+  if (!from || !to) return 0
+  const diffMs = to.getTime() - from.getTime()
+  return Math.max(0, diffMs / 86400000)
+}
+
+function isDoneState(state: string | null | undefined): boolean {
+  const s = normalizeText(state)
+  return s === 'done' || s === 'closed' || s === 'resolved'
+}
+
+function isBacklogLikeState(state: string | null | undefined): boolean {
+  const s = normalizeText(state)
+  return s === 'new' || s === 'to do' || s === 'backlog'
+}
+
+function matchArrayValue(value: string, patterns: string[] | null | undefined): boolean {
+  if (!patterns || patterns.length === 0) return false
+  return patterns.some((pattern) => {
+    const p = normalizeText(pattern)
+    if (!p) return false
+    return value.includes(p)
+  })
+}
+
+function inferStage(
+  state: string | null | undefined,
+  leadEmail: string | null | undefined,
+  iterationPath: string | null | undefined,
+  stageConfig: StageConfigRow[],
+  leadRoleByEmail: Map<string, string>
+): { stageKey: string; inferenceMethod: 'state_pattern' | 'pipeline_role' | 'iteration_suffix' | 'fallback' } {
+  const active = stageConfig.filter((row) => row.is_active)
+  const normalizedState = normalizeText(state)
+  const normalizedPath = normalizeText(iterationPath)
+  const leadRole = leadRoleByEmail.get(normalizeText(leadEmail)) || ''
+
+  const byState = active.find((row) => matchArrayValue(normalizedState, row.state_patterns))
+  if (byState) return { stageKey: byState.stage_key, inferenceMethod: 'state_pattern' }
+
+  if (leadRole) {
+    const byRole = active.find((row) => matchArrayValue(leadRole, row.pipeline_roles))
+    if (byRole) return { stageKey: byRole.stage_key, inferenceMethod: 'pipeline_role' }
+  }
+
+  const bySuffix = active.find((row) => matchArrayValue(normalizedPath, row.iteration_suffix_patterns))
+  if (bySuffix) return { stageKey: bySuffix.stage_key, inferenceMethod: 'iteration_suffix' }
+
+  const fallback = [...active].sort((a, b) => a.fallback_order - b.fallback_order)[0]
+  return { stageKey: fallback?.stage_key || 'backlog', inferenceMethod: 'fallback' }
+}
+
+function computeHealthStatus(input: {
+  currentStage: string | null
+  currentStageDays: number
+  sprintMigrationCount: number
+  overflowCount: number
+  qaReturnCount: number
+  thresholdsByStage: Map<string, { warn: number; critical: number }>
+}): { health: 'verde' | 'amarelo' | 'vermelho'; reasons: string[]; bottleneckStage: string | null } {
+  const reasons: string[] = []
+  const stage = input.currentStage || 'backlog'
+  const threshold = input.thresholdsByStage.get(stage) || { warn: 9999, critical: 99999 }
+
+  const isCriticalAging = input.currentStageDays > threshold.critical
+  const isWarnAging = input.currentStageDays > threshold.warn
+
+  if (input.overflowCount > 0) reasons.push('transbordo_real')
+  if (input.sprintMigrationCount > 1) reasons.push('multiplas_migracoes')
+  if (input.qaReturnCount > 1) reasons.push('multiplos_retorno_qa')
+  if (isCriticalAging) reasons.push('aging_critico_etapa')
+
+  if (reasons.length > 0) {
+    return { health: 'vermelho', reasons, bottleneckStage: stage }
+  }
+
+  if (input.sprintMigrationCount === 1) reasons.push('uma_migracao')
+  if (input.qaReturnCount === 1) reasons.push('um_retorno_qa')
+  if (isWarnAging) reasons.push('aging_atencao_etapa')
+
+  if (reasons.length > 0) {
+    return { health: 'amarelo', reasons, bottleneckStage: isWarnAging ? stage : null }
+  }
+
+  return { health: 'verde', reasons: ['fluxo_saudavel'], bottleneckStage: null }
+}
+
+async function processLifecycleAndHealth(admin: any): Promise<{ processed: number; skippedTimeout: number }> {
+  const startedAt = Date.now()
+  const maxMs = 8000
+
+  const [{ data: configRows, error: configErr }, { data: leadRows, error: leadErr }, { data: thresholdRows, error: thresholdErr }] = await Promise.all([
+    admin
+      .from('pbi_stage_config')
+      .select('stage_key, label_pt, sort_order, state_patterns, pipeline_roles, iteration_suffix_patterns, fallback_order, is_active')
+      .eq('is_active', true),
+    admin
+      .from('devops_lead_area_map')
+      .select('lead_email, pipeline_role, is_active')
+      .eq('is_active', true),
+    admin
+      .from('pbi_health_thresholds')
+      .select('stage_key, warn_days, critical_days, is_active')
+      .eq('is_active', true),
+  ])
+
+  if (configErr || leadErr || thresholdErr) {
+    console.error('[LifecycleHealth] Failed to load configs:', configErr?.message || leadErr?.message || thresholdErr?.message)
+    return { processed: 0, skippedTimeout: 0 }
+  }
+
+  const stageConfig = (configRows || []) as StageConfigRow[]
+  const leadRoleByEmail = new Map<string, string>()
+  for (const row of (leadRows || []) as LeadAreaMapRow[]) {
+    leadRoleByEmail.set(normalizeText(row.lead_email), normalizeText(row.pipeline_role))
+  }
+
+  const thresholdsByStage = new Map<string, { warn: number; critical: number }>()
+  for (const row of (thresholdRows || []) as HealthThresholdRow[]) {
+    thresholdsByStage.set(row.stage_key, {
+      warn: Number(row.warn_days || 0),
+      critical: Number(row.critical_days || 0),
+    })
+  }
+
+  const { data: pbiItems, error: pbiErr } = await admin
+    .from('devops_work_items')
+    .select('id, work_item_type, state, iteration_path, assigned_to_unique, created_date, changed_date, custom_fields, iteration_history')
+    .in('work_item_type', ['Product Backlog Item', 'User Story'])
+    .limit(3000)
+
+  if (pbiErr) {
+    console.error('[LifecycleHealth] Failed to fetch PBIs:', pbiErr.message)
+    return { processed: 0, skippedTimeout: 0 }
+  }
+
+  const pbiIds = (pbiItems || []).map((row: any) => row.id).filter(Boolean)
+  if (pbiIds.length === 0) return { processed: 0, skippedTimeout: 0 }
+
+  const [{ data: summaryRows }, { data: queryRows }] = await Promise.all([
+    admin
+      .from('pbi_lifecycle_summary')
+      .select('work_item_id, computed_at')
+      .in('work_item_id', pbiIds),
+    admin
+      .from('devops_query_items_current')
+      .select('work_item_id, query_id')
+      .in('work_item_id', pbiIds),
+  ])
+
+  const queryIds = [...new Set((queryRows || []).map((row: any) => row.query_id).filter(Boolean))]
+  let queriesById = new Map<string, string>()
+  if (queryIds.length > 0) {
+    const { data: queryDefs } = await admin
+      .from('devops_queries')
+      .select('id, sector')
+      .in('id', queryIds)
+    for (const q of queryDefs || []) {
+      queriesById.set(q.id, q.sector || '')
+    }
+  }
+
+  const sectorByWorkItem = new Map<number, string>()
+  for (const row of queryRows || []) {
+    if (sectorByWorkItem.has(row.work_item_id)) continue
+    const sector = queriesById.get(row.query_id)
+    if (sector) sectorByWorkItem.set(row.work_item_id, sector)
+  }
+
+  const summaryComputedAt = new Map<number, string>()
+  for (const row of summaryRows || []) {
+    summaryComputedAt.set(row.work_item_id, row.computed_at)
+  }
+
+  const candidates = (pbiItems || []).filter((item: any) =>
+    shouldRefreshByChange(item.changed_date, summaryComputedAt.get(item.id))
+  )
+
+  if (candidates.length === 0) {
+    console.log('[LifecycleHealth] No PBIs changed since last summary')
+    return { processed: 0, skippedTimeout: 0 }
+  }
+
+  console.log(`[LifecycleHealth] Processing ${candidates.length} changed PBIs`)
+
+  let processed = 0
+  let skippedTimeout = 0
+
+  for (const item of candidates) {
+    if (Date.now() - startedAt > maxMs) {
+      skippedTimeout++
+      continue
+    }
+
+    const sector = sectorByWorkItem.get(item.id) || null
+    const state = item.state as string | null
+    const assignedTo = item.assigned_to_unique as string | null
+    const createdDate = item.created_date as string | null
+    const changedDate = item.changed_date as string | null
+    const iterationPath = item.iteration_path as string | null
+    const iterationHistory = (item.iteration_history as IterationChange[] | null) || []
+    const customFields = (item.custom_fields || {}) as Record<string, any>
+
+    const orderedHistory = [...iterationHistory]
+      .filter((h) => h && h.newValue)
+      .sort((a, b) => new Date(a.revisedDate).getTime() - new Date(b.revisedDate).getTime())
+
+    const checkpoints: Array<{ at: string; path: string | null }> = []
+    if (createdDate) {
+      const firstPath = orderedHistory[0]?.oldValue || iterationPath || null
+      checkpoints.push({ at: createdDate, path: firstPath })
+    }
+    for (const ch of orderedHistory) {
+      checkpoints.push({ at: ch.revisedDate, path: ch.newValue || null })
+    }
+
+    if (checkpoints.length === 0 && changedDate) {
+      checkpoints.push({ at: changedDate, path: iterationPath || null })
+    }
+
+    const events: any[] = []
+    for (let i = 0; i < checkpoints.length; i++) {
+      const current = checkpoints[i]
+      const next = checkpoints[i + 1]
+      const inferred = inferStage(state, assignedTo, current.path, stageConfig, leadRoleByEmail)
+      const enteredAt = current.at
+      const exitedAt = next?.at || null
+      const durationDays = exitedAt ? getDurationDays(enteredAt, exitedAt) : null
+      const sprintPath = current.path || null
+      const sprintCode = extractSprintCodeFromPath(sprintPath)
+
+      events.push({
+        work_item_id: item.id,
+        sector,
+        stage_key: inferred.stageKey,
+        entered_at: enteredAt,
+        exited_at: exitedAt,
+        duration_days: durationDays,
+        sprint_path: sprintPath,
+        sprint_code: sprintCode,
+        responsible_email: assignedTo,
+        inference_method: inferred.inferenceMethod,
+        is_overflow: false,
+        updated_at: new Date().toISOString(),
+      })
+    }
+
+    let sprintMigrationCount = 0
+    let overflowCount = 0
+    let firstCommittedSprint: string | null = null
+    let lastCommittedSprint: string | null = null
+    let leadOwnerAtCommitment: string | null = null
+    let overflowStage: string | null = null
+    const overflowByStage: Record<string, number> = {}
+
+    const hasLead = !!leadRoleByEmail.get(normalizeText(assignedTo))
+    const currentSprintCode = extractSprintCodeFromPath(iterationPath)
+    if (hasLead && currentSprintCode) {
+      firstCommittedSprint = currentSprintCode
+      lastCommittedSprint = currentSprintCode
+      leadOwnerAtCommitment = assignedTo
+    }
+
+    for (let i = 0; i < orderedHistory.length; i++) {
+      const ch = orderedHistory[i]
+      const oldSprint = extractSprintCodeFromPath(ch.oldValue)
+      const newSprint = extractSprintCodeFromPath(ch.newValue)
+
+      if (!oldSprint || !newSprint || oldSprint === newSprint) continue
+
+      sprintMigrationCount++
+
+      if (hasLead && !isBacklogLikeState(state) && !isDoneState(state)) {
+        overflowCount++
+        if (!firstCommittedSprint) firstCommittedSprint = oldSprint
+        lastCommittedSprint = newSprint
+        if (!leadOwnerAtCommitment) leadOwnerAtCommitment = assignedTo
+
+        const eventAt = events.find((ev) => ev.entered_at === ch.revisedDate)
+        const stageAtOverflow = eventAt?.stage_key || inferStage(state, assignedTo, ch.newValue, stageConfig, leadRoleByEmail).stageKey
+        overflowStage = stageAtOverflow
+        overflowByStage[stageAtOverflow] = (overflowByStage[stageAtOverflow] || 0) + 1
+
+        if (eventAt) eventAt.is_overflow = true
+      }
+    }
+
+    const qaReturnCount = Number(customFields['qa_retorno_count'] || 0)
+    const nowIso = new Date().toISOString()
+    const lastEvent = events.length > 0 ? events[events.length - 1] : null
+    const currentStage = lastEvent?.stage_key || inferStage(state, assignedTo, iterationPath, stageConfig, leadRoleByEmail).stageKey
+    const currentStageDays = lastEvent
+      ? (lastEvent.duration_days ?? getDurationDays(lastEvent.entered_at, nowIso))
+      : 0
+
+    const perStageDays: Record<string, number> = {
+      backlog: 0,
+      design: 0,
+      fabrica: 0,
+      qualidade: 0,
+      deploy: 0,
+    }
+    for (const ev of events) {
+      const d = ev.duration_days ?? getDurationDays(ev.entered_at, nowIso)
+      if (perStageDays[ev.stage_key] !== undefined) perStageDays[ev.stage_key] += d
+    }
+
+    const totalLeadTimeDays = createdDate ? getDurationDays(createdDate, nowIso) : 0
+    const health = computeHealthStatus({
+      currentStage,
+      currentStageDays,
+      sprintMigrationCount,
+      overflowCount,
+      qaReturnCount,
+      thresholdsByStage,
+    })
+
+    await admin.from('pbi_stage_events').delete().eq('work_item_id', item.id)
+    if (events.length > 0) {
+      const { error: eventsErr } = await admin.from('pbi_stage_events').insert(events)
+      if (eventsErr) {
+        console.error(`[LifecycleHealth] Failed to insert stage events for ${item.id}:`, eventsErr.message)
+      }
+    }
+
+    const lifecycleRow = {
+      work_item_id: item.id,
+      sector,
+      current_stage: currentStage,
+      has_design_stage: events.some((ev) => ev.stage_key === 'design'),
+      first_committed_sprint: firstCommittedSprint,
+      last_committed_sprint: lastCommittedSprint,
+      lead_owner_at_commitment: leadOwnerAtCommitment,
+      overflow_stage: overflowStage,
+      total_lead_time_days: totalLeadTimeDays,
+      backlog_days: perStageDays.backlog,
+      design_days: perStageDays.design,
+      fabrica_days: perStageDays.fabrica,
+      qualidade_days: perStageDays.qualidade,
+      deploy_days: perStageDays.deploy,
+      sprint_migration_count: sprintMigrationCount,
+      overflow_count: overflowCount,
+      overflow_by_stage: Object.keys(overflowByStage).length > 0 ? overflowByStage : null,
+      qa_return_count: qaReturnCount,
+      computed_at: nowIso,
+      updated_at: nowIso,
+    }
+
+    const healthRow = {
+      work_item_id: item.id,
+      sector,
+      health_status: health.health,
+      bottleneck_stage: health.bottleneckStage,
+      health_reasons: health.reasons,
+      computed_at: nowIso,
+      updated_at: nowIso,
+    }
+
+    await admin.from('pbi_lifecycle_summary').upsert(lifecycleRow, { onConflict: 'work_item_id' })
+    await admin.from('pbi_health_summary').upsert(healthRow, { onConflict: 'work_item_id' })
+
+    processed++
+  }
+
+  console.log(`[LifecycleHealth] Done: ${processed} processed, ${skippedTimeout} skipped by time budget`)
+  return { processed, skippedTimeout }
+}
+
 function extractIterationChanges(updates: any[]): IterationChange[] {
   const changes: IterationChange[] = []
   for (const update of updates) {
@@ -540,6 +944,7 @@ serve(async (req: Request) => {
       let childrenResult = { fetched: 0, upserted: 0 }
       let qaRetorno = { processed: 0, withRetornos: 0 }
       let iterHistory = { processed: 0, withChanges: 0 }
+      let lifecycleHealth = { processed: 0, skippedTimeout: 0 }
 
       // ── Step 2: Iteration history ──
       try {
@@ -573,12 +978,27 @@ serve(async (req: Request) => {
         console.error('[DevOpsSyncAll:BG] QA retorno error:', (qaErr as Error).message)
       }
 
+      // ── Step 5: Lifecycle + health (incremental post-processing) ──
+      try {
+        lifecycleHealth = await processLifecycleAndHealth(bgAdmin)
+      } catch (lifecycleErr) {
+        console.error('[DevOpsSyncAll:BG] Lifecycle/Health error:', (lifecycleErr as Error).message)
+      }
+
       // Audit log
       await bgAdmin.rpc('hub_audit_log', {
         p_action: 'devops_sync_all',
         p_entity_type: 'devops',
         p_entity_id: null,
-        p_metadata: { total: queries!.length, succeeded, failed, children: childrenResult, qa_retorno: qaRetorno, iteration_history: iterHistory },
+        p_metadata: {
+          total: queries!.length,
+          succeeded,
+          failed,
+          children: childrenResult,
+          qa_retorno: qaRetorno,
+          iteration_history: iterHistory,
+          lifecycle_health: lifecycleHealth,
+        },
       })
       console.log('[DevOpsSyncAll:BG] All background work complete')
     }
