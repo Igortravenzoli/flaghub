@@ -30,6 +30,11 @@ const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; 
     defaultSchedule: "*/15 * * * *",
     functionName: "devops-sync-timelog",
   },
+  "devops-sync-qualidade": {
+    cronName: "sync-devops-qualidade",
+    defaultSchedule: "*/10 * * * *",
+    functionName: "devops-sync-qualidade",
+  },
 };
 
 const EXTRA_DISABLE_ONLY_JOBS = [

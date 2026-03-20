@@ -3,6 +3,22 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 
+const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
+const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
+const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+
+function isFabricaInProgress(state: string | null | undefined): boolean {
+  return FABRICA_IN_PROGRESS_STATES.has(state || '');
+}
+
+function isFabricaTodo(state: string | null | undefined): boolean {
+  return FABRICA_TODO_STATES.has(state || '');
+}
+
+function isDone(state: string | null | undefined): boolean {
+  return DONE_STATES.has(state || '');
+}
+
 export interface TransbordoItem extends FabricaItem {
   overflowCount: number;
   sprintsOverflowed: string[];
@@ -123,6 +139,7 @@ export function useFabricaKpis(
       const { data } = await supabase
         .from('devops_queries')
         .select('last_synced_at')
+        .eq('sector', 'fabrica')
         .order('last_synced_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -210,9 +227,9 @@ export function useFabricaKpis(
   const kpiItems = items.filter(i => i.count_in_kpi !== false);
 
   const total      = kpiItems.length;
-  const inProgress = kpiItems.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
-  const toDo       = kpiItems.filter(i => i.state === 'To Do' || i.state === 'New').length;
-  const done       = kpiItems.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
+  const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length;
+  const toDo       = kpiItems.filter(i => isFabricaTodo(i.state)).length;
+  const done       = kpiItems.filter(i => isDone(i.state)).length;
 
   const porColaborador = items.reduce((acc, item) => {
     const name = item.assigned_to_display || 'Não atribuído';

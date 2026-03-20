@@ -14,6 +14,7 @@ const JOB_FUNCTION_MAP: Record<string, string> = {
   gateway_helpdesk_clients_default: 'vdesk-sync-base-clientes',
   gateway_helpdesk_dashboard_default: 'vdesk-sync-helpdesk',
   'devops-sync-timelog': 'devops-sync-timelog',
+  'devops-sync-qualidade': 'devops-sync-qualidade',
 };
 
 const INTERVAL_OPTIONS = [
