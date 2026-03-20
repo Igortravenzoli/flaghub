@@ -2552,6 +2552,59 @@ export type Database = {
           work_item_id: number
         }[]
       }
+      rpc_feature_pbi_summary: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sector?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          amarelo_count: number
+          avg_lead_time_days: number
+          bug_count: number
+          epic_id: number
+          epic_title: string
+          feature_id: number
+          feature_title: string
+          overflow_count: number
+          pbi_count: number
+          verde_count: number
+          vermelho_count: number
+        }[]
+      }
+      rpc_pbi_bottleneck_summary: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sector?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          avg_days_in_stage: number
+          count_in_stage: number
+          count_overtime: number
+          max_days_in_stage: number
+          overflow_count_in_stage: number
+          stage_key: string
+          stage_label: string
+        }[]
+      }
+      rpc_pbi_health_overview: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sector?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          amarelo_count: number
+          items_with_bottleneck: number
+          total_count: number
+          verde_count: number
+          vermelho_count: number
+        }[]
+      }
     }
     Enums: {
       app_role: "operacional" | "gestao" | "qualidade" | "admin"

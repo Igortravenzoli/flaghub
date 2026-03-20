@@ -17,16 +17,21 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
-type QaKpiFilter = 'all' | 'fila_qa' | 'deploy' | 'com_retorno';
+type QaKpiFilter = 'all' | 'em_teste' | 'deploy' | 'com_retorno' | 'aviao';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items QA' },
 ];
+
+const QUALITY_TEST_STATES = new Set(['Em Teste', 'Aguardando Deploy']);
+const QUALITY_TESTING_STATES = new Set(['Em Teste']);
+const QUALITY_DEPLOY_STATES = new Set(['Aguardando Deploy']);
 
 const columns: DataTableColumn<QualidadeItem>[] = [
   { key: 'id', header: 'ID', className: 'font-mono text-xs w-16', render: r => r.web_url ? (
@@ -39,7 +44,6 @@ const columns: DataTableColumn<QualidadeItem>[] = [
   { key: 'assigned_to_display', header: 'Colaborador' },
   { key: 'state', header: 'Estado', render: r => <Badge variant="outline" className="text-xs">{r.state || '—'}</Badge> },
   { key: 'priority', header: 'Prioridade', render: r => r.priority != null ? <Badge variant="secondary" className="text-xs">P{r.priority}</Badge> : '—' },
-  { key: 'transbordo_count' as any, header: 'Transbordo', render: r => /TRANSBORDO/i.test(r.tags || '') ? <Badge variant="destructive" className="text-xs">1</Badge> : <span className="text-muted-foreground">—</span>, className: 'text-center w-20' },
   { key: 'iteration_path', header: 'Sprint', className: 'text-xs text-muted-foreground max-w-[120px] truncate', render: r => r.iteration_path ? (r.iteration_path.split('\\').pop() || r.iteration_path) : '—' },
   { 
     key: 'qa_retorno_count' as any, 
@@ -124,9 +128,10 @@ export default function QualidadeDashboard() {
 
   const filteredItems = useMemo(() => {
     switch (kpiFilter) {
-      case 'fila_qa': return scoped.items;
-      case 'deploy': return scoped.items.filter(i => i.state === 'Aguardando Deploy');
+      case 'em_teste': return scoped.items.filter(i => QUALITY_TESTING_STATES.has(i.state || ''));
+      case 'deploy': return scoped.items.filter(i => QUALITY_DEPLOY_STATES.has(i.state || ''));
       case 'com_retorno': return scoped.items.filter(i => (i.qa_retorno_count ?? 0) > 0);
+      case 'aviao': return scoped.items.filter(i => (i.tags || '').toUpperCase().includes('AVIAO'));
       default: return scoped.items;
     }
   }, [scoped.items, kpiFilter]);
@@ -140,6 +145,16 @@ export default function QualidadeDashboard() {
     },
     ...columns,
   ], [pbiHealthBatch.healthById]);
+
+  const filterLabel = (f: QaKpiFilter) => {
+    switch (f) {
+      case 'all': return 'Todos';
+      case 'em_teste': return 'Em Teste';
+      case 'deploy': return 'Aguardando Deploy';
+      case 'com_retorno': return 'Com Retorno QA';
+      case 'aviao': return 'Aviões';
+    }
+  };
 
   const handleExportCSV = () => exportCSV({
     title: 'Qualidade QA', area: 'Qualidade', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
@@ -207,6 +222,11 @@ export default function QualidadeDashboard() {
           onExportCSV={handleExportCSV}
           onExportPDF={handleExportPDF}
         />
+        {kpiFilter !== 'all' && (
+          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setKpiFilter('all')}>
+            Filtro: {filterLabel(kpiFilter)} ✕
+          </Badge>
+        )}
       </div>
 
       {isError ? (
@@ -220,14 +240,26 @@ export default function QualidadeDashboard() {
             <TabsTrigger value="por-feature" className="gap-1.5 text-xs"><Workflow className="h-3.5 w-3.5" />Por Feature</TabsTrigger>
           </TabsList>
 
+          {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
               <DashboardKpiCard label="Total QA" value={scoped.total} icon={FileCheck} isLoading={scoped.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
-              <DashboardKpiCard label="Fila QA (Atual)" value={scoped.filaAtual} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
-              <DashboardKpiCard label="Em Teste" value={scoped.emTeste} icon={TrendingUp} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
-              <DashboardKpiCard label="Aguardando Deploy" value={scoped.aguardandoDeploy} icon={BarChart3} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('deploy')} active={kpiFilter === 'deploy'} />
-              <DashboardKpiCard label="Retorno QA" value={scoped.itensComRetorno} suffix={scoped.totalRetornos > 0 ? ` (${scoped.totalRetornos}x)` : ''} icon={RotateCcw} isLoading={scoped.isLoading} delay={320} accent="bg-[hsl(0,72%,51%)]" onClick={() => toggleKpi('com_retorno')} active={kpiFilter === 'com_retorno'} />
-              <DashboardKpiCard label="Aviões testados" value={scoped.avioesTestados} icon={Plane} isLoading={scoped.isLoading} delay={360} accent="bg-[hsl(210,80%,52%)]" />
+              <DashboardKpiCard label="Em Teste" value={scoped.emTeste} icon={TrendingUp} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('em_teste')} active={kpiFilter === 'em_teste'} />
+              <DashboardKpiCard label="Aguardando Deploy" value={scoped.aguardandoDeploy} icon={BarChart3} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('deploy')} active={kpiFilter === 'deploy'} />
+              <DashboardKpiCard label="Retorno QA" value={scoped.itensComRetorno} suffix={scoped.totalRetornos > 0 ? ` (${scoped.totalRetornos}x)` : ''} icon={RotateCcw} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(0,72%,51%)]" onClick={() => toggleKpi('com_retorno')} active={kpiFilter === 'com_retorno'} />
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <DashboardKpiCard label="Aviões testados" value={scoped.avioesTestados} icon={Plane} isLoading={scoped.isLoading} delay={320} accent="bg-[hsl(210,80%,52%)]" onClick={() => toggleKpi('aviao')} active={kpiFilter === 'aviao'} />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs max-w-[240px]">
+                    Itens com tag AVIAO em estado de teste ou deploy. Clique para filtrar.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <DashboardKpiCard label="Fila Atual" value={scoped.filaAtual} icon={Clock} isLoading={scoped.isLoading} delay={400} accent="bg-[hsl(43,85%,46%)]" />
             </div>
 
             <Card className="border-primary/20 bg-primary/5">
@@ -244,11 +276,11 @@ export default function QualidadeDashboard() {
             </Card>
 
             {!isLoading && filteredItems.length === 0 ? (
-              <DashboardEmptyState description="Nenhum item de qualidade para o período/filtro selecionado." />
+              <DashboardEmptyState description={`Nenhum item de qualidade para o filtro "${filterLabel(kpiFilter)}" no período selecionado.`} />
             ) : (
               <DashboardDataTable
                 title="Fila atual da Qualidade"
-                subtitle={`${filteredItems.length} registros${kpiFilter === 'com_retorno' ? ' com retorno' : ''}${scoped.herdadosSprintPassada > 0 ? ` • ${scoped.herdadosSprintPassada} herdados de sprints passadas` : ''}`}
+                subtitle={`${filteredItems.length} registros${kpiFilter !== 'all' ? ` • Filtro: ${filterLabel(kpiFilter)}` : ''}${scoped.herdadosSprintPassada > 0 ? ` • ${scoped.herdadosSprintPassada} herdados de sprints passadas` : ''}`}
                 columns={tableColumns}
                 data={filteredItems}
                 isLoading={scoped.isLoading}
@@ -259,6 +291,7 @@ export default function QualidadeDashboard() {
             )}
           </TabsContent>
 
+          {/* ═══════ TAB: Esteira / Saúde ═══════ */}
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={FileCheck} isLoading={pbiHealthBatch.isLoading} />
@@ -266,9 +299,59 @@ export default function QualidadeDashboard() {
               <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" isLoading={pbiHealthBatch.isLoading} />
               <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" isLoading={pbiHealthBatch.isLoading} />
             </div>
+
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b border-border">
+                <h3 className="font-semibold text-sm">Itens na esteira de Qualidade</h3>
+                <p className="text-xs text-muted-foreground">Saúde e estado de cada item em teste ou aguardando deploy.</p>
+              </div>
+              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
+                {scoped.items.length > 0 ? scoped.items
+                  .slice(0, 80)
+                  .map((item) => {
+                    const lifecycle = item.id ? pbiHealthBatch.lifecycleById.get(item.id) : null;
+                    const health = item.id ? pbiHealthBatch.healthById.get(item.id)?.health_status : null;
+                    return (
+                      <div 
+                        key={`qa-health-${item.id}`} 
+                        className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30 transition-colors"
+                        onClick={() => setDrawerItem(item)}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px] flex-shrink-0">{item.work_item_type || '—'}</Badge>
+                            <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                            {item.state || '—'} • {item.assigned_to_display || 'Sem responsável'}
+                            {lifecycle ? ` • Estágio: ${lifecycle.current_stage || '—'}` : ''}
+                            {(item.qa_retorno_count ?? 0) > 0 ? ` • Retorno QA: ${item.qa_retorno_count}x` : ''}
+                          </p>
+                        </div>
+                        <PbiHealthBadge status={health} />
+                      </div>
+                    );
+                  }) : (
+                  <div className="text-center py-8">
+                    <HeartPulse className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Nenhum item na fila de qualidade para a sprint selecionada.</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">Dados de saúde são populados pela sincronização de esteira.</p>
+                  </div>
+                )}
+              </div>
+            </Card>
           </TabsContent>
 
+          {/* ═══════ TAB: Gargalos ═══════ */}
           <TabsContent value="gargalos" className="space-y-4 mt-0">
+            {bottlenecks.overview && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <DashboardKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
+                <DashboardKpiCard label="Verde" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                <DashboardKpiCard label="Amarelo" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                <DashboardKpiCard label="Vermelho" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+              </div>
+            )}
             <Card className="p-4 space-y-2">
               <h3 className="font-semibold text-sm">Gargalos de Qualidade</h3>
               {bottlenecks.bottlenecks.map((row) => (
@@ -280,20 +363,47 @@ export default function QualidadeDashboard() {
                   <span className="text-muted-foreground">Atraso: {row.count_overtime}</span>
                 </div>
               ))}
-              {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && <p className="text-sm text-muted-foreground">Sem gargalos para o período selecionado.</p>}
+              {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
+                <div className="text-center py-8">
+                  <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Sem gargalos para o período selecionado.</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Os dados são populados após a sincronização de esteira (pbi_stage_events).</p>
+                </div>
+              )}
             </Card>
           </TabsContent>
 
+          {/* ═══════ TAB: Por Feature ═══════ */}
           <TabsContent value="por-feature" className="space-y-4 mt-0">
             <Card className="p-4 space-y-2">
-              <h3 className="font-semibold text-sm">Distribuição por Feature</h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-sm">Distribuição por Feature</h3>
+                <Badge variant="outline">{featureSummary.rows.length} grupos</Badge>
+              </div>
               {featureSummary.rows.slice(0, 80).map((row, idx) => (
-                <div key={`qa-feature-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-2">
-                  <p className="text-sm font-medium">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
-                  <p className="text-xs text-muted-foreground mt-1">PBIs: {row.pbi_count} • Bugs: {row.bug_count} • Verde: {row.verde_count} • Amarelo: {row.amarelo_count} • Vermelho: {row.vermelho_count}</p>
+                <div key={`qa-feature-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium truncate">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {row.verde_count > 0 && <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">{row.verde_count}</Badge>}
+                      {row.amarelo_count > 0 && <Badge className="bg-amber-100 text-amber-700 border border-amber-300 text-[10px] px-1.5">{row.amarelo_count}</Badge>}
+                      {row.vermelho_count > 0 && <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">{row.vermelho_count}</Badge>}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    PBIs: {row.pbi_count} • Bugs: {row.bug_count}
+                    {row.avg_lead_time_days != null ? ` • Lead Time: ${row.avg_lead_time_days}d` : ''}
+                    {row.overflow_count > 0 ? ` • Overflow: ${row.overflow_count}` : ''}
+                  </p>
                 </div>
               ))}
-              {!featureSummary.isLoading && featureSummary.rows.length === 0 && <p className="text-sm text-muted-foreground">Sem dados de feature para o filtro atual.</p>}
+              {!featureSummary.isLoading && featureSummary.rows.length === 0 && (
+                <div className="text-center py-8">
+                  <Workflow className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Sem dados de feature para o filtro atual.</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Dados preenchidos automaticamente pela hierarquia do DevOps (Feature → PBI) e saúde da esteira.</p>
+                </div>
+              )}
             </Card>
           </TabsContent>
         </Tabs>
@@ -308,7 +418,6 @@ export default function QualidadeDashboard() {
         workItemId={drawerItem?.id}
         workItemType={drawerItem?.work_item_type}
         externalUrl={drawerItem?.web_url}
-        externalLabel="Abrir no DevOps"
       />
     </SectorLayout>
   );
