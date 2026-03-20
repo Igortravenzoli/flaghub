@@ -9,15 +9,17 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useCustomerServiceKpis, CSKpiItem } from '@/hooks/useCustomerServiceKpis';
+import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
+import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2, HeartPulse } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
@@ -57,10 +59,30 @@ export default function CustomerServiceDashboard() {
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
+  const [activeTab, setActiveTab] = useState<'fila' | 'implantacoes' | 'saude'>('fila');
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date, (i) => i.data_referencia]),
     [allItems]
   );
+
+  const pbiHealthIds = useMemo(
+    () => devopsItems
+      .filter((i) => i.work_item_id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || ''))
+      .map((i) => i.work_item_id as number),
+    [devopsItems]
+  );
+
+  const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
+
+  const devopsColumnsWithHealth = useMemo<DataTableColumn<CSKpiItem>[]>(() => [
+    {
+      key: 'health',
+      header: 'Saúde',
+      className: 'w-20',
+      render: (r) => <PbiHealthBadge status={r.work_item_id ? pbiHealthBatch.healthById.get(r.work_item_id)?.health_status : null} compact />,
+    },
+    ...devopsColumns,
+  ], [pbiHealthBatch.healthById]);
 
   // Import history for compact view in Implantações tab
   const { data: recentBatches = [], isLoading: batchesLoading } = useQuery({
@@ -187,7 +209,7 @@ export default function CustomerServiceDashboard() {
       {isError ? (
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />
       ) : (
-        <Tabs defaultValue="fila" className="w-full">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'fila' | 'implantacoes' | 'saude')} className="w-full">
           <TabsList className="mb-4 bg-muted/50 p-1">
             <TabsTrigger value="fila" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setKpiFilter('all')}>
               <Eye className="h-3.5 w-3.5" />
@@ -196,6 +218,10 @@ export default function CustomerServiceDashboard() {
             <TabsTrigger value="implantacoes" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setKpiFilter('all')}>
               <Settings2 className="h-3.5 w-3.5" />
               Implantações
+            </TabsTrigger>
+            <TabsTrigger value="saude" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setKpiFilter('all')}>
+              <HeartPulse className="h-3.5 w-3.5" />
+              Esteira / Saúde
             </TabsTrigger>
           </TabsList>
 
@@ -229,7 +255,7 @@ export default function CustomerServiceDashboard() {
               <DashboardDataTable
                 title="Fila Operacional CS"
                 subtitle={`${filteredDevops.length} itens`}
-                columns={devopsColumns}
+                columns={devopsColumnsWithHealth}
                 data={filteredDevops}
                 isLoading={isLoading}
                 getRowKey={(r) => String(r.work_item_id ?? Math.random())}
@@ -237,6 +263,34 @@ export default function CustomerServiceDashboard() {
                 searchPlaceholder="Buscar item..."
               />
             )}
+          </TabsContent>
+
+          <TabsContent value="saude" className="space-y-4 animate-fade-in">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={Layers} isLoading={pbiHealthBatch.isLoading} />
+              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" />
+              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={Clock} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" />
+              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={TrendingUp} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" />
+            </div>
+
+            <Card className="p-4 space-y-2">
+              <h3 className="font-semibold text-sm">Itens críticos da fila CS</h3>
+              {devopsItems
+                .filter((item) => item.work_item_id && pbiHealthBatch.healthById.get(item.work_item_id)?.health_status === 'vermelho')
+                .slice(0, 40)
+                .map((item) => (
+                  <div key={`cs-red-${item.work_item_id}`} className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">#{item.work_item_id} • {item.title}</p>
+                      <p className="text-xs text-muted-foreground truncate">{item.state || '—'} • {item.assigned_to_display || 'Sem responsável'}</p>
+                    </div>
+                    <PbiHealthBadge status="vermelho" />
+                  </div>
+                ))}
+              {!pbiHealthBatch.isLoading && pbiHealthBatch.overview.vermelho === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhum item crítico para o filtro atual.</p>
+              )}
+            </Card>
           </TabsContent>
 
           <TabsContent value="implantacoes" className="space-y-4 animate-fade-in">
@@ -271,6 +325,8 @@ export default function CustomerServiceDashboard() {
         title={drawerItem?.title || undefined}
         subtitle={drawerItem?.work_item_type || undefined}
         fields={drawerFields}
+        workItemId={drawerItem?.work_item_id}
+        workItemType={drawerItem?.work_item_type}
         externalUrl={drawerItem?.web_url}
       />
     </SectorLayout>

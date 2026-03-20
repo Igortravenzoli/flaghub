@@ -42,6 +42,9 @@ interface TransbordoTabProps {
   items: TransbordoItem[];
   transbordoPct: number | null;
   transbordoCount: number;
+  realOverflowItemCount?: number;
+  realOverflowCount?: number;
+  realOverflowPct?: number | null;
   transbordoTotal: number;
   currentSprint: string | null;
   selectedSprint: string;
@@ -82,7 +85,18 @@ function KpiCard({ label, value, suffix, icon: Icon, accent, description, delay 
   );
 }
 
-export function TransbordoTab({ items, transbordoPct, transbordoCount, transbordoTotal, currentSprint, selectedSprint, isLoading }: TransbordoTabProps) {
+export function TransbordoTab({
+  items,
+  transbordoPct,
+  transbordoCount,
+  realOverflowItemCount = 0,
+  realOverflowCount = 0,
+  realOverflowPct = 0,
+  transbordoTotal,
+  currentSprint,
+  selectedSprint,
+  isLoading,
+}: TransbordoTabProps) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [sortField, setSortField] = useState<SortField>('overflowCount');
@@ -226,18 +240,18 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          label="Taxa de Transbordo"
+          label="Taxa de Migração"
           value={transbordoPct != null ? `${transbordoPct}%` : null}
           icon={AlertTriangle}
           accent={transbordoPct != null && transbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
-          description={`${transbordoCount} de ${transbordoTotal} PBIs`}
+          description={`${transbordoCount} de ${transbordoTotal} PBIs com troca de sprint`}
         />
         <KpiCard
-          label="Críticos (≥3×)"
-          value={criticalCount}
+          label="Transbordo Real"
+          value={realOverflowItemCount}
           icon={TrendingDown}
           accent="bg-destructive"
-          description="PBIs com 3 ou mais transbordos"
+          description={realOverflowPct != null ? `${realOverflowPct}% da carteira • ${realOverflowCount} evento(s)` : 'Sem dados'}
           delay={80}
         />
         <KpiCard
@@ -250,14 +264,21 @@ export function TransbordoTab({ items, transbordoPct, transbordoCount, transbord
           delay={160}
         />
         <KpiCard
-          label="Total Transbordados"
-          value={transbordoCount}
+          label="Críticos (≥3 migrações)"
+          value={criticalCount}
           icon={BarChart3}
           accent="bg-primary"
           description={currentSprint ? `Sprint atual: ${currentSprint.split('\\').pop()}` : 'Todos os períodos'}
           delay={240}
         />
       </div>
+
+      <Card className="border-border/70 bg-muted/20">
+        <CardContent className="p-3 text-xs text-muted-foreground flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <span><strong className="text-foreground">Migração de Sprint</strong>: qualquer troca de sprint detectada no histórico.</span>
+          <span><strong className="text-foreground">Transbordo Real</strong>: migrações após o comprometimento inicial (migrações - 1).</span>
+        </CardContent>
+      </Card>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -1,8 +1,8 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, X } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { PbiDetailDrawer } from '@/components/pbi/PbiDetailDrawer';
 
 export interface DrawerField {
   label: string;
@@ -15,9 +15,13 @@ interface DashboardDrawerProps {
   title?: string;
   subtitle?: string;
   fields: DrawerField[];
+  workItemId?: number | null;
+  workItemType?: string | null;
   externalUrl?: string | null;
   externalLabel?: string;
 }
+
+const PBI_DRAWER_TYPES = new Set(['Product Backlog Item', 'User Story', 'Bug']);
 
 export function DashboardDrawer({
   open,
@@ -25,9 +29,13 @@ export function DashboardDrawer({
   title,
   subtitle,
   fields,
+  workItemId,
+  workItemType,
   externalUrl,
   externalLabel = 'Abrir no DevOps',
 }: DashboardDrawerProps) {
+  const isPbiDetail = !!workItemId && PBI_DRAWER_TYPES.has(workItemType || '');
+
   return (
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
@@ -38,6 +46,13 @@ export function DashboardDrawer({
 
         <Separator className="my-4" />
 
+        {isPbiDetail && workItemId ? (
+          <>
+            <PbiDetailDrawer workItemId={workItemId} />
+            <Separator className="my-4" />
+          </>
+        ) : null}
+
         <div className="space-y-4">
           {fields.map((f, i) => (
             <div key={i}>
@@ -45,6 +60,12 @@ export function DashboardDrawer({
               <div className="text-sm text-foreground">{f.value || '—'}</div>
             </div>
           ))}
+          {fields.length === 0 && !isPbiDetail && (
+            <div className="text-sm text-muted-foreground">Sem detalhes disponíveis.</div>
+          )}
+          {fields.length === 0 && isPbiDetail && (
+            <div className="text-xs text-muted-foreground">Detalhes do item carregados pela esteira de saúde.</div>
+          )}
         </div>
 
         {externalUrl && (

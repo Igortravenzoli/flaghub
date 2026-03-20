@@ -7,12 +7,17 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useQualidadeKpis, QualidadeItem } from '@/hooks/useQualidadeKpis';
+import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
+import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
+import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
+import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane } from 'lucide-react';
+import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
@@ -63,6 +68,7 @@ export default function QualidadeDashboard() {
   const { sortedSprints } = useSprintFilter(allItems);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
+  const [activeTab, setActiveTab] = useState('overview');
 
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
@@ -91,6 +97,29 @@ export default function QualidadeDashboard() {
 
   const scoped = useQualidadeKpis(effectiveRange.from, effectiveRange.to, sprintFilter === 'all' ? 'all' : sprintFilter);
 
+  const pbiHealthIds = useMemo(
+    () => scoped.items
+      .filter((i) => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || ''))
+      .map((i) => i.id as number),
+    [scoped.items]
+  );
+
+  const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
+
+  const bottlenecks = usePbiBottlenecks({
+    sector: 'qualidade',
+    sprintCode: selectedSprintCode,
+    dateStart: effectiveRange.from,
+    dateEnd: effectiveRange.to,
+  });
+
+  const featureSummary = useFeaturePbiSummary({
+    sector: 'qualidade',
+    sprintCode: selectedSprintCode,
+    dateStart: effectiveRange.from,
+    dateEnd: effectiveRange.to,
+  });
+
   const toggleKpi = (f: QaKpiFilter) => setKpiFilter(prev => prev === f ? 'all' : f);
 
   const filteredItems = useMemo(() => {
@@ -101,6 +130,16 @@ export default function QualidadeDashboard() {
       default: return scoped.items;
     }
   }, [scoped.items, kpiFilter]);
+
+  const tableColumns = useMemo<DataTableColumn<QualidadeItem>[]>(() => [
+    {
+      key: 'health',
+      header: 'Saúde',
+      className: 'w-20',
+      render: (r) => <PbiHealthBadge status={r.id ? pbiHealthBatch.healthById.get(r.id)?.health_status : null} compact />,
+    },
+    ...columns,
+  ], [pbiHealthBatch.healthById]);
 
   const handleExportCSV = () => exportCSV({
     title: 'Qualidade QA', area: 'Qualidade', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
@@ -173,54 +212,91 @@ export default function QualidadeDashboard() {
       {isError ? (
         <DashboardEmptyState variant="error" onRetry={() => scoped.refetch()} />
       ) : (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-            <DashboardKpiCard label="Total QA" value={scoped.total} icon={FileCheck} isLoading={scoped.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
-            <DashboardKpiCard label="Fila QA (Atual)" value={scoped.filaAtual} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
-            <DashboardKpiCard label="Em Teste" value={scoped.emTeste} icon={TrendingUp} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
-            <DashboardKpiCard label="Aguardando Deploy" value={scoped.aguardandoDeploy} icon={BarChart3} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('deploy')} active={kpiFilter === 'deploy'} />
-            <DashboardKpiCard 
-              label="Retorno QA" 
-              value={scoped.itensComRetorno} 
-              suffix={scoped.totalRetornos > 0 ? ` (${scoped.totalRetornos}x)` : ''} 
-              icon={RotateCcw} 
-              isLoading={scoped.isLoading} 
-              delay={320} 
-              accent="bg-[hsl(0,72%,51%)]" 
-              onClick={() => toggleKpi('com_retorno')} 
-              active={kpiFilter === 'com_retorno'} 
-            />
-            <DashboardKpiCard label="Aviões testados" value={scoped.avioesTestados} icon={Plane} isLoading={scoped.isLoading} delay={360} accent="bg-[hsl(210,80%,52%)]" />
-          </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="bg-muted/50 p-1">
+            <TabsTrigger value="overview" className="gap-1.5 text-xs"><FileCheck className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
+            <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
+            <TabsTrigger value="gargalos" className="gap-1.5 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Gargalos</TabsTrigger>
+            <TabsTrigger value="por-feature" className="gap-1.5 text-xs"><Workflow className="h-3.5 w-3.5" />Por Feature</TabsTrigger>
+          </TabsList>
 
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="flex flex-col gap-2 p-4 text-sm md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="font-semibold text-foreground">Fila atual da Qualidade</p>
-                <p className="text-muted-foreground">Considera apenas itens em <strong>Em Teste</strong> ou <strong>Aguardando Deploy</strong>, inclusive herdados de sprints passadas.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">Fila atual: {scoped.filaAtual}</Badge>
-                <Badge variant="outline">Herdados: {scoped.herdadosSprintPassada}</Badge>
-              </div>
-            </CardContent>
-          </Card>
+          <TabsContent value="overview" className="space-y-4 mt-0">
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+              <DashboardKpiCard label="Total QA" value={scoped.total} icon={FileCheck} isLoading={scoped.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
+              <DashboardKpiCard label="Fila QA (Atual)" value={scoped.filaAtual} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
+              <DashboardKpiCard label="Em Teste" value={scoped.emTeste} icon={TrendingUp} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
+              <DashboardKpiCard label="Aguardando Deploy" value={scoped.aguardandoDeploy} icon={BarChart3} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('deploy')} active={kpiFilter === 'deploy'} />
+              <DashboardKpiCard label="Retorno QA" value={scoped.itensComRetorno} suffix={scoped.totalRetornos > 0 ? ` (${scoped.totalRetornos}x)` : ''} icon={RotateCcw} isLoading={scoped.isLoading} delay={320} accent="bg-[hsl(0,72%,51%)]" onClick={() => toggleKpi('com_retorno')} active={kpiFilter === 'com_retorno'} />
+              <DashboardKpiCard label="Aviões testados" value={scoped.avioesTestados} icon={Plane} isLoading={scoped.isLoading} delay={360} accent="bg-[hsl(210,80%,52%)]" />
+            </div>
 
-          {!isLoading && filteredItems.length === 0 ? (
-            <DashboardEmptyState description="Nenhum item de qualidade para o período/filtro selecionado." />
-          ) : (
-            <DashboardDataTable
-              title="Fila atual da Qualidade"
-              subtitle={`${filteredItems.length} registros${kpiFilter === 'com_retorno' ? ' com retorno' : ''}${scoped.herdadosSprintPassada > 0 ? ` • ${scoped.herdadosSprintPassada} herdados de sprints passadas` : ''}`}
-              columns={columns}
-              data={filteredItems}
-              isLoading={scoped.isLoading}
-              getRowKey={(r) => String(r.id ?? Math.random())}
-              onRowClick={(r) => setDrawerItem(r)}
-              searchPlaceholder="Buscar item da fila atual de QA..."
-            />
-          )}
-        </>
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="flex flex-col gap-2 p-4 text-sm md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="font-semibold text-foreground">Fila atual da Qualidade</p>
+                  <p className="text-muted-foreground">Considera apenas itens em <strong>Em Teste</strong> ou <strong>Aguardando Deploy</strong>, inclusive herdados de sprints passadas.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">Fila atual: {scoped.filaAtual}</Badge>
+                  <Badge variant="outline">Herdados: {scoped.herdadosSprintPassada}</Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            {!isLoading && filteredItems.length === 0 ? (
+              <DashboardEmptyState description="Nenhum item de qualidade para o período/filtro selecionado." />
+            ) : (
+              <DashboardDataTable
+                title="Fila atual da Qualidade"
+                subtitle={`${filteredItems.length} registros${kpiFilter === 'com_retorno' ? ' com retorno' : ''}${scoped.herdadosSprintPassada > 0 ? ` • ${scoped.herdadosSprintPassada} herdados de sprints passadas` : ''}`}
+                columns={tableColumns}
+                data={filteredItems}
+                isLoading={scoped.isLoading}
+                getRowKey={(r) => String(r.id ?? Math.random())}
+                onRowClick={(r) => setDrawerItem(r)}
+                searchPlaceholder="Buscar item da fila atual de QA..."
+              />
+            )}
+          </TabsContent>
+
+          <TabsContent value="esteira-saude" className="space-y-4 mt-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={FileCheck} isLoading={pbiHealthBatch.isLoading} />
+              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" isLoading={pbiHealthBatch.isLoading} />
+              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" isLoading={pbiHealthBatch.isLoading} />
+              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" isLoading={pbiHealthBatch.isLoading} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="gargalos" className="space-y-4 mt-0">
+            <Card className="p-4 space-y-2">
+              <h3 className="font-semibold text-sm">Gargalos de Qualidade</h3>
+              {bottlenecks.bottlenecks.map((row) => (
+                <div key={`qa-bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
+                  <span className="font-medium text-foreground">{row.stage_label}</span>
+                  <span className="text-muted-foreground">Média: {row.avg_days_in_stage}d</span>
+                  <span className="text-muted-foreground">Máx: {row.max_days_in_stage}d</span>
+                  <span className="text-muted-foreground">Em etapa: {row.count_in_stage}</span>
+                  <span className="text-muted-foreground">Atraso: {row.count_overtime}</span>
+                </div>
+              ))}
+              {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && <p className="text-sm text-muted-foreground">Sem gargalos para o período selecionado.</p>}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="por-feature" className="space-y-4 mt-0">
+            <Card className="p-4 space-y-2">
+              <h3 className="font-semibold text-sm">Distribuição por Feature</h3>
+              {featureSummary.rows.slice(0, 80).map((row, idx) => (
+                <div key={`qa-feature-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-2">
+                  <p className="text-sm font-medium">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
+                  <p className="text-xs text-muted-foreground mt-1">PBIs: {row.pbi_count} • Bugs: {row.bug_count} • Verde: {row.verde_count} • Amarelo: {row.amarelo_count} • Vermelho: {row.vermelho_count}</p>
+                </div>
+              ))}
+              {!featureSummary.isLoading && featureSummary.rows.length === 0 && <p className="text-sm text-muted-foreground">Sem dados de feature para o filtro atual.</p>}
+            </Card>
+          </TabsContent>
+        </Tabs>
       )}
 
       <DashboardDrawer
@@ -229,6 +305,8 @@ export default function QualidadeDashboard() {
         title={drawerItem?.title || undefined}
         subtitle={drawerItem?.work_item_type || undefined}
         fields={drawerFields}
+        workItemId={drawerItem?.id}
+        workItemType={drawerItem?.work_item_type}
         externalUrl={drawerItem?.web_url}
         externalLabel="Abrir no DevOps"
       />

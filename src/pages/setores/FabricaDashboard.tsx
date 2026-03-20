@@ -5,8 +5,12 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useFabricaKpis, FabricaItem, TimelogAggregation } from '@/hooks/useFabricaKpis';
+import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
+import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
+import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
+import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +24,7 @@ import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dat
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
-  TrendingUp, BarChart3, Zap, Plane
+  TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
@@ -300,6 +304,29 @@ export default function FabricaDashboard() {
     }).length;
   }, [sprintFilteredItems, fab.tagsByWorkItemId]);
 
+  const pbiHealthIds = useMemo(
+    () => sprintFilteredItems
+      .filter((i) => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || ''))
+      .map((i) => i.id as number),
+    [sprintFilteredItems]
+  );
+
+  const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
+
+  const bottlenecks = usePbiBottlenecks({
+    sector: 'fabrica',
+    sprintCode: selectedSprintCode,
+    dateStart: effectiveRange?.from || null,
+    dateEnd: effectiveRange?.to || null,
+  });
+
+  const featureSummary = useFeaturePbiSummary({
+    sector: 'fabrica',
+    sprintCode: selectedSprintCode,
+    dateStart: effectiveRange?.from || null,
+    dateEnd: effectiveRange?.to || null,
+  });
+
   const backlogPriorizarItems = useMemo(() => {
     return operational.items
       .filter(i => i.query_name === '03-Em Fila Backlog para Priorizar')
@@ -494,7 +521,16 @@ export default function FabricaDashboard() {
         </Badge>
       </TableCell>
       <TableCell className={`max-w-[350px] truncate text-sm ${indent ? 'pl-8' : ''}`}>
-        {item.title || '—'}
+        <div className="flex items-center gap-2">
+          {item.id ? (
+            <PbiHealthBadge
+              status={pbiHealthBatch.healthById.get(item.id)?.health_status}
+              compact
+              className="text-[10px] px-1.5 py-0"
+            />
+          ) : null}
+          <span className="truncate">{item.title || '—'}</span>
+        </div>
       </TableCell>
       <TableCell className="text-sm">{item.assigned_to_display || '—'}</TableCell>
       <TableCell>
@@ -587,6 +623,15 @@ export default function FabricaDashboard() {
                   {sprintTransbordoCount}
                 </Badge>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs">
+              <HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde
+            </TabsTrigger>
+            <TabsTrigger value="gargalos" className="gap-1.5 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5" />Gargalos
+            </TabsTrigger>
+            <TabsTrigger value="por-feature" className="gap-1.5 text-xs">
+              <Workflow className="h-3.5 w-3.5" />Por Feature
             </TabsTrigger>
             <TabsTrigger value="backlog-priorizar" className="gap-1.5 text-xs">
               <ListTodo className="h-3.5 w-3.5" />Backlog Priorizar
@@ -800,11 +845,99 @@ export default function FabricaDashboard() {
               items={sprintTransbordoItems}
               transbordoPct={sprintTransbordoPct}
               transbordoCount={sprintTransbordoCount}
+              realOverflowItemCount={fab.realOverflowItemCount}
+              realOverflowCount={fab.realOverflowCount}
+              realOverflowPct={fab.realOverflowPct}
               transbordoTotal={sprintTransbordoTotal}
               currentSprint={sprintFilter !== 'all' ? sprintFilter : fab.currentSprint}
               selectedSprint={sprintFilter}
               isLoading={fab.isLoading}
             />
+          </TabsContent>
+
+          <TabsContent value="esteira-saude" className="space-y-4 mt-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <HeroKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={ListTodo} />
+              <HeroKpiCard label="Saúde Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+              <HeroKpiCard label="Saúde Amarela" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+              <HeroKpiCard label="Saúde Vermelha" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" />
+            </div>
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b border-border">
+                <h3 className="font-semibold text-sm">Visão de esteira por item</h3>
+                <p className="text-xs text-muted-foreground">Saúde e estágio atual para PBIs/User Story/Bugs da sprint selecionada.</p>
+              </div>
+              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
+                {sprintFilteredItems
+                  .filter((item) => item.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(item.work_item_type || ''))
+                  .slice(0, 60)
+                  .map((item) => {
+                    const lifecycle = pbiHealthBatch.lifecycleById.get(item.id as number);
+                    return (
+                      <div key={`health-${item.id}`} className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            Estágio: {lifecycle?.current_stage || '—'} • Migrações: {lifecycle?.sprint_migration_count ?? 0} • Overflow real: {lifecycle?.overflow_count ?? 0}
+                          </p>
+                        </div>
+                        <PbiHealthBadge status={pbiHealthBatch.healthById.get(item.id as number)?.health_status} />
+                      </div>
+                    );
+                  })}
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="gargalos" className="space-y-4 mt-0">
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-sm">Resumo de Gargalos da Fábrica</h3>
+                  <p className="text-xs text-muted-foreground">Dados de duração por etapa da esteira (rpc_pbi_bottleneck_summary).</p>
+                </div>
+                <Badge variant="outline">{bottlenecks.bottlenecks.length} etapas</Badge>
+              </div>
+              <div className="p-4 space-y-2">
+                {bottlenecks.bottlenecks.map((row) => (
+                  <div key={`bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
+                    <span className="font-medium text-foreground">{row.stage_label}</span>
+                    <span className="text-muted-foreground">Média: {row.avg_days_in_stage}d</span>
+                    <span className="text-muted-foreground">Máx: {row.max_days_in_stage}d</span>
+                    <span className="text-muted-foreground">Em etapa: {row.count_in_stage}</span>
+                    <span className="text-muted-foreground">Atraso: {row.count_overtime}</span>
+                  </div>
+                ))}
+                {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Sem dados de gargalo para o filtro atual.</p>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="por-feature" className="space-y-4 mt-0">
+            <Card className="overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-sm">Saúde por Feature</h3>
+                  <p className="text-xs text-muted-foreground">Agregação por feature/epic para leitura de risco funcional.</p>
+                </div>
+                <Badge variant="outline">{featureSummary.rows.length} grupos</Badge>
+              </div>
+              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
+                {featureSummary.rows.slice(0, 80).map((row, idx) => (
+                  <div key={`feat-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-2">
+                    <p className="text-sm font-medium">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      PBIs: {row.pbi_count} • Bugs: {row.bug_count} • Verde: {row.verde_count} • Amarelo: {row.amarelo_count} • Vermelho: {row.vermelho_count} • Overflow: {row.overflow_count}
+                    </p>
+                  </div>
+                ))}
+                {!featureSummary.isLoading && featureSummary.rows.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Sem dados de feature para o período selecionado.</p>
+                )}
+              </div>
+            </Card>
           </TabsContent>
 
           {/* ═══════ Sprint Board consolidado na Visão Geral ═══════ */}
@@ -1058,6 +1191,8 @@ export default function FabricaDashboard() {
         title={drawerItem?.title || undefined}
         subtitle={drawerItem?.work_item_type || undefined}
         fields={drawerFields}
+        workItemId={drawerItem?.id}
+        workItemType={drawerItem?.work_item_type}
         externalUrl={drawerItem?.web_url}
       />
 

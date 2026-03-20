@@ -20,7 +20,12 @@ function isDone(state: string | null | undefined): boolean {
 }
 
 export interface TransbordoItem extends FabricaItem {
+  /** Backward-compatible alias (legacy board uses this field) */
   overflowCount: number;
+  /** Number of sprint-to-sprint moves detected */
+  sprintMigrationCount: number;
+  /** Real overflow count after commitment (migration count - 1, min 0) */
+  realOverflowCount: number;
   sprintsOverflowed: string[];
 }
 
@@ -388,6 +393,10 @@ export function useFabricaKpis(
   // Transbordo — PBIs with iteration_history changes
   let transbordoPct: number | null = null;
   let transbordoCount = 0;
+  let sprintMigrationCount = 0;
+  let realOverflowCount = 0;
+  let realOverflowItemCount = 0;
+  let realOverflowPct: number | null = null;
   let transbordoTotal = 0;
   let transbordoItems: TransbordoItem[] = [];
 
@@ -417,9 +426,10 @@ export function useFabricaKpis(
     return relevantChanges.length > 0;
   });
 
-  transbordoCount = overflowedPbis.length;
+  sprintMigrationCount = overflowedPbis.length;
+  transbordoCount = sprintMigrationCount;
   transbordoPct = transbordoTotal > 0
-    ? Math.round((transbordoCount / transbordoTotal) * 100)
+    ? Math.round((sprintMigrationCount / transbordoTotal) * 100)
     : 0;
 
   const seen = new Set<number>();
@@ -447,12 +457,24 @@ export function useFabricaKpis(
       const sprintsMoved = relevantChanges.map(h => h.oldValue);
       if (i.iteration_path) sprintsMoved.push(i.iteration_path);
       const uniqueSprints = [...new Set(sprintsMoved)].sort(sprintCompare);
+      const itemSprintMigrationCount = relevantChanges.length;
+      const itemRealOverflowCount = Math.max(0, itemSprintMigrationCount - 1);
+
       return {
         ...i,
-        overflowCount: relevantChanges.length,
+        // Keep overflowCount as compatibility alias for existing UI consumers
+        overflowCount: itemSprintMigrationCount,
+        sprintMigrationCount: itemSprintMigrationCount,
+        realOverflowCount: itemRealOverflowCount,
         sprintsOverflowed: uniqueSprints,
       };
     });
+
+  realOverflowItemCount = transbordoItems.filter((i) => i.realOverflowCount > 0).length;
+  realOverflowCount = transbordoItems.reduce((sum, i) => sum + i.realOverflowCount, 0);
+  realOverflowPct = transbordoTotal > 0
+    ? Math.round((realOverflowItemCount / transbordoTotal) * 100)
+    : 0;
 
   return {
     items,
@@ -476,6 +498,10 @@ export function useFabricaKpis(
     velocidadeSource,
     transbordoPct,
     transbordoCount,
+    sprintMigrationCount,
+    realOverflowCount,
+    realOverflowItemCount,
+    realOverflowPct,
     transbordoTotal,
     transbordoItems,
     currentSprint,
