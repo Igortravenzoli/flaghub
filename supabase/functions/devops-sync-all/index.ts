@@ -11,6 +11,7 @@ const corsHeaders = {
 const DEVOPS_ORG = 'FlagIW'
 const DEVOPS_PROJECT = 'Flag.Planejamento'
 const EM_TESTE_STATE = 'Em Teste'
+const QUALITY_WIQL_ID = '7b0a8298-5890-42d8-b280-1121b21786da'
 const BATCH_SIZE = 200
 const DEVOPS_API_VERSION = '7.0'
 const WIQL_API_VERSION = '7.1'
@@ -358,7 +359,9 @@ function inferStage(
   stageConfig: StageConfigRow[],
   leadRoleByEmail: Map<string, string>
 ): { stageKey: string; inferenceMethod: 'state_pattern' | 'pipeline_role' | 'iteration_suffix' | 'fallback' } {
-  const active = stageConfig.filter((row) => row.is_active)
+  const active = stageConfig
+    .filter((row) => row.is_active)
+    .sort((a, b) => a.sort_order - b.sort_order)
   const normalizedState = normalizeText(state)
   const normalizedPath = normalizeText(iterationPath)
   const leadRole = leadRoleByEmail.get(normalizeText(leadEmail)) || ''
@@ -786,92 +789,6 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
   return { processed, withChanges }
 }
 
-async function processQaRetornos(admin: any): Promise<{ processed: number; withRetornos: number }> {
-  const { data: qaItems, error } = await admin
-    .from('vw_qualidade_kpis')
-    .select('id, changed_date')
-  if (error) {
-    console.warn('[QA-Retorno] Failed to fetch QA items:', error.message)
-    return { processed: 0, withRetornos: 0 }
-  }
-
-  const workItemIds = (qaItems || []).map((i: any) => i.id).filter(Boolean) as number[]
-  if (workItemIds.length === 0) return { processed: 0, withRetornos: 0 }
-
-  const existingFields = new Map<number, Record<string, any>>()
-  for (let i = 0; i < workItemIds.length; i += 1000) {
-    const chunk = workItemIds.slice(i, i + 1000)
-    const { data: existingChunk } = await admin
-      .from('devops_work_items')
-      .select('id, custom_fields')
-      .in('id', chunk)
-
-    for (const item of existingChunk || []) {
-      existingFields.set(item.id, (item.custom_fields as Record<string, any>) || {})
-    }
-  }
-
-  const candidates = (qaItems || []).filter((item: any) => {
-    const cf = existingFields.get(item.id) || {}
-    const lastSyncedAt = (cf['qa_retorno_synced_at'] as string | undefined) || null
-    return shouldRefreshByChange(item.changed_date, lastSyncedAt)
-  })
-
-  if (candidates.length === 0) {
-    console.log('[QA-Retorno] No QA items with changes since last retorno sync')
-    return { processed: 0, withRetornos: 0 }
-  }
-
-  console.log(`[QA-Retorno] Processing ${candidates.length} work items`)
-  let processed = 0
-  let withRetornos = 0
-
-  for (let i = 0; i < candidates.length; i += 10) {
-    const batch = candidates.slice(i, i + 10)
-    const batchResults = await Promise.all(
-      batch.map(async (item: any) => {
-        const wiId = item.id as number
-        try {
-          const resp = await devopsFetch(
-            `${DEVOPS_PROJECT}/_apis/wit/workitems/${wiId}/updates?api-version=7.1`
-          )
-          if (!resp.ok) return { id: wiId, retornos: 0, details: [] }
-          const data = await resp.json()
-          const { retornos, retornoDetails } = countRetornos(data.value || [])
-          return { id: wiId, retornos, details: retornoDetails }
-        } catch {
-          return { id: wiId, retornos: 0, details: [] }
-        }
-      })
-    )
-
-    const nowIso = new Date().toISOString()
-    for (const result of batchResults) {
-      const customFields = { ...(existingFields.get(result.id) || {}) }
-      customFields['qa_retorno_count'] = result.retornos
-      customFields['qa_retorno_details'] = result.details
-      customFields['qa_retorno_synced_at'] = nowIso
-
-      await admin
-        .from('devops_work_items')
-        .update({ custom_fields: customFields })
-        .eq('id', result.id)
-
-      existingFields.set(result.id, customFields)
-
-      processed++
-      if (result.retornos > 0) withRetornos++
-    }
-
-    if (i + 10 < candidates.length) {
-      await new Promise(r => setTimeout(r, 500))
-    }
-  }
-
-  console.log(`[QA-Retorno] Done: ${processed} processed, ${withRetornos} with retornos`)
-  return { processed, withRetornos }
-}
-
 // ── Main handler ───────────────────────────────────────────────────
 
 serve(async (req: Request) => {
@@ -892,7 +809,7 @@ serve(async (req: Request) => {
     // ── Step 1: Sync all active queries ──
     const { data: queries, error: qErr } = await admin
       .from('devops_queries')
-      .select('id, name, is_active')
+      .select('id, name, is_active, wiql_id')
       .eq('is_active', true)
 
     if (qErr) throw qErr
@@ -903,7 +820,9 @@ serve(async (req: Request) => {
       })
     }
 
-    console.log(`[DevOpsSyncAll] Syncing ${queries.length} active queries (background)`)
+    const generalQueries = (queries || []).filter((query: any) => query.wiql_id !== QUALITY_WIQL_ID)
+
+    console.log(`[DevOpsSyncAll] Syncing ${generalQueries.length} active general queries (background)`)
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const isCron = validateCronSecret(req)
@@ -922,7 +841,7 @@ serve(async (req: Request) => {
 
       // ── Step 1: Sync all queries sequentially ──
       const results: Array<{ query_id: string; name: string; success: boolean; error?: string }> = []
-      for (const query of queries!) {
+      for (const query of generalQueries) {
         try {
           const resp = await fetch(`${supabaseUrl}/functions/v1/devops-sync-query`, {
             method: 'POST',
@@ -942,7 +861,6 @@ serve(async (req: Request) => {
       console.log(`[DevOpsSyncAll:BG] Queries done: ${succeeded} ok, ${failed} failed`)
 
       let childrenResult = { fetched: 0, upserted: 0 }
-      let qaRetorno = { processed: 0, withRetornos: 0 }
       let iterHistory = { processed: 0, withChanges: 0 }
       let lifecycleHealth = { processed: 0, skippedTimeout: 0 }
 
@@ -971,14 +889,7 @@ serve(async (req: Request) => {
         console.error('[DevOpsSyncAll:BG] Children sync error:', (childErr as Error).message)
       }
 
-      // ── Step 4: QA retorno ──
-      try {
-        qaRetorno = await processQaRetornos(bgAdmin)
-      } catch (qaErr) {
-        console.error('[DevOpsSyncAll:BG] QA retorno error:', (qaErr as Error).message)
-      }
-
-      // ── Step 5: Lifecycle + health (incremental post-processing) ──
+      // ── Step 4: Lifecycle + health (incremental post-processing) ──
       try {
         lifecycleHealth = await processLifecycleAndHealth(bgAdmin)
       } catch (lifecycleErr) {
@@ -991,13 +902,14 @@ serve(async (req: Request) => {
         p_entity_type: 'devops',
         p_entity_id: null,
         p_metadata: {
-          total: queries!.length,
+          total: generalQueries.length,
           succeeded,
           failed,
           children: childrenResult,
-          qa_retorno: qaRetorno,
+          qa_retorno: { delegated_to: 'devops-sync-qualidade' },
           iteration_history: iterHistory,
           lifecycle_health: lifecycleHealth,
+          skipped_quality_wiql_id: QUALITY_WIQL_ID,
         },
       })
       console.log('[DevOpsSyncAll:BG] All background work complete')
@@ -1008,7 +920,7 @@ serve(async (req: Request) => {
 
     return new Response(JSON.stringify({
       success: true,
-      total: queries.length,
+      total: generalQueries.length,
       message: 'Sync started in background',
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 

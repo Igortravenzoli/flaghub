@@ -89,7 +89,7 @@ export default function Home() {
     },
     {
       slug: 'qualidade', name: 'Qualidade', icon: 'ShieldCheck',
-      kpiLabel: 'Tasks (Fila / Em andamento)', kpiValue: `${qualidade.filaQA || 0} / ${qualidade.emTeste || 0}`,
+      kpiLabel: 'Tasks (Fila atual / Em teste)', kpiValue: `${qualidade.filaAtual || 0} / ${qualidade.emTeste || 0}`,
       isLoading: qualidade.isLoading, path: '/setor/qualidade',
       hasConnection: true, connectionStatus: qualidade.isError ? 'down' : 'up',
     },

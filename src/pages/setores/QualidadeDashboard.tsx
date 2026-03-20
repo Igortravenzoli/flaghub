@@ -10,13 +10,14 @@ import { useQualidadeKpis, QualidadeItem } from '@/hooks/useQualidadeKpis';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
-type QaKpiFilter = 'all' | 'fila_qa' | 'finalizados' | 'com_retorno';
+type QaKpiFilter = 'all' | 'fila_qa' | 'deploy' | 'com_retorno';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items QA' },
@@ -94,8 +95,8 @@ export default function QualidadeDashboard() {
 
   const filteredItems = useMemo(() => {
     switch (kpiFilter) {
-      case 'fila_qa': return scoped.items.filter(i => i.state === 'New' || i.state === 'To Do' || i.state === 'Active');
-      case 'finalizados': return scoped.items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
+      case 'fila_qa': return scoped.items;
+      case 'deploy': return scoped.items.filter(i => i.state === 'Aguardando Deploy');
       case 'com_retorno': return scoped.items.filter(i => (i.qa_retorno_count ?? 0) > 0);
       default: return scoped.items;
     }
@@ -111,9 +112,9 @@ export default function QualidadeDashboard() {
     title: 'Dashboard Qualidade', area: 'Qualidade', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
     kpis: [
       { label: 'Total QA', value: scoped.total },
-      { label: 'Fila QA (WIP)', value: scoped.filaQA },
+      { label: 'Fila QA (Atual)', value: scoped.filaAtual },
       { label: 'Taxa Vazão', value: `${scoped.taxaVazao}%` },
-      { label: 'Finalizados', value: scoped.finalizados },
+      { label: 'Aguardando Deploy', value: scoped.aguardandoDeploy },
       { label: 'Retorno QA', value: `${scoped.itensComRetorno} (${scoped.totalRetornos}x)` },
     ],
     columns: ['id', 'work_item_type', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path', 'qa_retorno_count'],
@@ -135,7 +136,7 @@ export default function QualidadeDashboard() {
   ] : [];
 
   return (
-    <SectorLayout title="Qualidade" subtitle="Gestão à Vista — QA" lastUpdate="" integrations={integrations} areaKey="qualidade" syncFunctions={[{ name: 'devops-sync-all', label: 'Sincronizar Work Items (DevOps)' }]}>
+    <SectorLayout title="Qualidade" subtitle="Gestão à Vista — QA" lastUpdate="" integrations={integrations} areaKey="qualidade" syncFunctions={[{ name: 'devops-sync-qualidade', label: 'Sincronizar Fila Atual da Qualidade' }, { name: 'devops-sync-all', label: 'Sincronizar Base Geral DevOps' }]}>
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
@@ -175,9 +176,9 @@ export default function QualidadeDashboard() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
             <DashboardKpiCard label="Total QA" value={scoped.total} icon={FileCheck} isLoading={scoped.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
-            <DashboardKpiCard label="Fila QA (WIP)" value={scoped.filaQA} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
-            <DashboardKpiCard label="Taxa Vazão QA" value={scoped.taxaVazao} suffix="%" icon={TrendingUp} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
-            <DashboardKpiCard label="Finalizados" value={scoped.finalizados} icon={BarChart3} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('finalizados')} active={kpiFilter === 'finalizados'} />
+            <DashboardKpiCard label="Fila QA (Atual)" value={scoped.filaAtual} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('fila_qa')} active={kpiFilter === 'fila_qa'} />
+            <DashboardKpiCard label="Em Teste" value={scoped.emTeste} icon={TrendingUp} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
+            <DashboardKpiCard label="Aguardando Deploy" value={scoped.aguardandoDeploy} icon={BarChart3} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('deploy')} active={kpiFilter === 'deploy'} />
             <DashboardKpiCard 
               label="Retorno QA" 
               value={scoped.itensComRetorno} 
@@ -192,18 +193,31 @@ export default function QualidadeDashboard() {
             <DashboardKpiCard label="Aviões testados" value={scoped.avioesTestados} icon={Plane} isLoading={scoped.isLoading} delay={360} accent="bg-[hsl(210,80%,52%)]" />
           </div>
 
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="flex flex-col gap-2 p-4 text-sm md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="font-semibold text-foreground">Fila atual da Qualidade</p>
+                <p className="text-muted-foreground">Considera apenas itens em <strong>Em Teste</strong> ou <strong>Aguardando Deploy</strong>, inclusive herdados de sprints passadas.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">Fila atual: {scoped.filaAtual}</Badge>
+                <Badge variant="outline">Herdados: {scoped.herdadosSprintPassada}</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
           {!isLoading && filteredItems.length === 0 ? (
             <DashboardEmptyState description="Nenhum item de qualidade para o período/filtro selecionado." />
           ) : (
             <DashboardDataTable
-              title="Itens QA"
-              subtitle={`${filteredItems.length} registros${kpiFilter === 'com_retorno' ? ' com retorno' : ''}`}
+              title="Fila atual da Qualidade"
+              subtitle={`${filteredItems.length} registros${kpiFilter === 'com_retorno' ? ' com retorno' : ''}${scoped.herdadosSprintPassada > 0 ? ` • ${scoped.herdadosSprintPassada} herdados de sprints passadas` : ''}`}
               columns={columns}
               data={filteredItems}
               isLoading={scoped.isLoading}
               getRowKey={(r) => String(r.id ?? Math.random())}
               onRowClick={(r) => setDrawerItem(r)}
-              searchPlaceholder="Buscar item QA..."
+              searchPlaceholder="Buscar item da fila atual de QA..."
             />
           )}
         </>

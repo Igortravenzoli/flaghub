@@ -26,6 +26,8 @@ const CHART_COLORS = [
 const stateColors: Record<string, string> = {
   'In Progress': 'bg-[hsl(var(--info))] text-white',
   'Active': 'bg-[hsl(var(--info))] text-white',
+  'Em desenvolvimento': 'bg-[hsl(var(--info))] text-white',
+  'Aguardando Teste': 'bg-rose-100 text-rose-700 border border-rose-300',
   'To Do': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
   'New': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
   'Done': 'bg-[hsl(var(--success))] text-white',

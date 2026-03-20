@@ -13,8 +13,21 @@ export interface QualidadeItem {
   created_date: string | null;
   changed_date: string | null;
   iteration_path?: string | null;
+  sprint_code?: string | null;
   web_url: string | null;
   qa_retorno_count?: number;
+  is_current_queue?: boolean;
+  is_waiting_deploy?: boolean;
+  has_sprint_code?: boolean;
+  snapshot_at?: string | null;
+}
+
+const QUALITY_TEST_STATES = new Set(['Em Teste', 'Aguardando Deploy']);
+const QUALITY_TESTING_STATES = new Set(['Em Teste']);
+const QUALITY_DEPLOY_STATES = new Set(['Aguardando Deploy']);
+
+function isQualityQueueState(state: string | null | undefined): boolean {
+  return QUALITY_TEST_STATES.has(state || '');
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
@@ -87,28 +100,35 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
     qa_retorno_count: item.id ? (retornoMap.get(item.id) ?? 0) : 0,
   }));
 
+  const currentQueueItems = enrichedItems.filter(i => isQualityQueueState(i.state));
+
   const sprintScopedItems = sprintFilter === 'all'
-    ? enrichedItems
-    : enrichedItems.filter(i => i.iteration_path === sprintFilter);
+    ? currentQueueItems
+    : currentQueueItems.filter(i => i.iteration_path === sprintFilter);
 
   const items = (dateFrom && dateTo)
     ? sprintScopedItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
     : sprintScopedItems;
 
   const total = items.length;
-  const filaQA = items.filter(i => i.state === 'New' || i.state === 'To Do' || i.state === 'Active').length;
-  const emTeste = items.filter(i => i.state === 'In Progress' || i.state === 'Testing').length;
-  const finalizados = items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
-  const taxaVazao = total > 0 ? Math.round((finalizados / total) * 100) : 0;
+  const filaAtual = currentQueueItems.length;
+  const filaQA = items.length;
+  const emTeste = items.filter(i => QUALITY_TESTING_STATES.has(i.state || '')).length;
+  const aguardandoDeploy = items.filter(i => QUALITY_DEPLOY_STATES.has(i.state || '')).length;
+  const finalizados = 0;
+  const taxaVazao = total > 0 ? Math.round((aguardandoDeploy / total) * 100) : 0;
+  const herdadosSprintPassada = sprintFilter === 'all'
+    ? 0
+    : currentQueueItems.filter(i => i.iteration_path !== sprintFilter).length;
 
   // Retorno QA KPIs
   const itensComRetorno = items.filter(i => (i.qa_retorno_count ?? 0) > 0);
   const totalRetornos = items.reduce((sum, i) => sum + (i.qa_retorno_count ?? 0), 0);
   const taxaRetorno = total > 0 ? Math.round((itensComRetorno.length / total) * 100) : 0;
 
-  const avioesTestados = items.filter(i => {
+  const avioesTestados = currentQueueItems.filter(i => {
     const hasAviaoTag = (i.tags || '').toUpperCase().includes('AVIAO');
-    const testedState = ['TESTING', 'DONE', 'CLOSED', 'RESOLVED'].includes((i.state || '').toUpperCase());
+    const testedState = QUALITY_TEST_STATES.has(i.state || '');
     return hasAviaoTag && testedState;
   }).length;
 
@@ -116,11 +136,15 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
     items,
     allItems,
     enrichedItems,
+    currentQueueItems,
     total,
     filaQA,
+    filaAtual,
     emTeste,
+    aguardandoDeploy,
     finalizados,
     taxaVazao,
+    herdadosSprintPassada,
     totalRetornos,
     itensComRetorno: itensComRetorno.length,
     taxaRetorno,

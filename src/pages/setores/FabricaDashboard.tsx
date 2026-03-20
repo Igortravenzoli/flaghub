@@ -28,6 +28,22 @@ import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficia
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done';
 
+const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
+const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
+const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+
+function isFabricaInProgress(state: string | null | undefined): boolean {
+  return FABRICA_IN_PROGRESS_STATES.has(state || '');
+}
+
+function isFabricaTodo(state: string | null | undefined): boolean {
+  return FABRICA_TODO_STATES.has(state || '');
+}
+
+function isDone(state: string | null | undefined): boolean {
+  return DONE_STATES.has(state || '');
+}
+
 const integrations: Integration[] = [
   { name: 'Azure DevOps API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items, Sprints' },
   { name: 'DevOps TimeLog', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Horas alocadas (TechsBCN)' },
@@ -48,6 +64,8 @@ const typeLabels: Record<string, string> = {
 const stateColors: Record<string, string> = {
   'In Progress': 'bg-[hsl(var(--info))] text-white',
   'Active': 'bg-[hsl(var(--info))] text-white',
+  'Em desenvolvimento': 'bg-[hsl(var(--info))] text-white',
+  'Aguardando Teste': 'bg-rose-100 text-rose-700 border border-rose-300',
   'To Do': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
   'New': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
   'Done': 'bg-[hsl(var(--success))] text-white',
@@ -252,9 +270,10 @@ export default function FabricaDashboard() {
 
   // Sprint-aware KPI counts
   const sprintTotal = sprintFilteredItems.length;
-  const sprintInProgress = sprintFilteredItems.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
-  const sprintToDo = sprintFilteredItems.filter(i => i.state === 'To Do' || i.state === 'New').length;
-  const sprintDone = sprintFilteredItems.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
+  const sprintInProgress = sprintFilteredItems.filter(i => isFabricaInProgress(i.state)).length;
+  const sprintToDo = sprintFilteredItems.filter(i => isFabricaTodo(i.state)).length;
+  const sprintDone = sprintFilteredItems.filter(i => isDone(i.state)).length;
+  const sprintAguardandoTeste = sprintFilteredItems.filter(i => i.state === 'Aguardando Teste').length;
 
   // Sprint-filtered transbordo items
   const sprintTransbordoItems = useMemo(() => {
@@ -327,9 +346,9 @@ export default function FabricaDashboard() {
 
   const filteredFabItems = useMemo(() => {
     switch (fabKpiFilter) {
-      case 'in_progress': return sprintFilteredItems.filter(i => i.state === 'In Progress' || i.state === 'Active');
-      case 'todo': return sprintFilteredItems.filter(i => i.state === 'To Do' || i.state === 'New');
-      case 'done': return sprintFilteredItems.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
+      case 'in_progress': return sprintFilteredItems.filter(i => isFabricaInProgress(i.state));
+      case 'todo': return sprintFilteredItems.filter(i => isFabricaTodo(i.state));
+      case 'done': return sprintFilteredItems.filter(i => isDone(i.state));
       default: return sprintFilteredItems;
     }
   }, [sprintFilteredItems, fabKpiFilter]);
@@ -515,6 +534,10 @@ export default function FabricaDashboard() {
           <Plane className="h-3.5 w-3.5" />
           AVIAO na sprint: {sprintAviaoCount}
         </Badge>
+        <Badge variant="outline" className="gap-1 text-xs animate-fade-in border-rose-300 text-rose-700 bg-rose-50">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Aguardando Teste: {sprintAguardandoTeste}
+        </Badge>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -582,6 +605,16 @@ export default function FabricaDashboard() {
               <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
               <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
             </div>
+
+            <Card className="border-rose-200 bg-rose-50/60">
+              <CardContent className="flex items-center justify-between gap-3 p-4">
+                <div>
+                  <p className="text-sm font-semibold text-rose-800">Bloqueio de Fábrica: Aguardando Teste</p>
+                  <p className="text-xs text-rose-700/80">Permanece na Fábrica, impacta saúde/gargalo e não entra automaticamente em Qualidade.</p>
+                </div>
+                <Badge className="bg-rose-600 text-white text-sm font-mono">{sprintAguardandoTeste}</Badge>
+              </CardContent>
+            </Card>
 
             {/* Corporate KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
