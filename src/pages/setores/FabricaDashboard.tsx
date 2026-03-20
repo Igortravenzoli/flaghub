@@ -312,14 +312,12 @@ export default function FabricaDashboard() {
   const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
 
   const bottlenecks = usePbiBottlenecks({
-    sector: 'fabrica',
     sprintCode: selectedSprintCode,
     dateStart: effectiveRange?.from || null,
     dateEnd: effectiveRange?.to || null,
   });
 
   const featureSummary = useFeaturePbiSummary({
-    sector: 'fabrica',
     sprintCode: selectedSprintCode,
     dateStart: effectiveRange?.from || null,
     dateEnd: effectiveRange?.to || null,
