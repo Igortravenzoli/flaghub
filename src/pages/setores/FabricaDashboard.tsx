@@ -32,6 +32,7 @@ import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aviao';
+type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
@@ -228,6 +229,7 @@ export default function FabricaDashboard() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
+  const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
@@ -312,14 +314,12 @@ export default function FabricaDashboard() {
   const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
 
   const bottlenecks = usePbiBottlenecks({
-    sector: 'fabrica',
     sprintCode: selectedSprintCode,
     dateStart: effectiveRange?.from || null,
     dateEnd: effectiveRange?.to || null,
   });
 
   const featureSummary = useFeaturePbiSummary({
-    sector: 'fabrica',
     sprintCode: selectedSprintCode,
     dateStart: effectiveRange?.from || null,
     dateEnd: effectiveRange?.to || null,
@@ -1023,11 +1023,16 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Esteira / Saúde ═══════ */}
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <HeroKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={ListTodo} />
-              <HeroKpiCard label="Saúde Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-              <HeroKpiCard label="Saúde Amarela" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-              <HeroKpiCard label="Saúde Vermelha" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" />
+              <HeroKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={ListTodo} onClick={() => setHealthFilter(prev => prev === 'all' ? 'all' : 'all')} active={healthFilter === 'all'} />
+              <HeroKpiCard label="Saúde Boa" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" onClick={() => setHealthFilter(prev => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
+              <HeroKpiCard label="Em Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" onClick={() => setHealthFilter(prev => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
+              <HeroKpiCard label="Críticas" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" onClick={() => setHealthFilter(prev => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
             </div>
+            {healthFilter !== 'all' && (
+              <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setHealthFilter('all')}>
+                Filtro: {healthFilter === 'verde' ? 'Saúde Boa' : healthFilter === 'amarelo' ? 'Em Atenção' : 'Críticas'} ✕
+              </Badge>
+            )}
             <Card className="overflow-hidden">
               <div className="p-4 border-b border-border">
                 <h3 className="font-semibold text-sm">Visão de esteira por item</h3>
@@ -1036,6 +1041,11 @@ export default function FabricaDashboard() {
               <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
                 {sprintFilteredItems
                   .filter((item) => item.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(item.work_item_type || ''))
+                  .filter((item) => {
+                    if (healthFilter === 'all') return true;
+                    const status = pbiHealthBatch.healthById.get(item.id as number)?.health_status;
+                    return status === healthFilter;
+                  })
                   .slice(0, 60)
                   .map((item) => {
                     const lifecycle = pbiHealthBatch.lifecycleById.get(item.id as number);
@@ -1067,9 +1077,9 @@ export default function FabricaDashboard() {
             {bottlenecks.overview && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <HeroKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
-                <HeroKpiCard label="Verde" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                <HeroKpiCard label="Amarelo" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                <HeroKpiCard label="Vermelho" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+                <HeroKpiCard label="Saúde Boa" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                <HeroKpiCard label="Em Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                <HeroKpiCard label="Críticas" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
               </div>
             )}
             <Card className="overflow-hidden">
