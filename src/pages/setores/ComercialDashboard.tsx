@@ -82,6 +82,7 @@ export default function ComercialDashboard() {
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerClient, setDrawerClient] = useState<ComercialClient | null>(null);
+  const [drawerOperacionalItem, setDrawerOperacionalItem] = useState<any | null>(null);
 
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(clients, [(c) => c.synced_at]),
