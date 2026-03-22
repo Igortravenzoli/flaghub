@@ -229,7 +229,9 @@ export function DashboardDataTable<T extends Record<string, any>>({
     return [...filtered].sort((a, b) => {
       const va = a[sortKey] ?? '';
       const vb = b[sortKey] ?? '';
-      const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true });
+      const sa = typeof va === 'string' ? va : String(va);
+      const sb = typeof vb === 'string' ? vb : String(vb);
+      const cmp = sa.localeCompare(sb, undefined, { numeric: true });
       return sortDir === 'asc' ? cmp : -cmp;
     });
   }, [filtered, sortKey, sortDir]);
