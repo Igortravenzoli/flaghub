@@ -1031,7 +1031,7 @@ export default function FabricaDashboard() {
             </div>
             {healthFilter !== 'all' && (
               <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setHealthFilter('all')}>
-                Filtro: {healthFilter === 'verde' ? '(B) Verde' : healthFilter === 'amarelo' ? '(A) Amarelo' : '(C) Vermelho'} ✕
+                Filtro: {healthFilter === 'verde' ? 'Saudável' : healthFilter === 'amarelo' ? 'Atenção' : 'Crítica'} ✕
               </Badge>
             )}
             <Card className="overflow-hidden">
