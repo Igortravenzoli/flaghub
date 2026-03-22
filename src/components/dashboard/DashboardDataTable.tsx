@@ -39,6 +39,8 @@ interface DashboardDataTableProps<T> {
   emptyMessage?: string;
   /** Column filters configuration — enables multi-select filter dropdowns */
   columnFilters?: ColumnFilter[];
+  /** Disable automatic filters for all columns when no explicit config is provided */
+  disableAutoColumnFilters?: boolean;
 }
 
 function MultiSelectFilter({
@@ -132,6 +134,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
   getRowKey,
   emptyMessage = 'Nenhum dado encontrado',
   columnFilters = [],
+  disableAutoColumnFilters = false,
 }: DashboardDataTableProps<T>) {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
@@ -139,10 +142,21 @@ export function DashboardDataTable<T extends Record<string, any>>({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [activeFilters, setActiveFilters] = useState<Record<string, Set<string>>>({});
 
+  const effectiveColumnFilters = useMemo<ColumnFilter[]>(() => {
+    if (columnFilters.length > 0 || disableAutoColumnFilters) {
+      return columnFilters;
+    }
+
+    return columns.map((c) => ({
+      key: c.key,
+      label: c.header,
+    }));
+  }, [columnFilters, columns, disableAutoColumnFilters]);
+
   // Build unique options per column filter
   const filterOptions = useMemo(() => {
     const result: Record<string, string[]> = {};
-    for (const cf of columnFilters) {
+    for (const cf of effectiveColumnFilters) {
       const values = new Set<string>();
       for (const row of data) {
         const extractor = cf.extractValue || ((r: any) => r[cf.key]);
@@ -157,7 +171,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
       result[cf.key] = [...values].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     }
     return result;
-  }, [data, columnFilters]);
+  }, [data, effectiveColumnFilters]);
 
   const toggleFilter = useCallback((key: string, value: string) => {
     setActiveFilters(prev => {
@@ -185,7 +199,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
 
     return data.filter(row => {
       return activeKeys.every(([key, selectedValues]) => {
-        const cf = columnFilters.find(f => f.key === key);
+        const cf = effectiveColumnFilters.find(f => f.key === key);
         if (!cf) return true;
         const extractor = cf.extractValue || ((r: any) => r[cf.key]);
         const val = extractor(row);
@@ -196,7 +210,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
         return selectedValues.has(val);
       });
     });
-  }, [data, activeFilters, columnFilters]);
+  }, [data, activeFilters, effectiveColumnFilters]);
 
   // Apply text search
   const filtered = useMemo(() => {
@@ -236,7 +250,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
   const activeFilterBadges = Object.entries(activeFilters)
     .filter(([, s]) => s.size > 0)
     .flatMap(([key, values]) => {
-      const cf = columnFilters.find(f => f.key === key);
+      const cf = effectiveColumnFilters.find(f => f.key === key);
       return [...values].map(v => ({ key, value: v, label: cf?.label || key }));
     });
 
@@ -310,7 +324,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
           <TableHeader>
             <TableRow className="bg-muted/30">
               {columns.map(col => {
-                const cf = columnFilters.find(f => f.key === col.key);
+                const cf = effectiveColumnFilters.find(f => f.key === col.key);
                 return (
                   <TableHead
                     key={col.key}

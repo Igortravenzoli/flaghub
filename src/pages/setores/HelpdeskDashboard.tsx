@@ -10,7 +10,7 @@ import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
   Headphones, Clock, Users, FileText, Monitor, Flag, UserCheck,
-  BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp,
+  BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -47,7 +47,7 @@ const CHART_COLORS = [
 ];
 
 const STORAGE_KEY = 'helpdesk_consultant_filter';
-const DEFAULT_COLLABORATORS = ['Ailton', 'Italo', 'Leandro', 'Vagner', 'Bruna', 'Ronaldo'];
+const DEFAULT_COLLABORATORS = ['Leandrofaria', 'Ailton', 'Italo', 'Vagner', 'Bruna', 'Ricardo', 'Ronaldo', 'Brunosassada'];
 
 function loadConsultantFilter(): string[] {
   try {
@@ -585,16 +585,16 @@ export default function HelpdeskDashboard() {
                     {/* Ranking mini-list */}
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-semibold">Ranking de Sistemas</CardTitle>
+                        <CardTitle className="text-sm font-semibold">Top Clientes Impactados</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <ScrollArea className="h-80">
                           <div className="space-y-2">
-                            {registrosPorSistema
+                            {registrosPorCliente
                               .slice()
                               .sort((a, b) => b.quantidade - a.quantidade)
                               .map((s, i) => {
-                                const maxQtd = registrosPorSistema[0]?.quantidade || 1;
+                                const maxQtd = registrosPorCliente[0]?.quantidade || 1;
                                 const pct = Math.round((s.quantidade / maxQtd) * 100);
                                 return (
                                   <div key={s.nome} className="flex items-center gap-3">
@@ -614,6 +614,7 @@ export default function HelpdeskDashboard() {
                                         />
                                       </div>
                                     </div>
+                                    <Phone className="h-3.5 w-3.5 text-muted-foreground/70" />
                                   </div>
                                 );
                               })}

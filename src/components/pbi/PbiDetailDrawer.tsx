@@ -11,6 +11,27 @@ interface PbiDetailDrawerProps {
   workItemId: number;
 }
 
+function formatSprintInitial(value: string | null | undefined): { current: string | null; previous: string | null; changedAt: string | null } {
+  if (!value) return { current: null, previous: null, changedAt: null };
+
+  try {
+    const parsed = JSON.parse(value);
+    const current = parsed?.newValue ? String(parsed.newValue).split('\\').pop() || parsed.newValue : null;
+    const previous = parsed?.oldValue ? String(parsed.oldValue).split('\\').pop() || parsed.oldValue : null;
+    const changedAt = parsed?.revisedDate
+      ? new Date(parsed.revisedDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+      : null;
+
+    return { current, previous, changedAt };
+  } catch {
+    return {
+      current: value.split('\\').pop() || value,
+      previous: null,
+      changedAt: null,
+    };
+  }
+}
+
 function InfoItem({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
     <div className="rounded-md bg-muted/40 p-2">
@@ -35,6 +56,7 @@ export function PbiDetailDrawer({ workItemId }: PbiDetailDrawerProps) {
 
   const stage = (lifecycle?.current_stage || 'backlog') as PbiStageKey;
   const stageLabel = STAGE_LABELS[stage] || lifecycle?.current_stage || '—';
+  const sprintInitial = formatSprintInitial(lifecycle?.first_committed_sprint);
 
   return (
     <div className="space-y-3">
@@ -49,7 +71,9 @@ export function PbiDetailDrawer({ workItemId }: PbiDetailDrawerProps) {
           <InfoItem label="Etapa atual" value={stageLabel} />
           <InfoItem label="Lead time total" value={lifecycle?.total_lead_time_days != null ? `${lifecycle.total_lead_time_days} dias` : null} />
           <InfoItem label="QA retorno" value={lifecycle?.qa_return_count ?? 0} />
-          <InfoItem label="Sprint inicial" value={lifecycle?.first_committed_sprint} />
+          <InfoItem label="Sprint inicial" value={sprintInitial.current} />
+          <InfoItem label="Sprint anterior" value={sprintInitial.previous} />
+          <InfoItem label="Alterado em" value={sprintInitial.changedAt} />
         </CardContent>
       </Card>
 

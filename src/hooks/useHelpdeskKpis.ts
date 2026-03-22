@@ -37,8 +37,11 @@ export interface HorasDia {
 }
 
 export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
+  const fromKey = dateFrom ? dateFrom.toISOString().slice(0, 10) : 'all';
+  const toKey = dateTo ? dateTo.toISOString().slice(0, 10) : 'all';
+
   const query = useQuery({
-    queryKey: ['helpdesk', 'kpis'],
+    queryKey: ['helpdesk', 'kpis', fromKey, toKey],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('vw_helpdesk_kpis')
@@ -51,11 +54,13 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
   });
 
   const snapshots = query.data || [];
+  const fromBoundary = dateFrom ? new Date(dateFrom.getFullYear(), dateFrom.getMonth(), dateFrom.getDate(), 0, 0, 0, 0) : null;
+  const toBoundary = dateTo ? new Date(dateTo.getFullYear(), dateTo.getMonth(), dateTo.getDate(), 23, 59, 59, 999) : null;
   const scopedSnapshots = (dateFrom && dateTo)
     ? snapshots.filter(s => {
         if (!s.collected_at) return false;
         const d = new Date(s.collected_at);
-        return d >= dateFrom && d <= dateTo;
+        return !!fromBoundary && !!toBoundary && d >= fromBoundary && d <= toBoundary;
       })
     : snapshots;
 

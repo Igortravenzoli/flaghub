@@ -527,6 +527,7 @@ export default function FabricaDashboard() {
             <PbiHealthBadge
               status={pbiHealthBatch.healthById.get(item.id)?.health_status}
               compact
+              indicatorMode="fabrica-abc"
               className="text-[10px] px-1.5 py-0"
             />
           ) : null}
@@ -1024,13 +1025,13 @@ export default function FabricaDashboard() {
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <HeroKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={ListTodo} onClick={() => setHealthFilter(prev => prev === 'all' ? 'all' : 'all')} active={healthFilter === 'all'} />
-              <HeroKpiCard label="Saúde Boa" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" onClick={() => setHealthFilter(prev => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
-              <HeroKpiCard label="Em Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" onClick={() => setHealthFilter(prev => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
-              <HeroKpiCard label="Críticas" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" onClick={() => setHealthFilter(prev => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
+              <HeroKpiCard label="(B) Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" onClick={() => setHealthFilter(prev => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
+              <HeroKpiCard label="(A) Amarelo" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" onClick={() => setHealthFilter(prev => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
+              <HeroKpiCard label="(C) Vermelho" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" onClick={() => setHealthFilter(prev => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
             </div>
             {healthFilter !== 'all' && (
               <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setHealthFilter('all')}>
-                Filtro: {healthFilter === 'verde' ? 'Saúde Boa' : healthFilter === 'amarelo' ? 'Em Atenção' : 'Críticas'} ✕
+                Filtro: {healthFilter === 'verde' ? '(B) Verde' : healthFilter === 'amarelo' ? '(A) Amarelo' : '(C) Vermelho'} ✕
               </Badge>
             )}
             <Card className="overflow-hidden">
@@ -1061,7 +1062,7 @@ export default function FabricaDashboard() {
                             Estágio: {lifecycle?.current_stage || item.state || '—'} • Migrações: {lifecycle?.sprint_migration_count ?? 0} • Overflow: {lifecycle?.overflow_count ?? 0}
                           </p>
                         </div>
-                        <PbiHealthBadge status={pbiHealthBatch.healthById.get(item.id as number)?.health_status} />
+                        <PbiHealthBadge status={pbiHealthBatch.healthById.get(item.id as number)?.health_status} indicatorMode="fabrica-abc" />
                       </div>
                     );
                   })}
@@ -1077,9 +1078,9 @@ export default function FabricaDashboard() {
             {bottlenecks.overview && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <HeroKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
-                <HeroKpiCard label="Saúde Boa" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                <HeroKpiCard label="Em Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                <HeroKpiCard label="Críticas" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+                <HeroKpiCard label="(B) Verde" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                <HeroKpiCard label="(A) Amarelo" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                <HeroKpiCard label="(C) Vermelho" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
               </div>
             )}
             <Card className="overflow-hidden">

@@ -13,6 +13,8 @@ export interface InfraItem {
   tags: string | null;
   iteration_path?: string | null;
   transbordo_count?: number;
+  sprint_migration_count?: number;
+  real_overflow_count?: number;
   created_date: string | null;
   changed_date: string | null;
   web_url: string | null;
@@ -58,9 +60,9 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
     queryKey: ['infraestrutura', 'transbordo-map', allItems.map(i => i.id).filter(Boolean).join(',')],
     queryFn: async () => {
       const ids = allItems.map(i => i.id).filter((id): id is number => id != null);
-      if (ids.length === 0) return new Map<number, number>();
+      if (ids.length === 0) return new Map<number, { sprintMigrationCount: number; realOverflowCount: number }>();
 
-      const map = new Map<number, number>();
+      const map = new Map<number, { sprintMigrationCount: number; realOverflowCount: number }>();
       for (let i = 0; i < ids.length; i += 1000) {
         const chunk = ids.slice(i, i + 1000);
         const { data } = await (supabase as any)
@@ -80,7 +82,10 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
             if (oldCode) return oldCode !== newCode;
             return !/backlog/i.test(oldValue);
           });
-          map.set(row.id, relevantChanges.length);
+          map.set(row.id, {
+            sprintMigrationCount: relevantChanges.length,
+            realOverflowCount: Math.max(0, relevantChanges.length - 1),
+          });
         }
       }
 
@@ -94,7 +99,9 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
 
   const allItemsEnriched = allItems.map((item) => ({
     ...item,
-    transbordo_count: item.id ? (transbordoMap.get(item.id) || 0) : 0,
+    sprint_migration_count: item.id ? (transbordoMap.get(item.id)?.sprintMigrationCount || 0) : 0,
+    real_overflow_count: item.id ? (transbordoMap.get(item.id)?.realOverflowCount || 0) : 0,
+    transbordo_count: item.id ? (transbordoMap.get(item.id)?.realOverflowCount || 0) : 0,
   }));
 
   const sprintScopedItems = sprintFilter === 'all'
@@ -113,7 +120,8 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
   const countByTag = (tag: string) => items.filter(i => i.tags?.toUpperCase().includes(tag.toUpperCase())).length;
   const melhorias = countByTag('MELHORIA');
   const iso27001 = countByTag('ISO27001') + countByTag('ISO');
-  const transbordo = items.reduce((sum, i) => sum + (i.transbordo_count || 0), 0);
+  const sprintMigracoes = items.reduce((sum, i) => sum + (i.sprint_migration_count || 0), 0);
+  const transbordo = items.reduce((sum, i) => sum + (i.real_overflow_count || 0), 0);
 
   const backlog = pendentes;
   const dev = emAndamento;
@@ -127,6 +135,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
     concluidos,
     melhorias,
     iso27001,
+    sprintMigracoes,
     transbordo,
     backlog,
     dev,

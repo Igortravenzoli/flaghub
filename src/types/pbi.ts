@@ -15,7 +15,11 @@ export interface PbiStageEvent {
   stage_key: PbiStageKey | string;
   entered_at: string;
   exited_at: string | null;
+  duration: number | null;
   duration_days: number | null;
+  state_at_entry: string | null;
+  state_at_exit: string | null;
+  lead_area: string | null;
   sprint_path: string | null;
   sprint_code: string | null;
   responsible_email: string | null;

@@ -24,6 +24,7 @@ import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
 type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas';
+type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items CS' },
@@ -59,6 +60,7 @@ export default function CustomerServiceDashboard() {
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
+  const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [activeTab, setActiveTab] = useState<'fila' | 'implantacoes' | 'saude'>('fila');
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date, (i) => i.data_referencia]),
@@ -123,8 +125,22 @@ export default function CustomerServiceDashboard() {
     return implantacoes;
   }, [implantacoes, kpiFilter]);
 
+  const filteredHealthItems = useMemo(() => {
+    if (healthFilter === 'all') return devopsItems;
+    return devopsItems.filter((item) => item.work_item_id && pbiHealthBatch.healthById.get(item.work_item_id)?.health_status === healthFilter);
+  }, [devopsItems, healthFilter, pbiHealthBatch.healthById]);
+
+  const criticalItems = useMemo(
+    () => devopsItems.filter((item) => item.work_item_id && pbiHealthBatch.healthById.get(item.work_item_id)?.health_status === 'vermelho'),
+    [devopsItems, pbiHealthBatch.healthById]
+  );
+
   const handleKpiClick = (filter: KpiFilter) => {
     setKpiFilter(prev => prev === filter ? 'all' : filter);
+  };
+
+  const handleHealthClick = (filter: HealthFilter) => {
+    setHealthFilter((prev) => prev === filter ? 'all' : filter);
   };
 
   const handleExportCSV = () => exportCSV({
@@ -267,16 +283,15 @@ export default function CustomerServiceDashboard() {
 
           <TabsContent value="saude" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={Layers} isLoading={pbiHealthBatch.isLoading} />
-              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" />
-              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={Clock} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" />
-              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={TrendingUp} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" />
+              <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={Layers} isLoading={pbiHealthBatch.isLoading} onClick={() => handleHealthClick('all')} active={healthFilter === 'all'} />
+              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleHealthClick('verde')} active={healthFilter === 'verde'} />
+              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={Clock} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleHealthClick('amarelo')} active={healthFilter === 'amarelo'} />
+              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={TrendingUp} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => handleHealthClick('vermelho')} active={healthFilter === 'vermelho'} />
             </div>
 
             <Card className="p-4 space-y-2">
               <h3 className="font-semibold text-sm">Itens críticos da fila CS</h3>
-              {devopsItems
-                .filter((item) => item.work_item_id && pbiHealthBatch.healthById.get(item.work_item_id)?.health_status === 'vermelho')
+              {criticalItems
                 .slice(0, 40)
                 .map((item) => (
                   <div key={`cs-red-${item.work_item_id}`} className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-2">
@@ -287,10 +302,25 @@ export default function CustomerServiceDashboard() {
                     <PbiHealthBadge status="vermelho" />
                   </div>
                 ))}
-              {!pbiHealthBatch.isLoading && pbiHealthBatch.overview.vermelho === 0 && (
+              {!pbiHealthBatch.isLoading && criticalItems.length === 0 && (
                 <p className="text-sm text-muted-foreground">Nenhum item crítico para o filtro atual.</p>
               )}
             </Card>
+
+            {!pbiHealthBatch.isLoading && filteredHealthItems.length === 0 ? (
+              <DashboardEmptyState description="Nenhum item monitorado na fila CS para o filtro de saúde selecionado." />
+            ) : (
+              <DashboardDataTable
+                title="Esteira / Saúde CS"
+                subtitle={`${filteredHealthItems.length} itens monitorados${healthFilter !== 'all' ? ` • filtro ${healthFilter}` : ''}`}
+                columns={devopsColumnsWithHealth}
+                data={filteredHealthItems}
+                isLoading={pbiHealthBatch.isLoading}
+                getRowKey={(r) => String(r.work_item_id ?? Math.random())}
+                onRowClick={(r) => setDrawerItem(r)}
+                searchPlaceholder="Buscar item monitorado..."
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="implantacoes" className="space-y-4 animate-fade-in">
