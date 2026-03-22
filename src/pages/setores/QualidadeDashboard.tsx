@@ -69,6 +69,7 @@ export default function QualidadeDashboard() {
   const [sprintFilter, setSprintFilter] = useState<string>('all');
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
+  // "base" = atemporal/macro, sem filtro de sprint — para os KPIs do topo
   const base = useQualidadeKpis(undefined, undefined, 'all');
   const { allItems, lastSync, isLoading, isError } = base;
   const { sortedSprints } = useSprintFilter(allItems);
@@ -103,14 +104,25 @@ export default function QualidadeDashboard() {
 
   const scoped = useQualidadeKpis(effectiveRange.from, effectiveRange.to, sprintFilter === 'all' ? 'all' : sprintFilter);
 
-  const pbiHealthIds = useMemo(
+  // Health batch IDs from the enriched items (atemporal for macro KPIs, scoped for table)
+  const basePbiHealthIds = useMemo(
+    () => base.enrichedItems
+      .filter((i) => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || ''))
+      .map((i) => i.id as number),
+    [base.enrichedItems]
+  );
+
+  const scopedPbiHealthIds = useMemo(
     () => scoped.items
       .filter((i) => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || ''))
       .map((i) => i.id as number),
     [scoped.items]
   );
 
-  const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
+  const pbiHealthBatch = usePbiHealthBatch(
+    [...new Set([...basePbiHealthIds, ...scopedPbiHealthIds])],
+    basePbiHealthIds.length > 0 || scopedPbiHealthIds.length > 0
+  );
 
   const bottlenecks = usePbiBottlenecks({
     sector: 'qualidade',
@@ -128,26 +140,35 @@ export default function QualidadeDashboard() {
 
   const toggleKpi = (f: QaKpiFilter) => setKpiFilter(prev => prev === f ? 'all' : f);
 
+  // KPIs macro são atemporais → ao clicar, filtrar a partir de base (enrichedItems)
+  // Quando sprint está selecionado, filtrar scoped.items
+  const kpiSourceItems = useMemo(() => {
+    // Se o KPI clicado é atemporal (card macro), mostrar de base
+    // Se sprint está selecionado, mostrar scoped
+    return sprintFilter === 'all' ? base.enrichedItems : scoped.items;
+  }, [sprintFilter, base.enrichedItems, scoped.items]);
+
   const filteredItems = useMemo(() => {
+    const source = kpiSourceItems;
     switch (kpiFilter) {
-      case 'em_teste': return scoped.items.filter(i => QUALITY_TESTING_STATES.has(i.state || ''));
-      case 'deploy': return scoped.items.filter(i => QUALITY_DEPLOY_STATES.has(i.state || ''));
-      case 'com_retorno': return scoped.items.filter(i => (i.qa_retorno_count ?? 0) > 0);
-      case 'aviao': return scoped.items.filter(i => (i.tags || '').toUpperCase().includes('AVIAO'));
-      default: return scoped.items;
+      case 'em_teste': return source.filter(i => QUALITY_TESTING_STATES.has(i.state || ''));
+      case 'deploy': return source.filter(i => QUALITY_DEPLOY_STATES.has(i.state || ''));
+      case 'com_retorno': return source.filter(i => (i.qa_retorno_count ?? 0) > 0);
+      case 'aviao': return source.filter(i => (i.tags || '').toUpperCase().includes('AVIAO') && QUALITY_TEST_STATES.has(i.state || ''));
+      default: return source;
     }
-  }, [scoped.items, kpiFilter]);
+  }, [kpiSourceItems, kpiFilter]);
 
   const healthFilteredItems = useMemo(() => {
-    if (healthFilter === 'all') return scoped.items;
-    return scoped.items.filter((item) => item.id && pbiHealthBatch.healthById.get(item.id)?.health_status === healthFilter);
-  }, [healthFilter, pbiHealthBatch.healthById, scoped.items]);
+    if (healthFilter === 'all') return kpiSourceItems;
+    return kpiSourceItems.filter((item) => item.id && pbiHealthBatch.healthById.get(item.id)?.health_status === healthFilter);
+  }, [healthFilter, pbiHealthBatch.healthById, kpiSourceItems]);
 
   const tableColumns = useMemo<DataTableColumn<QualidadeItem>[]>(() => [
     {
       key: 'health',
       header: 'Saúde',
-      className: 'w-20',
+      className: 'w-24',
       render: (r) => <PbiHealthBadge status={r.id ? pbiHealthBatch.healthById.get(r.id)?.health_status : null} compact />,
     },
     ...columns,
@@ -166,29 +187,29 @@ export default function QualidadeDashboard() {
   const healthFilterLabel = (f: QaHealthFilter) => {
     switch (f) {
       case 'all': return 'Todos';
-      case 'verde': return 'Verde';
-      case 'amarelo': return 'Amarelo';
-      case 'vermelho': return 'Vermelho';
+      case 'verde': return 'Saudável';
+      case 'amarelo': return 'Atenção';
+      case 'vermelho': return 'Crítica';
     }
   };
 
   const handleExportCSV = () => exportCSV({
     title: 'Qualidade QA', area: 'Qualidade', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
     columns: ['id', 'work_item_type', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path', 'qa_retorno_count', 'created_date'],
-    rows: scoped.items as any[],
+    rows: filteredItems as any[],
   });
 
   const handleExportPDF = () => exportPDF({
     title: 'Dashboard Qualidade', area: 'Qualidade', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
     kpis: [
-      { label: 'Total QA', value: scoped.total },
-      { label: 'Fila QA (Atual)', value: scoped.filaAtual },
-      { label: 'Taxa Vazão', value: `${scoped.taxaVazao}%` },
-      { label: 'Aguardando Deploy', value: scoped.aguardandoDeploy },
-      { label: 'Retorno QA', value: `${scoped.itensComRetorno} (${scoped.totalRetornos}x)` },
+      { label: 'Total QA', value: base.total },
+      { label: 'Fila QA (Atual)', value: base.filaAtual },
+      { label: 'Taxa Vazão', value: `${base.taxaVazao}%` },
+      { label: 'Aguardando Deploy', value: base.aguardandoDeploy },
+      { label: 'Retorno QA', value: `${base.itensComRetorno} (${base.totalRetornos}x)` },
     ],
     columns: ['id', 'work_item_type', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path', 'qa_retorno_count'],
-    rows: scoped.items as any[],
+    rows: filteredItems as any[],
   });
 
   const drawerFields: DrawerField[] = drawerItem ? [
@@ -205,6 +226,7 @@ export default function QualidadeDashboard() {
     { label: 'Alterado em', value: drawerItem.changed_date ? new Date(drawerItem.changed_date).toLocaleString('pt-BR') : '—' },
   ] : [];
 
+  // KPIs macro atemporais (de base, sem filtro de sprint)
   const officialOverview = {
     totalQa: base.total,
     emTeste: base.emTeste,
@@ -228,6 +250,7 @@ export default function QualidadeDashboard() {
               <SelectValue placeholder="Sprint" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">Todas as sprints</SelectItem>
               {[...sortedSprints].reverse().map(sp => (
                 <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
               ))}
@@ -292,12 +315,11 @@ export default function QualidadeDashboard() {
               <CardContent className="flex flex-col gap-2 p-4 text-sm md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="font-semibold text-foreground">Semântica oficial dos KPIs de Qualidade</p>
-                  <p className="text-muted-foreground">Os cards do topo são atemporais e consideram a fila oficial atual de QA: itens em <strong>Em Teste</strong> ou <strong>Aguardando Deploy</strong>. Ao clicar, o filtro é aplicado na lista contextual abaixo, respeitando sprint e período selecionados.</p>
+                  <p className="text-muted-foreground">Os cards do topo são <strong>atemporais</strong> e consideram a fila oficial atual de QA. Ao selecionar uma sprint, a tabela é filtrada pela sprint. Ao clicar num KPI, a lista reflete o universo coerente.</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">Fila atual oficial: {officialOverview.filaAtual}</Badge>
-                  <Badge variant="outline">Lista contextual: {filteredItems.length}</Badge>
-                  <Badge variant="outline">Herdados: {scoped.herdadosSprintPassada}</Badge>
+                  <Badge variant="outline">Lista: {filteredItems.length}</Badge>
                 </div>
               </CardContent>
             </Card>
@@ -306,14 +328,14 @@ export default function QualidadeDashboard() {
               <DashboardEmptyState description={`Nenhum item de qualidade para o filtro "${filterLabel(kpiFilter)}" no período selecionado.`} />
             ) : (
               <DashboardDataTable
-                title="Fila atual da Qualidade"
-                subtitle={`${filteredItems.length} registros${kpiFilter !== 'all' ? ` • Filtro: ${filterLabel(kpiFilter)}` : ''}${scoped.herdadosSprintPassada > 0 ? ` • ${scoped.herdadosSprintPassada} herdados de sprints passadas` : ''}`}
+                title="Fila da Qualidade"
+                subtitle={`${filteredItems.length} registros${kpiFilter !== 'all' ? ` • Filtro: ${filterLabel(kpiFilter)}` : ''}${sprintFilter !== 'all' ? ` • Sprint: ${sprintFilter.split('\\').pop()}` : ' • Todas as sprints'}`}
                 columns={tableColumns}
                 data={filteredItems}
-                isLoading={scoped.isLoading}
+                isLoading={base.isLoading}
                 getRowKey={(r) => String(r.id ?? Math.random())}
                 onRowClick={(r) => setDrawerItem(r)}
-                searchPlaceholder="Buscar item da fila atual de QA..."
+                searchPlaceholder="Buscar item da fila de QA..."
               />
             )}
           </TabsContent>
@@ -322,15 +344,15 @@ export default function QualidadeDashboard() {
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={FileCheck} isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter('all')} active={healthFilter === 'all'} />
-              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
-              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
-              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
+              <DashboardKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
+              <DashboardKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
+              <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
             </div>
 
             <Card className="overflow-hidden">
               <div className="p-4 border-b border-border">
                 <h3 className="font-semibold text-sm">Itens na esteira de Qualidade</h3>
-                <p className="text-xs text-muted-foreground">Saúde e estado de cada item em teste ou aguardando deploy. {healthFilter !== 'all' ? `Filtro ativo: ${healthFilterLabel(healthFilter)}.` : 'Clique nos KPIs para filtrar.'}</p>
+                <p className="text-xs text-muted-foreground">Saúde e estado de cada item. {healthFilter !== 'all' ? `Filtro ativo: ${healthFilterLabel(healthFilter)}.` : 'Clique nos KPIs para filtrar.'}</p>
               </div>
               <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
                 {healthFilteredItems.length > 0 ? healthFilteredItems
@@ -374,9 +396,9 @@ export default function QualidadeDashboard() {
             {bottlenecks.overview && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <DashboardKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
-                <DashboardKpiCard label="Verde" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                <DashboardKpiCard label="Amarelo" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                <DashboardKpiCard label="Vermelho" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+                <DashboardKpiCard label="Saudável" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                <DashboardKpiCard label="Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                <DashboardKpiCard label="Crítica" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
               </div>
             )}
             <Card className="p-4 space-y-2">
@@ -412,9 +434,9 @@ export default function QualidadeDashboard() {
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-medium truncate">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      {row.verde_count > 0 && <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">{row.verde_count}</Badge>}
-                      {row.amarelo_count > 0 && <Badge className="bg-amber-100 text-amber-700 border border-amber-300 text-[10px] px-1.5">{row.amarelo_count}</Badge>}
-                      {row.vermelho_count > 0 && <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">{row.vermelho_count}</Badge>}
+                      {row.verde_count > 0 && <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">✅ {row.verde_count}</Badge>}
+                      {row.amarelo_count > 0 && <Badge className="bg-amber-100 text-amber-700 border border-amber-300 text-[10px] px-1.5">⚠️ {row.amarelo_count}</Badge>}
+                      {row.vermelho_count > 0 && <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">🔴 {row.vermelho_count}</Badge>}
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
