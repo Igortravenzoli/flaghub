@@ -623,6 +623,7 @@ export default function FabricaDashboard() {
               <SelectValue placeholder="Sprint" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">Todas as Sprints</SelectItem>
               {[...fab.sortedSprints].reverse().map(sp => (
                 <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
               ))}

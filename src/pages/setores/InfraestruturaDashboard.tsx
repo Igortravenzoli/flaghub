@@ -155,6 +155,7 @@ export default function InfraestruturaDashboard() {
               <SelectValue placeholder="Sprint" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">Todas as Sprints</SelectItem>
               {[...sortedSprints].reverse().map(sp => (
                 <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
               ))}
