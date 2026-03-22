@@ -295,7 +295,7 @@ export default function ComercialDashboard() {
                 columns={operationalColumnsWithHealth}
                 data={healthFilteredItems}
                 isLoading={pbiHealthBatch.isLoading || operational.isLoading}
-                getRowKey={(row) => String(row.work_item_id ?? Math.random())}
+                onRowClick={(row) => setDrawerOperacionalItem(row)}
                 searchPlaceholder="Buscar item monitorado..."
               />
             )}
