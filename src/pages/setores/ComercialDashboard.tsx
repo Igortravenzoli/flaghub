@@ -295,6 +295,7 @@ export default function ComercialDashboard() {
                 columns={operationalColumnsWithHealth}
                 data={healthFilteredItems}
                 isLoading={pbiHealthBatch.isLoading || operational.isLoading}
+                getRowKey={(row) => String(row.work_item_id ?? Math.random())}
                 onRowClick={(row) => setDrawerOperacionalItem(row)}
                 searchPlaceholder="Buscar item monitorado..."
               />
@@ -309,6 +310,25 @@ export default function ComercialDashboard() {
         title={drawerClient?.nome}
         subtitle={drawerClient?.apelido || undefined}
         fields={drawerFields}
+      />
+
+      <DashboardDrawer
+        open={!!drawerOperacionalItem}
+        onClose={() => setDrawerOperacionalItem(null)}
+        title={drawerOperacionalItem?.title || undefined}
+        subtitle={drawerOperacionalItem?.work_item_type || undefined}
+        fields={drawerOperacionalItem ? [
+          { label: 'ID', value: drawerOperacionalItem.work_item_id },
+          { label: 'Título', value: drawerOperacionalItem.title },
+          { label: 'Tipo', value: drawerOperacionalItem.work_item_type },
+          { label: 'Estado', value: drawerOperacionalItem.state },
+          { label: 'Responsável', value: drawerOperacionalItem.assigned_to_display },
+          { label: 'Prioridade', value: drawerOperacionalItem.priority != null ? `P${drawerOperacionalItem.priority}` : '—' },
+          { label: 'Sprint', value: drawerOperacionalItem.iteration_path?.split('\\').pop() || '—' },
+        ] : []}
+        workItemId={drawerOperacionalItem?.work_item_id}
+        workItemType={drawerOperacionalItem?.work_item_type}
+        externalUrl={drawerOperacionalItem?.web_url}
       />
     </SectorLayout>
   );
