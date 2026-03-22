@@ -266,10 +266,11 @@ export default function ComercialDashboard() {
                   <DashboardDataTable
                     title="Fila Comercial"
                     subtitle={`${operacionalItems.length} itens em acompanhamento operacional`}
-                    columns={operationalColumns}
+                    columns={operationalColumnsWithHealth}
                     data={operacionalItems}
                     isLoading={operational.isLoading}
                     getRowKey={(row) => String(row.work_item_id ?? Math.random())}
+                    onRowClick={(row) => setDrawerOperacionalItem(row)}
                     searchPlaceholder="Buscar item comercial..."
                   />
                 )}
