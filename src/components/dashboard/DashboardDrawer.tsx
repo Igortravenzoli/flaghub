@@ -23,9 +23,9 @@ interface DashboardDrawerProps {
 }
 
 const PBI_DRAWER_TYPES = new Set(['Product Backlog Item', 'User Story', 'Bug']);
-const DEFAULT_DRAWER_WIDTH = 680;
-const MIN_DRAWER_WIDTH = 460;
-const MAX_DRAWER_WIDTH_PCT = 0.82;
+const DEFAULT_DRAWER_WIDTH = 780;
+const MIN_DRAWER_WIDTH = 520;
+const MAX_DRAWER_WIDTH_PCT = 0.88;
 
 export function DashboardDrawer({
   open,
