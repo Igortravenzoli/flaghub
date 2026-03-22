@@ -1025,13 +1025,13 @@ export default function FabricaDashboard() {
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <HeroKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={ListTodo} onClick={() => setHealthFilter(prev => prev === 'all' ? 'all' : 'all')} active={healthFilter === 'all'} />
-              <HeroKpiCard label="(B) Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" onClick={() => setHealthFilter(prev => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
-              <HeroKpiCard label="(A) Amarelo" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" onClick={() => setHealthFilter(prev => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
-              <HeroKpiCard label="(C) Vermelho" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" onClick={() => setHealthFilter(prev => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
+             <HeroKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" onClick={() => setHealthFilter(prev => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
+             <HeroKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" onClick={() => setHealthFilter(prev => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
+             <HeroKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" onClick={() => setHealthFilter(prev => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
             </div>
             {healthFilter !== 'all' && (
               <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setHealthFilter('all')}>
-                Filtro: {healthFilter === 'verde' ? '(B) Verde' : healthFilter === 'amarelo' ? '(A) Amarelo' : '(C) Vermelho'} ✕
+                Filtro: {healthFilter === 'verde' ? 'Saudável' : healthFilter === 'amarelo' ? 'Atenção' : 'Crítica'} ✕
               </Badge>
             )}
             <Card className="overflow-hidden">
@@ -1078,9 +1078,9 @@ export default function FabricaDashboard() {
             {bottlenecks.overview && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <HeroKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
-                <HeroKpiCard label="(B) Verde" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                <HeroKpiCard label="(A) Amarelo" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                <HeroKpiCard label="(C) Vermelho" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+                <HeroKpiCard label="Saudável" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                <HeroKpiCard label="Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                <HeroKpiCard label="Crítica" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
               </div>
             )}
             <Card className="overflow-hidden">

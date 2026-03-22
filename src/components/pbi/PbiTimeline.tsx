@@ -8,9 +8,22 @@ interface PbiTimelineProps {
 
 const STAGE_ORDER: PbiStageKey[] = ['backlog', 'design', 'fabrica', 'qualidade', 'deploy', 'done'];
 
+const STAGE_ACTION_LABELS: Record<PbiStageKey, string> = {
+  backlog: 'Criado em',
+  design: 'Design iniciado em',
+  fabrica: 'Desenvolvimento iniciado em',
+  qualidade: 'Teste iniciado em',
+  deploy: 'Aguardando deploy desde',
+  done: 'Encerrado em',
+};
+
+function formatDateBR(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 export function PbiTimeline({ events }: PbiTimelineProps) {
   if (!events.length) {
-    return <p className="text-xs text-muted-foreground">Histórico insuficiente para este item. Exibindo somente estado atual no detalhe.</p>;
+    return <p className="text-xs text-muted-foreground">Histórico insuficiente para este item.</p>;
   }
 
   return (
@@ -20,8 +33,9 @@ export function PbiTimeline({ events }: PbiTimelineProps) {
           const stage = (ev.stage_key || 'backlog') as PbiStageKey;
           const stageLabel = STAGE_LABELS[stage] || ev.stage_key;
           const stageColor = STAGE_COLORS[stage] || 'bg-muted text-muted-foreground border-border';
-          const entered = new Date(ev.entered_at).toLocaleDateString('pt-BR');
-          const exited = ev.exited_at ? new Date(ev.exited_at).toLocaleDateString('pt-BR') : null;
+          const actionLabel = STAGE_ACTION_LABELS[stage] || stageLabel;
+          const entered = formatDateBR(ev.entered_at);
+          const exited = ev.exited_at ? formatDateBR(ev.exited_at) : null;
           const isLast = idx === events.length - 1;
           const isCurrent = !ev.exited_at;
 
@@ -30,14 +44,12 @@ export function PbiTimeline({ events }: PbiTimelineProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex flex-col items-center gap-1 cursor-default">
-                    {/* Node */}
                     <div
                       className={`h-7 w-7 rounded-full border-2 flex items-center justify-center text-[9px] font-bold transition-transform ${stageColor} ${isCurrent ? 'ring-2 ring-primary/40 scale-110' : ''}`}
                     >
                       {STAGE_ORDER.indexOf(stage) + 1 || '?'}
                     </div>
-                    {/* Label below */}
-                    <span className="text-[9px] text-muted-foreground leading-tight text-center max-w-[56px] truncate">
+                    <span className="text-[9px] text-muted-foreground leading-tight text-center max-w-[64px] truncate">
                       {stageLabel.split(' ')[0]}
                     </span>
                     <span className="text-[8px] text-muted-foreground/60">
@@ -45,8 +57,8 @@ export function PbiTimeline({ events }: PbiTimelineProps) {
                     </span>
                   </div>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-xs max-w-[200px]">
-                  <p className="font-semibold">{stageLabel}</p>
+                <TooltipContent side="bottom" className="text-xs max-w-[220px]">
+                  <p className="font-semibold">{actionLabel}</p>
                   <p>{entered}{exited ? ` → ${exited}` : ' → Atual'}</p>
                   {ev.duration_days != null && <p>{ev.duration_days} dia(s)</p>}
                   {ev.state_at_entry && <p>Entrada: {ev.state_at_entry}</p>}
@@ -57,7 +69,6 @@ export function PbiTimeline({ events }: PbiTimelineProps) {
                 </TooltipContent>
               </Tooltip>
 
-              {/* Connector line */}
               {!isLast && (
                 <div className="flex items-center self-center mt-0.5 pt-1">
                   <div className="h-[2px] w-6 bg-border" />

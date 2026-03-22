@@ -219,9 +219,9 @@ export default function InfraestruturaDashboard() {
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <DashboardKpiCard label="Itens monitorados" value={pbiHealthBatch.overview.total} icon={Server} isLoading={pbiHealthBatch.isLoading} onClick={() => toggleHealth('all')} active={healthFilter === 'all'} />
-              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleHealth('verde')} active={healthFilter === 'verde'} />
-              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleHealth('amarelo')} active={healthFilter === 'amarelo'} />
-              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => toggleHealth('vermelho')} active={healthFilter === 'vermelho'} />
+              <DashboardKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleHealth('verde')} active={healthFilter === 'verde'} />
+              <DashboardKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleHealth('amarelo')} active={healthFilter === 'amarelo'} />
+              <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => toggleHealth('vermelho')} active={healthFilter === 'vermelho'} />
             </div>
 
             {!isLoading && healthFilteredItems.length === 0 ? (
@@ -229,7 +229,7 @@ export default function InfraestruturaDashboard() {
             ) : (
               <DashboardDataTable
                 title="Esteira / Saúde Infraestrutura"
-                subtitle={`${healthFilteredItems.length} itens monitorados${healthFilter !== 'all' ? ` • filtro ${healthFilter}` : ''}`}
+                subtitle={`${healthFilteredItems.length} itens monitorados${healthFilter !== 'all' ? ` • filtro ${healthFilter === 'verde' ? 'Saudável' : healthFilter === 'amarelo' ? 'Atenção' : healthFilter === 'vermelho' ? 'Crítica' : healthFilter}` : ''}`}
                 columns={[
                   { key: 'health', header: 'Saúde', className: 'w-20', render: (row: InfraItem) => <PbiHealthBadge status={row.id ? pbiHealthBatch.healthById.get(row.id)?.health_status : null} compact /> },
                   ...columns,
@@ -251,6 +251,8 @@ export default function InfraestruturaDashboard() {
         title={drawerItem?.title || undefined}
         subtitle={drawerItem?.work_item_type || undefined}
         fields={drawerFields}
+        workItemId={drawerItem?.id}
+        workItemType={drawerItem?.work_item_type}
         externalUrl={drawerItem?.web_url}
       />
     </SectorLayout>

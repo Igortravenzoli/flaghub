@@ -82,6 +82,7 @@ export default function ComercialDashboard() {
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerClient, setDrawerClient] = useState<ComercialClient | null>(null);
+  const [drawerOperacionalItem, setDrawerOperacionalItem] = useState<any | null>(null);
 
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(clients, [(c) => c.synced_at]),
@@ -265,10 +266,11 @@ export default function ComercialDashboard() {
                   <DashboardDataTable
                     title="Fila Comercial"
                     subtitle={`${operacionalItems.length} itens em acompanhamento operacional`}
-                    columns={operationalColumns}
+                    columns={operationalColumnsWithHealth}
                     data={operacionalItems}
                     isLoading={operational.isLoading}
                     getRowKey={(row) => String(row.work_item_id ?? Math.random())}
+                    onRowClick={(row) => setDrawerOperacionalItem(row)}
                     searchPlaceholder="Buscar item comercial..."
                   />
                 )}
@@ -279,9 +281,9 @@ export default function ComercialDashboard() {
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={Layers} isLoading={pbiHealthBatch.isLoading} onClick={() => handleHealthClick('all')} active={healthFilter === 'all'} />
-              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleHealthClick('verde')} active={healthFilter === 'verde'} />
-              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleHealthClick('amarelo')} active={healthFilter === 'amarelo'} />
-              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => handleHealthClick('vermelho')} active={healthFilter === 'vermelho'} />
+              <DashboardKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleHealthClick('verde')} active={healthFilter === 'verde'} />
+              <DashboardKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleHealthClick('amarelo')} active={healthFilter === 'amarelo'} />
+              <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => handleHealthClick('vermelho')} active={healthFilter === 'vermelho'} />
             </div>
 
             {healthFilteredItems.length === 0 && !operational.isLoading ? (
@@ -289,11 +291,12 @@ export default function ComercialDashboard() {
             ) : (
               <DashboardDataTable
                 title="Esteira / Saúde Comercial"
-                subtitle={`${healthFilteredItems.length} itens${healthFilter !== 'all' ? ` • filtro ${healthFilter}` : ''}`}
+                subtitle={`${healthFilteredItems.length} itens${healthFilter !== 'all' ? ` • filtro ${healthFilter === 'verde' ? 'Saudável' : healthFilter === 'amarelo' ? 'Atenção' : healthFilter === 'vermelho' ? 'Crítica' : healthFilter}` : ''}`}
                 columns={operationalColumnsWithHealth}
                 data={healthFilteredItems}
                 isLoading={pbiHealthBatch.isLoading || operational.isLoading}
                 getRowKey={(row) => String(row.work_item_id ?? Math.random())}
+                onRowClick={(row) => setDrawerOperacionalItem(row)}
                 searchPlaceholder="Buscar item monitorado..."
               />
             )}
@@ -307,6 +310,25 @@ export default function ComercialDashboard() {
         title={drawerClient?.nome}
         subtitle={drawerClient?.apelido || undefined}
         fields={drawerFields}
+      />
+
+      <DashboardDrawer
+        open={!!drawerOperacionalItem}
+        onClose={() => setDrawerOperacionalItem(null)}
+        title={drawerOperacionalItem?.title || undefined}
+        subtitle={drawerOperacionalItem?.work_item_type || undefined}
+        fields={drawerOperacionalItem ? [
+          { label: 'ID', value: drawerOperacionalItem.work_item_id },
+          { label: 'Título', value: drawerOperacionalItem.title },
+          { label: 'Tipo', value: drawerOperacionalItem.work_item_type },
+          { label: 'Estado', value: drawerOperacionalItem.state },
+          { label: 'Responsável', value: drawerOperacionalItem.assigned_to_display },
+          { label: 'Prioridade', value: drawerOperacionalItem.priority != null ? `P${drawerOperacionalItem.priority}` : '—' },
+          { label: 'Sprint', value: drawerOperacionalItem.iteration_path?.split('\\').pop() || '—' },
+        ] : []}
+        workItemId={drawerOperacionalItem?.work_item_id}
+        workItemType={drawerOperacionalItem?.work_item_type}
+        externalUrl={drawerOperacionalItem?.web_url}
       />
     </SectorLayout>
   );
