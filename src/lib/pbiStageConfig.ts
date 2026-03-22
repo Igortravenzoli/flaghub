@@ -20,24 +20,27 @@ export const STAGE_COLORS: Record<PbiStageKey, string> = {
 
 export const HEALTH_COLORS: Record<
   PbiHealthStatus,
-  { bg: string; text: string; border: string; label: string }
+  { bg: string; text: string; border: string; label: string; icon: string }
 > = {
   verde: {
     bg: 'bg-emerald-100',
     text: 'text-emerald-700',
     border: 'border-emerald-300',
-    label: 'Saúde Boa',
+    label: 'Saudável',
+    icon: '✅',
   },
   amarelo: {
     bg: 'bg-amber-100',
     text: 'text-amber-700',
     border: 'border-amber-300',
-    label: 'Em Atenção',
+    label: 'Atenção',
+    icon: '⚠️',
   },
   vermelho: {
     bg: 'bg-red-100',
     text: 'text-red-700',
     border: 'border-red-300',
-    label: 'Críticas',
+    label: 'Crítica',
+    icon: '🔴',
   },
 };
