@@ -6,18 +6,21 @@ import { DashboardDataTable, DataTableColumn, ColumnFilter } from '@/components/
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
+import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useComercialKpis, ComercialClient, ClientStatusFilter } from '@/hooks/useComercialKpis';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
+import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { Users, Building2, Flag, UserCheck, UserX, ShieldBan } from 'lucide-react';
+import { Users, UserCheck, UserX, ShieldBan, HeartPulse, AlertTriangle, Layers } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+
+type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const integrations: Integration[] = [
   { name: 'Flag.Ai.Gateway', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Clientes VDesk' },
@@ -51,9 +54,29 @@ const tableColumnFilters: ColumnFilter[] = [
   { key: 'status', label: 'Status' },
 ];
 
+const operationalColumns = [
+  {
+    key: 'work_item_id',
+    header: 'ID',
+    className: 'font-mono text-xs w-16',
+    render: (row: any) => row.web_url ? (
+      <a href={row.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono" onClick={(event) => event.stopPropagation()}>
+        {row.work_item_id || '—'}
+      </a>
+    ) : (row.work_item_id || '—'),
+  },
+  { key: 'work_item_type', header: 'Tipo', render: (row: any) => <Badge variant="outline" className="text-xs">{row.work_item_type || '—'}</Badge> },
+  { key: 'title', header: 'Título', className: 'max-w-[360px] truncate' },
+  { key: 'assigned_to_display', header: 'Responsável' },
+  { key: 'state', header: 'Status', render: (row: any) => <Badge variant="secondary" className="text-xs">{row.state || '—'}</Badge> },
+  { key: 'priority', header: 'Prior.', render: (row: any) => row.priority != null ? `P${row.priority}` : '—' },
+  { key: 'iteration_path', header: 'Sprint', className: 'text-xs text-muted-foreground max-w-[180px] truncate', render: (row: any) => row.iteration_path ? (row.iteration_path.split('\\').pop() || row.iteration_path) : '—' },
+] as DataTableColumn<any>[];
+
 export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
   const [activeTab, setActiveTab] = useState('kpi-oficial');
+  const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const filters = useDashboardFilters('30d');
   const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
@@ -66,6 +89,28 @@ export default function ComercialDashboard() {
   );
 
   const operacionalItems = operational.items.filter(i => i.query_name === '04-Em Fila Comercial');
+  const pbiHealthIds = useMemo(
+    () => operacionalItems
+      .filter((item) => item.work_item_id && ['Product Backlog Item', 'User Story', 'Bug'].includes(item.work_item_type || ''))
+      .map((item) => item.work_item_id as number),
+    [operacionalItems]
+  );
+  const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
+
+  const operationalColumnsWithHealth = useMemo<DataTableColumn<any>[]>(() => [
+    {
+      key: 'health',
+      header: 'Saúde',
+      className: 'w-20',
+      render: (row) => <PbiHealthBadge status={row.work_item_id ? pbiHealthBatch.healthById.get(row.work_item_id)?.health_status : null} compact />,
+    },
+    ...operationalColumns,
+  ], [pbiHealthBatch.healthById]);
+
+  const healthFilteredItems = useMemo(() => {
+    if (healthFilter === 'all') return operacionalItems;
+    return operacionalItems.filter((item) => item.work_item_id && pbiHealthBatch.healthById.get(item.work_item_id)?.health_status === healthFilter);
+  }, [healthFilter, operacionalItems, pbiHealthBatch.healthById]);
 
   const handleExportCSV = () => exportCSV({
     title: 'Base de Clientes', area: 'Comercial', periodLabel: filters.presetLabel,
@@ -97,6 +142,10 @@ export default function ComercialDashboard() {
 
   const handleKpiClick = (filter: ClientStatusFilter) => {
     setStatusFilter(prev => prev === filter ? 'todos' : filter);
+  };
+
+  const handleHealthClick = (filter: HealthFilter) => {
+    setHealthFilter((prev) => prev === filter ? 'all' : filter);
   };
 
   return (
@@ -136,6 +185,7 @@ export default function ComercialDashboard() {
           <TabsList className="bg-muted/50 p-1">
             <TabsTrigger value="kpi-oficial" className="text-xs">KPI Oficial</TabsTrigger>
             <TabsTrigger value="operacional" className="text-xs">Visão Operacional</TabsTrigger>
+            <TabsTrigger value="esteira-saude" className="text-xs">Esteira / Saúde</TabsTrigger>
           </TabsList>
 
           <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
@@ -208,45 +258,45 @@ export default function ComercialDashboard() {
                 <h3 className="font-semibold text-sm">Fila Comercial (Operacional)</h3>
                 <p className="text-xs text-muted-foreground">Fonte operacional: query 04-Em Fila Comercial</p>
               </div>
-              <div className="overflow-auto max-h-[600px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs font-semibold w-16">ID</TableHead>
-                      <TableHead className="text-xs font-semibold">Tipo</TableHead>
-                      <TableHead className="text-xs font-semibold">Título</TableHead>
-                      <TableHead className="text-xs font-semibold">Responsável</TableHead>
-                      <TableHead className="text-xs font-semibold">Status</TableHead>
-                      <TableHead className="text-xs font-semibold">Prior.</TableHead>
-                      <TableHead className="text-xs font-semibold">Sprint</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {operational.isLoading ? (
-                      <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
-                    ) : operacionalItems.length === 0 ? (
-                      <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Sem itens operacionais no momento</TableCell></TableRow>
-                    ) : (
-                      operacionalItems.map((item, idx) => (
-                        <TableRow key={`com-op-${item.work_item_id || idx}`}>
-                          <TableCell className="font-mono text-xs">
-                            {item.web_url ? <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.work_item_id || '—'}</a> : (item.work_item_id || '—')}
-                          </TableCell>
-                          <TableCell>{item.work_item_type || '—'}</TableCell>
-                          <TableCell className="max-w-[360px] truncate">{item.title || '—'}</TableCell>
-                          <TableCell>{item.assigned_to_display || '—'}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className="text-xs">{item.state || '—'}</Badge>
-                          </TableCell>
-                          <TableCell>{item.priority != null ? `P${item.priority}` : '—'}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{item.iteration_path || '—'}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+              <div className="p-4">
+                {operacionalItems.length === 0 && !operational.isLoading ? (
+                  <DashboardEmptyState description="Sem itens operacionais no momento." />
+                ) : (
+                  <DashboardDataTable
+                    title="Fila Comercial"
+                    subtitle={`${operacionalItems.length} itens em acompanhamento operacional`}
+                    columns={operationalColumns}
+                    data={operacionalItems}
+                    isLoading={operational.isLoading}
+                    getRowKey={(row) => String(row.work_item_id ?? Math.random())}
+                    searchPlaceholder="Buscar item comercial..."
+                  />
+                )}
               </div>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="esteira-saude" className="space-y-4 mt-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={Layers} isLoading={pbiHealthBatch.isLoading} onClick={() => handleHealthClick('all')} active={healthFilter === 'all'} />
+              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleHealthClick('verde')} active={healthFilter === 'verde'} />
+              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleHealthClick('amarelo')} active={healthFilter === 'amarelo'} />
+              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => handleHealthClick('vermelho')} active={healthFilter === 'vermelho'} />
+            </div>
+
+            {healthFilteredItems.length === 0 && !operational.isLoading ? (
+              <DashboardEmptyState description="Nenhum item da esteira comercial para o filtro selecionado." />
+            ) : (
+              <DashboardDataTable
+                title="Esteira / Saúde Comercial"
+                subtitle={`${healthFilteredItems.length} itens${healthFilter !== 'all' ? ` • filtro ${healthFilter}` : ''}`}
+                columns={operationalColumnsWithHealth}
+                data={healthFilteredItems}
+                isLoading={pbiHealthBatch.isLoading || operational.isLoading}
+                getRowKey={(row) => String(row.work_item_id ?? Math.random())}
+                searchPlaceholder="Buscar item monitorado..."
+              />
+            )}
           </TabsContent>
         </Tabs>
       )}

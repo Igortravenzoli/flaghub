@@ -25,6 +25,7 @@ interface SectorCardData {
   icon: string;
   kpiLabel: string;
   kpiValue: string | number | null;
+  kpiSource: string;
   isLoading: boolean;
   path: string;
   hasConnection?: boolean;
@@ -65,37 +66,43 @@ export default function Home() {
   const sectorCards: SectorCardData[] = [
     {
       slug: 'comercial', name: 'Comercial', icon: 'TrendingUp',
-      kpiLabel: 'Clientes Ativos', kpiValue: comercial.totalClientes || null,
+      kpiLabel: 'Clientes Ativos / Bloqueados', kpiValue: `${comercial.stats.ativos || 0} / ${comercial.stats.bloqueados || 0}`,
+      kpiSource: 'useComercialKpis.stats',
       isLoading: comercial.isLoading, path: '/setor/comercial',
       hasConnection: true, connectionStatus: comercial.isError ? 'down' : 'up',
     },
     {
       slug: 'customer-service', name: 'Customer Service', icon: 'LayoutGrid',
       kpiLabel: 'Implantações (Total / Em andamento)', kpiValue: `${cs.implTotal || 0} / ${cs.implAndamento || 0}`,
+      kpiSource: 'useCustomerServiceKpis.implTotal/implAndamento',
       isLoading: cs.isLoading, path: '/setor/customer-service',
       hasConnection: true, connectionStatus: cs.isError ? 'down' : 'up',
     },
     {
       slug: 'fabrica', name: 'Fábrica', icon: 'Factory',
       kpiLabel: 'Tasks (A Fazer / Em progresso)', kpiValue: `${fabrica.toDo || 0} / ${fabrica.inProgress || 0}`,
+      kpiSource: 'useFabricaKpis.toDo/inProgress',
       isLoading: fabrica.isLoading, path: '/setor/fabrica',
       hasConnection: true, connectionStatus: fabrica.isError ? 'down' : 'up',
     },
     {
       slug: 'infraestrutura', name: 'Infraestrutura', icon: 'Server',
       kpiLabel: 'Atividades (Total / Em andamento)', kpiValue: `${infra.total || 0} / ${infra.emAndamento || 0}`,
+      kpiSource: 'useInfraestruturaKpis.total/emAndamento',
       isLoading: infra.isLoading, path: '/setor/infraestrutura',
       hasConnection: true, connectionStatus: infra.isError ? 'down' : 'up',
     },
     {
       slug: 'qualidade', name: 'Qualidade', icon: 'ShieldCheck',
       kpiLabel: 'Tasks (Fila atual / Em teste)', kpiValue: `${qualidade.filaAtual || 0} / ${qualidade.emTeste || 0}`,
+      kpiSource: 'useQualidadeKpis.filaAtual/emTeste',
       isLoading: qualidade.isLoading, path: '/setor/qualidade',
       hasConnection: true, connectionStatus: qualidade.isError ? 'down' : 'up',
     },
     {
       slug: 'helpdesk', name: 'Helpdesk', icon: 'Headphones',
       kpiLabel: 'Atendimentos do Dia', kpiValue: helpdesk.totalRegistros || null,
+      kpiSource: 'useHelpdeskKpis.totalRegistros',
       isLoading: helpdesk.isLoading, path: '/setor/helpdesk',
       hasConnection: true, connectionStatus: helpdesk.isError ? 'down' : 'up',
     },
@@ -195,6 +202,7 @@ export default function Home() {
                   ) : (
                     <p className="text-sm text-muted-foreground mt-1 italic">Sem dados</p>
                   )}
+                  <p className="text-[10px] text-muted-foreground/80 mt-1">Origem: {sector.kpiSource}</p>
                 </div>
               </div>
             </Card>

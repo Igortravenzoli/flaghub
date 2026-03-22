@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
@@ -22,6 +23,9 @@ interface DashboardDrawerProps {
 }
 
 const PBI_DRAWER_TYPES = new Set(['Product Backlog Item', 'User Story', 'Bug']);
+const DEFAULT_DRAWER_WIDTH = 680;
+const MIN_DRAWER_WIDTH = 460;
+const MAX_DRAWER_WIDTH_PCT = 0.82;
 
 export function DashboardDrawer({
   open,
@@ -35,10 +39,51 @@ export function DashboardDrawer({
   externalLabel = 'Abrir no DevOps',
 }: DashboardDrawerProps) {
   const isPbiDetail = !!workItemId && PBI_DRAWER_TYPES.has(workItemType || '');
+  const [drawerWidth, setDrawerWidth] = useState<number>(DEFAULT_DRAWER_WIDTH);
+  const resizingRef = useRef(false);
+
+  useEffect(() => {
+    const onMouseMove = (event: MouseEvent) => {
+      if (!resizingRef.current) return;
+
+      const maxWidth = Math.floor(window.innerWidth * MAX_DRAWER_WIDTH_PCT);
+      const nextWidth = Math.max(MIN_DRAWER_WIDTH, Math.min(maxWidth, window.innerWidth - event.clientX));
+      setDrawerWidth(nextWidth);
+    };
+
+    const onMouseUp = () => {
+      resizingRef.current = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
+  const startResize = () => {
+    resizingRef.current = true;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'ew-resize';
+  };
 
   return (
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
-      <SheetContent className="sm:max-w-md overflow-y-auto">
+      <SheetContent
+        className="w-full sm:w-auto sm:max-w-none overflow-y-auto"
+        style={{ width: `min(${drawerWidth}px, 82vw)` }}
+      >
+        <div
+          className="hidden sm:block absolute left-0 top-0 h-full w-2 cursor-ew-resize bg-transparent hover:bg-primary/10 transition-colors"
+          onMouseDown={startResize}
+          aria-label="Redimensionar painel lateral"
+          role="separator"
+          aria-orientation="vertical"
+        />
         <SheetHeader>
           <SheetTitle className="text-left pr-8">{title || 'Detalhes'}</SheetTitle>
           {subtitle && <p className="text-sm text-muted-foreground text-left">{subtitle}</p>}

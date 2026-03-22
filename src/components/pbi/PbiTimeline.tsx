@@ -10,7 +10,7 @@ const STAGE_ORDER: PbiStageKey[] = ['backlog', 'design', 'fabrica', 'qualidade',
 
 export function PbiTimeline({ events }: PbiTimelineProps) {
   if (!events.length) {
-    return <p className="text-xs text-muted-foreground">Sem histórico de esteira disponível.</p>;
+    return <p className="text-xs text-muted-foreground">Histórico insuficiente para este item. Exibindo somente estado atual no detalhe.</p>;
   }
 
   return (
@@ -49,7 +49,10 @@ export function PbiTimeline({ events }: PbiTimelineProps) {
                   <p className="font-semibold">{stageLabel}</p>
                   <p>{entered}{exited ? ` → ${exited}` : ' → Atual'}</p>
                   {ev.duration_days != null && <p>{ev.duration_days} dia(s)</p>}
+                  {ev.state_at_entry && <p>Entrada: {ev.state_at_entry}</p>}
+                  {ev.state_at_exit && <p>Saída: {ev.state_at_exit}</p>}
                   {ev.sprint_code && <p>Sprint: {ev.sprint_code}</p>}
+                  {ev.lead_area && <p>Área: {ev.lead_area}</p>}
                   {ev.is_overflow && <p className="text-destructive font-medium">⚠ Transbordo</p>}
                 </TooltipContent>
               </Tooltip>
