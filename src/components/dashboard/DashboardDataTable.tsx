@@ -163,9 +163,9 @@ export function DashboardDataTable<T extends Record<string, any>>({
         const val = extractor(row);
         if (val == null) continue;
         if (Array.isArray(val)) {
-          val.forEach(v => { if (v) values.add(v); });
-        } else if (val) {
-          values.add(val);
+          val.forEach(v => { if (v != null) values.add(String(v)); });
+        } else {
+          values.add(String(val));
         }
       }
       result[cf.key] = [...values].sort((a, b) => a.localeCompare(b, 'pt-BR'));
