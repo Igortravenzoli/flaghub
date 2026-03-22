@@ -246,11 +246,12 @@ export default function FabricaDashboard() {
 
   useEffect(() => {
     if (fab.sortedSprints.length === 0) return;
-    if (sprintFilter !== 'all' && fab.sortedSprints.includes(sprintFilter)) return;
-
-    const officialCurrentCode = getCurrentOfficialSprintCode();
-    const currentSprintPath = fab.sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
-    setSprintFilter(currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]);
+    if (sprintFilter === 'all') return;
+    if (!fab.sortedSprints.includes(sprintFilter)) {
+      const officialCurrentCode = getCurrentOfficialSprintCode();
+      const currentSprintPath = fab.sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+      setSprintFilter(currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]);
+    }
   }, [fab.sortedSprints, sprintFilter]);
 
   const colabChartData = useMemo(() =>
@@ -622,6 +623,7 @@ export default function FabricaDashboard() {
               <SelectValue placeholder="Sprint" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">Todas as Sprints</SelectItem>
               {[...fab.sortedSprints].reverse().map(sp => (
                 <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
               ))}
