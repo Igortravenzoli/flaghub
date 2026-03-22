@@ -291,7 +291,7 @@ export default function ComercialDashboard() {
             ) : (
               <DashboardDataTable
                 title="Esteira / Saúde Comercial"
-                subtitle={`${healthFilteredItems.length} itens${healthFilter !== 'all' ? ` • filtro ${healthFilter}` : ''}`}
+                subtitle={`${healthFilteredItems.length} itens${healthFilter !== 'all' ? ` • filtro ${healthFilter === 'verde' ? 'Saudável' : healthFilter === 'amarelo' ? 'Atenção' : healthFilter === 'vermelho' ? 'Crítica' : healthFilter}` : ''}`}
                 columns={operationalColumnsWithHealth}
                 data={healthFilteredItems}
                 isLoading={pbiHealthBatch.isLoading || operational.isLoading}
