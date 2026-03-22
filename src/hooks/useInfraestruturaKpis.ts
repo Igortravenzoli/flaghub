@@ -95,7 +95,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
     staleTime: 5 * 60 * 1000,
   });
 
-  const transbordoMap = transbordoMapQuery.data || new Map<number, number>();
+  const transbordoMap = transbordoMapQuery.data || new Map<number, { sprintMigrationCount: number; realOverflowCount: number }>();
 
   const allItemsEnriched = allItems.map((item) => ({
     ...item,
