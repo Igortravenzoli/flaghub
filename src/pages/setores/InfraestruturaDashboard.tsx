@@ -229,7 +229,7 @@ export default function InfraestruturaDashboard() {
             ) : (
               <DashboardDataTable
                 title="Esteira / Saúde Infraestrutura"
-                subtitle={`${healthFilteredItems.length} itens monitorados${healthFilter !== 'all' ? ` • filtro ${healthFilter}` : ''}`}
+                subtitle={`${healthFilteredItems.length} itens monitorados${healthFilter !== 'all' ? ` • filtro ${healthFilter === 'verde' ? 'Saudável' : healthFilter === 'amarelo' ? 'Atenção' : healthFilter === 'vermelho' ? 'Crítica' : healthFilter}` : ''}`}
                 columns={[
                   { key: 'health', header: 'Saúde', className: 'w-20', render: (row: InfraItem) => <PbiHealthBadge status={row.id ? pbiHealthBatch.healthById.get(row.id)?.health_status : null} compact /> },
                   ...columns,
