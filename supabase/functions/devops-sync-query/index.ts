@@ -182,7 +182,19 @@ serve(async (req) => {
     }
 
     const body = await req.json()
-    const queryId: string = body.query_id
+    let queryId: string = body.query_id
+
+    // Allow lookup by wiql_id if query_id not provided
+    if (!queryId && body.wiql_id) {
+      const { data: found } = await admin
+        .from('devops_queries')
+        .select('id')
+        .eq('wiql_id', body.wiql_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (found?.id) queryId = found.id
+    }
 
     if (!queryId) {
       return new Response(JSON.stringify({ error: 'query_id é obrigatório' }), {
