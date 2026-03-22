@@ -64,11 +64,12 @@ export default function InfraestruturaDashboard() {
 
   useEffect(() => {
     if (sortedSprints.length === 0) return;
-    if (sprintFilter !== 'all' && sortedSprints.includes(sprintFilter)) return;
-
-    const officialCurrentCode = getCurrentOfficialSprintCode();
-    const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
-    setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+    if (sprintFilter === 'all') return;
+    if (!sortedSprints.includes(sprintFilter)) {
+      const officialCurrentCode = getCurrentOfficialSprintCode();
+      const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+      setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+    }
   }, [sortedSprints, sprintFilter]);
 
   const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
