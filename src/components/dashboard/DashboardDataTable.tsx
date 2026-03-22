@@ -168,7 +168,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
           values.add(String(val));
         }
       }
-      result[cf.key] = [...values].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      result[cf.key] = [...values].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
     }
     return result;
   }, [data, effectiveColumnFilters]);
