@@ -367,66 +367,6 @@ export function TransbordoTab({
         </Card>
       )}
 
-      {/* Top 10 maior recorrência */}
-      {top10.length > 0 && (
-        <Card className="border-destructive/20 animate-fade-in" style={{ animationDelay: '500ms' }}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-              Top 10 — Maior Recorrência de Transbordo
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-destructive/5">
-                    <TableHead className="text-xs font-semibold w-10">#</TableHead>
-                    <TableHead className="text-xs font-semibold w-16">ID</TableHead>
-                    <TableHead className="text-xs font-semibold">Título</TableHead>
-                    <TableHead className="text-xs font-semibold">Responsável</TableHead>
-                    <TableHead className="text-xs font-semibold">Estado</TableHead>
-                    <TableHead className="text-xs font-semibold text-center">Transbordos</TableHead>
-                    <TableHead className="text-xs font-semibold">Sprints</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {top10.map((item, idx) => (
-                    <TableRow key={item.id} className={`hover:bg-muted/30 ${idx < 3 ? 'bg-destructive/5' : ''}`}>
-                      <TableCell className="font-bold text-sm text-muted-foreground">{idx + 1}</TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {item.web_url ? (
-                          <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.id}</a>
-                        ) : item.id}
-                      </TableCell>
-                      <TableCell className="text-sm max-w-[250px]"><span className="line-clamp-1">{item.title || '—'}</span></TableCell>
-                      <TableCell className="text-sm whitespace-nowrap">{item.assigned_to_display || '—'}</TableCell>
-                      <TableCell>
-                        <Badge className={`text-xs font-mono ${stateColors[item.state || ''] || ''}`}>{item.state || '—'}</Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="destructive" className="text-xs font-bold">{item.overflowCount}×</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1 max-w-[200px]">
-                          {item.sprintsOverflowed.slice(0, 4).map((sp, i) => (
-                            <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0 whitespace-nowrap">
-                              {sp.split('\\').pop()}
-                            </Badge>
-                          ))}
-                          {item.sprintsOverflowed.length > 4 && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">+{item.sprintsOverflowed.length - 4}</Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Detail table */}
       <Card className="overflow-hidden animate-fade-in">
