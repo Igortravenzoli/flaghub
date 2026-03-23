@@ -230,6 +230,7 @@ export default function FabricaDashboard() {
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
@@ -268,6 +269,13 @@ export default function FabricaDashboard() {
     [fab.porColaborador]
   );
 
+  const TYPE_COLORS: Record<string, string> = {
+    'PBI': 'hsl(var(--primary))',
+    'Task': 'hsl(var(--info))',
+    'Bug': 'hsl(0, 72%, 51%)',
+    'Story': 'hsl(280, 65%, 60%)',
+  };
+
   const typeDistribution = useMemo(() => {
     const map: Record<string, number> = {};
     for (const item of fab.items) {
@@ -276,6 +284,14 @@ export default function FabricaDashboard() {
     }
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [fab.items]);
+
+  const getTypeColor = (typeName: string, idx: number) =>
+    TYPE_COLORS[typeName] || CHART_COLORS[idx % CHART_COLORS.length];
+
+  const toggleTypeFilter = (typeName: string) => {
+    setTypeFilter(prev => prev === typeName ? null : typeName);
+    setPage(0);
+  };
 
   const sprintFilteredItems = useMemo(() => {
     if (sprintFilter === 'all') return fab.items;
@@ -375,19 +391,26 @@ export default function FabricaDashboard() {
   }, [operational.items]);
 
   const filteredFabItems = useMemo(() => {
+    let items = sprintFilteredItems;
     switch (fabKpiFilter) {
-      case 'in_progress': return sprintFilteredItems.filter(i => isFabricaInProgress(i.state));
-      case 'todo': return sprintFilteredItems.filter(i => isFabricaTodo(i.state));
-      case 'done': return sprintFilteredItems.filter(i => isDone(i.state));
-      case 'aguardando_teste': return sprintFilteredItems.filter(i => i.state === 'Aguardando Teste');
-      case 'aviao': return sprintFilteredItems.filter(i => {
+      case 'in_progress': items = items.filter(i => isFabricaInProgress(i.state)); break;
+      case 'todo': items = items.filter(i => isFabricaTodo(i.state)); break;
+      case 'done': items = items.filter(i => isDone(i.state)); break;
+      case 'aguardando_teste': items = items.filter(i => i.state === 'Aguardando Teste'); break;
+      case 'aviao': items = items.filter(i => {
         if (!i.id) return false;
         const tags = fab.tagsByWorkItemId[i.id] || '';
         return AVIAO_REGEX.test(tags);
-      });
-      default: return sprintFilteredItems;
+      }); break;
     }
-  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId]);
+    if (typeFilter) {
+      items = items.filter(i => {
+        const t = typeLabels[i.work_item_type || ''] || i.work_item_type || 'Outro';
+        return t === typeFilter;
+      });
+    }
+    return items;
+  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, typeFilter]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
@@ -659,6 +682,11 @@ export default function FabricaDashboard() {
             Filtro: {filterLabel(fabKpiFilter)} ✕
           </Badge>
         )}
+        {typeFilter && (
+          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setTypeFilter(null)}>
+            Tipo: {typeFilter} ✕
+          </Badge>
+        )}
       </div>
 
       {fab.isError ? (
@@ -793,9 +821,17 @@ export default function FabricaDashboard() {
                           outerRadius={80}
                           paddingAngle={3}
                           dataKey="value"
+                          cursor="pointer"
+                          onClick={(_, idx) => toggleTypeFilter(typeDistribution[idx].name)}
                         >
-                          {typeDistribution.map((_, idx) => (
-                            <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                          {typeDistribution.map((entry, idx) => (
+                            <Cell
+                              key={idx}
+                              fill={getTypeColor(entry.name, idx)}
+                              opacity={typeFilter && typeFilter !== entry.name ? 0.3 : 1}
+                              stroke={typeFilter === entry.name ? 'hsl(var(--foreground))' : 'transparent'}
+                              strokeWidth={typeFilter === entry.name ? 2 : 0}
+                            />
                           ))}
                         </Pie>
                         <RechartsTooltip
@@ -805,8 +841,12 @@ export default function FabricaDashboard() {
                     </ResponsiveContainer>
                     <div className="flex flex-wrap gap-2 justify-center mt-2">
                       {typeDistribution.map((t, idx) => (
-                        <div key={t.name} className="flex items-center gap-1.5 text-xs">
-                          <div className="h-2.5 w-2.5 rounded-sm" style={{ background: CHART_COLORS[idx % CHART_COLORS.length] }} />
+                        <div
+                          key={t.name}
+                          className={`flex items-center gap-1.5 text-xs cursor-pointer rounded-md px-2 py-1 transition-all ${typeFilter === t.name ? 'ring-2 ring-primary bg-muted' : 'hover:bg-muted/50'}`}
+                          onClick={() => toggleTypeFilter(t.name)}
+                        >
+                          <div className="h-2.5 w-2.5 rounded-sm" style={{ background: getTypeColor(t.name, idx) }} />
                           {t.name === 'PBI' ? <Package className="h-3 w-3 text-muted-foreground" /> : t.name === 'Task' ? <ListTodo className="h-3 w-3 text-muted-foreground" /> : t.name === 'Bug' ? <Bug className="h-3 w-3 text-muted-foreground" /> : null}
                           <span className="text-muted-foreground">{t.name}: {t.value}</span>
                         </div>
