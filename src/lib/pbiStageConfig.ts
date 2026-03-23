@@ -7,6 +7,7 @@ export const STAGE_LABELS: Record<PbiStageKey, string> = {
   qualidade: 'Qualidade / Teste',
   deploy: 'Aguardando Deploy',
   done: 'Encerrada / Done',
+  sprint_change: 'Migração de Sprint',
 };
 
 export const STAGE_COLORS: Record<PbiStageKey, string> = {
