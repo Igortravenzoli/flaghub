@@ -869,6 +869,27 @@ serve(async (req: Request) => {
       })
     }
 
+    // Admin role check for non-cron callers
+    if (userId !== 'cron') {
+      const { data: roleRow } = await admin
+        .from('hub_user_global_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin')
+        .maybeSingle()
+      const { data: legacyRole } = !roleRow ? await admin
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin')
+        .maybeSingle() : { data: roleRow }
+      if (!roleRow && !legacyRole) {
+        return new Response(JSON.stringify({ error: 'Permissão negada: apenas admins podem executar sincronização' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
     // ── Step 1: Sync all active queries ──
     const { data: queries, error: qErr } = await admin
       .from('devops_queries')
