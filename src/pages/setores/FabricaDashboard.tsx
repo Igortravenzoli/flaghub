@@ -682,6 +682,11 @@ export default function FabricaDashboard() {
             Filtro: {filterLabel(fabKpiFilter)} ✕
           </Badge>
         )}
+        {typeFilter && (
+          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setTypeFilter(null)}>
+            Tipo: {typeFilter} ✕
+          </Badge>
+        )}
       </div>
 
       {fab.isError ? (
