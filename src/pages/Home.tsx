@@ -43,12 +43,20 @@ export default function Home() {
   // Real data hooks
   const comercial = useComercialKpis();
   const helpdesk = useHelpdeskKpis();
-  const fabricaBase = useFabricaKpis(undefined, undefined, 'all', {
+
+  // Fábrica: use official current sprint
+  const fabricaAll = useFabricaKpis(undefined, undefined, 'all', {
     includeTimeLogs: false,
     includeWorkItemMeta: false,
   });
-  const fabricaSprint = fabricaBase.currentSprint || 'all';
-  const fabrica = useFabricaKpis(undefined, undefined, fabricaSprint, {
+  const fabricaOfficialSprint = (() => {
+    const officialCode = getCurrentOfficialSprintCode();
+    const found = fabricaAll.sortedSprints.find(sp =>
+      extractSprintCodeFromPath(sp) === officialCode
+    );
+    return found || fabricaAll.currentSprint || 'all';
+  })();
+  const fabrica = useFabricaKpis(undefined, undefined, fabricaOfficialSprint, {
     includeTimeLogs: false,
     includeWorkItemMeta: false,
   });

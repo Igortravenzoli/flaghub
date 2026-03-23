@@ -1,24 +1,48 @@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { STAGE_LABELS, STAGE_COLORS } from '@/lib/pbiStageConfig';
 import type { PbiStageEvent, PbiStageKey } from '@/types/pbi';
-import { ArrowRight, GitBranch } from 'lucide-react';
+import { ArrowRight, GitBranch, Circle } from 'lucide-react';
 
 interface PbiTimelineProps {
   events: PbiStageEvent[];
 }
 
-const STAGE_ACTION_LABELS: Record<string, string> = {
-  backlog: 'Criado em',
-  design: 'Design iniciado em',
-  fabrica: 'Dev iniciado em',
-  qualidade: 'Teste iniciado em',
-  deploy: 'Aguardando deploy desde',
-  done: 'Encerrado em',
-  sprint_change: 'Migração de sprint',
+/** Action labels based on actual state transitions */
+const STATE_DISPLAY_LABELS: Record<string, string> = {
+  'New': 'Criação (New)',
+  'Em desenvolvimento': 'Em Desenvolvimento',
+  'In Progress': 'Em Desenvolvimento',
+  'Active': 'Em Desenvolvimento',
+  'Em Teste': 'Em Teste',
+  'Aguardando Deploy': 'Aguardando Deploy',
+  'Done': 'Concluído',
+  'Closed': 'Concluído',
+  'Resolved': 'Resolvido',
 };
+
+const STAGE_ACTION_LABELS: Record<string, string> = {
+  backlog: 'Criação',
+  design: 'Design',
+  fabrica: 'Em Desenvolvimento',
+  qualidade: 'Em Teste',
+  deploy: 'Aguardando Deploy',
+  done: 'Concluído',
+  sprint_change: 'Migração Sprint',
+};
+
+function getEventLabel(ev: PbiStageEvent): string {
+  const stage = (ev.stage_key || 'backlog') as string;
+  if (stage === 'sprint_change') return 'Migração Sprint';
+  // If state_at_exit contains the actual state name, use it
+  if (ev.state_at_exit && STATE_DISPLAY_LABELS[ev.state_at_exit]) {
+    return STATE_DISPLAY_LABELS[ev.state_at_exit];
+  }
+  return STAGE_ACTION_LABELS[stage] || STAGE_LABELS[stage as PbiStageKey] || ev.stage_key;
+}
 
 function formatDateFull(iso: string): string {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() > 9000) return '—';
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
@@ -58,10 +82,7 @@ export function PbiTimeline({ events }: PbiTimelineProps) {
           {events.map((ev, idx) => {
             const stage = (ev.stage_key || 'backlog') as string;
             const isSprintChange = stage === 'sprint_change';
-            const stageLabel = isSprintChange
-              ? `Sprint: ${ev.sprint_code || '?'}`
-              : STAGE_LABELS[stage as PbiStageKey] || ev.stage_key;
-            const actionLabel = STAGE_ACTION_LABELS[stage] || stageLabel;
+            const eventLabel = getEventLabel(ev);
             const entered = formatDateFull(ev.entered_at);
             const exited = ev.exited_at ? formatDateFull(ev.exited_at) : null;
             const isLast = idx === events.length - 1;
@@ -75,16 +96,16 @@ export function PbiTimeline({ events }: PbiTimelineProps) {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div
-                      className={`relative flex flex-col items-center justify-between rounded-lg border-2 px-3 py-2.5 min-w-[130px] max-w-[170px] cursor-default transition-all duration-500 animate-fade-in hover:scale-105 hover:shadow-md ${durationColor} ${isCurrent ? 'ring-2 ring-primary/40 shadow-lg scale-[1.03]' : ''}`}
+                      className={`relative flex flex-col items-center justify-between rounded-lg border-2 px-3 py-2.5 min-w-[140px] max-w-[180px] cursor-default transition-all duration-500 animate-fade-in hover:scale-105 hover:shadow-md ${durationColor} ${isCurrent ? 'ring-2 ring-primary/40 shadow-lg scale-[1.03]' : ''}`}
                     >
                       {/* Icon for sprint changes */}
                       {isSprintChange && (
                         <GitBranch className="h-3.5 w-3.5 text-violet-500 mb-0.5" />
                       )}
 
-                      {/* Stage action label */}
+                      {/* Stage/state label */}
                       <p className="text-[10px] font-semibold text-foreground/80 leading-tight text-center mb-1 line-clamp-2">
-                        {actionLabel}
+                        {eventLabel}
                       </p>
 
                       {/* Sprint label for migrations */}
@@ -125,14 +146,14 @@ export function PbiTimeline({ events }: PbiTimelineProps) {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="text-xs max-w-[280px] space-y-1">
-                    <p className="font-semibold">{stageLabel}</p>
+                    <p className="font-semibold">{eventLabel}</p>
                     <p>{entered}{exited ? ` → ${exited}` : ' → Atual'}</p>
                     {days != null && <p className="font-medium">{days} dia(s) nesta etapa</p>}
                     {isSprintChange && ev.state_at_entry && (
                       <p>De: {ev.state_at_entry} → Para: {ev.state_at_exit}</p>
                     )}
-                    {!isSprintChange && ev.state_at_entry && <p>Entrada: {ev.state_at_entry}</p>}
-                    {!isSprintChange && ev.state_at_exit && <p>Saída: {ev.state_at_exit}</p>}
+                    {!isSprintChange && ev.state_at_entry && <p>Estado anterior: {ev.state_at_entry}</p>}
+                    {!isSprintChange && ev.state_at_exit && <p>Estado: {ev.state_at_exit}</p>}
                     {ev.sprint_code && !isSprintChange && <p>Sprint: {ev.sprint_code}</p>}
                     {ev.lead_area && <p>Área: {ev.lead_area}</p>}
                     {ev.responsible_email && <p>Responsável: {ev.responsible_email}</p>}
@@ -177,7 +198,7 @@ export function PbiTimelineMini({ events }: PbiTimelineProps) {
                 />
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">
-                {isSprintChange ? `Sprint: ${ev.sprint_code}` : (STAGE_LABELS[stage as PbiStageKey] || ev.stage_key)}
+                {isSprintChange ? `Sprint: ${ev.sprint_code}` : getEventLabel(ev)}
                 {ev.duration_days != null ? ` • ${ev.duration_days}d` : ' • atual'}
               </TooltipContent>
             </Tooltip>
