@@ -66,7 +66,7 @@ const columns: DataTableColumn<QualidadeItem>[] = [
 export default function QualidadeDashboard() {
   const [kpiFilter, setKpiFilter] = useState<QaKpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<QaHealthFilter>('all');
-  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
   // "base" = atemporal/macro, sem filtro de sprint — para os KPIs do topo
@@ -89,6 +89,12 @@ export default function QualidadeDashboard() {
 
   useEffect(() => {
     if (sortedSprints.length === 0) return;
+    if (sprintFilter === '__pending__') {
+      const officialCurrentCode = getCurrentOfficialSprintCode();
+      const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+      setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+      return;
+    }
     if (sprintFilter === 'all') return;
     if (!sortedSprints.includes(sprintFilter)) {
       const officialCurrentCode = getCurrentOfficialSprintCode();
@@ -227,15 +233,16 @@ export default function QualidadeDashboard() {
     { label: 'Alterado em', value: drawerItem.changed_date ? new Date(drawerItem.changed_date).toLocaleString('pt-BR') : '—' },
   ] : [];
 
-  // KPIs macro atemporais (de base, sem filtro de sprint)
+  // KPIs: when sprint is selected, show scoped data; when 'all', show base (atemporal)
+  const activeKpiSource = sprintFilter === 'all' ? base : scoped;
   const officialOverview = {
-    totalQa: base.total,
-    emTeste: base.emTeste,
-    aguardandoDeploy: base.aguardandoDeploy,
-    itensComRetorno: base.itensComRetorno,
-    totalRetornos: base.totalRetornos,
-    avioesTestados: base.avioesTestados,
-    filaAtual: base.filaAtual,
+    totalQa: activeKpiSource.total,
+    emTeste: activeKpiSource.emTeste,
+    aguardandoDeploy: activeKpiSource.aguardandoDeploy,
+    itensComRetorno: activeKpiSource.itensComRetorno,
+    totalRetornos: activeKpiSource.totalRetornos,
+    avioesTestados: activeKpiSource.avioesTestados,
+    filaAtual: activeKpiSource.filaAtual,
   };
 
   return (

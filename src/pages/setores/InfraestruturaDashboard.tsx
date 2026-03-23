@@ -44,7 +44,7 @@ export default function InfraestruturaDashboard() {
   const [kpiFilter, setKpiFilter] = useState<InfraKpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<InfraHealthFilter>('all');
   const [activeTab, setActiveTab] = useState('overview');
-  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
   const { items, allItems, total, pendentes, emAndamento, concluidos, melhorias, iso27001, sprintMigracoes, transbordo, backlog, dev, lastSync, isLoading, isError } = useInfraestruturaKpis(undefined, undefined, 'all');
@@ -64,6 +64,12 @@ export default function InfraestruturaDashboard() {
 
   useEffect(() => {
     if (sortedSprints.length === 0) return;
+    if (sprintFilter === '__pending__') {
+      const officialCurrentCode = getCurrentOfficialSprintCode();
+      const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+      setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+      return;
+    }
     if (sprintFilter === 'all') return;
     if (!sortedSprints.includes(sprintFilter)) {
       const officialCurrentCode = getCurrentOfficialSprintCode();

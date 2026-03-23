@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SectorLayout } from '@/components/setores/SectorLayout';
@@ -19,7 +19,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2, HeartPulse } from 'lucide-react';
+import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2, HeartPulse, AlertTriangle } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
@@ -53,10 +53,17 @@ const implColumns: DataTableColumn<CSKpiItem>[] = [
 
 export default function CustomerServiceDashboard() {
   const filters = useDashboardFilters('30d');
-  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const { devopsItems, allItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo, sprintFilter);
   const allDevopsItems = allItems.filter(i => i.source === 'devops_queue');
-  const { sortedSprints } = useSprintFilter(allDevopsItems.map(i => ({ iteration_path: i.iteration_path || null })));
+  const { sortedSprints, currentSprint } = useSprintFilter(allDevopsItems.map(i => ({ iteration_path: i.iteration_path || null })));
+
+  // Default to current sprint when sprints load
+  useEffect(() => {
+    if (sprintFilter === '__pending__' && currentSprint) {
+      setSprintFilter(currentSprint);
+    }
+  }, [currentSprint, sprintFilter]);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
@@ -284,9 +291,9 @@ export default function CustomerServiceDashboard() {
           <TabsContent value="saude" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={Layers} isLoading={pbiHealthBatch.isLoading} onClick={() => handleHealthClick('all')} active={healthFilter === 'all'} />
-              <DashboardKpiCard label="Verde" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleHealthClick('verde')} active={healthFilter === 'verde'} />
-              <DashboardKpiCard label="Amarelo" value={pbiHealthBatch.overview.amarelo} icon={Clock} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleHealthClick('amarelo')} active={healthFilter === 'amarelo'} />
-              <DashboardKpiCard label="Vermelho" value={pbiHealthBatch.overview.vermelho} icon={TrendingUp} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => handleHealthClick('vermelho')} active={healthFilter === 'vermelho'} />
+              <DashboardKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleHealthClick('verde')} active={healthFilter === 'verde'} />
+              <DashboardKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={Clock} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleHealthClick('amarelo')} active={healthFilter === 'amarelo'} />
+              <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => handleHealthClick('vermelho')} active={healthFilter === 'vermelho'} />
             </div>
 
             <Card className="p-4 space-y-2">
