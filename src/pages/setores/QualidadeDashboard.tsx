@@ -66,7 +66,7 @@ const columns: DataTableColumn<QualidadeItem>[] = [
 export default function QualidadeDashboard() {
   const [kpiFilter, setKpiFilter] = useState<QaKpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<QaHealthFilter>('all');
-  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
   // "base" = atemporal/macro, sem filtro de sprint — para os KPIs do topo
