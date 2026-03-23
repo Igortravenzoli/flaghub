@@ -246,7 +246,7 @@ export default function QualidadeDashboard() {
   };
 
   return (
-    <SectorLayout title="Qualidade" subtitle="Gestão à Vista — QA" lastUpdate="" integrations={integrations} areaKey="qualidade" syncFunctions={[{ name: 'devops-sync-qualidade', label: 'Sincronizar Fila Atual da Qualidade' }, { name: 'devops-sync-all', label: 'Sincronizar Base Geral DevOps' }]}>
+    <SectorLayout title="Qualidade" subtitle="Gestão à Vista — QA" lastUpdate="" integrations={integrations} areaKey="qualidade" syncFunctions={[{ name: 'devops-sync-qualidade', label: 'Sincronizar Fila Atual da Qualidade' }]}>
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>

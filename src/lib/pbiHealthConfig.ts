@@ -4,7 +4,7 @@ export const DEFAULT_HEALTH_THRESHOLDS: Record<
   PbiStageKey,
   { warn_days: number; critical_days: number }
 > = {
-  backlog: { warn_days: 14, critical_days: 30 },
+  backlog: { warn_days: 60, critical_days: 90 },
   design: { warn_days: 7, critical_days: 14 },
   fabrica: { warn_days: 14, critical_days: 21 },
   qualidade: { warn_days: 5, critical_days: 10 },
