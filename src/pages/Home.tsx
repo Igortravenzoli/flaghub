@@ -13,6 +13,7 @@ import { useQualidadeKpis } from '@/hooks/useQualidadeKpis';
 import { useCustomerServiceKpis } from '@/hooks/useCustomerServiceKpis';
 import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
+import { getCurrentOfficialSprintCode, extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
