@@ -4,7 +4,7 @@
 Last update: 2026-03-23
 
 ## Purpose
-Este arquivo e o plano de execucao de desenvolvimento para seguranca, performance e cleanup.
+Este arquivo e o plano de execucao de desenvolvimento para seguranca, desempenho e cleanup.
 Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lovable.
 
 ## Premises
@@ -12,6 +12,20 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 - Supabase URL e anon/publishable key sao publicos por design.
 - Plataforma deve suportar 12 acessos simultaneos com estabilidade em login/refresh/KPI load.
 - Kiosk usa conta dedicada read-only, sem privilegio administrativo.
+
+## Security Validation Snapshot (DEV)
+Status: in progress
+
+Eliminado em DEV:
+- Integration Credentials Exposure: select de hub_integrations restrito para admin em migration dedicada de DEV.
+- Cron Secret RPC Exposure: get_cron_secret com guard admin server-side.
+- Sync Functions Without Role Check: verificacao de role admin adicionada nas 6 funcoes de sync, mantendo fluxo cron por x-cron-secret.
+
+Pendente no codigo:
+- Trust boundary de manual upload ainda aberto: manual-upload-parse e manual-upload-publish usam service role apos validar apenas autenticacao.
+
+Pendente fora de codigo:
+- Configuracoes de plataforma Supabase e supply chain continuam no plano de hardening operacional.
 
 ## Execution Lanes
 
@@ -37,7 +51,7 @@ Objective:
 - Reduzir latencia de login/hydration e eliminar cascata de queries em KPIs.
 
 Scope:
-- Otimizar Auth hydration + prefetch controlado.
+- Otimizar Auth hydration e prefetch controlado.
 - Deduplicar queries base/scoped em dashboards.
 - Paralelizar chunking sequencial em cargas de KPI.
 - Reduzir invalidacoes globais e adotar refresh mais previsivel.
@@ -76,16 +90,16 @@ Status: in progress
 - Garantir rollout seguro com flags e reversao rapida.
 
 ### Milestone 1 - Security First
-Status: planned
+Status: in progress
 
-- Corrigir funcoes com trust boundary incorreto.
-- Fortalecer politica para conta kiosk read-only no backend.
+- Confirmar fechamento das 3 correcoes de DEV em todos os trees.
+- Corrigir trust boundary de manual upload.
 - Revisar headers de seguranca em deploy.
 
 ### Milestone 2 - Performance Core
 Status: planned
 
-- Priorizar otimacao de query path em Auth + KPIs.
+- Priorizar otimizacao de query path em Auth e KPIs.
 - Reduzir custo de refresh e rajadas desnecessarias no banco/views.
 - Validar capacidade para 12 sessoes concorrentes.
 
@@ -100,7 +114,7 @@ Status: planned
   Mitigation: diffs pequenos, flags e testes de regressao por fluxo critico.
 - Risk: drift entre raiz e flaghub/.
   Mitigation: alterar em ambos os trees ate consolidacao final.
-- Risk: otimizar performance sem medir.
+- Risk: otimizar desempenho sem medir.
   Mitigation: baseline antes/depois para cada mudanca relevante.
 
 ## Verification Gates
