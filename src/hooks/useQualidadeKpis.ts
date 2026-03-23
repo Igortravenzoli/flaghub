@@ -47,7 +47,7 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch retorno QA counts from devops_work_items custom_fields AND pbi_lifecycle_summary
+  // Fetch retorno QA counts from state_history (primary), pbi_lifecycle_summary, and custom_fields (fallbacks)
   const retornoQuery = useQuery({
     queryKey: ['qualidade', 'retornos'],
     queryFn: async () => {
@@ -60,7 +60,7 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
         const [{ data: wiData }, { data: lcData }] = await Promise.all([
           supabase
             .from('devops_work_items')
-            .select('id, custom_fields')
+            .select('id, custom_fields, state_history')
             .in('id', chunk),
           (supabase as any)
             .from('pbi_lifecycle_summary')
@@ -68,19 +68,33 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
             .in('work_item_id', chunk),
         ]);
         
-        // First populate from lifecycle summary (more reliable)
+        // First populate from lifecycle summary
         for (const row of (lcData || [])) {
           if (row.qa_return_count > 0) {
             retornoMap.set(row.work_item_id, row.qa_return_count);
           }
         }
         
-        // Then override with custom_fields if present (higher priority)
+        // Then compute from state_history (highest priority)
         for (const item of (wiData || [])) {
-          const cf = item.custom_fields as Record<string, any> | null;
-          const retornoCount = cf?.qa_return_count ?? cf?.qa_retorno_count;
-          if (retornoCount != null && Number(retornoCount) > 0) {
-            retornoMap.set(item.id, Math.max(Number(retornoCount), retornoMap.get(item.id) || 0));
+          const stateHistory = (item as any).state_history as Array<{ oldValue: string | null; newValue: string }> | null;
+          if (stateHistory && stateHistory.length > 0) {
+            // Count entries into "Em Teste" after the first one
+            let emTesteEntries = 0;
+            for (const change of stateHistory) {
+              if (change.newValue === 'Em Teste') emTesteEntries++;
+            }
+            const qaReturns = Math.max(0, emTesteEntries - 1);
+            if (qaReturns > 0) {
+              retornoMap.set(item.id, qaReturns);
+            }
+          } else {
+            // Fallback to custom_fields
+            const cf = item.custom_fields as Record<string, any> | null;
+            const retornoCount = cf?.qa_return_count ?? cf?.qa_retorno_count;
+            if (retornoCount != null && Number(retornoCount) > 0) {
+              retornoMap.set(item.id, Math.max(Number(retornoCount), retornoMap.get(item.id) || 0));
+            }
           }
         }
       }
