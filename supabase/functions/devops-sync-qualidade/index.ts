@@ -85,6 +85,43 @@ async function devopsFetch(path: string): Promise<Response> {
   })
 }
 
+function extractStateChanges(updates: any[]): Array<{ oldValue: string | null; newValue: string; revisedDate: string; revisedBy: string | null }> {
+  const changes: Array<{ oldValue: string | null; newValue: string; revisedDate: string; revisedBy: string | null }> = []
+  for (const update of updates) {
+    const stateField = update.fields?.['System.State']
+    if (!stateField) continue
+    const revisedDate = update.fields?.['System.ChangedDate']?.newValue
+      || update.fields?.['System.ChangedDate']?.oldValue
+      || update.revisedDate
+    const changedBy = update.revisedBy?.displayName || null
+    if (stateField.newValue) {
+      changes.push({
+        oldValue: stateField.oldValue || null,
+        newValue: stateField.newValue,
+        revisedDate,
+        revisedBy: changedBy,
+      })
+    }
+  }
+  return changes
+}
+
+function extractIterationChanges(updates: any[]): Array<{ oldValue: string; newValue: string; revisedDate: string }> {
+  const changes: Array<{ oldValue: string; newValue: string; revisedDate: string }> = []
+  for (const update of updates) {
+    const iterField = update.fields?.['System.IterationPath']
+    if (!iterField || !iterField.newValue) continue
+    if (iterField.oldValue && iterField.oldValue !== iterField.newValue) {
+      changes.push({
+        oldValue: iterField.oldValue,
+        newValue: iterField.newValue,
+        revisedDate: update.revisedDate,
+      })
+    }
+  }
+  return changes
+}
+
 async function processQualityDerived(admin: any, queryId: string) {
   const { data: queueRows, error: queueErr } = await admin
     .from('devops_query_items_current')
@@ -101,11 +138,12 @@ async function processQualityDerived(admin: any, queryId: string) {
 
   const workItemIds = relevant.map((item: any) => item.id as number)
   if (workItemIds.length === 0) {
-    return { currentQueue: 0, retornoProcessed: 0, retornoHits: 0, avioesQa: 0 }
+    return { currentQueue: 0, retornoProcessed: 0, retornoHits: 0, avioesQa: 0, stateHistoryProcessed: 0 }
   }
 
   let retornoProcessed = 0
   let retornoHits = 0
+  let stateHistoryProcessed = 0
 
   for (let i = 0; i < workItemIds.length; i += 10) {
     const batch = workItemIds.slice(i, i + 10)
@@ -113,12 +151,15 @@ async function processQualityDerived(admin: any, queryId: string) {
       batch.map(async (wiId: number) => {
         try {
           const resp = await devopsFetch(`Flag.Planejamento/_apis/wit/workitems/${wiId}/updates?api-version=7.1`)
-          if (!resp.ok) return { id: wiId, retornos: 0, details: [] }
+          if (!resp.ok) return { id: wiId, retornos: 0, details: [], stateChanges: [], iterChanges: [] }
           const data = await resp.json()
-          const { retornos, retornoDetails } = countRetornos(data.value || [])
-          return { id: wiId, retornos, details: retornoDetails }
+          const updates = data.value || []
+          const { retornos, retornoDetails } = countRetornos(updates)
+          const stateChanges = extractStateChanges(updates)
+          const iterChanges = extractIterationChanges(updates)
+          return { id: wiId, retornos, details: retornoDetails, stateChanges, iterChanges }
         } catch {
-          return { id: wiId, retornos: 0, details: [] }
+          return { id: wiId, retornos: 0, details: [], stateChanges: [], iterChanges: [] }
         }
       })
     )
@@ -131,9 +172,21 @@ async function processQualityDerived(admin: any, queryId: string) {
       customFields['qa_retorno_details'] = result.details
       customFields['qa_retorno_synced_at'] = nowIso
 
+      const updatePayload: Record<string, any> = { custom_fields: customFields }
+
+      // Persist state_history and iteration_history for full lifecycle timeline
+      if (result.stateChanges.length > 0) {
+        updatePayload.state_history = result.stateChanges
+        stateHistoryProcessed++
+      }
+      if (result.iterChanges.length > 0) {
+        updatePayload.iteration_history = result.iterChanges
+        updatePayload.iteration_history_synced_at = nowIso
+      }
+
       await admin
         .from('devops_work_items')
-        .update({ custom_fields: customFields })
+        .update(updatePayload)
         .eq('id', result.id)
 
       retornoProcessed++
@@ -148,6 +201,7 @@ async function processQualityDerived(admin: any, queryId: string) {
     retornoProcessed,
     retornoHits,
     avioesQa,
+    stateHistoryProcessed,
   }
 }
 
