@@ -821,9 +821,17 @@ export default function FabricaDashboard() {
                           outerRadius={80}
                           paddingAngle={3}
                           dataKey="value"
+                          cursor="pointer"
+                          onClick={(_, idx) => toggleTypeFilter(typeDistribution[idx].name)}
                         >
-                          {typeDistribution.map((_, idx) => (
-                            <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                          {typeDistribution.map((entry, idx) => (
+                            <Cell
+                              key={idx}
+                              fill={getTypeColor(entry.name, idx)}
+                              opacity={typeFilter && typeFilter !== entry.name ? 0.3 : 1}
+                              stroke={typeFilter === entry.name ? 'hsl(var(--foreground))' : 'transparent'}
+                              strokeWidth={typeFilter === entry.name ? 2 : 0}
+                            />
                           ))}
                         </Pie>
                         <RechartsTooltip
@@ -833,8 +841,12 @@ export default function FabricaDashboard() {
                     </ResponsiveContainer>
                     <div className="flex flex-wrap gap-2 justify-center mt-2">
                       {typeDistribution.map((t, idx) => (
-                        <div key={t.name} className="flex items-center gap-1.5 text-xs">
-                          <div className="h-2.5 w-2.5 rounded-sm" style={{ background: CHART_COLORS[idx % CHART_COLORS.length] }} />
+                        <div
+                          key={t.name}
+                          className={`flex items-center gap-1.5 text-xs cursor-pointer rounded-md px-2 py-1 transition-all ${typeFilter === t.name ? 'ring-2 ring-primary bg-muted' : 'hover:bg-muted/50'}`}
+                          onClick={() => toggleTypeFilter(t.name)}
+                        >
+                          <div className="h-2.5 w-2.5 rounded-sm" style={{ background: getTypeColor(t.name, idx) }} />
                           {t.name === 'PBI' ? <Package className="h-3 w-3 text-muted-foreground" /> : t.name === 'Task' ? <ListTodo className="h-3 w-3 text-muted-foreground" /> : t.name === 'Bug' ? <Bug className="h-3 w-3 text-muted-foreground" /> : null}
                           <span className="text-muted-foreground">{t.name}: {t.value}</span>
                         </div>
