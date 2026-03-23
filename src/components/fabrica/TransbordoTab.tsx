@@ -108,11 +108,6 @@ export function TransbordoTab({
   const criticalCount = items.filter(i => i.overflowCount >= 3).length;
   const avgOverflow = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.overflowCount, 0) / items.length * 10) / 10 : 0;
 
-  // Top 10 by recurrence
-  const top10 = useMemo(() =>
-    [...items].sort((a, b) => b.overflowCount - a.overflowCount).slice(0, 10),
-    [items]
-  );
 
   // Transbordos por Sprint (replaces frequency distribution)
   const bySprint = useMemo(() => {
