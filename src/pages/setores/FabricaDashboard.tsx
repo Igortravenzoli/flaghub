@@ -230,6 +230,7 @@ export default function FabricaDashboard() {
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
