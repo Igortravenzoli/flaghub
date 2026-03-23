@@ -391,19 +391,26 @@ export default function FabricaDashboard() {
   }, [operational.items]);
 
   const filteredFabItems = useMemo(() => {
+    let items = sprintFilteredItems;
     switch (fabKpiFilter) {
-      case 'in_progress': return sprintFilteredItems.filter(i => isFabricaInProgress(i.state));
-      case 'todo': return sprintFilteredItems.filter(i => isFabricaTodo(i.state));
-      case 'done': return sprintFilteredItems.filter(i => isDone(i.state));
-      case 'aguardando_teste': return sprintFilteredItems.filter(i => i.state === 'Aguardando Teste');
-      case 'aviao': return sprintFilteredItems.filter(i => {
+      case 'in_progress': items = items.filter(i => isFabricaInProgress(i.state)); break;
+      case 'todo': items = items.filter(i => isFabricaTodo(i.state)); break;
+      case 'done': items = items.filter(i => isDone(i.state)); break;
+      case 'aguardando_teste': items = items.filter(i => i.state === 'Aguardando Teste'); break;
+      case 'aviao': items = items.filter(i => {
         if (!i.id) return false;
         const tags = fab.tagsByWorkItemId[i.id] || '';
         return AVIAO_REGEX.test(tags);
-      });
-      default: return sprintFilteredItems;
+      }); break;
     }
-  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId]);
+    if (typeFilter) {
+      items = items.filter(i => {
+        const t = typeLabels[i.work_item_type || ''] || i.work_item_type || 'Outro';
+        return t === typeFilter;
+      });
+    }
+    return items;
+  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, typeFilter]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
