@@ -56,7 +56,14 @@ export default function CustomerServiceDashboard() {
   const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const { devopsItems, allItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo, sprintFilter);
   const allDevopsItems = allItems.filter(i => i.source === 'devops_queue');
-  const { sortedSprints } = useSprintFilter(allDevopsItems.map(i => ({ iteration_path: i.iteration_path || null })));
+  const { sortedSprints, currentSprint } = useSprintFilter(allDevopsItems.map(i => ({ iteration_path: i.iteration_path || null })));
+
+  // Default to current sprint when sprints load
+  useEffect(() => {
+    if (sprintFilter === '__pending__' && currentSprint) {
+      setSprintFilter(currentSprint);
+    }
+  }, [currentSprint, sprintFilter]);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
