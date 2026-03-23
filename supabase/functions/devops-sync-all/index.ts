@@ -697,6 +697,13 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
   return { processed, skippedTimeout }
 }
 
+interface StateChange {
+  oldValue: string | null
+  newValue: string
+  revisedDate: string
+  revisedBy: string | null
+}
+
 function extractIterationChanges(updates: any[]): IterationChange[] {
   const changes: IterationChange[] = []
   for (const update of updates) {
@@ -711,6 +718,40 @@ function extractIterationChanges(updates: any[]): IterationChange[] {
     }
   }
   return changes
+}
+
+function extractStateChanges(updates: any[]): StateChange[] {
+  const changes: StateChange[] = []
+  for (const update of updates) {
+    const stateField = update.fields?.['System.State']
+    if (!stateField) continue
+    // First revision has only newValue (creation)
+    const revisedDate = update.fields?.['System.ChangedDate']?.newValue
+      || update.fields?.['System.ChangedDate']?.oldValue
+      || update.revisedDate
+    const changedBy = update.revisedBy?.displayName || null
+    if (stateField.newValue) {
+      changes.push({
+        oldValue: stateField.oldValue || null,
+        newValue: stateField.newValue,
+        revisedDate: revisedDate,
+        revisedBy: changedBy,
+      })
+    }
+  }
+  return changes
+}
+
+function countQaReturns(stateChanges: StateChange[]): number {
+  // Count times the task entered "Em Teste" AFTER the first entry
+  let emTesteEntries = 0
+  for (const change of stateChanges) {
+    if (change.newValue === 'Em Teste') {
+      emTesteEntries++
+    }
+  }
+  // First entry is normal flow, subsequent ones are QA returns
+  return Math.max(0, emTesteEntries - 1)
 }
 
 async function processIterationHistory(admin: any): Promise<{ processed: number; withChanges: number }> {
@@ -735,7 +776,7 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
     return { processed: 0, withChanges: 0 }
   }
 
-  console.log(`[IterHistory] Processing ${workItemIds.length} PBIs for iteration changes`)
+  console.log(`[IterHistory] Processing ${workItemIds.length} PBIs for iteration + state changes`)
   let processed = 0
   let withChanges = 0
 
@@ -747,36 +788,42 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
           const resp = await devopsFetch(
             `${DEVOPS_PROJECT}/_apis/wit/workitems/${wiId}/updates?api-version=7.1`
           )
-          if (!resp.ok) return { id: wiId, changes: [] }
+          if (!resp.ok) return { id: wiId, iterChanges: [], stateChanges: [] }
           const data = await resp.json()
-          const changes = extractIterationChanges(data.value || [])
-          return { id: wiId, changes }
+          const updates = data.value || []
+          const iterChanges = extractIterationChanges(updates)
+          const stateChanges = extractStateChanges(updates)
+          return { id: wiId, iterChanges, stateChanges }
         } catch {
-          return { id: wiId, changes: [] }
+          return { id: wiId, iterChanges: [], stateChanges: [] }
         }
       })
     )
 
     const nowIso = new Date().toISOString()
     for (const result of batchResults) {
-      if (result.changes.length > 0) {
-        await admin
-          .from('devops_work_items')
-          .update({
-            iteration_history: result.changes,
-            iteration_history_synced_at: nowIso,
-          })
-          .eq('id', result.id)
+      const updatePayload: Record<string, any> = {
+        iteration_history_synced_at: nowIso,
+      }
+
+      if (result.iterChanges.length > 0) {
+        updatePayload.iteration_history = result.iterChanges
         withChanges++
       } else {
-        await admin
-          .from('devops_work_items')
-          .update({
-            iteration_history: null,
-            iteration_history_synced_at: nowIso,
-          })
-          .eq('id', result.id)
+        updatePayload.iteration_history = null
       }
+
+      if (result.stateChanges.length > 0) {
+        updatePayload.state_history = result.stateChanges
+      } else {
+        updatePayload.state_history = null
+      }
+
+      await admin
+        .from('devops_work_items')
+        .update(updatePayload)
+        .eq('id', result.id)
+
       processed++
     }
 
