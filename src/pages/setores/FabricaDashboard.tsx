@@ -246,6 +246,12 @@ export default function FabricaDashboard() {
 
   useEffect(() => {
     if (fab.sortedSprints.length === 0) return;
+    if (sprintFilter === '__pending__') {
+      const officialCurrentCode = getCurrentOfficialSprintCode();
+      const currentSprintPath = fab.sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+      setSprintFilter(currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]);
+      return;
+    }
     if (sprintFilter === 'all') return;
     if (!fab.sortedSprints.includes(sprintFilter)) {
       const officialCurrentCode = getCurrentOfficialSprintCode();

@@ -64,6 +64,12 @@ export default function InfraestruturaDashboard() {
 
   useEffect(() => {
     if (sortedSprints.length === 0) return;
+    if (sprintFilter === '__pending__') {
+      const officialCurrentCode = getCurrentOfficialSprintCode();
+      const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+      setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+      return;
+    }
     if (sprintFilter === 'all') return;
     if (!sortedSprints.includes(sprintFilter)) {
       const officialCurrentCode = getCurrentOfficialSprintCode();

@@ -233,15 +233,16 @@ export default function QualidadeDashboard() {
     { label: 'Alterado em', value: drawerItem.changed_date ? new Date(drawerItem.changed_date).toLocaleString('pt-BR') : '—' },
   ] : [];
 
-  // KPIs macro atemporais (de base, sem filtro de sprint)
+  // KPIs: when sprint is selected, show scoped data; when 'all', show base (atemporal)
+  const activeKpiSource = sprintFilter === 'all' ? base : scoped;
   const officialOverview = {
-    totalQa: base.total,
-    emTeste: base.emTeste,
-    aguardandoDeploy: base.aguardandoDeploy,
-    itensComRetorno: base.itensComRetorno,
-    totalRetornos: base.totalRetornos,
-    avioesTestados: base.avioesTestados,
-    filaAtual: base.filaAtual,
+    totalQa: activeKpiSource.total,
+    emTeste: activeKpiSource.emTeste,
+    aguardandoDeploy: activeKpiSource.aguardandoDeploy,
+    itensComRetorno: activeKpiSource.itensComRetorno,
+    totalRetornos: activeKpiSource.totalRetornos,
+    avioesTestados: activeKpiSource.avioesTestados,
+    filaAtual: activeKpiSource.filaAtual,
   };
 
   return (
