@@ -590,12 +590,12 @@ export default function HelpdeskDashboard() {
                       <CardContent>
                         <ScrollArea className="h-80">
                           <div className="space-y-2">
-                            {registrosPorCliente
+                             {registrosPorCliente
                               .slice()
                               .sort((a, b) => b.quantidade - a.quantidade)
-                              .map((s, i) => {
-                                const maxQtd = registrosPorCliente[0]?.quantidade || 1;
-                                const pct = Math.round((s.quantidade / maxQtd) * 100);
+                              .map((s, i, sortedArr) => {
+                                const maxQtd = sortedArr[0]?.quantidade || 1;
+                                const pct = Math.max(4, Math.round((s.quantidade / maxQtd) * 100));
                                 return (
                                   <div key={s.nome} className="flex items-center gap-3">
                                     <span className="text-xs text-muted-foreground w-5 text-right font-mono">{i + 1}</span>

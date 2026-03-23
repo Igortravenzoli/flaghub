@@ -47,7 +47,7 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch retorno QA counts from devops_work_items custom_fields
+  // Fetch retorno QA counts from devops_work_items custom_fields AND pbi_lifecycle_summary
   const retornoQuery = useQuery({
     queryKey: ['qualidade', 'retornos'],
     queryFn: async () => {
@@ -57,16 +57,30 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
       const retornoMap = new Map<number, number>();
       for (let i = 0; i < qaIds.length; i += 1000) {
         const chunk = qaIds.slice(i, i + 1000);
-        const { data } = await supabase
-          .from('devops_work_items')
-          .select('id, custom_fields')
-          .in('id', chunk);
+        const [{ data: wiData }, { data: lcData }] = await Promise.all([
+          supabase
+            .from('devops_work_items')
+            .select('id, custom_fields')
+            .in('id', chunk),
+          (supabase as any)
+            .from('pbi_lifecycle_summary')
+            .select('work_item_id, qa_return_count')
+            .in('work_item_id', chunk),
+        ]);
         
-        for (const item of (data || [])) {
+        // First populate from lifecycle summary (more reliable)
+        for (const row of (lcData || [])) {
+          if (row.qa_return_count > 0) {
+            retornoMap.set(row.work_item_id, row.qa_return_count);
+          }
+        }
+        
+        // Then override with custom_fields if present (higher priority)
+        for (const item of (wiData || [])) {
           const cf = item.custom_fields as Record<string, any> | null;
           const retornoCount = cf?.qa_return_count ?? cf?.qa_retorno_count;
-          if (retornoCount != null) {
-            retornoMap.set(item.id, Number(retornoCount) || 0);
+          if (retornoCount != null && Number(retornoCount) > 0) {
+            retornoMap.set(item.id, Math.max(Number(retornoCount), retornoMap.get(item.id) || 0));
           }
         }
       }
