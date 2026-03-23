@@ -6,7 +6,8 @@ export type PbiStageKey =
   | 'fabrica'
   | 'qualidade'
   | 'deploy'
-  | 'done';
+  | 'done'
+  | 'sprint_change';
 
 export interface PbiStageEvent {
   id: number;

@@ -2,78 +2,120 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { PbiHealthSummary, PbiLifecycleSummary, PbiStageEvent } from '@/types/pbi';
 
-const STAGE_DAYS_FIELDS = [
-  { key: 'backlog', field: 'backlog_days' },
-  { key: 'design', field: 'design_days' },
-  { key: 'fabrica', field: 'fabrica_days' },
-  { key: 'qualidade', field: 'qualidade_days' },
-  { key: 'deploy', field: 'deploy_days' },
-] as const;
+interface IterationChange {
+  oldValue: string;
+  newValue: string;
+  revisedDate: string;
+}
 
-function buildSyntheticTimeline(lifecycle: PbiLifecycleSummary | null, workItemId: number | null): PbiStageEvent[] {
-  if (!lifecycle || !workItemId) return [];
+interface WorkItemBasic {
+  id: number;
+  created_date: string | null;
+  iteration_history: IterationChange[] | null;
+  iteration_path: string | null;
+  state: string | null;
+  assigned_to_display: string | null;
+}
 
-  const computedAt = lifecycle.computed_at ? new Date(lifecycle.computed_at) : new Date();
-  if (Number.isNaN(computedAt.getTime())) return [];
+function extractSprintLabel(iterationPath: string): string {
+  const parts = iterationPath.split('\\');
+  return parts[parts.length - 1] || iterationPath;
+}
+
+function buildEnrichedTimeline(
+  workItem: WorkItemBasic | null,
+  lifecycle: PbiLifecycleSummary | null,
+  workItemId: number | null,
+): PbiStageEvent[] {
+  if (!workItemId) return [];
 
   const events: PbiStageEvent[] = [];
-  let cursor = new Date(computedAt);
   let syntheticId = -1;
 
-  for (let i = STAGE_DAYS_FIELDS.length - 1; i >= 0; i -= 1) {
-    const stage = STAGE_DAYS_FIELDS[i];
-    const daysRaw = Number(lifecycle[stage.field] ?? 0);
-    if (daysRaw <= 0) continue;
+  const createdDate = workItem?.created_date
+    ? new Date(workItem.created_date)
+    : lifecycle?.computed_at
+      ? new Date(lifecycle.computed_at)
+      : null;
 
-    const stageDays = Number(daysRaw.toFixed(2));
-    const durationMs = Math.round(stageDays * 24 * 60 * 60 * 1000);
-    const enteredAt = new Date(cursor.getTime() - durationMs);
-    const isCurrentStage = lifecycle.current_stage === stage.key;
+  if (!createdDate || Number.isNaN(createdDate.getTime())) return [];
 
-    events.unshift({
-      id: syntheticId,
-      work_item_id: workItemId,
-      sector: lifecycle.sector,
-      stage_key: stage.key,
-      entered_at: enteredAt.toISOString(),
-      exited_at: isCurrentStage ? null : cursor.toISOString(),
-      duration: stageDays,
-      duration_days: stageDays,
-      state_at_entry: null,
-      state_at_exit: isCurrentStage ? null : stage.key,
-      lead_area: lifecycle.sector,
-      sprint_path: null,
-      sprint_code: lifecycle.last_committed_sprint || lifecycle.first_committed_sprint,
-      responsible_email: lifecycle.lead_owner_at_commitment,
-      inference_method: 'fallback',
-      is_overflow: lifecycle.overflow_count > 0,
-    });
+  // 1. Creation event
+  const iterHistory = workItem?.iteration_history;
+  const firstSprint = iterHistory && iterHistory.length > 0
+    ? extractSprintLabel(iterHistory[0].oldValue)
+    : lifecycle?.first_committed_sprint || extractSprintLabel(workItem?.iteration_path || '');
 
-    cursor = enteredAt;
-    syntheticId -= 1;
-  }
+  const firstTransitionDate = iterHistory && iterHistory.length > 0
+    ? new Date(iterHistory[0].revisedDate)
+    : null;
 
-  if (events.length > 0) return events;
+  const creationExitedAt = firstTransitionDate && firstTransitionDate.getTime() < 253370764800000 // < year 9999
+    ? firstTransitionDate
+    : null;
 
-  // Minimum fallback to keep timeline useful even with partial lifecycle data.
-  return [{
-    id: -999,
+  const creationDays = creationExitedAt
+    ? Math.max(0, Math.round((creationExitedAt.getTime() - createdDate.getTime()) / (24 * 60 * 60 * 1000)))
+    : Math.max(0, Math.round((Date.now() - createdDate.getTime()) / (24 * 60 * 60 * 1000)));
+
+  events.push({
+    id: syntheticId--,
     work_item_id: workItemId,
-    sector: lifecycle.sector,
-    stage_key: lifecycle.current_stage || 'backlog',
-    entered_at: lifecycle.computed_at,
-    exited_at: null,
-    duration: null,
-    duration_days: null,
+    sector: lifecycle?.sector || null,
+    stage_key: 'backlog',
+    entered_at: createdDate.toISOString(),
+    exited_at: creationExitedAt ? creationExitedAt.toISOString() : null,
+    duration: creationDays,
+    duration_days: creationDays,
     state_at_entry: null,
     state_at_exit: null,
-    lead_area: lifecycle.sector,
+    lead_area: lifecycle?.sector || null,
     sprint_path: null,
-    sprint_code: lifecycle.last_committed_sprint || lifecycle.first_committed_sprint,
-    responsible_email: lifecycle.lead_owner_at_commitment,
+    sprint_code: firstSprint,
+    responsible_email: workItem?.assigned_to_display || lifecycle?.lead_owner_at_commitment || null,
     inference_method: 'fallback',
-    is_overflow: lifecycle.overflow_count > 0,
-  }];
+    is_overflow: false,
+  });
+
+  // 2. Sprint migration events from iteration_history
+  if (iterHistory && iterHistory.length > 0) {
+    for (let i = 0; i < iterHistory.length; i++) {
+      const change = iterHistory[i];
+      const revisedDate = new Date(change.revisedDate);
+      // Skip sentinel dates (9999-01-01)
+      if (revisedDate.getTime() > 253370764800000) continue;
+
+      const nextChange = iterHistory[i + 1];
+      const nextDate = nextChange ? new Date(nextChange.revisedDate) : null;
+      const exitedAt = nextDate && nextDate.getTime() < 253370764800000 ? nextDate : null;
+
+      const newSprint = extractSprintLabel(change.newValue);
+      const durationDays = exitedAt
+        ? Math.max(0, Math.round((exitedAt.getTime() - revisedDate.getTime()) / (24 * 60 * 60 * 1000)))
+        : Math.max(0, Math.round((Date.now() - revisedDate.getTime()) / (24 * 60 * 60 * 1000)));
+
+      events.push({
+        id: syntheticId--,
+        work_item_id: workItemId,
+        sector: lifecycle?.sector || null,
+        stage_key: 'sprint_change',
+        entered_at: revisedDate.toISOString(),
+        exited_at: exitedAt ? exitedAt.toISOString() : null,
+        duration: durationDays,
+        duration_days: durationDays,
+        state_at_entry: extractSprintLabel(change.oldValue),
+        state_at_exit: newSprint,
+        lead_area: lifecycle?.sector || null,
+        sprint_path: change.newValue,
+        sprint_code: newSprint,
+        responsible_email: workItem?.assigned_to_display || lifecycle?.lead_owner_at_commitment || null,
+        inference_method: 'fallback',
+        is_overflow: true,
+      });
+    }
+  }
+
+  return events;
 }
 
 export function usePbiLifecycle(workItemId: number | null) {
@@ -125,20 +167,44 @@ export function usePbiLifecycle(workItemId: number | null) {
     staleTime: 60 * 1000,
   });
 
+  const workItemQuery = useQuery({
+    queryKey: ['pbi', 'work-item-base', workItemId],
+    enabled: !!workItemId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('devops_work_items')
+        .select('id, created_date, iteration_history, iteration_path, state, assigned_to_display')
+        .eq('id', workItemId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return (data || null) as WorkItemBasic | null;
+    },
+    staleTime: 60 * 1000,
+  });
+
+  const stageEvents = (eventsQuery.data && eventsQuery.data.length > 0)
+    ? eventsQuery.data
+    : buildEnrichedTimeline(
+        workItemQuery.data || null,
+        lifecycleQuery.data || null,
+        workItemId,
+      );
+
   return {
     lifecycle: lifecycleQuery.data || null,
     health: healthQuery.data || null,
-    stageEvents: (eventsQuery.data && eventsQuery.data.length > 0)
-      ? eventsQuery.data
-      : buildSyntheticTimeline(lifecycleQuery.data || null, workItemId),
-    isLoading: lifecycleQuery.isLoading || healthQuery.isLoading || eventsQuery.isLoading,
-    isError: lifecycleQuery.isError || healthQuery.isError || eventsQuery.isError,
-    error: lifecycleQuery.error || healthQuery.error || eventsQuery.error,
+    stageEvents,
+    workItem: workItemQuery.data || null,
+    isLoading: lifecycleQuery.isLoading || healthQuery.isLoading || eventsQuery.isLoading || workItemQuery.isLoading,
+    isError: lifecycleQuery.isError || healthQuery.isError || eventsQuery.isError || workItemQuery.isError,
+    error: lifecycleQuery.error || healthQuery.error || eventsQuery.error || workItemQuery.error,
     refetch: async () => {
       await Promise.all([
         lifecycleQuery.refetch(),
         healthQuery.refetch(),
         eventsQuery.refetch(),
+        workItemQuery.refetch(),
       ]);
     },
   };

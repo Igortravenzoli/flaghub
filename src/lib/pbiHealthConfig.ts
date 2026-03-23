@@ -10,6 +10,7 @@ export const DEFAULT_HEALTH_THRESHOLDS: Record<
   qualidade: { warn_days: 5, critical_days: 10 },
   deploy: { warn_days: 3, critical_days: 7 },
   done: { warn_days: 0, critical_days: 0 },
+  sprint_change: { warn_days: 0, critical_days: 0 },
 };
 
 function getCurrentStageDays(lifecycle: PbiLifecycleSummary): number {
