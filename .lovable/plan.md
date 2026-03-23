@@ -1,93 +1,124 @@
 
-# FlagHub Evolution — Living Plan (VS Code + Lovable)
+# FlagHub Evolution - Dev Level Plan (VS Code + Lovable)
 
-Last update: 2026-03-16
+Last update: 2026-03-23
 
 ## Purpose
-Este arquivo e a referencia de roadmap para times que alternam entre VS Code e Lovable.
-Quando houver divergencia, este arquivo deve refletir o estado real implementado.
+Este arquivo e o plano de execucao de desenvolvimento para seguranca, performance e cleanup.
+Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lovable.
 
-## Current Delivery Status
+## Premises
+- Backend nunca confia no frontend para autenticacao, autorizacao ou escopo de dados.
+- Supabase URL e anon/publishable key sao publicos por design.
+- Plataforma deve suportar 12 acessos simultaneos com estabilidade em login/refresh/KPI load.
+- Kiosk usa conta dedicada read-only, sem privilegio administrativo.
 
-### Phase 1 — Contencao de custo/performance (Backend)
-Status: done
+## Execution Lanes
 
-- Retencao automatica implementada para snapshots/raw ingestions
-- `devops-sync-all` com processamento incremental para iteration history e QA retorno
-- `devops-sync-query` com snapshot incremental (upsert + cleanup)
+### Lane A - Security Refactors (Priority P0)
+Objective:
+- Corrigir trust boundary e fechar vetores de abuso em funcoes/rotas sensiveis.
 
-### Phase 2 — Separacao KPI Oficial x Visao Operacional
-Status: done
+Scope:
+- Padronizar validacao server-side em Edge Functions que usam service role.
+- Aplicar padrao de validacao privilegiada (jwt valido + role/escopo no backend).
+- Restringir CORS para origens permitidas.
+- Reduzir exposicao de logs sensiveis e tokens proprios.
 
-- Comercial: abas separadas (KPI Oficial / Visao Operacional)
-- Fabrica: abas operacionais (Backlog para Priorizar e Fila UX-UI)
-- Hook comum para filas operacionais (`useDevopsOperationalQueue`)
+Current status: in progress
 
-### Phase 3 — Sprint como filtro primario
-Status: done
+Definition of done:
+- Nenhuma acao administrativa e executada com base apenas em validacao de frontend.
+- Chamadas diretas sem role adequada retornam 403.
+- CORS wildcard removido de funcoes criticas.
 
-- Sprint primario + data drill-down em Fabrica, Qualidade, Infraestrutura e customer_service
-- Hook centralizado de sprint (`useSprintFilter`)
+### Lane B - Performance Refactors (Priority P1)
+Objective:
+- Reduzir latencia de login/hydration e eliminar cascata de queries em KPIs.
 
-### Phase 4 — Saneamento de metricas
-Status: in progress (major items done)
+Scope:
+- Otimizar Auth hydration + prefetch controlado.
+- Deduplicar queries base/scoped em dashboards.
+- Paralelizar chunking sequencial em cargas de KPI.
+- Reduzir invalidacoes globais e adotar refresh mais previsivel.
+- Implementar lazy load em tabs nao ativas.
 
-Done now:
-- Regra anti-dupla-contagem Task/PBI via `count_in_kpi` em `vw_fabrica_kpis`
-- Harden de dedup de timelog com `ext_entry_id` + unique partial index
-- Tabela de normalizacao de colaborador (`devops_collaborator_map`)
-- Home otimizada para nao disparar carga pesada de `devops_time_logs` fora do dashboard de Fabrica
+Current status: planned
 
-Remaining:
-- Atualizar tipos gerados do Supabase para incluir novas tabelas/colunas
-- Popular `devops_collaborator_map` com aliases reais
-- Validar reconciliacao por sprint entre KPI oficial e operacao
+Definition of done:
+- Queda mensuravel no tempo de primeira renderizacao de KPI apos login.
+- Reducao de round-trips e de invalidacoes em cascata.
+- Comportamento funcional preservado nos setores.
 
-## Next Phases
+### Lane C - Legacy/Cleanup Refactors (Priority P1/P2)
+Objective:
+- Diminuir custo de manutencao e risco de regressao por codigo duplicado/obsoleto.
 
-### Phase 5 — Correcoes funcionais e consistencia visual
-- Finalizar ajustes de calculo/denominador nos KPIs remanescentes
-- Validar cenarios de periodo (dia/mes/ano/custom) por setor
+Scope:
+- Consolidar gradualmente duplicacoes entre raiz e flaghub/.
+- Isolar mock/demo por feature flag explicita.
+- Reduzir logs verbosos e remover caminhos deprecados.
 
-Status desta rodada (estabilizacao UX/filtros/performance): in progress
+Current status: planned
 
-Implementado nesta rodada:
-- Filtro padrao por setor:
-	- Comercial, Customer Service e Helpdesk com dropdown `Periodo` (7d/30d/90d/6m/1a/Todos/Custom)
-	- Fabrica, Infraestrutura e Qualidade com foco em `Sprint + Custom` (sem presets diarios como principal)
-- Transparencia do filtro com badge de intervalo real (de/ate) no `DashboardFilterBar`
-- Calendar custom com bloqueio de datas fora do range permitido (quando min/max informado)
-- Correcoes de UX da sprint list (nao colapsa para apenas sprint selecionada apos filtro)
-- KPI novo em Qualidade: `Avioes testados`
-- Estabilizacao de views Qualidade/Infra via migration para deduplicacao por work_item
-- Tooltips de formula/descricao em KPIs (camada transversal via `DashboardKpiCard`)
+Definition of done:
+- Menor area duplicada com sincronia controlada.
+- Nenhum fallback de demo ativo em producao sem flag.
+- Cleanup sem quebra de contrato funcional.
 
-Implementado na batida seguinte (prioridade solicitada):
-- Transbordo por sprint com regra historica coerente:
-	- sprint unica: mostra sprint selecionada + historico imediato (mesmo ano)
-	- todas as sprints: visao historica ampla
-- TimeLog com camada agregada no backend:
-	- RPC `rpc_devops_timelog_agg` para reduzir carga de leitura bruta em `devops_time_logs`
-	- consumo da Fabrica migrado para agregacao via RPC
-- Kiosk simplificado:
-	- `DashboardFilterBar` oculta controles interativos de periodo/refresh/export quando em modo kiosk
-	- mantem badge de intervalo para transparencia
-- Tooltips com metadata persistida:
-	- provider por setor lendo formulas/notas de `hub_metrics_registry` via view `vw_hub_metric_formulas`
-	- `DashboardKpiCard` prioriza metadata persistida e usa mapa estatico como fallback
+## Milestones
 
-### Phase 6 — Campos custom DevOps (Cliente/SistemaProduto)
-Status: postponed
+### Milestone 0 - Baseline and Safe Rollout
+Status: in progress
 
-- Entrar apenas com aprovacao funcional
+- Definir baseline de login, MFA, hydration e carga inicial de KPIs.
+- Definir metricas alvo e monitoracao minima por feature.
+- Garantir rollout seguro com flags e reversao rapida.
+
+### Milestone 1 - Security First
+Status: planned
+
+- Corrigir funcoes com trust boundary incorreto.
+- Fortalecer politica para conta kiosk read-only no backend.
+- Revisar headers de seguranca em deploy.
+
+### Milestone 2 - Performance Core
+Status: planned
+
+- Priorizar otimacao de query path em Auth + KPIs.
+- Reduzir custo de refresh e rajadas desnecessarias no banco/views.
+- Validar capacidade para 12 sessoes concorrentes.
+
+### Milestone 3 - Cleanup and Consolidation
+Status: planned
+
+- Limpeza de legado apos correcoes P0/P1.
+- Consolidacao estrutural sem misturar com hotfix critico.
+
+## Risks and Mitigations
+- Risk: regressao funcional por refatoracao extensa.
+  Mitigation: diffs pequenos, flags e testes de regressao por fluxo critico.
+- Risk: drift entre raiz e flaghub/.
+  Mitigation: alterar em ambos os trees ate consolidacao final.
+- Risk: otimizar performance sem medir.
+  Mitigation: baseline antes/depois para cada mudanca relevante.
+
+## Verification Gates
+1. Gate Security:
+   - Teste de chamada direta ao backend sem role correta deve falhar.
+2. Gate Performance:
+   - Medicao comparativa de login/hydration/first-kpi-load com 12 sessoes.
+3. Gate Functional:
+   - Rotas, MFA e dashboards sem regressao de comportamento.
+4. Gate Cleanup:
+   - Remocoes de legado sem quebrar fluxo produtivo.
 
 ## Synchronization Rule (VS Code + Lovable)
+Quando alterar arquitetura, authz, KPI load ou cleanup:
 
-Quando alterar arquitetura, filtros, ou formulas de KPI:
+1. Atualizar este arquivo na mesma PR/commit.
+2. Atualizar docs operacionais impactados em docs/.
+3. Registrar status por lane/milestone: done, in progress, planned, postponed.
 
-1. Atualizar este arquivo na mesma PR/commit
-2. Atualizar docs operacionais impactados em `docs/`
-3. Registrar fases alteradas com status: `done`, `in progress`, `postponed`
-
-Isso evita drift entre o que foi planejado no Lovable e o que foi implementado no VS Code.
+Isso evita drift entre o planejado e o implementado.
 
