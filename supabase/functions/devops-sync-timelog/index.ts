@@ -334,6 +334,28 @@ serve(async (req) => {
       })
     }
 
+    // Admin role check for non-cron callers
+    if (caller !== 'cron') {
+      const sb = getSupabaseAdmin()
+      const { data: roleRow } = await sb
+        .from('hub_user_global_roles')
+        .select('role')
+        .eq('user_id', caller)
+        .eq('role', 'admin')
+        .maybeSingle()
+      const { data: legacyRole } = !roleRow ? await sb
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', caller)
+        .eq('role', 'admin')
+        .maybeSingle() : { data: roleRow }
+      if (!roleRow && !legacyRole) {
+        return new Response(JSON.stringify({ error: 'Permissão negada: apenas admins podem executar sincronização' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
     const pat = Deno.env.get('DEVOPS_PAT')
     if (!pat) {
       return new Response(JSON.stringify({ error: 'DEVOPS_PAT not configured' }), {
