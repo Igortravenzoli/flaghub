@@ -13,6 +13,7 @@ import { useQualidadeKpis } from '@/hooks/useQualidadeKpis';
 import { useCustomerServiceKpis } from '@/hooks/useCustomerServiceKpis';
 import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
+import { getCurrentOfficialSprintCode, extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -43,12 +44,20 @@ export default function Home() {
   // Real data hooks
   const comercial = useComercialKpis();
   const helpdesk = useHelpdeskKpis();
-  const fabricaBase = useFabricaKpis(undefined, undefined, 'all', {
+
+  // Fábrica: use official current sprint
+  const fabricaAll = useFabricaKpis(undefined, undefined, 'all', {
     includeTimeLogs: false,
     includeWorkItemMeta: false,
   });
-  const fabricaSprint = fabricaBase.currentSprint || 'all';
-  const fabrica = useFabricaKpis(undefined, undefined, fabricaSprint, {
+  const fabricaOfficialSprint = (() => {
+    const officialCode = getCurrentOfficialSprintCode();
+    const found = fabricaAll.sortedSprints.find(sp =>
+      extractSprintCodeFromPath(sp) === officialCode
+    );
+    return found || fabricaAll.currentSprint || 'all';
+  })();
+  const fabrica = useFabricaKpis(undefined, undefined, fabricaOfficialSprint, {
     includeTimeLogs: false,
     includeWorkItemMeta: false,
   });
