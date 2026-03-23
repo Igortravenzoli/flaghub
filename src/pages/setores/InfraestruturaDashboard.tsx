@@ -44,7 +44,7 @@ export default function InfraestruturaDashboard() {
   const [kpiFilter, setKpiFilter] = useState<InfraKpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<InfraHealthFilter>('all');
   const [activeTab, setActiveTab] = useState('overview');
-  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
   const { items, allItems, total, pendentes, emAndamento, concluidos, melhorias, iso27001, sprintMigracoes, transbordo, backlog, dev, lastSync, isLoading, isError } = useInfraestruturaKpis(undefined, undefined, 'all');
