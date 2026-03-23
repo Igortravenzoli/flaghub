@@ -387,6 +387,7 @@ export type Database = {
           raw: Json
           rev: number
           state: string | null
+          state_history: Json | null
           synced_at: string
           tags: string | null
           team_project: string | null
@@ -415,6 +416,7 @@ export type Database = {
           raw?: Json
           rev?: number
           state?: string | null
+          state_history?: Json | null
           synced_at?: string
           tags?: string | null
           team_project?: string | null
@@ -443,6 +445,7 @@ export type Database = {
           raw?: Json
           rev?: number
           state?: string | null
+          state_history?: Json | null
           synced_at?: string
           tags?: string | null
           team_project?: string | null
