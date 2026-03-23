@@ -577,7 +577,11 @@ export default function FabricaDashboard() {
   };
 
   return (
-    <SectorLayout title="Fábrica" subtitle="Programação — Sprint Board" lastUpdate="" integrations={integrations} areaKey="fabrica" syncFunctions={[{ name: 'devops-sync-all', label: 'Sincronizar Work Items (DevOps)' }, { name: 'devops-sync-timelog', label: 'Sincronizar TimeLog (Horas)' }]}>
+    <SectorLayout title="Fábrica" subtitle="Programação — Sprint Board" lastUpdate="" integrations={integrations} areaKey="fabrica" syncFunctions={[
+      { name: 'devops-sync-query', label: 'Atualizar Itens Fábrica (Query 08)', payload: { query_id: '557a9643-5049-43a6-b199-e498f39e9e88' } },
+      { name: 'devops-sync-all', label: 'Sincronizar Base Geral DevOps (completo)' },
+      { name: 'devops-sync-timelog', label: 'Sincronizar TimeLog (Horas)' },
+    ]}>
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <DashboardLastSyncBadge syncedAt={fab.lastSync} status="ok" />
         <div className="flex items-center gap-2 flex-wrap">
