@@ -616,7 +616,23 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
       }
     }
 
-    const qaReturnCount = Number(customFields['qa_retorno_count'] || 0)
+    // Compute QA return count from state_history if available
+    let qaReturnCount = 0
+    try {
+      const { data: wiRow } = await admin
+        .from('devops_work_items')
+        .select('state_history')
+        .eq('id', item.id)
+        .maybeSingle()
+      const stateHistory = (wiRow?.state_history as StateChange[] | null) || []
+      if (stateHistory.length > 0) {
+        qaReturnCount = countQaReturns(stateHistory)
+      } else {
+        qaReturnCount = Number(customFields['qa_retorno_count'] || 0)
+      }
+    } catch {
+      qaReturnCount = Number(customFields['qa_retorno_count'] || 0)
+    }
     const nowIso = new Date().toISOString()
     const lastEvent = events.length > 0 ? events[events.length - 1] : null
     const currentStage = lastEvent?.stage_key || inferStage(state, assignedTo, iterationPath, stageConfig, leadRoleByEmail).stageKey
