@@ -53,7 +53,7 @@ const implColumns: DataTableColumn<CSKpiItem>[] = [
 
 export default function CustomerServiceDashboard() {
   const filters = useDashboardFilters('30d');
-  const [sprintFilter, setSprintFilter] = useState<string>('all');
+  const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const { devopsItems, allItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo, sprintFilter);
   const allDevopsItems = allItems.filter(i => i.source === 'devops_queue');
   const { sortedSprints } = useSprintFilter(allDevopsItems.map(i => ({ iteration_path: i.iteration_path || null })));
