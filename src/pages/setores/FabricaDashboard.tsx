@@ -269,6 +269,13 @@ export default function FabricaDashboard() {
     [fab.porColaborador]
   );
 
+  const TYPE_COLORS: Record<string, string> = {
+    'PBI': 'hsl(var(--primary))',
+    'Task': 'hsl(var(--info))',
+    'Bug': 'hsl(0, 72%, 51%)',
+    'Story': 'hsl(280, 65%, 60%)',
+  };
+
   const typeDistribution = useMemo(() => {
     const map: Record<string, number> = {};
     for (const item of fab.items) {
@@ -277,6 +284,14 @@ export default function FabricaDashboard() {
     }
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [fab.items]);
+
+  const getTypeColor = (typeName: string, idx: number) =>
+    TYPE_COLORS[typeName] || CHART_COLORS[idx % CHART_COLORS.length];
+
+  const toggleTypeFilter = (typeName: string) => {
+    setTypeFilter(prev => prev === typeName ? null : typeName);
+    setPage(0);
+  };
 
   const sprintFilteredItems = useMemo(() => {
     if (sprintFilter === 'all') return fab.items;
