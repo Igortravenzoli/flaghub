@@ -42,14 +42,24 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
   const lastSyncQuery = useQuery({
     queryKey: ['infraestrutura', 'last-sync'],
     queryFn: async () => {
+      // Try sector-specific query first
       const { data } = await supabase
         .from('devops_queries')
         .select('last_synced_at')
         .eq('sector', 'infraestrutura')
+        .order('last_synced_at', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      if (data?.last_synced_at) return data.last_synced_at;
+      // Fallback: use the base general query sync date
+      const { data: fallback } = await supabase
+        .from('devops_queries')
+        .select('last_synced_at')
+        .not('last_synced_at', 'is', null)
         .order('last_synced_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      return data?.last_synced_at || null;
+      return fallback?.last_synced_at || null;
     },
     staleTime: 60 * 1000,
   });
