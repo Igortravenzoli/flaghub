@@ -1,4 +1,3 @@
-
 # FlagHub Evolution - Dev Level Plan (VS Code + Lovable)
 
 Last update: 2026-03-23
@@ -94,6 +93,7 @@ Status: in progress
 
 - Confirmar fechamento das 3 correcoes de DEV em todos os trees.
 - Corrigir trust boundary de manual upload.
+- Fortalecer politica para conta kiosk read-only no backend.
 - Revisar headers de seguranca em deploy.
 
 ### Milestone 2 - Performance Core
@@ -135,4 +135,3 @@ Quando alterar arquitetura, authz, KPI load ou cleanup:
 3. Registrar status por lane/milestone: done, in progress, planned, postponed.
 
 Isso evita drift entre o planejado e o implementado.
-
