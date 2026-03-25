@@ -1,6 +1,6 @@
 # FlagHub Evolution - Dev Level Plan (VS Code + Lovable)
 
-Last update: 2026-03-23
+Last update: 2026-03-25
 
 ## Purpose
 Este arquivo e o plano de execucao de desenvolvimento para seguranca, desempenho e cleanup.
@@ -20,8 +20,11 @@ Eliminado em DEV:
 - Cron Secret RPC Exposure: get_cron_secret com guard admin server-side.
 - Sync Functions Without Role Check: verificacao de role admin adicionada nas 6 funcoes de sync, mantendo fluxo cron por x-cron-secret.
 
-Pendente no codigo:
-- Trust boundary de manual upload ainda aberto: manual-upload-parse e manual-upload-publish usam service role apos validar apenas autenticacao.
+Em andamento no codigo:
+- Trust boundary de manual upload fechado no tree principal e no tree espelhado, com rejeicao 403 sem role backend adequada.
+- CORS critico de manual upload saiu de wildcard e passou a depender de allowlist de origens.
+- Baseline inicial de auth/hydration foi instrumentado no frontend para comparacao antes/depois.
+- MFA para role elevada saiu do caminho critico de readiness e passou para verificacao adiada apos liberar a UI.
 
 Pendente fora de codigo:
 - Configuracoes de plataforma Supabase e supply chain continuam no plano de hardening operacional.
@@ -92,7 +95,7 @@ Status: in progress
 Status: in progress
 
 - Confirmar fechamento das 3 correcoes de DEV em todos os trees.
-- Corrigir trust boundary de manual upload.
+- Corrigir trust boundary de manual upload. Status: done nos trees ativos.
 - Fortalecer politica para conta kiosk read-only no backend.
 - Revisar headers de seguranca em deploy.
 

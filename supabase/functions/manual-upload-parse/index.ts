@@ -3,9 +3,28 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+const ALLOWED_UPLOAD_ROLES = new Set(['admin', 'gestao'])
+
+function resolveCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin')
+  const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') || '')
+    .split(',')
+    .map((value: string) => value.trim())
+    .filter(Boolean)
+
+  const allowOrigin = origin && allowedOrigins.includes(origin)
+    ? origin
+    : allowedOrigins[0] || 'null'
+
+  return {
+    ...corsHeaders,
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Vary': 'Origin',
+  }
 }
 
 function getSupabaseAdmin() {
@@ -25,6 +44,35 @@ async function validateAuth(req: Request): Promise<string | null> {
   )
   const { data: { user } } = await supabase.auth.getUser()
   return user?.id ?? null
+}
+
+async function validateAuthorizedUser(req: Request): Promise<{ userId: string; userRole: string | null } | null> {
+  const authHeader = req.headers.get('authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
+
+  const token = authHeader.replace('Bearer ', '')
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } }
+  )
+
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token)
+  if (claimsError || !claimsData?.claims?.sub) return null
+
+  const userId = claimsData.claims.sub as string
+  const { data: roleData, error: roleError } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .single()
+
+  if (roleError) {
+    console.error('[ManualUploadParse] Failed to load role:', roleError)
+    return { userId, userRole: null }
+  }
+
+  return { userId, userRole: roleData?.role ?? null }
 }
 
 /** Remove null bytes and problematic Unicode escape sequences from strings */
@@ -103,27 +151,37 @@ function validateRow(
   return { isValid: errors.length === 0, errors }
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
+  const responseHeaders = resolveCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: responseHeaders })
   }
 
   const admin = getSupabaseAdmin()
 
   try {
-    const userId = await validateAuth(req)
-    if (!userId) {
+    const authUser = await validateAuthorizedUser(req)
+    if (!authUser?.userId) {
       return new Response(JSON.stringify({ error: 'Autenticação obrigatória' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
     }
+
+    if (!authUser.userRole || !ALLOWED_UPLOAD_ROLES.has(authUser.userRole)) {
+      return new Response(JSON.stringify({ error: 'Acesso negado' }), {
+        status: 403, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const userId = authUser.userId
 
     const body = await req.json()
     const { upload_id, template_key, file_content, file_type } = body
 
     if (!template_key || !file_content) {
       return new Response(JSON.stringify({ error: 'template_key e file_content são obrigatórios' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -137,7 +195,7 @@ serve(async (req) => {
 
     if (tErr || !template) {
       return new Response(JSON.stringify({ error: `Template '${template_key}' não encontrado` }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 404, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -155,7 +213,7 @@ serve(async (req) => {
 
     if (rows.length === 0) {
       return new Response(JSON.stringify({ error: 'Nenhuma linha encontrada no arquivo' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -236,12 +294,12 @@ serve(async (req) => {
       valid_rows: validCount,
       invalid_rows: invalidCount,
       status,
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }), { headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
 
   } catch (err) {
     console.error('[ManualUploadParse] Error:', err)
     return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
     })
   }
 })
