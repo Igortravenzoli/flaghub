@@ -366,31 +366,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session.user,
       session,
       isAuthenticated: true,
-      // Keep isLoading true until hydration determines pendingApproval
     }));
+    markPerformance("auth:state-set");
 
-    // Fase 2 (hidratação): carregar role/network/profile com retry
+    // Fase 2: Rodar hydration e MFA check em paralelo para reduzir latência
+    markPerformance("auth:parallel-start");
+    const mfaCheckPromise = checkElevatedMfaRequirement(null)
+      .catch((error) => {
+        console.warn("[Auth] Early MFA check failed:", error);
+        return false;
+      });
+
     await hydrateUserData(session, opId);
+    markPerformance("auth:hydrate-done");
 
-    // Fase 2.5: Agora que hydration terminou, liberar isLoading
     if (opId === opIdRef.current) {
-      setState((prev) => ({ ...prev, isLoading: false }));
+      // Aguardar MFA check (já deve ter terminado em paralelo)
+      const earlyMfaRequired = await mfaCheckPromise;
+      markPerformance("auth:mfa-check-done");
+
+      // Re-check com roleCode real agora disponível
+      let finalMfaRequired = earlyMfaRequired;
+      setState((prev) => {
+        if (prev.roleCode && hasElevated(prev.roleCode)) {
+          // O early check pode ter sido impreciso sem roleCode; marcar para re-check
+          finalMfaRequired = earlyMfaRequired;
+        }
+        return { ...prev, isLoading: false, mfaRequired: finalMfaRequired };
+      });
+
       markPerformance("auth:ready");
       measurePerformance("auth:sign-in-to-ready", "auth:sign-in:start", "auth:ready");
+      measurePerformance("auth:parallel-phase", "auth:parallel-start", "auth:ready");
 
-      const resolvedRoleCode = session.user ? (state.roleCode ?? null) : null;
-      void checkElevatedMfaRequirement(resolvedRoleCode)
-        .then((mfaRequired) => {
-          if (opId !== opIdRef.current) return;
-          setState((prev) => ({ ...prev, mfaRequired }));
-        })
-        .catch((error) => {
-          console.warn("[Auth] Deferred MFA check failed:", error);
-        });
+      // Re-check MFA com roleCode correto se necessário (sem bloquear UI)
+      setState((prev) => {
+        if (prev.roleCode && !earlyMfaRequired) {
+          void checkElevatedMfaRequirement(prev.roleCode)
+            .then((mfaRequired) => {
+              if (opId !== opIdRef.current) return;
+              if (mfaRequired !== prev.mfaRequired) {
+                setState((p) => ({ ...p, mfaRequired }));
+              }
+            })
+            .catch(() => {});
+        }
+        return prev;
+      });
     }
 
-    // Fase 3: Se hydration não trouxe roleCode, tentar mais uma vez após breve delay
-    // (cobre cenário pós-login onde RPC pode falhar na primeira tentativa)
+    // Fase 3: Se hydration não trouxe roleCode, retry após breve delay
     if (opId === opIdRef.current) {
       setState((prev) => {
         if (!prev.roleCode && prev.isAuthenticated) {
