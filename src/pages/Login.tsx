@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,7 +18,7 @@ const LOCKOUT_SECONDS = 60;
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signInWithAzure, isLoading } = useAuth();
+  const { signIn, signInWithAzure, isLoading, isAuthenticated, mfaRequired } = useAuth();
   
   const [loginData, setLoginData] = useState({ email: '', password: '', rememberMe: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,6 +29,15 @@ export default function Login() {
   const lockoutTimerRef = useRef<number | null>(null);
 
   const from = (location.state as { from?: string })?.from || '/home';
+
+  // React to AuthContext state changes for navigation
+  useEffect(() => {
+    if (!isAuthenticated || isLoading) return;
+    if (mfaRequired) {
+      console.log('[Login] AuthContext detected MFA required, redirecting to /mfa');
+      navigate('/mfa', { replace: true });
+    }
+  }, [isAuthenticated, isLoading, mfaRequired, navigate]);
 
   const isLockedOut = useCallback(() => {
     if (!lockoutUntil) return false;
@@ -148,32 +157,28 @@ export default function Login() {
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
 
-        // Fast MFA check using AAL + factors (no DB RPC needed)
-        try {
-          performance.mark('login:mfaCheck:start');
-          const [{ data: aalData }, { data: factorsData }] = await Promise.all([
-            supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
-            supabase.auth.mfa.listFactors(),
-          ]);
-          performance.mark('login:mfaCheck:end');
-          try { performance.measure('login:mfaCheck', 'login:mfaCheck:start', 'login:mfaCheck:end'); } catch {}
+        // AuthContext's onAuthStateChange will detect MFA via setSignedIn.
+        // The useEffect above watches mfaRequired and redirects to /mfa.
+        // If no MFA needed, AuthContext sets isAuthenticated=true + isLoading=false,
+        // so we navigate to the target page after a short settle.
+        // We use a small timeout to let AuthContext process the session change.
+        performance.mark('login:waiting-auth-context');
+        const waitForAuth = () => {
+          return new Promise<void>((resolve) => {
+            // Give AuthContext time to process onAuthStateChange
+            setTimeout(resolve, 300);
+          });
+        };
+        await waitForAuth();
 
-          const hasVerifiedTotp = (factorsData?.totp ?? []).some(f => f.status === 'verified');
-          const needsMfa = hasVerifiedTotp && aalData?.currentLevel === 'aal1';
-
-          if (needsMfa) {
-            performance.mark('login:mfa-redirect');
-            try { performance.measure('login:submit-to-mfa', 'login:submit:start', 'login:mfa-redirect'); } catch {}
-            navigate('/mfa', { replace: true });
-          } else {
-            performance.mark('login:navigate');
-            try { performance.measure('login:submit-to-navigate', 'login:submit:start', 'login:navigate'); } catch {}
-            navigate(from, { replace: true });
-          }
-        } catch (mfaCheckErr) {
-          console.error('[Login] MFA check error:', mfaCheckErr);
-          navigate(from, { replace: true });
-        }
+        // If mfaRequired was set by AuthContext, the useEffect will handle redirect.
+        // Otherwise navigate to destination.
+        // Note: We check the current state at this point; if MFA is needed,
+        // the useEffect redirect will take priority.
+        performance.mark('login:navigate');
+        try { performance.measure('login:submit-to-navigate', 'login:submit:start', 'login:navigate'); } catch {}
+        // Navigate to target — if MFA is required, the useEffect will override this
+        navigate(from, { replace: true });
       }
     } catch (err) {
       console.error('[Login] Full error:', err);
