@@ -106,9 +106,11 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
   });
 
   // Sprint é filtro primário para itens DevOps; registros manuais permanecem visíveis.
+  // Sprint é filtro primário para itens DevOps; registros manuais permanecem visíveis.
+  // '__pending__' é tratado como 'all' enquanto o sprint corrente ainda está a ser detetado.
   const sprintScopedItems = allItemsWithSprint.filter((i) => {
     if (i.source !== 'devops_queue') return true;
-    if (sprintFilter === 'all') return true;
+    if (sprintFilter === 'all' || sprintFilter === '__pending__') return true;
     if (!i.work_item_id) return false;
     return sprintMap.get(i.work_item_id) === sprintFilter;
   });
@@ -148,7 +150,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
 
   return {
     items,
-    allItems,
+    allItems: allItemsWithSprint,
     devopsItems,
     implantacoes,
     filaManual,
