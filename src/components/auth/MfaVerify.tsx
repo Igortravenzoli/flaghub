@@ -22,29 +22,19 @@ export function MfaVerify({ factorId, onVerified, onSignOut }: MfaVerifyProps) {
     if (code.length !== 6) return;
 
     setIsVerifying(true);
-    performance.mark("mfa:verify:start");
     try {
-      performance.mark("mfa:challenge:start");
       const { data: challengeData, error: challengeError } =
         await supabase.auth.mfa.challenge({ factorId });
-      performance.mark("mfa:challenge:end");
-      try { performance.measure("mfa:challenge", "mfa:challenge:start", "mfa:challenge:end"); } catch {}
 
       if (challengeError) throw challengeError;
 
-      performance.mark("mfa:verify-code:start");
       const { error: verifyError } = await supabase.auth.mfa.verify({
         factorId,
         challengeId: challengeData.id,
         code,
       });
-      performance.mark("mfa:verify-code:end");
-      try { performance.measure("mfa:verify-code", "mfa:verify-code:start", "mfa:verify-code:end"); } catch {}
 
       if (verifyError) throw verifyError;
-
-      performance.mark("mfa:verify:done");
-      try { performance.measure("mfa:verify-total", "mfa:verify:start", "mfa:verify:done"); } catch {}
 
       toast.success("Verificação MFA concluída!");
       onVerified();

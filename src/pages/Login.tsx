@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,7 +18,7 @@ const LOCKOUT_SECONDS = 60;
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signInWithAzure, isLoading, isAuthenticated, mfaRequired } = useAuth();
+  const { signIn, signInWithAzure, isLoading } = useAuth();
   
   const [loginData, setLoginData] = useState({ email: '', password: '', rememberMe: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,15 +29,6 @@ export default function Login() {
   const lockoutTimerRef = useRef<number | null>(null);
 
   const from = (location.state as { from?: string })?.from || '/home';
-
-  // React to AuthContext state changes for navigation
-  useEffect(() => {
-    if (!isAuthenticated || isLoading) return;
-    if (mfaRequired) {
-      console.log('[Login] AuthContext detected MFA required, redirecting to /mfa');
-      navigate('/mfa', { replace: true });
-    }
-  }, [isAuthenticated, isLoading, mfaRequired, navigate]);
 
   const isLockedOut = useCallback(() => {
     if (!lockoutUntil) return false;
@@ -87,7 +78,6 @@ export default function Login() {
     }
 
     setIsSubmitting(true);
-    performance.mark('login:submit:start');
 
     try {
       // Call rate-limited login endpoint
@@ -95,7 +85,6 @@ export default function Login() {
       let fnErrorMsg = '';
 
       try {
-        performance.mark('login:fetch:start');
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-rate-limit`,
           {
@@ -107,8 +96,6 @@ export default function Login() {
             body: JSON.stringify({ email: loginData.email, password: loginData.password }),
           }
         );
-        performance.mark('login:fetch:end');
-        try { performance.measure('login:edge-fn', 'login:fetch:start', 'login:fetch:end'); } catch {}
         fnData = await res.json();
         if (!res.ok) {
           fnErrorMsg = fnData?.message as string || 'Credenciais inválidas';
@@ -135,19 +122,13 @@ export default function Login() {
           });
         }
       } else if (fnData?.session) {
-        performance.mark('login:password:ok');
-        try { performance.measure('login:credentials', 'login:submit:start', 'login:password:ok'); } catch {}
-
         const session = fnData.session as { access_token: string; refresh_token: string };
         // Set session from the edge function response
         try {
-          performance.mark('login:setSession:start');
           await supabase.auth.setSession({
             access_token: session.access_token,
             refresh_token: session.refresh_token,
           });
-          performance.mark('login:setSession:end');
-          try { performance.measure('login:setSession', 'login:setSession:start', 'login:setSession:end'); } catch {}
           console.log('[Login] Session set successfully');
         } catch (setSessionErr) {
           console.error('[Login] setSession failed:', setSessionErr);
@@ -157,28 +138,21 @@ export default function Login() {
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
 
-        // AuthContext's onAuthStateChange will detect MFA via setSignedIn.
-        // The useEffect above watches mfaRequired and redirects to /mfa.
-        // If no MFA needed, AuthContext sets isAuthenticated=true + isLoading=false,
-        // so we navigate to the target page after a short settle.
-        // We use a small timeout to let AuthContext process the session change.
-        performance.mark('login:waiting-auth-context');
-        const waitForAuth = () => {
-          return new Promise<void>((resolve) => {
-            // Give AuthContext time to process onAuthStateChange
-            setTimeout(resolve, 300);
-          });
-        };
-        await waitForAuth();
-
-        // If mfaRequired was set by AuthContext, the useEffect will handle redirect.
-        // Otherwise navigate to destination.
-        // Note: We check the current state at this point; if MFA is needed,
-        // the useEffect redirect will take priority.
-        performance.mark('login:navigate');
-        try { performance.measure('login:submit-to-navigate', 'login:submit:start', 'login:navigate'); } catch {}
-        // Navigate to target — if MFA is required, the useEffect will override this
-        navigate(from, { replace: true });
+        // Check if user has elevated role → force MFA before navigating
+        try {
+          const { data: maskedCode, error: rpcErr } = await supabase.rpc("auth_user_role_masked");
+          if (rpcErr) {
+            console.error('[Login] RPC auth_user_role_masked failed:', rpcErr);
+          }
+          if (maskedCode === 's1') {
+            navigate('/mfa', { replace: true });
+          } else {
+            navigate(from, { replace: true });
+          }
+        } catch (rpcCatchErr) {
+          console.error('[Login] RPC catch error:', rpcCatchErr);
+          navigate(from, { replace: true });
+        }
       }
     } catch (err) {
       console.error('[Login] Full error:', err);

@@ -1,9 +1,8 @@
-import { useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, Loader2, BarChart3, Activity, PieChart, TrendingUp, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
 // Animated dashboard card that flies toward the center hub
@@ -47,25 +46,9 @@ function DashCard({ icon: Icon, label, delay, angle }: { icon: React.ElementType
 
 export default function Welcome() {
   const navigate = useNavigate();
-  const authCtx = useContext(AuthContext);
-  const [fallbackLoading, setFallbackLoading] = useState(!authCtx);
+  const { isAuthenticated, isLoading } = useAuth();
   const [showHub, setShowHub] = useState(false);
   const [showContent, setShowContent] = useState(false);
-
-  // Fallback: if AuthProvider isn't available, check session directly
-  useEffect(() => {
-    if (authCtx) return;
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        navigate('/home', { replace: true });
-      } else {
-        setFallbackLoading(false);
-      }
-    });
-  }, [authCtx, navigate]);
-
-  const isAuthenticated = authCtx?.isAuthenticated ?? false;
-  const isLoading = authCtx?.isLoading ?? fallbackLoading;
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
