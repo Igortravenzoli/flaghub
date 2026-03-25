@@ -133,7 +133,7 @@ export function KioskMode({ estatisticas, ticketsCriticos, lastUpdate, onExit }:
             <div>
               <h1 className="text-3xl font-bold tracking-tight">
                 <span className="bg-clip-text text-transparent bg-gradient-to-r from-foreground to-muted-foreground">
-                  Central de Operações
+                  Painel de Tickets
                 </span>
               </h1>
               <div className="flex items-center gap-3 mt-1">

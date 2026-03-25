@@ -2,9 +2,11 @@ import { Activity, Zap } from 'lucide-react';
 
 interface HeroHeaderProps {
   lastUpdate: Date;
+  title?: string;
+  subtitle?: string;
 }
 
-export function HeroHeader({ lastUpdate }: HeroHeaderProps) {
+export function HeroHeader({ lastUpdate, title = 'Painel de Tickets', subtitle }: HeroHeaderProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-card border border-border/50 p-8 mb-8">
       {/* Background effects */}
@@ -27,12 +29,12 @@ export function HeroHeader({ lastUpdate }: HeroHeaderProps) {
           <div>
             <h1 className="text-4xl font-bold tracking-tight">
               <span className="text-foreground">
-                Central de Operações
+                {title}
               </span>
             </h1>
             <p className="text-lg text-muted-foreground mt-1 flex items-center gap-2">
               <Zap className="h-4 w-4 text-primary" />
-              Monitoramento em tempo real de tickets e ordens de serviço
+              {subtitle || 'Monitoramento em tempo real de tickets e ordens de serviço'}
             </p>
           </div>
         </div>

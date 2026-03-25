@@ -260,14 +260,14 @@ async function fetchChildrenOfItems(parentIds: number[], admin: any): Promise<{ 
 
 // ── QA Retorno helpers ─────────────────────────────────────────────
 
-interface StateChange {
+interface EmTesteTransition {
   newValue: string
   oldValue?: string
   revisedDate: string
 }
 
-function countRetornos(updates: any[]): { retornos: number; retornoDetails: StateChange[] } {
-  const emTesteTransitions: StateChange[] = []
+function countRetornos(updates: any[]): { retornos: number; retornoDetails: EmTesteTransition[] } {
+  const emTesteTransitions: EmTesteTransition[] = []
   for (const update of updates) {
     const stateField = update.fields?.['System.State']
     if (!stateField) continue
