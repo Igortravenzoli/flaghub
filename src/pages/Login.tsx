@@ -78,6 +78,7 @@ export default function Login() {
     }
 
     setIsSubmitting(true);
+    performance.mark('login:submit:start');
 
     try {
       // Call rate-limited login endpoint
@@ -85,6 +86,7 @@ export default function Login() {
       let fnErrorMsg = '';
 
       try {
+        performance.mark('login:fetch:start');
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-rate-limit`,
           {
@@ -96,6 +98,8 @@ export default function Login() {
             body: JSON.stringify({ email: loginData.email, password: loginData.password }),
           }
         );
+        performance.mark('login:fetch:end');
+        try { performance.measure('login:edge-fn', 'login:fetch:start', 'login:fetch:end'); } catch {}
         fnData = await res.json();
         if (!res.ok) {
           fnErrorMsg = fnData?.message as string || 'Credenciais inválidas';
@@ -122,13 +126,19 @@ export default function Login() {
           });
         }
       } else if (fnData?.session) {
+        performance.mark('login:password:ok');
+        try { performance.measure('login:credentials', 'login:submit:start', 'login:password:ok'); } catch {}
+
         const session = fnData.session as { access_token: string; refresh_token: string };
         // Set session from the edge function response
         try {
+          performance.mark('login:setSession:start');
           await supabase.auth.setSession({
             access_token: session.access_token,
             refresh_token: session.refresh_token,
           });
+          performance.mark('login:setSession:end');
+          try { performance.measure('login:setSession', 'login:setSession:start', 'login:setSession:end'); } catch {}
           console.log('[Login] Session set successfully');
         } catch (setSessionErr) {
           console.error('[Login] setSession failed:', setSessionErr);
@@ -140,13 +150,20 @@ export default function Login() {
 
         // Check if user has elevated role → force MFA before navigating
         try {
+          performance.mark('login:roleCheck:start');
           const { data: maskedCode, error: rpcErr } = await supabase.rpc("auth_user_role_masked");
+          performance.mark('login:roleCheck:end');
+          try { performance.measure('login:roleCheck', 'login:roleCheck:start', 'login:roleCheck:end'); } catch {}
           if (rpcErr) {
             console.error('[Login] RPC auth_user_role_masked failed:', rpcErr);
           }
           if (maskedCode === 's1') {
+            performance.mark('login:mfa-redirect');
+            try { performance.measure('login:submit-to-mfa', 'login:submit:start', 'login:mfa-redirect'); } catch {}
             navigate('/mfa', { replace: true });
           } else {
+            performance.mark('login:navigate');
+            try { performance.measure('login:submit-to-navigate', 'login:submit:start', 'login:navigate'); } catch {}
             navigate(from, { replace: true });
           }
         } catch (rpcCatchErr) {
