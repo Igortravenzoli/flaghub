@@ -148,16 +148,20 @@ export default function Login() {
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
 
-        // Check if user has elevated role → force MFA before navigating
+        // Fast MFA check using AAL + factors (no DB RPC needed)
         try {
-          performance.mark('login:roleCheck:start');
-          const { data: maskedCode, error: rpcErr } = await supabase.rpc("auth_user_role_masked");
-          performance.mark('login:roleCheck:end');
-          try { performance.measure('login:roleCheck', 'login:roleCheck:start', 'login:roleCheck:end'); } catch {}
-          if (rpcErr) {
-            console.error('[Login] RPC auth_user_role_masked failed:', rpcErr);
-          }
-          if (maskedCode === 's1') {
+          performance.mark('login:mfaCheck:start');
+          const [{ data: aalData }, { data: factorsData }] = await Promise.all([
+            supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+            supabase.auth.mfa.listFactors(),
+          ]);
+          performance.mark('login:mfaCheck:end');
+          try { performance.measure('login:mfaCheck', 'login:mfaCheck:start', 'login:mfaCheck:end'); } catch {}
+
+          const hasVerifiedTotp = (factorsData?.totp ?? []).some(f => f.status === 'verified');
+          const needsMfa = hasVerifiedTotp && aalData?.currentLevel === 'aal1';
+
+          if (needsMfa) {
             performance.mark('login:mfa-redirect');
             try { performance.measure('login:submit-to-mfa', 'login:submit:start', 'login:mfa-redirect'); } catch {}
             navigate('/mfa', { replace: true });
@@ -166,8 +170,8 @@ export default function Login() {
             try { performance.measure('login:submit-to-navigate', 'login:submit:start', 'login:navigate'); } catch {}
             navigate(from, { replace: true });
           }
-        } catch (rpcCatchErr) {
-          console.error('[Login] RPC catch error:', rpcCatchErr);
+        } catch (mfaCheckErr) {
+          console.error('[Login] MFA check error:', mfaCheckErr);
           navigate(from, { replace: true });
         }
       }
