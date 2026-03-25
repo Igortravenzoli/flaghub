@@ -96,13 +96,9 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
 
   const initiateUpload = useCallback((files: File[]) => {
     if (files.length === 0) return;
-    if (hasExistingData) {
-      setPendingFiles(files);
-      setShowModeDialog(true);
-    } else {
-      uploadFiles(files, 'overwrite');
-    }
-  }, [hasExistingData, uploadFiles]);
+    setPendingFiles(files);
+    setShowModeDialog(true);
+  }, []);
 
   const handleModeConfirm = useCallback((mode: ImportMode) => {
     setShowModeDialog(false);

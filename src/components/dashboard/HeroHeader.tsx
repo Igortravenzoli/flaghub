@@ -29,12 +29,12 @@ export function HeroHeader({ lastUpdate, title = 'Painel de Tickets', subtitle }
           <div>
             <h1 className="text-4xl font-bold tracking-tight">
               <span className="text-foreground">
-                Central de Operações
+                {title}
               </span>
             </h1>
             <p className="text-lg text-muted-foreground mt-1 flex items-center gap-2">
               <Zap className="h-4 w-4 text-primary" />
-              Monitoramento em tempo real de tickets e ordens de serviço
+              {subtitle || 'Monitoramento em tempo real de tickets e ordens de serviço'}
             </p>
           </div>
         </div>
