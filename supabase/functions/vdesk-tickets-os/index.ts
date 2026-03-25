@@ -202,25 +202,34 @@ async function getVdeskToken(endpoint: { url: string; name: string }): Promise<s
     return cachedToken.token
   }
 
-  console.log(`[VdeskProxy] Obtendo novo token via ${endpoint.name}`)
+  // Obter service secret do ambiente
+  const serviceSecret = Deno.env.get('GATEWAY_SERVICE_SECRET')
+  if (!serviceSecret) {
+    throw new Error('GATEWAY_SERVICE_SECRET não configurado')
+  }
+
+  console.log(`[VdeskProxy] Obtendo novo service-token via ${endpoint.name}`)
   
   try {
     const response = await fetchWithTimeout(
-      `${endpoint.url}/api/faq/validate-client`,
+      `${endpoint.url}/api/client-auth/service-token`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ codigoPuxada: '1' }),
+        body: JSON.stringify({
+          serviceName: 'FlagHub-Tickets',
+          serviceSecret,
+        }),
       },
       TOKEN_TIMEOUT_MS,
       'token',
     )
 
     if (!response.ok) {
-      // Se falhar, tentar resetar e usar próximo endpoint
-      console.warn(`[VdeskProxy] Falha na autenticação via ${endpoint.name}: ${response.status}`)
+      const errorBody = await response.text().catch(() => '')
+      console.warn(`[VdeskProxy] Falha na autenticação service-token via ${endpoint.name}: ${response.status} ${errorBody}`)
       resetActiveEndpoint()
-      throw new Error(`Falha na autenticação VDESK: ${response.status}`)
+      throw new Error(`Falha na autenticação VDESK (service-token): ${response.status}`)
     }
 
     const data = await response.json()
@@ -235,6 +244,7 @@ async function getVdeskToken(endpoint: { url: string; name: string }): Promise<s
       endpointUrl: endpoint.url,
     }
 
+    console.log(`[VdeskProxy] Service-token obtido com sucesso via ${endpoint.name}`)
     return data.sessionToken
   } catch (err: unknown) {
     throw err
