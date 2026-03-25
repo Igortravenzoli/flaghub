@@ -112,6 +112,40 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
+function markPerformance(name: string) {
+  if (typeof window === "undefined" || !window.performance?.mark) return;
+  window.performance.mark(name);
+}
+
+function measurePerformance(name: string, startMark: string, endMark: string) {
+  if (typeof window === "undefined" || !window.performance?.measure) return;
+  try {
+    window.performance.measure(name, startMark, endMark);
+  } catch {
+    // Ignore missing marks in best-effort instrumentation.
+  }
+}
+
+async function checkElevatedMfaRequirement(roleCode: string | null): Promise<boolean> {
+  if (!hasElevated(roleCode)) return false;
+
+  const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  const mfaRequired = Boolean(
+    aalData && (
+      aalData.currentLevel !== aalData.nextLevel ||
+      (aalData.currentLevel === "aal1" && aalData.nextLevel === "aal1")
+    )
+  );
+
+  console.log("[Auth] Elevated role MFA check:", {
+    currentLevel: aalData?.currentLevel,
+    nextLevel: aalData?.nextLevel,
+    mfaRequired,
+  });
+
+  return mfaRequired;
+}
+
 async function provisionUser(userId: string) {
   try {
     const { data, error } = await supabase.rpc("provision_user", {
@@ -215,6 +249,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const hydrateUserData = useCallback(async (session: Session, opId: number) => {
+    markPerformance("auth:hydrate:start");
+
     // Helper to fetch role/profile data with retry
     const attemptHydration = async (attempt: number): Promise<boolean> => {
       const timeoutMs = attempt === 1 ? 3500 : 6000;
@@ -261,17 +297,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const obfuscatedRole = mergedRoleCode;
 
-        let mfaRequired = false;
-        if (hasElevated(obfuscatedRole)) {
-          const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-          if (aalData && aalData.currentLevel !== aalData.nextLevel) {
-            mfaRequired = true;
-          } else if (aalData && aalData.currentLevel === "aal1" && aalData.nextLevel === "aal1") {
-            mfaRequired = true;
-          }
-          console.log("[Auth] Elevated role MFA check:", { currentLevel: aalData?.currentLevel, nextLevel: aalData?.nextLevel, mfaRequired });
-        }
-
         // Check if user has active hub_area_members (means admin approved)
         let hasAreaMemberships = false;
         try {
@@ -302,12 +327,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             profile: userData.profile ?? prev.profile,
             roleCode: nextRoleCode,
             networkId: nextNetworkId,
-            mfaRequired: obfuscatedRole ? mfaRequired : prev.mfaRequired,
+            mfaRequired: prev.mfaRequired,
             pendingApproval: isPending && !prev.roleCode,
           };
         });
 
         console.log("[Auth] User hydrated successfully:", session.user.email, "role:", obfuscatedRole);
+        markPerformance("auth:hydrate:end");
+        measurePerformance("auth:hydrate", "auth:hydrate:start", "auth:hydrate:end");
         return true;
       } catch (error) {
         console.error(`[Auth] Hydration attempt ${attempt} failed:`, error);
@@ -329,6 +356,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setSignedIn = useCallback(async (session: Session) => {
     console.log("[Auth] setSignedIn called for user:", session.user.email);
+    markPerformance("auth:sign-in:start");
     const opId = (opIdRef.current += 1);
 
     // Fase 1 (rápida): marcar autenticado mas manter isLoading=true até hydration
@@ -347,6 +375,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Fase 2.5: Agora que hydration terminou, liberar isLoading
     if (opId === opIdRef.current) {
       setState((prev) => ({ ...prev, isLoading: false }));
+      markPerformance("auth:ready");
+      measurePerformance("auth:sign-in-to-ready", "auth:sign-in:start", "auth:ready");
+
+      const resolvedRoleCode = session.user ? (state.roleCode ?? null) : null;
+      void checkElevatedMfaRequirement(resolvedRoleCode)
+        .then((mfaRequired) => {
+          if (opId !== opIdRef.current) return;
+          setState((prev) => ({ ...prev, mfaRequired }));
+        })
+        .catch((error) => {
+          console.warn("[Auth] Deferred MFA check failed:", error);
+        });
     }
 
     // Fase 3: Se hydration não trouxe roleCode, tentar mais uma vez após breve delay
