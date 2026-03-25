@@ -2,9 +2,11 @@ import { Activity, Zap } from 'lucide-react';
 
 interface HeroHeaderProps {
   lastUpdate: Date;
+  title?: string;
+  subtitle?: string;
 }
 
-export function HeroHeader({ lastUpdate }: HeroHeaderProps) {
+export function HeroHeader({ lastUpdate, title = 'Painel de Tickets', subtitle }: HeroHeaderProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-card border border-border/50 p-8 mb-8">
       {/* Background effects */}
