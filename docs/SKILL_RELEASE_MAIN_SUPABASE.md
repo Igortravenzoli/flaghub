@@ -44,10 +44,8 @@ Gate: `git status -sb` deve mostrar `## dev...origin/dev` sem ahead/behind.
 ---
 
 ### PASSO 2 — Validar artefato para Vercel
-```bash
-npm ci
-npm run build
-npm test
+```powershell
+npm ci ; npm run build ; npm test
 ```
 
 Gate de qualidade:

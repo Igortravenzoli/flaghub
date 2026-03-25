@@ -41,10 +41,8 @@ git push origin dev
 ```
 
 ### 2) Validar release antes de promover
-```bash
-npm ci
-npm run build
-npm test
+```powershell
+npm ci ; npm run build ; npm test
 ```
 
 Se os testes não forem mandatórios no momento, ao menos o `npm run build` deve passar para seguir com deploy no Vercel.
