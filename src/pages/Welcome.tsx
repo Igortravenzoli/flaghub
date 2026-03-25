@@ -47,9 +47,25 @@ function DashCard({ icon: Icon, label, delay, angle }: { icon: React.ElementType
 
 export default function Welcome() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useAuth();
+  const authCtx = useContext(AuthContext);
+  const [fallbackLoading, setFallbackLoading] = useState(!authCtx);
   const [showHub, setShowHub] = useState(false);
   const [showContent, setShowContent] = useState(false);
+
+  // Fallback: if AuthProvider isn't available, check session directly
+  useEffect(() => {
+    if (authCtx) return;
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        navigate('/home', { replace: true });
+      } else {
+        setFallbackLoading(false);
+      }
+    });
+  }, [authCtx, navigate]);
+
+  const isAuthenticated = authCtx?.isAuthenticated ?? false;
+  const isLoading = authCtx?.isLoading ?? fallbackLoading;
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
