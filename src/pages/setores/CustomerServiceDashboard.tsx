@@ -190,42 +190,41 @@ export default function CustomerServiceDashboard() {
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 bg-muted/50 rounded-lg p-1.5">
         <DashboardFilterBar
           preset={filters.preset}
           onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
           presetLabel={filters.presetLabel}
-          presetControl="dropdown"
-          presetsLabel="Período"
+          presetControl="chips"
           presets={[
             { value: '7d', label: '7d' },
             { value: '30d', label: '30d' },
             { value: '90d', label: '90d' },
-            { value: '6m', label: '6m' },
-            { value: '1y', label: '1a' },
-            { value: 'all', label: 'Todos' },
           ]}
           dateFrom={filters.dateFrom}
           dateTo={filters.dateTo}
           minDate={minDate}
           maxDate={maxDate}
           onCustomRange={filters.setCustomRange}
-          onRefresh={() => refetch()}
           onExportCSV={handleExportCSV}
           onExportPDF={handleExportPDF}
+          showRangeBadge={false}
         />
         {sortedSprints.length > 0 && (
-          <Select value={sprintFilter} onValueChange={(v) => setSprintFilter(v)}>
-            <SelectTrigger className="w-[220px] h-8 text-xs">
-              <SelectValue placeholder="Sprint" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as Sprints</SelectItem>
-              {[...sortedSprints].reverse().map(sp => (
-                <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <>
+            <div className="w-px h-6 bg-border" />
+            <Select value={sprintFilter} onValueChange={(v) => setSprintFilter(v)}>
+              <SelectTrigger className="w-[180px] h-7 text-xs border-none bg-transparent shadow-none">
+                <SelectValue placeholder="Sprint" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as Sprints</SelectItem>
+                {[...sortedSprints].reverse().map(sp => (
+                  <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
         )}
       </div>
 
