@@ -369,50 +369,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }));
     markPerformance("auth:state-set");
 
-    // Fase 2: Rodar hydration e MFA check em paralelo para reduzir latência
+    // Fase 2: Check MFA first (fast, no DB call) — if needed, skip heavy hydration
     markPerformance("auth:parallel-start");
-    const mfaCheckPromise = checkElevatedMfaRequirement(null)
-      .catch((error) => {
-        console.warn("[Auth] Early MFA check failed:", error);
-        return false;
-      });
 
+    let mfaNeeded = false;
+    try {
+      const [{ data: aalData }, { data: factorsData }] = await Promise.all([
+        supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+        supabase.auth.mfa.listFactors(),
+      ]);
+      const hasVerifiedTotp = (factorsData?.totp ?? []).some(f => f.status === "verified");
+      mfaNeeded = hasVerifiedTotp && aalData?.currentLevel === "aal1";
+    } catch (e) {
+      console.warn("[Auth] AAL check failed:", e);
+    }
+
+    if (mfaNeeded && opId === opIdRef.current) {
+      // MFA pending — skip full hydration (it will re-run after MFA verify)
+      console.log("[Auth] MFA required, skipping hydration until MFA is verified");
+      markPerformance("auth:mfa-bailout");
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        mfaRequired: true,
+      }));
+      markPerformance("auth:ready");
+      measurePerformance("auth:sign-in-to-ready", "auth:sign-in:start", "auth:ready");
+      measurePerformance("auth:parallel-phase", "auth:parallel-start", "auth:ready");
+      return;
+    }
+
+    // No MFA needed — proceed with full hydration
     await hydrateUserData(session, opId);
     markPerformance("auth:hydrate-done");
 
     if (opId === opIdRef.current) {
-      // Aguardar MFA check (já deve ter terminado em paralelo)
-      const earlyMfaRequired = await mfaCheckPromise;
-      markPerformance("auth:mfa-check-done");
-
-      // Re-check com roleCode real agora disponível
-      let finalMfaRequired = earlyMfaRequired;
-      setState((prev) => {
-        if (prev.roleCode && hasElevated(prev.roleCode)) {
-          // O early check pode ter sido impreciso sem roleCode; marcar para re-check
-          finalMfaRequired = earlyMfaRequired;
-        }
-        return { ...prev, isLoading: false, mfaRequired: finalMfaRequired };
-      });
+      setState((prev) => ({ ...prev, isLoading: false, mfaRequired: false }));
 
       markPerformance("auth:ready");
       measurePerformance("auth:sign-in-to-ready", "auth:sign-in:start", "auth:ready");
       measurePerformance("auth:parallel-phase", "auth:parallel-start", "auth:ready");
-
-      // Re-check MFA com roleCode correto se necessário (sem bloquear UI)
-      setState((prev) => {
-        if (prev.roleCode && !earlyMfaRequired) {
-          void checkElevatedMfaRequirement(prev.roleCode)
-            .then((mfaRequired) => {
-              if (opId !== opIdRef.current) return;
-              if (mfaRequired !== prev.mfaRequired) {
-                setState((p) => ({ ...p, mfaRequired }));
-              }
-            })
-            .catch(() => {});
-        }
-        return prev;
-      });
     }
 
     // Fase 3: Se hydration não trouxe roleCode, retry após breve delay
