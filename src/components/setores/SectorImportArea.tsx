@@ -92,7 +92,7 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
     },
   });
 
-  const hasExistingData = history.some(b => b.status === 'published');
+  
 
   const initiateUpload = useCallback((files: File[]) => {
     if (files.length === 0) return;
