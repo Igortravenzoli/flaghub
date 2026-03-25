@@ -233,6 +233,7 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
         open={showModeDialog}
         onClose={() => { setShowModeDialog(false); setPendingFiles(null); }}
         onConfirm={handleModeConfirm}
+        fileCount={pendingFiles?.length ?? 1}
         fileName={pendingFiles?.[0]?.name}
       />
     </div>
