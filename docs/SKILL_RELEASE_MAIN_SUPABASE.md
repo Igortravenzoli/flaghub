@@ -10,6 +10,19 @@ owner: time-devops
 ## Quando usar
 Use esta skill sempre que for enviar correções/novas features para `main`.
 
+## Regra de bolso
+- `dev` validou, `main` publicou.
+- Se o commit está apenas em `dev`, o Vercel ainda está em preview.
+- Produção só muda quando o commit entra em `main`.
+
+## Relação Git -> Vercel
+| Ação no Git | Resultado no Vercel |
+|---|---|
+| push na `dev` | Preview deploy |
+| push na `main` | Production deploy |
+| merge PR -> `main` | Production deploy |
+| commit em branch diferente de `main` | Preview deploy |
+
 ## Entradas esperadas
 - Branch fonte: `dev`
 - Branch alvo: `main`
@@ -78,6 +91,10 @@ Checklist:
 - [ ] app acessível na URL de produção
 - [ ] rotas críticas funcionam
 - [ ] env vars válidas (sem `undefined` em runtime)
+
+Regra operacional:
+- `dev` pode estar correta e ainda assim a produção estar atrasada.
+- Só considerar release concluída quando `main` estiver atualizada e o deploy de produção do Vercel estiver saudável.
 
 ---
 
