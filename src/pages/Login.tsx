@@ -18,7 +18,7 @@ const LOCKOUT_SECONDS = 60;
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signInWithAzure, isLoading } = useAuth();
+  const { signIn, signInWithAzure, isLoading, isAuthenticated, mfaRequired } = useAuth();
   
   const [loginData, setLoginData] = useState({ email: '', password: '', rememberMe: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
