@@ -194,6 +194,25 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           throw new Error(`Formato não suportado: .${ext}`);
         }
 
+        // Validate MIME type to prevent malicious file uploads
+        const allowedMimeTypes = new Set([
+          'text/csv',
+          'text/plain',                          // some systems report CSV as text/plain
+          'application/json',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+          'application/vnd.ms-excel',             // xls
+          'application/octet-stream',             // fallback for some browsers
+        ]);
+        if (file.type && !allowedMimeTypes.has(file.type)) {
+          throw new Error(`Tipo de arquivo não permitido: ${file.type}. Envie CSV, JSON ou XLSX.`);
+        }
+
+        // Validate file size (max 10MB)
+        const MAX_FILE_SIZE = 10 * 1024 * 1024;
+        if (file.size > MAX_FILE_SIZE) {
+          throw new Error(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo: 10MB.`);
+        }
+
         let fileContent: string;
         let fileType: 'csv' | 'json';
 

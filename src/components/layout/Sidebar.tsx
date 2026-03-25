@@ -57,6 +57,7 @@ const sectorItems: NavItem[] = [
       { label: 'Tickets', path: '/dashboard', icon: Ticket,
         children: [
           { label: 'Painel Tickets', path: '/dashboard', icon: Ticket },
+          { label: 'Importações', path: '/importacoes', icon: Upload },
           { label: 'Configurações', path: '/configuracoes', icon: Settings },
         ],
       },
