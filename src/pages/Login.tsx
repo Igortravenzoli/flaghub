@@ -30,6 +30,15 @@ export default function Login() {
 
   const from = (location.state as { from?: string })?.from || '/home';
 
+  // React to AuthContext state changes for navigation
+  useEffect(() => {
+    if (!isAuthenticated || isLoading) return;
+    if (mfaRequired) {
+      console.log('[Login] AuthContext detected MFA required, redirecting to /mfa');
+      navigate('/mfa', { replace: true });
+    }
+  }, [isAuthenticated, isLoading, mfaRequired, navigate]);
+
   const isLockedOut = useCallback(() => {
     if (!lockoutUntil) return false;
     return Date.now() < lockoutUntil;
