@@ -12,6 +12,20 @@ Padronizar a promoção de código de `dev` para `main`, garantindo:
 - Supabase SaaS DEV: migrations aplicadas pelo Lovable.
 - Supabase SaaS PROD: aplicação manual (com remoção/ajuste do rastreio da last migration, conforme processo interno).
 
+## Regra de bolso
+- `dev` validou, `main` publicou.
+- Push em `dev` gera preview no Vercel.
+- Push em `main` gera deploy de produção no Vercel.
+- Se o commit está só em `dev`, ele ainda nao chegou em produção.
+
+## Mapeamento Git -> Vercel
+| Ação no Git | Resultado no Vercel |
+|---|---|
+| push na `dev` | Preview deploy |
+| push na `main` | Production deploy |
+| merge PR -> `main` | Production deploy |
+| commit em qualquer branch diferente de `main` | Preview deploy |
+
 ## Pré-requisitos
 - Working tree limpa (`git status`).
 - Acesso ao remoto `origin`.
@@ -74,6 +88,10 @@ Checklist mínimo:
 - aplicação abre sem erro crítico;
 - rotas principais e telas críticas respondem;
 - nenhuma variável de ambiente faltando.
+
+Conclusão prática:
+- `dev` atualizada nao significa produção atualizada.
+- A produção só reflete a release depois que o commit chega em `main` e o deploy do Vercel conclui.
 
 ### 5) Migrations Supabase (modelo DEV/PROD)
 
