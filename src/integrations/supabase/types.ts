@@ -14,6 +14,140 @@ export type Database = {
   }
   public: {
     Tables: {
+      alert_channels: {
+        Row: {
+          channel_type: string
+          config: Json | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          label: string
+          updated_at: string
+        }
+        Insert: {
+          channel_type: string
+          config?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label: string
+          updated_at?: string
+        }
+        Update: {
+          channel_type?: string
+          config?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      alert_deliveries: {
+        Row: {
+          channel_id: string | null
+          created_at: string
+          delivered_at: string | null
+          error: string | null
+          id: string
+          payload: Json | null
+          rule_id: string
+          status: string
+        }
+        Insert: {
+          channel_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          error?: string | null
+          id?: string
+          payload?: Json | null
+          rule_id: string
+          status?: string
+        }
+        Update: {
+          channel_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          error?: string | null
+          id?: string
+          payload?: Json | null
+          rule_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_deliveries_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "alert_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alert_deliveries_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "alert_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alert_rules: {
+        Row: {
+          channel_id: string | null
+          condition_type: string
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          id: string
+          last_triggered_at: string | null
+          metric_key: string
+          recipients: string[] | null
+          sector: string
+          threshold: number | null
+          updated_at: string
+        }
+        Insert: {
+          channel_id?: string | null
+          condition_type?: string
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          last_triggered_at?: string | null
+          metric_key: string
+          recipients?: string[] | null
+          sector: string
+          threshold?: number | null
+          updated_at?: string
+        }
+        Update: {
+          channel_id?: string | null
+          condition_type?: string
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          last_triggered_at?: string | null
+          metric_key?: string
+          recipients?: string[] | null
+          sector?: string
+          threshold?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_rules_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "alert_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cs_fila_manual_records: {
         Row: {
           batch_id: string | null
@@ -1837,6 +1971,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sector_health: {
+        Row: {
+          checked_at: string
+          created_at: string
+          dependency_name: string
+          details: Json | null
+          id: string
+          sector: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          checked_at?: string
+          created_at?: string
+          dependency_name: string
+          details?: Json | null
+          id?: string
+          sector: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          checked_at?: string
+          created_at?: string
+          dependency_name?: string
+          details?: Json | null
+          id?: string
+          sector?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       settings: {
         Row: {
