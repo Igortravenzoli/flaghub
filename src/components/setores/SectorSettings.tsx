@@ -12,6 +12,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface SectorSettingsProps {
   sectorName: string;
+  /** Sector key for alert rules (e.g. 'helpdesk', 'fabrica') */
+  sectorKey?: string;
   /** Edge function name(s) to invoke for immediate sync */
   syncFunctions?: { name: string; label: string; payload?: Record<string, unknown> }[];
 }
