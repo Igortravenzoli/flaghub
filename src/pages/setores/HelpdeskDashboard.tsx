@@ -11,6 +11,7 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
   Headphones, Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
+  Ticket, Search, Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,13 +22,19 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// Lazy load ticket sub-pages for tab embedding
+const DashboardPage = lazy(() => import('@/pages/Dashboard'));
+const TicketsPage = lazy(() => import('@/pages/Tickets'));
+const TicketBuscaPage = lazy(() => import('@/pages/TicketBuscaComponente'));
 
 const integrations: Integration[] = [
   { name: 'VDesk Helpdesk API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Dashboard Helpdesk' },
