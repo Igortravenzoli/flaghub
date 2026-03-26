@@ -148,6 +148,109 @@ export type Database = {
           },
         ]
       }
+      comercial_movimentacao_clientes: {
+        Row: {
+          ano_referencia: number | null
+          bandeira: string | null
+          batch_id: string | null
+          cliente_codigo: number | null
+          cliente_nome: string | null
+          created_at: string
+          data_evento: string | null
+          id: string
+          motivo: string | null
+          sistema: string | null
+          status_encerramento: string | null
+          tipo: string
+          valor_mensal: number | null
+        }
+        Insert: {
+          ano_referencia?: number | null
+          bandeira?: string | null
+          batch_id?: string | null
+          cliente_codigo?: number | null
+          cliente_nome?: string | null
+          created_at?: string
+          data_evento?: string | null
+          id?: string
+          motivo?: string | null
+          sistema?: string | null
+          status_encerramento?: string | null
+          tipo: string
+          valor_mensal?: number | null
+        }
+        Update: {
+          ano_referencia?: number | null
+          bandeira?: string | null
+          batch_id?: string | null
+          cliente_codigo?: number | null
+          cliente_nome?: string | null
+          created_at?: string
+          data_evento?: string | null
+          id?: string
+          motivo?: string | null
+          sistema?: string | null
+          status_encerramento?: string | null
+          tipo?: string
+          valor_mensal?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comercial_movimentacao_clientes_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "manual_import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comercial_pesquisa_satisfacao: {
+        Row: {
+          bandeira: string | null
+          batch_id: string | null
+          cliente_codigo: number | null
+          cliente_nome: string | null
+          created_at: string
+          data_pesquisa: string | null
+          id: string
+          notas_por_produto: Json | null
+          qualitativo: Json | null
+          responsavel_contato: string | null
+        }
+        Insert: {
+          bandeira?: string | null
+          batch_id?: string | null
+          cliente_codigo?: number | null
+          cliente_nome?: string | null
+          created_at?: string
+          data_pesquisa?: string | null
+          id?: string
+          notas_por_produto?: Json | null
+          qualitativo?: Json | null
+          responsavel_contato?: string | null
+        }
+        Update: {
+          bandeira?: string | null
+          batch_id?: string | null
+          cliente_codigo?: number | null
+          cliente_nome?: string | null
+          created_at?: string
+          data_pesquisa?: string | null
+          id?: string
+          notas_por_produto?: Json | null
+          qualitativo?: Json | null
+          responsavel_contato?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comercial_pesquisa_satisfacao_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "manual_import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cs_fila_manual_records: {
         Row: {
           batch_id: string | null
