@@ -1,6 +1,6 @@
 # FlagHub Evolution - Dev Level Plan (VS Code + Lovable)
 
-Last update: 2026-03-25
+Last update: 2026-03-26
 
 ## Purpose
 Este arquivo e o plano de execucao de desenvolvimento para seguranca, desempenho e cleanup.
@@ -11,6 +11,173 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 - Supabase URL e anon/publishable key sao publicos por design.
 - Plataforma deve suportar 12 acessos simultaneos com estabilidade em login/refresh/KPI load.
 - Kiosk usa conta dedicada read-only, sem privilegio administrativo.
+
+---
+
+## PRD — Evolução Estrutural do Operations Hub + Setores
+
+### Fase 1 — Fundação Transversal (EM ANDAMENTO)
+**Prioridade:** P0 | **Risco:** Baixo
+
+#### 1.1 Paginação padronizada
+- [x] Seletor de page size: 20 / 30 / 50 / 100 (default 30)
+- [x] Aplicar em todas as DashboardDataTable
+- [x] Preservar filtros e busca ao trocar page size
+
+#### 1.2 Performance e concorrência
+- [x] staleTime global de 2min para queries React Query (QueryClient defaults)
+- [x] Lazy load de tabs (Settings, Importações) no SectorLayout
+- [x] Reduzir refetchInterval agressivo (jobs: 10s → 60s, kiosk: preservar)
+- [x] refetchOnWindowFocus: false em queries pesadas (global default no QueryClient)
+- Meta: 10 sessões simultâneas mínimo, margem para 12
+
+#### 1.3 Toggles padronizados
+- [x] Switch verde quando On, cinza quando Off (Radix Switch com data-[state=checked]:bg-primary)
+- [x] Garantir consistência visual em SectorSettings e SyncCentral (Switch substituiu Button On/Off)
+
+#### 1.4 Observabilidade de Jobs
+- [x] Exibir último run, status, próxima execução, erro resumido
+- [x] Badges de saúde: ativo, falhando, degradado (baseado nas últimas 3 execuções)
+- [x] Histórico mínimo operacional na Central de Sync (últimas 30 execuções com detalhes)
+
+#### 1.5 Tabelas backend (Supabase)
+- [x] sector_health — status de saúde por setor/dependência
+- [x] alert_rules — regras de alerta por setor/KPI
+- [x] alert_channels — canais (email, telegram, teams)
+- [x] alert_deliveries — log de envios
+
+### Fase 2 — Permissões e Visibilidade
+**Prioridade:** P1 | **Dependência:** Fase 1
+
+#### 2.1 Matriz de permissões
+- [x] Roles refinados: leitura, operacional, owner (+ admin global)
+- [x] Herança de permissão: HelpDesk → Tickets automático (hub_area_inheritance + hub_user_has_area)
+- [x] Bloqueio visual de ações sem permissão (abas Importações/Configurações condicionais por role)
+
+#### 2.2 Usuário monitor
+- [x] monitor@flag.com.br: role operacional, somente leitura, somente Kiosk
+- [x] Exceção de MFA exclusiva deste usuário
+- [x] Sem acesso a importações, configurações ou administração
+
+### Fase 3 — Estrutura Setorial e Navegação
+**Prioridade:** P1 | **Dependência:** Fase 2
+
+#### 3.1 HelpDesk reorganizado
+- [x] /dashboard HelpDesk: painel gerencial com tarja grande (padrão Fábrica)
+- [x] Submenu Tickets com abas: Painel Tickets, Importações, Configurações, Pesquisar, Busca VDesk
+- [x] Permissão Tickets herda do HelpDesk
+- [x] Importação JSON restrita a Owner
+
+#### 3.2 Navegação consistente
+- [x] Padronizar menus laterais por setor (sidebar simplificada, sem submenus aninhados)
+- [x] Garantir compatibilidade sem quebrar rotas existentes
+
+### Fase 4 — Alertas por Setor
+**Prioridade:** P2 | **Dependência:** Fase 1 (tabelas)
+
+#### 4.1 Configuração de alertas
+- [x] UI por setor: ativar/desativar, escolher canal, condição, limiar
+- [x] Canais: email, webhook Telegram, webhook Teams (seleção via alert_channels)
+- [x] Destinatários: somente usuários cadastrados (sem email livre)
+- [x] SMTP/credentials: somente Admin configura (createRule/toggle restritos a isAdmin)
+
+#### 4.2 Visualização
+- [x] Último disparo, status do alerta (badge com tempo relativo)
+- [x] Log de entregas (últimas 5 por regra, expandível)
+
+### Fase 5 — Kiosk Otimizado por Setor
+**Prioridade:** P2 | **Dependência:** Fase 3
+
+#### 5.1 Curadoria de indicadores por setor (TV)
+- [x] Fábrica: atividades sprint, aguardando teste, aviões
+- [x] Helpdesk: registros hoje, horas acumuladas, top 3 sistemas
+- [x] Comercial: total clientes, ativos vs inativos, bloqueados
+- [x] CS: implantações ativas, fila, finalizadas
+- [x] Qualidade: PBIs monitorados, saúde (verde/amarelo/vermelho)
+- [x] Infraestrutura: itens em fila, prioridade, bloqueios
+
+#### 5.2 Atualização automática
+- [x] Sincronizar com próxima coleta válida (refresh a cada 3min via window focus event)
+- [x] Indicador discreto de última atualização (badge com horário no canto superior)
+- [x] Evitar refresh agressivo (intervalo de 3min, sem refetchOnWindowFocus)
+
+### Fase 6 — Setores com PRD Próprio ✅
+**Prioridade:** P3 | **Dependência:** Fases anteriores
+
+#### 6.1 Comercial
+- [x] Já incluído na malha geral (sidebar, configurações, sync, healthcheck)
+- [x] PRD específico já implementado (dashboard, base de clientes, fila operacional)
+- [x] Alertas e Kiosk seguirão regras transversais
+
+#### 6.2 Normalização de Dados Comerciais ✅
+
+##### Fonte 1 — Pesquisa de Satisfação de Clientes (Pesquisa_FLAG_Clientes)
+- **Formato:** XLSX, aba única, ~80+ linhas
+- **Colunas-chave para normalização:**
+  - `Codigo Puxada` → ID único do cliente (mapeia para `vdesk_clients.id`)
+  - `Cliente` → nome curto / apelido
+  - `Razao Social` → razão social completa
+  - `Bandeira` → Danone, DPA, Froneri, Nestlé, Heineken, Nespresso, Outros
+  - `Status` → Ativo / Inativo / Bloqueado
+  - `Cidade`, `UF` → localização geográfica
+  - `Servidor Flag` → S1, S4, SX (infraestrutura de hospedagem)
+  - Notas por produto (0-5): Flexx ERP, Decision, Avante Sales, Flexx Sales, Connect Sales, Flexx GPS, Flexx Go, Connect Merchan, Flexx Promo, Sofia IA
+  - Campos qualitativos: "Pensou em trocar?", "Indicaria a Flag?", relatos livres
+- **Regras de normalização:**
+  - Notas "Sem Relato" / "NÃO USA" → null (não contabilizar na média)
+  - Notas numéricas (0-5) → int, validar range
+  - Respostas S/N → boolean
+  - Bandeira: padronizar capitalização (ex: "DPA" → "DPA", "Danone" → "Danone")
+  - Codigo Puxada: int, chave de cruzamento com vdesk_clients
+- **Tabela destino sugerida:** `comercial_pesquisa_satisfacao`
+  - Campos: id, cliente_id (FK vdesk_clients), bandeira, data_pesquisa, responsavel_contato, notas_por_produto (JSONB), qualitativo (JSONB), created_at
+
+##### Fonte 2 — Acompanhamento Comercial (Comercial_Informação_IGOR)
+- **Formato:** XLSX, múltiplas abas por ano (2021-2025+)
+- **Duas tabelas por aba:**
+  - **Perdas:** Quant, Data, Codigo, Cliente, Sistema, Bandeira/Marca, Motivo, Valor Mensal, Encerramento, Status
+  - **Novos (Ganhos):** Quant, Data, Codigo, Cliente, Sistema, Bandeira/Marca, Valor Mensal
+- **Regras de normalização:**
+  - Data: formatos mistos (MM/YYYY, "jan/2025", "Out/24") → normalizar para ISO date (primeiro dia do mês)
+  - Bandeira: padronizar ("HNK" → "Heineken", "NESTLÉ" / "NESTLE" → "Nestlé", "OUTROS" → "Outros", "GAROTO" → "Garoto", "DAN" → "Danone", "NESTLE / PURINA" → "Purina")
+  - Sistema: normalizar ("SUITE FLEXX" / "Suite Flexx" → "Suite Flexx", "Flexxgps ME LEVA" → "Flexx GPS")
+  - Valor Mensal: parse BRL (R$ X.XXX,XX) → numeric, considerar nulos
+  - Status: "Bloqueado", "Cancelado", "Encerrado em DD/MM/YY", "Não formalizado" → enum normalizado
+  - Codigo: int, chave de cruzamento com vdesk_clients
+- **Tabela destino sugerida:** `comercial_movimentacao_clientes`
+  - Campos: id, cliente_codigo, cliente_nome, tipo (perda/ganho), data_evento, sistema, bandeira, motivo, valor_mensal, status_encerramento, ano_referencia, created_at
+
+##### Fonte 3 — Intelliwan CRM (screenshots de referência)
+- **Dados externos (não importados diretamente):**
+  - Vendas realizadas por cliente (bar chart horizontal por bandeira)
+  - Venda total (deal value BRL) com variação percentual
+  - Negócios ganhos por mês (bar chart mensal com meta de R$ 110K)
+- **Uso no Hub:** referência visual para KPIs do Comercial
+  - KPI: Venda Total do período → card grande com variação
+  - KPI: Vendas por Cliente/Bandeira → gráfico horizontal
+  - KPI: Negócios ganhos mês a mês → bar chart com meta
+  - Filtro por período customizado (Q1 2026: jan-mar)
+- **Nota:** dados de CRM poderão ser sincronizados via API futura; por ora, importação manual XLSX/CSV
+
+##### Regras transversais de importação Comercial
+- Importação via SectorImportArea (incremental ou expurgo)
+- Validação de MIME: .xlsx, .xls, .csv
+- Limite 10MB por arquivo
+- Deduplicação por (cliente_codigo + data_evento + tipo) para movimentação
+- Deduplicação por (cliente_id + data_pesquisa) para pesquisa satisfação
+- Histórico de importações segregado por setor "comercial"
+- Owner pode importar; leitura para demais roles
+
+---
+
+## Regras Transversais
+- Segregação por tenant/network_id e RLS
+- Segredos nunca no frontend
+- Estados obrigatórios: loading, vazio, erro, sucesso, sem permissão
+- Ações destrutivas exigem confirmação
+- Frontend não é autoridade de permissão
+
+---
 
 ## Security Validation Snapshot (DEV)
 Status: in progress
@@ -26,115 +193,19 @@ Em andamento no codigo:
 - Baseline inicial de auth/hydration foi instrumentado no frontend para comparacao antes/depois.
 - MFA para role elevada saiu do caminho critico de readiness e passou para verificacao adiada apos liberar a UI.
 
-Pendente fora de codigo:
-- Configuracoes de plataforma Supabase e supply chain continuam no plano de hardening operacional.
-
-## Execution Lanes
+## Execution Lanes (legado — mantido para referência)
 
 ### Lane A - Security Refactors (Priority P0)
-Objective:
-- Corrigir trust boundary e fechar vetores de abuso em funcoes/rotas sensiveis.
-
-Scope:
-- Padronizar validacao server-side em Edge Functions que usam service role.
-- Aplicar padrao de validacao privilegiada (jwt valido + role/escopo no backend).
-- Restringir CORS para origens permitidas.
-- Reduzir exposicao de logs sensiveis e tokens proprios.
-
-Current status: in progress
-
-Definition of done:
-- Nenhuma acao administrativa e executada com base apenas em validacao de frontend.
-- Chamadas diretas sem role adequada retornam 403.
-- CORS wildcard removido de funcoes criticas.
+Status: in progress — items migrated to PRD Fase 2
 
 ### Lane B - Performance Refactors (Priority P1)
-Objective:
-- Reduzir latencia de login/hydration e eliminar cascata de queries em KPIs.
-
-Scope:
-- Otimizar Auth hydration e prefetch controlado.
-- Deduplicar queries base/scoped em dashboards.
-- Paralelizar chunking sequencial em cargas de KPI.
-- Reduzir invalidacoes globais e adotar refresh mais previsivel.
-- Implementar lazy load em tabs nao ativas.
-
-Current status: planned
-
-Definition of done:
-- Queda mensuravel no tempo de primeira renderizacao de KPI apos login.
-- Reducao de round-trips e de invalidacoes em cascata.
-- Comportamento funcional preservado nos setores.
+Status: in progress — items migrated to PRD Fase 1
 
 ### Lane C - Legacy/Cleanup Refactors (Priority P1/P2)
-Objective:
-- Diminuir custo de manutencao e risco de regressao por codigo duplicado/obsoleto.
-
-Scope:
-- Consolidar gradualmente duplicacoes entre raiz e flaghub/.
-- Isolar mock/demo por feature flag explicita.
-- Reduzir logs verbosos e remover caminhos deprecados.
-
-Current status: planned
-
-Definition of done:
-- Menor area duplicada com sincronia controlada.
-- Nenhum fallback de demo ativo em producao sem flag.
-- Cleanup sem quebra de contrato funcional.
-
-## Milestones
-
-### Milestone 0 - Baseline and Safe Rollout
-Status: in progress
-
-- Definir baseline de login, MFA, hydration e carga inicial de KPIs.
-- Definir metricas alvo e monitoracao minima por feature.
-- Garantir rollout seguro com flags e reversao rapida.
-
-### Milestone 1 - Security First
-Status: in progress
-
-- Confirmar fechamento das 3 correcoes de DEV em todos os trees.
-- Corrigir trust boundary de manual upload. Status: done nos trees ativos.
-- Fortalecer politica para conta kiosk read-only no backend.
-- Revisar headers de seguranca em deploy.
-
-### Milestone 2 - Performance Core
 Status: planned
-
-- Priorizar otimizacao de query path em Auth e KPIs.
-- Reduzir custo de refresh e rajadas desnecessarias no banco/views.
-- Validar capacidade para 12 sessoes concorrentes.
-
-### Milestone 3 - Cleanup and Consolidation
-Status: planned
-
-- Limpeza de legado apos correcoes P0/P1.
-- Consolidacao estrutural sem misturar com hotfix critico.
-
-## Risks and Mitigations
-- Risk: regressao funcional por refatoracao extensa.
-  Mitigation: diffs pequenos, flags e testes de regressao por fluxo critico.
-- Risk: drift entre raiz e flaghub/.
-  Mitigation: alterar em ambos os trees ate consolidacao final.
-- Risk: otimizar desempenho sem medir.
-  Mitigation: baseline antes/depois para cada mudanca relevante.
-
-## Verification Gates
-1. Gate Security:
-   - Teste de chamada direta ao backend sem role correta deve falhar.
-2. Gate Performance:
-   - Medicao comparativa de login/hydration/first-kpi-load com 12 sessoes.
-3. Gate Functional:
-   - Rotas, MFA e dashboards sem regressao de comportamento.
-4. Gate Cleanup:
-   - Remocoes de legado sem quebrar fluxo produtivo.
 
 ## Synchronization Rule (VS Code + Lovable)
 Quando alterar arquitetura, authz, KPI load ou cleanup:
-
 1. Atualizar este arquivo na mesma PR/commit.
 2. Atualizar docs operacionais impactados em docs/.
 3. Registrar status por lane/milestone: done, in progress, planned, postponed.
-
-Isso evita drift entre o planejado e o implementado.

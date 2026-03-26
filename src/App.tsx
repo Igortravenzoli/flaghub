@@ -36,7 +36,14 @@ import IpAllowlist from "@/pages/admin/IpAllowlist";
 import ManualUploads from "@/pages/admin/ManualUploads";
 import AuditLogs from "@/pages/admin/AuditLogs";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000, // 2 min — reduces cascading refetches across dashboards
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

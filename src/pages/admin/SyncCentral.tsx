@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database, Power, PowerOff } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database, Power, PowerOff, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 
@@ -72,7 +73,7 @@ export default function SyncCentral() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 10000,
+    refetchInterval: 60000, // 60s — reduz carga no banco
   });
 
   const refreshSyncData = () => {
@@ -332,18 +333,20 @@ export default function SyncCentral() {
             <TableRow>
               <TableHead>Job</TableHead>
               <TableHead>Integração</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Saúde</TableHead>
+              <TableHead>Ativo</TableHead>
               <TableHead>Intervalo</TableHead>
               <TableHead>Último Run</TableHead>
+              <TableHead>Próximo Run</TableHead>
               <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {jobsLoading && (
-              <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
             )}
             {!jobsLoading && jobs.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhum job configurado</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Nenhum job configurado</TableCell></TableRow>
             )}
             {jobs.map((job: any) => {
               const isRunning = runningJobs.has(job.id);
@@ -353,14 +356,41 @@ export default function SyncCentral() {
               const isManagedJob = job.job_key in JOB_FUNCTION_MAP;
               const currentMinutes = job.schedule_minutes || null;
 
+              // Health badge based on recent runs
+              const jobRuns = runs.filter((r: any) => r.job_id === job.id);
+              const lastRun = jobRuns[0];
+              const recentErrors = jobRuns.slice(0, 3).filter((r: any) => r.status === 'error').length;
+              const healthStatus = !lastRun ? 'unknown' : recentErrors >= 2 ? 'degradado' : lastRun.status === 'error' ? 'falhando' : 'ativo';
+
+              const healthBadge = () => {
+                switch (healthStatus) {
+                  case 'ativo': return <Badge variant="default" className="gap-1"><CheckCircle className="h-3 w-3" />Ativo</Badge>;
+                  case 'falhando': return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Falhando</Badge>;
+                  case 'degradado': return <Badge variant="destructive" className="gap-1 bg-orange-500/90 hover:bg-orange-500"><AlertTriangle className="h-3 w-3" />Degradado</Badge>;
+                  default: return <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />Sem dados</Badge>;
+                }
+              };
+
               return (
                 <TableRow key={job.id}>
                   <TableCell className="font-mono text-sm">{job.job_key}</TableCell>
                   <TableCell className="text-sm">{integration?.name || '—'}</TableCell>
+                  <TableCell>{healthBadge()}</TableCell>
                   <TableCell>
-                    <Badge variant={job.enabled ? 'default' : 'secondary'}>
-                      {job.enabled ? 'Ativo' : 'Inativo'}
-                    </Badge>
+                    {isManagedJob ? (
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={job.enabled}
+                          onCheckedChange={(checked) => handleToggleJob(job, checked)}
+                          disabled={isToggling}
+                        />
+                        {isToggling && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                      </div>
+                    ) : (
+                      <Badge variant={job.enabled ? 'default' : 'secondary'}>
+                        {job.enabled ? 'Ativo' : 'Inativo'}
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     {isManagedJob ? (
@@ -392,31 +422,20 @@ export default function SyncCentral() {
                   <TableCell className="text-sm text-muted-foreground">
                     {job.last_run_at ? new Date(job.last_run_at).toLocaleString('pt-BR') : '—'}
                   </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {job.next_run_at ? new Date(job.next_run_at).toLocaleString('pt-BR') : '—'}
+                  </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      {isManagedJob && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1"
-                          disabled={isToggling}
-                          onClick={() => handleToggleJob(job, !job.enabled)}
-                        >
-                          {isToggling ? <Loader2 className="h-3 w-3 animate-spin" /> : job.enabled ? <PowerOff className="h-3 w-3" /> : <Power className="h-3 w-3" />}
-                          {job.enabled ? 'Off' : 'On'}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1"
-                        disabled={isRunning || isToggling || !JOB_FUNCTION_MAP[job.job_key]}
-                        onClick={() => handleRunNow(job)}
-                      >
-                        {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                        {isRunning ? 'Rodando...' : 'Rodar'}
-                      </Button>
-                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      disabled={isRunning || isToggling || !JOB_FUNCTION_MAP[job.job_key]}
+                      onClick={() => handleRunNow(job)}
+                    >
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      {isRunning ? 'Rodando...' : 'Rodar'}
+                    </Button>
                   </TableCell>
                 </TableRow>
               );

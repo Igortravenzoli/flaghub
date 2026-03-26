@@ -11,6 +11,7 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
   Headphones, Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
+  Ticket, Search,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,13 +22,19 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// Lazy load ticket sub-pages for tab embedding
+const DashboardPage = lazy(() => import('@/pages/Dashboard'));
+const TicketsPage = lazy(() => import('@/pages/Tickets'));
+const TicketBuscaPage = lazy(() => import('@/pages/TicketBuscaComponente'));
 
 const integrations: Integration[] = [
   { name: 'VDesk Helpdesk API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Dashboard Helpdesk' },
@@ -293,17 +300,48 @@ export default function HelpdeskDashboard() {
       label: h.data ? new Date(h.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '',
     }));
 
+  const tabFallback = (
+    <div className="space-y-3 p-4">
+      <Skeleton className="h-8 w-full" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+
+  const ticketExtraTabs = [
+    {
+      id: 'tickets-painel',
+      label: 'Painel Tickets',
+      icon: <Ticket className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><DashboardPage /></Suspense>,
+    },
+    {
+      id: 'tickets-pesquisar',
+      label: 'Pesquisar',
+      icon: <Search className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><TicketsPage /></Suspense>,
+    },
+    {
+      id: 'tickets-busca-vdesk',
+      label: 'Busca VDesk',
+      icon: <Search className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><TicketBuscaPage /></Suspense>,
+    },
+  ];
+
   return (
     <SectorLayout
       title="Helpdesk"
       subtitle="KPIs de Atendimento — VDesk"
       lastUpdate=""
       integrations={integrations}
+      templateKey="helpdesk_v1"
       areaKey="helpdesk"
+      extraTabs={ticketExtraTabs}
       syncFunctions={[
         { name: 'vdesk-sync-helpdesk', label: 'Sincronizar Helpdesk (VDesk)' },
       ]}
     >
+
       {/* Top bar: sync badge + consultant filter */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />

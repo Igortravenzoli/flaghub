@@ -1,11 +1,18 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, lazy, Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, LayoutDashboard, Upload, Settings } from 'lucide-react';
-import { SectorImportArea } from './SectorImportArea';
-import { SectorSettings } from './SectorSettings';
-import { SectorIntegrations, Integration } from './SectorIntegrations';
+import { Clock, LayoutDashboard, Upload, Settings, Lock } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
+import { useHubAreas } from '@/hooks/useHubAreas';
+import { useHubIsAdmin } from '@/hooks/useHubPermissions';
+import { useAuth } from '@/hooks/useAuth';
+import type { Integration } from './SectorIntegrations';
+
+// Lazy-loaded heavy tab contents to avoid loading when tab is not active
+const SectorImportArea = lazy(() => import('./SectorImportArea').then(m => ({ default: m.SectorImportArea })));
+const SectorSettings = lazy(() => import('./SectorSettings').then(m => ({ default: m.SectorSettings })));
+const SectorIntegrations = lazy(() => import('./SectorIntegrations').then(m => ({ default: m.SectorIntegrations })));
 
 interface SyncFunction {
   name: string;
@@ -30,7 +37,16 @@ interface SectorLayoutProps {
 export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, kioskMode }: SectorLayoutProps) {
   // Detect kiosk mode from parent or prop
   const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
-  const showImports = areaKey === 'customer-service' || areaKey === 'comercial';
+  const isHubAdmin = useHubIsAdmin();
+  const { isAdmin: isAuthAdmin } = useAuth();
+  const isAdmin = isHubAdmin || isAuthAdmin;
+  const { isOwner, isOperacional, getAreaRole } = useHubAreas();
+
+  const areaRole = areaKey ? getAreaRole(areaKey) : null;
+  const hasMembership = !!areaRole;
+  const canImport = areaKey ? (isOwner(areaKey) || isOperacional(areaKey) || isAdmin) : isAdmin;
+  const canSettings = areaKey ? (hasMembership || isAdmin) : isAdmin;
+  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'helpdesk') && canImport;
 
   if (isKiosk) {
     return (
@@ -88,10 +104,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
               Importações
             </TabsTrigger>
           )}
-          <TabsTrigger value="settings" className="gap-1">
-            <Settings className="h-3.5 w-3.5" />
-            Configurações
-          </TabsTrigger>
+          {canSettings && (
+            <TabsTrigger value="settings" className="gap-1">
+              <Settings className="h-3.5 w-3.5" />
+              Configurações
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="dashboard" className="mt-4 space-y-4">
@@ -105,19 +123,25 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
         ))}
 
         {showImports && (
-          <TabsContent value="imports" className="mt-4">
-            <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
+          <TabsContent value="imports" className="mt-4" forceMount={undefined}>
+            <Suspense fallback={<div className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-32 w-full" /></div>}>
+              <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
+            </Suspense>
           </TabsContent>
         )}
 
-        <TabsContent value="settings" className="mt-4">
-          <div className="space-y-4">
-            <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
-            {integrations && (
-              <SectorIntegrations integrations={integrations} sectorName={title} />
-            )}
-          </div>
-        </TabsContent>
+        {canSettings && (
+          <TabsContent value="settings" className="mt-4" forceMount={undefined}>
+            <Suspense fallback={<div className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-32 w-full" /></div>}>
+              <div className="space-y-4">
+                <SectorSettings sectorName={title} sectorKey={areaKey} syncFunctions={syncFunctions} />
+                {integrations && (
+                  <SectorIntegrations integrations={integrations} sectorName={title} />
+                )}
+              </div>
+            </Suspense>
+          </TabsContent>
+        )}
         </Tabs>
       </div>
     </MetricMetadataProvider>

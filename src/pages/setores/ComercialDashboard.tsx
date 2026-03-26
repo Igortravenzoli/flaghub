@@ -19,6 +19,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+import { MovimentacaoTab } from '@/components/comercial/MovimentacaoTab';
+import { PesquisaTab } from '@/components/comercial/PesquisaTab';
+import { PipeDriveTab } from '@/components/comercial/PipeDriveTab';
 
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
@@ -187,6 +190,9 @@ export default function ComercialDashboard() {
             <TabsTrigger value="kpi-oficial" className="text-xs">KPI Oficial</TabsTrigger>
             <TabsTrigger value="operacional" className="text-xs">Visão Operacional</TabsTrigger>
             <TabsTrigger value="esteira-saude" className="text-xs">Esteira / Saúde</TabsTrigger>
+            <TabsTrigger value="movimentacao" className="text-xs">Movimentação</TabsTrigger>
+            <TabsTrigger value="pesquisa" className="text-xs">Pesquisa Satisfação</TabsTrigger>
+            <TabsTrigger value="pipedrive" className="text-xs">PipeDrive</TabsTrigger>
           </TabsList>
 
           <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
@@ -300,6 +306,18 @@ export default function ComercialDashboard() {
                 searchPlaceholder="Buscar item monitorado..."
               />
             )}
+          </TabsContent>
+
+          <TabsContent value="movimentacao" className="space-y-4 mt-0">
+            <MovimentacaoTab dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
+          </TabsContent>
+
+          <TabsContent value="pesquisa" className="space-y-4 mt-0">
+            <PesquisaTab />
+          </TabsContent>
+
+          <TabsContent value="pipedrive" className="space-y-4 mt-0">
+            <PipeDriveTab />
           </TabsContent>
         </Tabs>
       )}

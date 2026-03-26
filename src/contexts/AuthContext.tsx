@@ -5,6 +5,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Profile } from "@/types/database";
 import { hasElevated, hasManagement, hasQuality, hasOperational, canPerformImport, canManageConfig } from "@/lib/roleMap";
+import { isMonitorUser } from "@/lib/monitorUser";
 
 interface AuthState {
   user: User | null;
@@ -20,6 +21,7 @@ interface AuthState {
 }
 
 export interface AuthContextValue extends AuthState {
+  isMonitor: boolean;
   signIn: (
     email: string,
     password: string
@@ -126,7 +128,9 @@ function measurePerformance(name: string, startMark: string, endMark: string) {
   }
 }
 
-async function checkElevatedMfaRequirement(roleCode: string | null): Promise<boolean> {
+async function checkElevatedMfaRequirement(roleCode: string | null, userEmail?: string | null): Promise<boolean> {
+  // Monitor user is exempt from MFA
+  if (isMonitorUser(userEmail)) return false;
   if (!hasElevated(roleCode)) return false;
 
   const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -379,7 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       measurePerformance("auth:sign-in-to-ready", "auth:sign-in:start", "auth:ready");
 
       const resolvedRoleCode = session.user ? (state.roleCode ?? null) : null;
-      void checkElevatedMfaRequirement(resolvedRoleCode)
+      void checkElevatedMfaRequirement(resolvedRoleCode, session.user?.email)
         .then((mfaRequired) => {
           if (opId !== opIdRef.current) return;
           setState((prev) => ({ ...prev, mfaRequired }));
@@ -595,12 +599,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, mfaRequired: false }));
   }, []);
 
+  const isMonitor = isMonitorUser(state.user?.email);
   const isAdmin = hasElevated(state.roleCode);
   const isGestao = hasManagement(state.roleCode) && !hasElevated(state.roleCode);
   const isQualidade = hasQuality(state.roleCode);
   const isOperacional = hasOperational(state.roleCode);
-  const canImport = canPerformImport(state.roleCode);
-  const canManageSettingsFlag = canManageConfig(state.roleCode);
+  const canImport = isMonitor ? false : canPerformImport(state.roleCode);
+  const canManageSettingsFlag = isMonitor ? false : canManageConfig(state.roleCode);
 
   // Derive the DB role name from obfuscated code for backward compatibility
   const roleFromCode = ((): AppRole | null => {
@@ -613,6 +618,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       role: roleFromCode,
+      isMonitor,
       signIn,
       signUp,
       signOut,
@@ -629,6 +635,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       state,
       roleFromCode,
+      isMonitor,
       signIn,
       signUp,
       signOut,
