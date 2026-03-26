@@ -45,10 +45,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
   const hasMembership = !!areaRole;
   const isAreaOwner = areaKey ? isOwner(areaKey) : false;
-  // Owner tem acesso completo (importações, configurações, extraTabs) — não depende de role admin global
+  // Owner/operacional can import; leitura can only view dashboard + extraTabs
   const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
   const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
-  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'helpdesk') && canImport;
+  // Any member (leitura+) can see extraTabs; admins always can
+  const canViewExtraTabs = hasMembership || isAdmin;
+  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
 
   if (isKiosk) {
     return (
