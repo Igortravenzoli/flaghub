@@ -21,6 +21,7 @@ import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { MovimentacaoTab } from '@/components/comercial/MovimentacaoTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
+import { PipeDriveTab } from '@/components/comercial/PipeDriveTab';
 
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
