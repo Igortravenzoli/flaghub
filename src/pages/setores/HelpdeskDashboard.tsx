@@ -300,6 +300,34 @@ export default function HelpdeskDashboard() {
       label: h.data ? new Date(h.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '',
     }));
 
+  const tabFallback = (
+    <div className="space-y-3 p-4">
+      <Skeleton className="h-8 w-full" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+
+  const ticketExtraTabs = [
+    {
+      id: 'tickets-painel',
+      label: 'Painel Tickets',
+      icon: <Ticket className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><DashboardPage /></Suspense>,
+    },
+    {
+      id: 'tickets-pesquisar',
+      label: 'Pesquisar',
+      icon: <Search className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><TicketsPage /></Suspense>,
+    },
+    {
+      id: 'tickets-busca-vdesk',
+      label: 'Busca VDesk',
+      icon: <Search className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><TicketBuscaPage /></Suspense>,
+    },
+  ];
+
   return (
     <SectorLayout
       title="Helpdesk"
@@ -307,6 +335,7 @@ export default function HelpdeskDashboard() {
       lastUpdate=""
       integrations={integrations}
       areaKey="helpdesk"
+      extraTabs={ticketExtraTabs}
       syncFunctions={[
         { name: 'vdesk-sync-helpdesk', label: 'Sincronizar Helpdesk (VDesk)' },
       ]}
