@@ -40,19 +40,17 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const isHubAdmin = useHubIsAdmin();
   const { isAdmin: isAuthAdmin } = useAuth();
   const isAdmin = isHubAdmin || isAuthAdmin;
-  const { isOwner, isOperacional, getAreaRole } = useHubAreas();
+  const { isOwner, isOperacional, getAreaRole, isLoading: isAreasLoading } = useHubAreas();
 
-  const areasLoading = useHubAreas().isLoading;
+  const isTicketsOsArea = areaKey === 'tickets_os';
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
   const hasMembership = !!areaRole;
   const isAreaOwner = areaKey ? isOwner(areaKey) : false;
-  // Owner/operacional can import; leitura can only view dashboard + extraTabs
-  const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
-  const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
-  // Any member (leitura+) can see extraTabs; admins always can
-  // While loading, show tabs to avoid flash of hidden content
-  const canViewExtraTabs = areasLoading || hasMembership || isAdmin;
-  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
+  // Flexibilização específica do Helpdesk/Tickets: sempre exibe abas e importação no frontend
+  const canImport = isTicketsOsArea ? true : areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
+  const canSettings = isTicketsOsArea ? true : areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
+  const canViewExtraTabs = isTicketsOsArea || isAreasLoading || hasMembership || isAdmin;
+  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || isTicketsOsArea) && canImport;
 
   if (isKiosk) {
     return (
