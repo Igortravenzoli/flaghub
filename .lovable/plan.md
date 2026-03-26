@@ -1,6 +1,6 @@
 # FlagHub Evolution - Dev Level Plan (VS Code + Lovable)
 
-Last update: 2026-03-25
+Last update: 2026-03-26
 
 ## Purpose
 Este arquivo e o plano de execucao de desenvolvimento para seguranca, desempenho e cleanup.
@@ -11,6 +11,114 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 - Supabase URL e anon/publishable key sao publicos por design.
 - Plataforma deve suportar 12 acessos simultaneos com estabilidade em login/refresh/KPI load.
 - Kiosk usa conta dedicada read-only, sem privilegio administrativo.
+
+---
+
+## PRD — Evolução Estrutural do Operations Hub + Setores
+
+### Fase 1 — Fundação Transversal (EM ANDAMENTO)
+**Prioridade:** P0 | **Risco:** Baixo
+
+#### 1.1 Paginação padronizada
+- [x] Seletor de page size: 20 / 30 / 50 / 100 (default 30)
+- [x] Aplicar em todas as DashboardDataTable
+- [x] Preservar filtros e busca ao trocar page size
+
+#### 1.2 Performance e concorrência
+- [x] staleTime global de 2min para queries React Query (QueryClient defaults)
+- [x] Lazy load de tabs (Settings, Importações) no SectorLayout
+- [ ] Reduzir refetchInterval agressivo (jobs: 30s → 60s, kiosk: preservar)
+- [ ] refetchOnWindowFocus: false em queries pesadas
+- Meta: 10 sessões simultâneas mínimo, margem para 12
+
+#### 1.3 Toggles padronizados
+- [x] Switch verde quando On, cinza quando Off (Radix Switch com data-[state=checked]:bg-primary)
+- [ ] Garantir consistência visual em SectorSettings e SyncCentral
+
+#### 1.4 Observabilidade de Jobs
+- [ ] Exibir último run, status, próxima execução, erro resumido
+- [ ] Badges de saúde: ativo, falhando, degradado
+- [ ] Histórico mínimo operacional na Central de Sync
+
+#### 1.5 Tabelas backend (Supabase)
+- [ ] sector_health — status de saúde por setor/dependência
+- [ ] alert_rules — regras de alerta por setor/KPI
+- [ ] alert_channels — canais (email, telegram, teams)
+- [ ] alert_deliveries — log de envios
+
+### Fase 2 — Permissões e Visibilidade
+**Prioridade:** P1 | **Dependência:** Fase 1
+
+#### 2.1 Matriz de permissões
+- [ ] Roles refinados: leitura, operacional, owner, admin
+- [ ] Herança de permissão: HelpDesk → Tickets automático
+- [ ] Bloqueio visual de ações sem permissão
+
+#### 2.2 Usuário monitor
+- [ ] monitor@flag.com.br: role operacional, somente leitura, somente Kiosk
+- [ ] Exceção de MFA exclusiva deste usuário
+- [ ] Sem acesso a importações, configurações ou administração
+
+### Fase 3 — Estrutura Setorial e Navegação
+**Prioridade:** P1 | **Dependência:** Fase 2
+
+#### 3.1 HelpDesk reorganizado
+- [ ] /dashboard HelpDesk: painel gerencial com tarja grande (padrão Fábrica)
+- [ ] Submenu Tickets com abas: Painel Tickets, Importações, Configurações, Pesquisar, Busca VDesk
+- [ ] Permissão Tickets herda do HelpDesk
+- [ ] Importação JSON restrita a Owner
+
+#### 3.2 Navegação consistente
+- [ ] Padronizar menus laterais por setor
+- [ ] Garantir compatibilidade sem quebrar rotas existentes
+
+### Fase 4 — Alertas por Setor
+**Prioridade:** P2 | **Dependência:** Fase 1 (tabelas)
+
+#### 4.1 Configuração de alertas
+- [ ] UI por setor: ativar/desativar, escolher canal, condição, limiar
+- [ ] Canais: email, webhook Telegram, webhook Teams
+- [ ] Destinatários: somente usuários cadastrados (sem email livre)
+- [ ] SMTP/credentials: somente Admin configura
+
+#### 4.2 Visualização
+- [ ] Último disparo, status do alerta
+- [ ] Log de entregas
+
+### Fase 5 — Kiosk Otimizado por Setor
+**Prioridade:** P2 | **Dependência:** Fase 3
+
+#### 5.1 Curadoria de indicadores por setor (TV)
+- Fábrica: atividades sprint, aguardando teste, aviões
+- Helpdesk: registros hoje, horas acumuladas, top 3 sistemas
+- Comercial: total clientes, ativos vs inativos, pipeline
+- CS: implantações ativas, fila, finalizadas
+- Qualidade: PBIs monitorados, saúde (verde/amarelo/vermelho)
+- Infraestrutura: itens em fila, prioridade, bloqueios
+
+#### 5.2 Atualização automática
+- [ ] Sincronizar com próxima coleta válida
+- [ ] Indicador discreto de última atualização
+- [ ] Evitar refresh agressivo
+
+### Fase 6 — Setores com PRD Próprio
+**Prioridade:** P3 | **Dependência:** Fases anteriores
+
+#### 6.1 Comercial
+- Já incluído na malha geral (sidebar, configurações, sync, healthcheck)
+- PRD específico já implementado (dashboard, base de clientes, fila operacional)
+- Alertas e Kiosk seguirão regras transversais
+
+---
+
+## Regras Transversais
+- Segregação por tenant/network_id e RLS
+- Segredos nunca no frontend
+- Estados obrigatórios: loading, vazio, erro, sucesso, sem permissão
+- Ações destrutivas exigem confirmação
+- Frontend não é autoridade de permissão
+
+---
 
 ## Security Validation Snapshot (DEV)
 Status: in progress
@@ -26,115 +134,19 @@ Em andamento no codigo:
 - Baseline inicial de auth/hydration foi instrumentado no frontend para comparacao antes/depois.
 - MFA para role elevada saiu do caminho critico de readiness e passou para verificacao adiada apos liberar a UI.
 
-Pendente fora de codigo:
-- Configuracoes de plataforma Supabase e supply chain continuam no plano de hardening operacional.
-
-## Execution Lanes
+## Execution Lanes (legado — mantido para referência)
 
 ### Lane A - Security Refactors (Priority P0)
-Objective:
-- Corrigir trust boundary e fechar vetores de abuso em funcoes/rotas sensiveis.
-
-Scope:
-- Padronizar validacao server-side em Edge Functions que usam service role.
-- Aplicar padrao de validacao privilegiada (jwt valido + role/escopo no backend).
-- Restringir CORS para origens permitidas.
-- Reduzir exposicao de logs sensiveis e tokens proprios.
-
-Current status: in progress
-
-Definition of done:
-- Nenhuma acao administrativa e executada com base apenas em validacao de frontend.
-- Chamadas diretas sem role adequada retornam 403.
-- CORS wildcard removido de funcoes criticas.
+Status: in progress — items migrated to PRD Fase 2
 
 ### Lane B - Performance Refactors (Priority P1)
-Objective:
-- Reduzir latencia de login/hydration e eliminar cascata de queries em KPIs.
-
-Scope:
-- Otimizar Auth hydration e prefetch controlado.
-- Deduplicar queries base/scoped em dashboards.
-- Paralelizar chunking sequencial em cargas de KPI.
-- Reduzir invalidacoes globais e adotar refresh mais previsivel.
-- Implementar lazy load em tabs nao ativas.
-
-Current status: planned
-
-Definition of done:
-- Queda mensuravel no tempo de primeira renderizacao de KPI apos login.
-- Reducao de round-trips e de invalidacoes em cascata.
-- Comportamento funcional preservado nos setores.
+Status: in progress — items migrated to PRD Fase 1
 
 ### Lane C - Legacy/Cleanup Refactors (Priority P1/P2)
-Objective:
-- Diminuir custo de manutencao e risco de regressao por codigo duplicado/obsoleto.
-
-Scope:
-- Consolidar gradualmente duplicacoes entre raiz e flaghub/.
-- Isolar mock/demo por feature flag explicita.
-- Reduzir logs verbosos e remover caminhos deprecados.
-
-Current status: planned
-
-Definition of done:
-- Menor area duplicada com sincronia controlada.
-- Nenhum fallback de demo ativo em producao sem flag.
-- Cleanup sem quebra de contrato funcional.
-
-## Milestones
-
-### Milestone 0 - Baseline and Safe Rollout
-Status: in progress
-
-- Definir baseline de login, MFA, hydration e carga inicial de KPIs.
-- Definir metricas alvo e monitoracao minima por feature.
-- Garantir rollout seguro com flags e reversao rapida.
-
-### Milestone 1 - Security First
-Status: in progress
-
-- Confirmar fechamento das 3 correcoes de DEV em todos os trees.
-- Corrigir trust boundary de manual upload. Status: done nos trees ativos.
-- Fortalecer politica para conta kiosk read-only no backend.
-- Revisar headers de seguranca em deploy.
-
-### Milestone 2 - Performance Core
 Status: planned
-
-- Priorizar otimizacao de query path em Auth e KPIs.
-- Reduzir custo de refresh e rajadas desnecessarias no banco/views.
-- Validar capacidade para 12 sessoes concorrentes.
-
-### Milestone 3 - Cleanup and Consolidation
-Status: planned
-
-- Limpeza de legado apos correcoes P0/P1.
-- Consolidacao estrutural sem misturar com hotfix critico.
-
-## Risks and Mitigations
-- Risk: regressao funcional por refatoracao extensa.
-  Mitigation: diffs pequenos, flags e testes de regressao por fluxo critico.
-- Risk: drift entre raiz e flaghub/.
-  Mitigation: alterar em ambos os trees ate consolidacao final.
-- Risk: otimizar desempenho sem medir.
-  Mitigation: baseline antes/depois para cada mudanca relevante.
-
-## Verification Gates
-1. Gate Security:
-   - Teste de chamada direta ao backend sem role correta deve falhar.
-2. Gate Performance:
-   - Medicao comparativa de login/hydration/first-kpi-load com 12 sessoes.
-3. Gate Functional:
-   - Rotas, MFA e dashboards sem regressao de comportamento.
-4. Gate Cleanup:
-   - Remocoes de legado sem quebrar fluxo produtivo.
 
 ## Synchronization Rule (VS Code + Lovable)
 Quando alterar arquitetura, authz, KPI load ou cleanup:
-
 1. Atualizar este arquivo na mesma PR/commit.
 2. Atualizar docs operacionais impactados em docs/.
 3. Registrar status por lane/milestone: done, in progress, planned, postponed.
-
-Isso evita drift entre o planejado e o implementado.
