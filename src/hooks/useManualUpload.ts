@@ -114,8 +114,47 @@ function rowsToCsv(rows: Record<string, any>[]): string {
  * that would cause issues when stored as JSONB.
  */
 function sanitizeText(text: string): string {
-  // Remove null bytes and other problematic Unicode
   return text.replace(/\0/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+}
+
+function extractJsonRecords(parsed: any): Record<string, any>[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) {
+    return parsed.records;
+  }
+  return [parsed];
+}
+
+function chunkJsonRecords(records: Record<string, any>[], maxBytes = 900_000): string[] {
+  if (records.length === 0) return [];
+
+  const encoder = new TextEncoder();
+  const chunks: string[] = [];
+  let currentChunk: Record<string, any>[] = [];
+
+  for (const record of records) {
+    const singlePayload = JSON.stringify({ records: [record] });
+    if (encoder.encode(singlePayload).length > maxBytes) {
+      throw new Error('Um registro do JSON excede o limite de importação.');
+    }
+
+    const nextChunk = [...currentChunk, record];
+    const nextPayload = JSON.stringify({ records: nextChunk });
+
+    if (currentChunk.length > 0 && encoder.encode(nextPayload).length > maxBytes) {
+      chunks.push(JSON.stringify({ records: currentChunk }));
+      currentChunk = [record];
+      continue;
+    }
+
+    currentChunk = nextChunk;
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(JSON.stringify({ records: currentChunk }));
+  }
+
+  return chunks;
 }
 
 export function useManualUpload({ templateKey, onComplete }: UseManualUploadOptions) {
@@ -133,7 +172,6 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
     }));
     setFileStatuses([...statuses]);
 
-    // If purge mode, delete all existing records from the curated table first
     if (mode === 'purge') {
       const targetTable = TEMPLATE_TABLES[templateKey];
       if (targetTable) {
@@ -141,7 +179,7 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           const { error: delErr } = await supabase
             .from(targetTable as any)
             .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000'); // delete all rows
+            .neq('id', '00000000-0000-0000-0000-000000000000');
           if (delErr) {
             console.warn('[Purge] Falha ao limpar tabela:', delErr.message);
             toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
@@ -172,20 +210,18 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           throw new Error(`Formato não suportado: .${ext}`);
         }
 
-        // Validate MIME type to prevent malicious file uploads
         const allowedMimeTypes = new Set([
           'text/csv',
-          'text/plain',                          // some systems report CSV as text/plain
+          'text/plain',
           'application/json',
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
-          'application/vnd.ms-excel',             // xls
-          'application/octet-stream',             // fallback for some browsers
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          'application/octet-stream',
         ]);
         if (file.type && !allowedMimeTypes.has(file.type)) {
           throw new Error(`Tipo de arquivo não permitido: ${file.type}. Envie CSV, JSON ou XLSX.`);
         }
 
-        // Validate file size (max 10MB)
         const MAX_FILE_SIZE = 10 * 1024 * 1024;
         if (file.size > MAX_FILE_SIZE) {
           throw new Error(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo: 10MB.`);
@@ -201,30 +237,18 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           fileType = 'csv';
         } else if (ext === 'json') {
           const rawText = sanitizeText(await file.text());
+          const parsed = JSON.parse(rawText);
+          const records = extractJsonRecords(parsed);
+          if (records.length === 0) throw new Error('JSON vazio ou sem registros');
+          chunks = chunkJsonRecords(records);
           fileType = 'json';
-          // Split large JSON arrays into chunks to avoid Edge Function payload limits
-          try {
-            const parsed = JSON.parse(rawText);
-            const records: any[] = Array.isArray(parsed)
-              ? parsed
-              : Array.isArray(parsed?.records)
-                ? parsed.records
-                : [parsed];
-            const CHUNK_SIZE = 50; // records per chunk
-            for (let c = 0; c < records.length; c += CHUNK_SIZE) {
-              const slice = records.slice(c, c + CHUNK_SIZE);
-              chunks.push(JSON.stringify({ records: slice }));
-            }
-          } catch {
-            chunks = [rawText];
-          }
         } else {
           chunks = [sanitizeText(await file.text())];
           fileType = 'csv';
         }
 
-        // Send chunks sequentially, accumulate results
-        let lastResult: any = null;
+        let parseResult: UploadResult | null = null;
+
         for (let ci = 0; ci < chunks.length; ci++) {
           const { data: chunkData, error: chunkError } = await supabase.functions.invoke('manual-upload-parse', {
             body: {
@@ -233,17 +257,40 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
               file_type: fileType,
             },
           });
-          if (chunkError) throw new Error(chunkError.message || `Erro no chunk ${ci + 1}/${chunks.length}`);
-          if (chunkData?.error) throw new Error(chunkData.error);
-          lastResult = chunkData;
+
+          if (chunkError) {
+            throw new Error(chunkError.message || `Erro no chunk ${ci + 1}/${chunks.length}`);
+          }
+          if (chunkData?.error) {
+            throw new Error(chunkData.error);
+          }
+
+          const currentResult = chunkData as UploadResult;
+
+          if (currentResult.valid_rows > 0 && currentResult.status !== 'rejected') {
+            const { data: pubData, error: pubError } = await supabase.functions.invoke('manual-upload-publish', {
+              body: { batch_id: currentResult.batch_id },
+            });
+            if (pubError || pubData?.error) {
+              console.warn('[AutoPublish] Falha:', pubError?.message || pubData?.error);
+            } else {
+              currentResult.status = 'published';
+            }
+          }
+
+          parseResult = !parseResult
+            ? currentResult
+            : {
+                ...currentResult,
+                total_rows: parseResult.total_rows + currentResult.total_rows,
+                valid_rows: parseResult.valid_rows + currentResult.valid_rows,
+                invalid_rows: parseResult.invalid_rows + currentResult.invalid_rows,
+              };
         }
-        const data = lastResult;
-        const error = null as Error | null;
 
-        if (error) throw new Error(error.message || 'Erro ao processar arquivo');
-        if (data?.error) throw new Error(data.error);
-
-        const parseResult = data as UploadResult;
+        if (!parseResult) {
+          throw new Error('Nenhum dado foi processado');
+        }
 
         // Auto-publish if there are valid rows
         if (parseResult.valid_rows > 0 && parseResult.status !== 'rejected') {
