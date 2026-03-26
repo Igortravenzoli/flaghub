@@ -1,11 +1,15 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, lazy, Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Clock, LayoutDashboard, Upload, Settings } from 'lucide-react';
-import { SectorImportArea } from './SectorImportArea';
-import { SectorSettings } from './SectorSettings';
-import { SectorIntegrations, Integration } from './SectorIntegrations';
+import { Skeleton } from '@/components/ui/skeleton';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
+import type { Integration } from './SectorIntegrations';
+
+// Lazy-loaded heavy tab contents to avoid loading when tab is not active
+const SectorImportArea = lazy(() => import('./SectorImportArea').then(m => ({ default: m.SectorImportArea })));
+const SectorSettings = lazy(() => import('./SectorSettings').then(m => ({ default: m.SectorSettings })));
+const SectorIntegrations = lazy(() => import('./SectorIntegrations').then(m => ({ default: m.SectorIntegrations })));
 
 interface SyncFunction {
   name: string;
@@ -105,18 +109,22 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
         ))}
 
         {showImports && (
-          <TabsContent value="imports" className="mt-4">
-            <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
+          <TabsContent value="imports" className="mt-4" forceMount={undefined}>
+            <Suspense fallback={<div className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-32 w-full" /></div>}>
+              <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
+            </Suspense>
           </TabsContent>
         )}
 
-        <TabsContent value="settings" className="mt-4">
-          <div className="space-y-4">
-            <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
-            {integrations && (
-              <SectorIntegrations integrations={integrations} sectorName={title} />
-            )}
-          </div>
+        <TabsContent value="settings" className="mt-4" forceMount={undefined}>
+          <Suspense fallback={<div className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-32 w-full" /></div>}>
+            <div className="space-y-4">
+              <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
+              {integrations && (
+                <SectorIntegrations integrations={integrations} sectorName={title} />
+              )}
+            </div>
+          </Suspense>
         </TabsContent>
         </Tabs>
       </div>

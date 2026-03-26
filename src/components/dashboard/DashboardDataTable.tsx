@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChevronLeft, ChevronRight, Search, Filter, X } from 'lucide-react';
 
 export interface ColumnFilter {
@@ -32,6 +33,8 @@ interface DashboardDataTableProps<T> {
   data: T[];
   isLoading?: boolean;
   pageSize?: number;
+  /** Allow user to choose page size */
+  pageSizeOptions?: number[];
   searchable?: boolean;
   searchPlaceholder?: string;
   onRowClick?: (row: T) => void;
@@ -127,7 +130,8 @@ export function DashboardDataTable<T extends Record<string, any>>({
   columns,
   data,
   isLoading,
-  pageSize = 20,
+  pageSize: initialPageSize = 30,
+  pageSizeOptions = [20, 30, 50, 100],
   searchable = true,
   searchPlaceholder = 'Buscar...',
   onRowClick,
@@ -137,6 +141,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
   disableAutoColumnFilters = false,
 }: DashboardDataTableProps<T>) {
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -383,9 +388,26 @@ export function DashboardDataTable<T extends Record<string, any>>({
         </Table>
       </div>
 
-      {sorted.length > pageSize && (
+      {sorted.length > 0 && (
         <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-          <span>{sorted.length} registros • Página {page + 1} de {totalPages}</span>
+          <div className="flex items-center gap-3">
+            <span>{sorted.length} registros • Página {page + 1} de {totalPages}</span>
+            {pageSizeOptions.length > 1 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Exibir</span>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>
+                  <SelectTrigger className="h-7 w-[70px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pageSizeOptions.map(size => (
+                      <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           <div className="flex gap-1">
             <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
