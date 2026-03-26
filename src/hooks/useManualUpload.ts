@@ -191,30 +191,54 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           throw new Error(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo: 10MB.`);
         }
 
-        let fileContent: string;
         let fileType: 'csv' | 'json';
+        let chunks: string[] = [];
 
         if (ext === 'xlsx' || ext === 'xls') {
-          // Parse XLSX/XLS client-side, convert to CSV for the edge function
           const rows = await parseXlsx(file);
           if (rows.length === 0) throw new Error('Planilha vazia ou sem dados');
-          fileContent = rowsToCsv(rows);
+          chunks = [rowsToCsv(rows)];
           fileType = 'csv';
         } else if (ext === 'json') {
-          fileContent = sanitizeText(await file.text());
+          const rawText = sanitizeText(await file.text());
           fileType = 'json';
+          // Split large JSON arrays into chunks to avoid Edge Function payload limits
+          try {
+            const parsed = JSON.parse(rawText);
+            const records: any[] = Array.isArray(parsed)
+              ? parsed
+              : Array.isArray(parsed?.records)
+                ? parsed.records
+                : [parsed];
+            const CHUNK_SIZE = 50; // records per chunk
+            for (let c = 0; c < records.length; c += CHUNK_SIZE) {
+              const slice = records.slice(c, c + CHUNK_SIZE);
+              chunks.push(JSON.stringify({ records: slice }));
+            }
+          } catch {
+            chunks = [rawText];
+          }
         } else {
-          fileContent = sanitizeText(await file.text());
+          chunks = [sanitizeText(await file.text())];
           fileType = 'csv';
         }
 
-        const { data, error } = await supabase.functions.invoke('manual-upload-parse', {
-          body: {
-            template_key: templateKey,
-            file_content: fileContent,
-            file_type: fileType,
-          },
-        });
+        // Send chunks sequentially, accumulate results
+        let lastResult: any = null;
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const { data: chunkData, error: chunkError } = await supabase.functions.invoke('manual-upload-parse', {
+            body: {
+              template_key: templateKey,
+              file_content: chunks[ci],
+              file_type: fileType,
+            },
+          });
+          if (chunkError) throw new Error(chunkError.message || `Erro no chunk ${ci + 1}/${chunks.length}`);
+          if (chunkData?.error) throw new Error(chunkData.error);
+          lastResult = chunkData;
+        }
+        const data = lastResult;
+        const error = null as Error | null;
 
         if (error) throw new Error(error.message || 'Erro ao processar arquivo');
         if (data?.error) throw new Error(data.error);
