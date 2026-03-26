@@ -19,6 +19,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import type { Integration } from '@/components/setores/SectorIntegrations';
+import { MovimentacaoTab } from '@/components/comercial/MovimentacaoTab';
+import { PesquisaTab } from '@/components/comercial/PesquisaTab';
 
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
