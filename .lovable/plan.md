@@ -101,13 +101,13 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 - [x] Indicador discreto de última atualização (badge com horário no canto superior)
 - [x] Evitar refresh agressivo (intervalo de 3min, sem refetchOnWindowFocus)
 
-### Fase 6 — Setores com PRD Próprio
+### Fase 6 — Setores com PRD Próprio ✅
 **Prioridade:** P3 | **Dependência:** Fases anteriores
 
 #### 6.1 Comercial
-- Já incluído na malha geral (sidebar, configurações, sync, healthcheck)
-- PRD específico já implementado (dashboard, base de clientes, fila operacional)
-- Alertas e Kiosk seguirão regras transversais
+- [x] Já incluído na malha geral (sidebar, configurações, sync, healthcheck)
+- [x] PRD específico já implementado (dashboard, base de clientes, fila operacional)
+- [x] Alertas e Kiosk seguirão regras transversais
 
 #### 6.2 Normalização de Dados Comerciais
 
