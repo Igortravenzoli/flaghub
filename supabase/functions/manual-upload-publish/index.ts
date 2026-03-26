@@ -193,18 +193,30 @@ serve(async (req: Request) => {
       })
     }
 
-    // Check status
-    if (!['validated', 'parsed'].includes(batch.status)) {
-      return new Response(JSON.stringify({
-        error: `Batch em status '${batch.status}', não pode ser publicado. Status esperado: validated ou parsed`,
-      }), { status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
-    }
-
     const templateKey = (batch as any).manual_import_templates?.key
     if (!templateKey) {
       return new Response(JSON.stringify({ error: 'Template não associado ao batch' }), {
         status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
+    }
+
+    if (batch.status === 'published') {
+      return new Response(JSON.stringify({
+        success: true,
+        batch_id,
+        template: templateKey,
+        target_table: PUBLISH_TARGETS[templateKey]?.table ?? 'manual_import_rows',
+        published_rows: 0,
+        already_published: true,
+        note: 'Batch já estava publicado',
+      }), { headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // Check status
+    if (!['validated', 'parsed'].includes(batch.status)) {
+      return new Response(JSON.stringify({
+        error: `Batch em status '${batch.status}', não pode ser publicado. Status esperado: validated ou parsed`,
+      }), { status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
     }
 
     const target = PUBLISH_TARGETS[templateKey]
