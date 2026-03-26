@@ -27,18 +27,18 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 #### 1.2 Performance e concorrência
 - [x] staleTime global de 2min para queries React Query (QueryClient defaults)
 - [x] Lazy load de tabs (Settings, Importações) no SectorLayout
-- [ ] Reduzir refetchInterval agressivo (jobs: 30s → 60s, kiosk: preservar)
-- [ ] refetchOnWindowFocus: false em queries pesadas
+- [x] Reduzir refetchInterval agressivo (jobs: 10s → 60s, kiosk: preservar)
+- [x] refetchOnWindowFocus: false em queries pesadas (global default no QueryClient)
 - Meta: 10 sessões simultâneas mínimo, margem para 12
 
 #### 1.3 Toggles padronizados
 - [x] Switch verde quando On, cinza quando Off (Radix Switch com data-[state=checked]:bg-primary)
-- [ ] Garantir consistência visual em SectorSettings e SyncCentral
+- [x] Garantir consistência visual em SectorSettings e SyncCentral (Switch substituiu Button On/Off)
 
 #### 1.4 Observabilidade de Jobs
-- [ ] Exibir último run, status, próxima execução, erro resumido
-- [ ] Badges de saúde: ativo, falhando, degradado
-- [ ] Histórico mínimo operacional na Central de Sync
+- [x] Exibir último run, status, próxima execução, erro resumido
+- [x] Badges de saúde: ativo, falhando, degradado (baseado nas últimas 3 execuções)
+- [x] Histórico mínimo operacional na Central de Sync (últimas 30 execuções com detalhes)
 
 #### 1.5 Tabelas backend (Supabase)
 - [x] sector_health — status de saúde por setor/dependência
