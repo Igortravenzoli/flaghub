@@ -382,7 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       measurePerformance("auth:sign-in-to-ready", "auth:sign-in:start", "auth:ready");
 
       const resolvedRoleCode = session.user ? (state.roleCode ?? null) : null;
-      void checkElevatedMfaRequirement(resolvedRoleCode)
+      void checkElevatedMfaRequirement(resolvedRoleCode, session.user?.email)
         .then((mfaRequired) => {
           if (opId !== opIdRef.current) return;
           setState((prev) => ({ ...prev, mfaRequired }));
