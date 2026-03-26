@@ -95,9 +95,10 @@ export default function Permissions() {
                 <TableCell><Badge variant="outline">{getAreaName(m.area_id)}</Badge></TableCell>
                 <TableCell>
                   <Select value={m.area_role} onValueChange={(v) => updateMember.mutate({ id: m.id, updates: { area_role: v } })}>
-                    <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="viewer">Viewer</SelectItem>
+                      <SelectItem value="leitura">Leitura</SelectItem>
+                      <SelectItem value="operacional">Operacional</SelectItem>
                       <SelectItem value="owner">Owner</SelectItem>
                     </SelectContent>
                   </Select>

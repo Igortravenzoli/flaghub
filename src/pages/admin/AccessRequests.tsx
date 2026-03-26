@@ -95,7 +95,7 @@ export default function AccessRequests() {
   // Per-request approval settings
   const [approvalSettings, setApprovalSettings] = useState<Record<string, { role: string; confidential: boolean }>>({});
 
-  const getSettings = (id: string) => approvalSettings[id] ?? { role: 'viewer', confidential: false };
+  const getSettings = (id: string) => approvalSettings[id] ?? { role: 'leitura', confidential: false };
 
   return (
     <div className="p-6 space-y-6">
