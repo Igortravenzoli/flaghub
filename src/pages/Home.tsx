@@ -36,11 +36,13 @@ interface SectorCardData {
 
 export default function Home() {
   const navigate = useNavigate();
+  const { isMonitor } = useAuth();
   const [kioskActive, setKioskActive] = useState(false);
   const [kioskCurrentIndex, setKioskCurrentIndex] = useState(0);
   const [kioskRotate, setKioskRotate] = useState(false);
   const [kioskInterval, setKioskInterval] = useState(30);
   const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
+  const [monitorAutoStarted, setMonitorAutoStarted] = useState(false);
 
   // Real data hooks
   const comercial = useComercialKpis();
