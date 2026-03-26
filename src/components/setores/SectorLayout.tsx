@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
 import { useHubAreas } from '@/hooks/useHubAreas';
 import { useHubIsAdmin } from '@/hooks/useHubPermissions';
+import { useAuth } from '@/hooks/useAuth';
 import type { Integration } from './SectorIntegrations';
 
 // Lazy-loaded heavy tab contents to avoid loading when tab is not active
