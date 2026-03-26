@@ -4,6 +4,40 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+async function invokeEdgeFunctionWithAuth<T>(functionName: string, body: Record<string, unknown>): Promise<T> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+
+  if (!accessToken) {
+    throw new Error('Sessão expirada. Faça login novamente.');
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || `Function failed: ${response.status}`);
+  }
+
+  return payload as T;
+}
+
 export interface UploadResult {
   batch_id: string;
   template: string;
@@ -250,17 +284,12 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
         let parseResult: UploadResult | null = null;
 
         for (let ci = 0; ci < chunks.length; ci++) {
-          const { data: chunkData, error: chunkError } = await supabase.functions.invoke('manual-upload-parse', {
-            body: {
-              template_key: templateKey,
-              file_content: chunks[ci],
-              file_type: fileType,
-            },
+          const chunkData = await invokeEdgeFunctionWithAuth<UploadResult & { error?: string }>('manual-upload-parse', {
+            template_key: templateKey,
+            file_content: chunks[ci],
+            file_type: fileType,
           });
 
-          if (chunkError) {
-            throw new Error(chunkError.message || `Erro no chunk ${ci + 1}/${chunks.length}`);
-          }
           if (chunkData?.error) {
             throw new Error(chunkData.error);
           }
@@ -268,11 +297,11 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           const currentResult = chunkData as UploadResult;
 
           if (currentResult.valid_rows > 0 && currentResult.status !== 'rejected') {
-            const { data: pubData, error: pubError } = await supabase.functions.invoke('manual-upload-publish', {
-              body: { batch_id: currentResult.batch_id },
+            const pubData = await invokeEdgeFunctionWithAuth<{ error?: string }>('manual-upload-publish', {
+              batch_id: currentResult.batch_id,
             });
-            if (pubError || pubData?.error) {
-              console.warn('[AutoPublish] Falha:', pubError?.message || pubData?.error);
+            if (pubData?.error) {
+              console.warn('[AutoPublish] Falha:', pubData.error);
             } else {
               currentResult.status = 'published';
             }
@@ -294,11 +323,11 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
 
         // Auto-publish if there are valid rows
         if (parseResult.valid_rows > 0 && parseResult.status !== 'rejected') {
-          const { data: pubData, error: pubError } = await supabase.functions.invoke('manual-upload-publish', {
-            body: { batch_id: parseResult.batch_id },
+          const pubData = await invokeEdgeFunctionWithAuth<{ error?: string }>('manual-upload-publish', {
+            batch_id: parseResult.batch_id,
           });
-          if (pubError || pubData?.error) {
-            console.warn('[AutoPublish] Falha:', pubError?.message || pubData?.error);
+          if (pubData?.error) {
+            console.warn('[AutoPublish] Falha:', pubData.error);
           } else {
             parseResult.status = 'published';
           }

@@ -15,21 +15,37 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
   return useQuery({
     queryKey: ['dashboard-summary', networkId],
     queryFn: async () => {
-      // Usar view diretamente para evitar problema de overload de função
       let query = supabase
-        .from('v_dashboard_summary')
-        .select('*');
+        .from('tickets')
+        .select('network_id, severity, has_os, updated_at')
+        .eq('is_active', true);
 
       if (networkId !== undefined && networkId !== null) {
         query = query.eq('network_id', networkId);
       }
 
-      const { data, error } = await query.limit(1).maybeSingle();
+      const { data, error } = await query.limit(1000);
 
-      if (error && error.code !== 'PGRST116') throw error;
-      return data as DashboardSummary | null;
+      if (error) throw error;
+      if (!data || data.length === 0) return null;
+
+      const lastUpdated = data.reduce<string | null>((latest, row) => {
+        if (!row.updated_at) return latest;
+        if (!latest) return row.updated_at;
+        return row.updated_at > latest ? row.updated_at : latest;
+      }, null);
+
+      return {
+        network_id: networkId ?? data[0].network_id,
+        total_tickets: data.length,
+        tickets_ok: data.filter((ticket) => ticket.severity === 'info').length,
+        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico').length,
+        tickets_atencao: data.filter((ticket) => ticket.severity === 'atencao').length,
+        tickets_sem_os: data.filter((ticket) => !ticket.has_os).length,
+        last_updated: lastUpdated,
+      } as DashboardSummary;
     },
-    // SSO users may not have networkId but v_dashboard_summary now respects area-based access
+    // SSO users may not have networkId; relying on RLS keeps the query area-aware.
     enabled: options?.enabled ?? true,
     refetchInterval: 60000, // Auto-refresh a cada 60s
   });

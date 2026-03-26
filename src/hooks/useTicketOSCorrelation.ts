@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
+import { correlacionarBatchViaProxy, correlacionarTicketViaProxy } from '@/services/vdeskProxyService';
 
 interface CorrelationMetrics {
   totalTickets: number;
@@ -31,11 +32,38 @@ export function useTicketOSCorrelation() {
   const [isCorrelating, setIsCorrelating] = useState(false);
   const [isCorrelatingTicket, setIsCorrelatingTicket] = useState(false);
 
+  const buildVisibleTicketsQuery = useCallback(() => {
+    let query = supabase
+      .from('tickets')
+      .select('id, ticket_external_id, network_id, has_os, os_found_in_vdesk, severity, inconsistency_code, internal_status, os_number')
+      .eq('is_active', true);
+
+    if (networkId !== null && networkId !== undefined) {
+      query = query.eq('network_id', networkId);
+    }
+
+    return query;
+  }, [networkId]);
+
+  const updateTicketByScope = useCallback(async (ticketExternalId: string, payload: Record<string, unknown>) => {
+    let query = supabase
+      .from('tickets')
+      .update(payload)
+      .eq('ticket_external_id', ticketExternalId);
+
+    if (networkId !== null && networkId !== undefined) {
+      query = query.eq('network_id', networkId);
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+  }, [networkId]);
+
   // Buscar métricas de correlação
   const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useQuery({
     queryKey: ['correlation-metrics', networkId],
     queryFn: async (): Promise<CorrelationMetrics> => {
-      if (!networkId) {
+      if (!isAuthenticated) {
         return {
           totalTickets: 0,
           ticketsWithOS: 0,
@@ -48,11 +76,7 @@ export function useTicketOSCorrelation() {
         };
       }
 
-      const { data, error } = await supabase
-        .from('tickets')
-        .select('id, has_os, os_found_in_vdesk, severity, inconsistency_code')
-        .eq('network_id', networkId)
-        .eq('is_active', true);
+      const { data, error } = await buildVisibleTicketsQuery();
 
       if (error) throw error;
 
@@ -77,43 +101,49 @@ export function useTicketOSCorrelation() {
         warningIssues,
       };
     },
-    enabled: !!networkId && isAuthenticated,
+    enabled: isAuthenticated,
   });
 
   // Buscar tickets que precisam de validação (tem OS mas ainda não foi validada)
   const { data: ticketsNeedingCorrelation, isLoading: ticketsNeedingCorrelationLoading, refetch: refetchPending } = useQuery({
     queryKey: ['tickets-needing-correlation', networkId],
     queryFn: async (): Promise<string[]> => {
-      if (!networkId) return [];
-
-      const { data, error } = await supabase
+      let query = supabase
         .from('tickets')
         .select('ticket_external_id')
-        .eq('network_id', networkId)
         .eq('has_os', true)
         .is('os_found_in_vdesk', null)
         .eq('is_active', true);
+
+      if (networkId !== null && networkId !== undefined) {
+        query = query.eq('network_id', networkId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
       return (data || []).map(t => t.ticket_external_id);
     },
-    enabled: !!networkId && isAuthenticated,
+    enabled: isAuthenticated,
   });
 
   // Buscar relatório de inconsistências
   const { data: inconsistencyReport, isLoading: inconsistencyReportLoading, refetch: refetchInconsistencies } = useQuery({
     queryKey: ['inconsistency-report', networkId],
     queryFn: async (): Promise<InconsistencyReport[]> => {
-      if (!networkId) return [];
-
-      const { data, error } = await supabase
+      let query = supabase
         .from('tickets')
         .select('ticket_external_id, inconsistency_code, os_number, severity, internal_status')
-        .eq('network_id', networkId)
         .not('inconsistency_code', 'is', null)
         .eq('is_active', true)
         .order('severity', { ascending: true });
+
+      if (networkId !== null && networkId !== undefined) {
+        query = query.eq('network_id', networkId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -125,54 +155,52 @@ export function useTicketOSCorrelation() {
         internalStatus: t.internal_status,
       }));
     },
-    enabled: !!networkId && isAuthenticated,
+    enabled: isAuthenticated,
   });
 
   // Função para correlacionar um ticket específico
   const correlateTicket = useCallback(async (ticketExternalId: string) => {
     setIsCorrelatingTicket(true);
     try {
-      // TODO: Chamar API REST do VDESKProxy para validar OS
-      // Por enquanto, apenas marca como validado (mock)
-      console.log(`Correlacionando ticket: ${ticketExternalId}`);
-      
-      // Simular delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const correlation = await correlacionarTicketViaProxy(ticketExternalId);
+      const now = new Date().toISOString();
+      const found = correlation.success && correlation.osEncontradas.length > 0;
 
-      // Atualizar ticket como validado (mock - em produção, usar resposta da API)
-      await supabase
-        .from('tickets')
-        .update({ 
-          os_found_in_vdesk: true,
-          updated_at: new Date().toISOString()
-        })
-        .eq('ticket_external_id', ticketExternalId)
-        .eq('network_id', networkId);
+      await updateTicketByScope(ticketExternalId, {
+        os_found_in_vdesk: found,
+        has_os: found ? true : undefined,
+        os_number: found ? (correlation.osEncontradas[0] ?? null) : undefined,
+        vdesk_payload: correlation.data,
+        last_os_event_at: now,
+        last_os_event_desc: correlation.message ?? (found ? 'OS validada no VDESK' : 'OS não encontrada no VDESK'),
+        inconsistency_code: found ? null : 'OS_NOT_FOUND',
+        severity: found ? 'info' : 'critico',
+        updated_at: now,
+      });
 
       queryClient.invalidateQueries({ queryKey: ['correlation-metrics'] });
       queryClient.invalidateQueries({ queryKey: ['tickets-needing-correlation'] });
+      queryClient.invalidateQueries({ queryKey: ['inconsistency-report'] });
     } finally {
       setIsCorrelatingTicket(false);
     }
-  }, [networkId, queryClient]);
+  }, [queryClient, updateTicketByScope]);
 
   // Função para marcar OS como não encontrada
   const markOSNotFound = useCallback(async (ticketExternalId: string) => {
-    await supabase
-      .from('tickets')
-      .update({ 
-        os_found_in_vdesk: false,
-        inconsistency_code: 'OS_NOT_FOUND',
-        severity: 'critico',
-        updated_at: new Date().toISOString()
-      })
-      .eq('ticket_external_id', ticketExternalId)
-      .eq('network_id', networkId);
+    await updateTicketByScope(ticketExternalId, {
+      os_found_in_vdesk: false,
+      inconsistency_code: 'OS_NOT_FOUND',
+      severity: 'critico',
+      last_os_event_at: new Date().toISOString(),
+      last_os_event_desc: 'OS marcada manualmente como não encontrada',
+      updated_at: new Date().toISOString(),
+    });
 
     queryClient.invalidateQueries({ queryKey: ['correlation-metrics'] });
     queryClient.invalidateQueries({ queryKey: ['tickets-needing-correlation'] });
     queryClient.invalidateQueries({ queryKey: ['inconsistency-report'] });
-  }, [networkId, queryClient]);
+  }, [queryClient, updateTicketByScope]);
 
   // Função para correlacionar todos os pendentes
   const correlateAllPending = useCallback(async () => {
@@ -180,13 +208,30 @@ export function useTicketOSCorrelation() {
     
     setIsCorrelating(true);
     try {
-      for (const ticketId of ticketsNeedingCorrelation) {
-        await correlateTicket(ticketId);
-      }
+      const response = await correlacionarBatchViaProxy(ticketsNeedingCorrelation);
+      const now = new Date().toISOString();
+
+      await Promise.all(
+        response.results.map((result) => updateTicketByScope(result.ticket, {
+          os_found_in_vdesk: result.found,
+          has_os: result.found ? true : undefined,
+          os_number: result.found ? (result.osEncontradas[0] ?? null) : undefined,
+          vdesk_payload: result.data,
+          last_os_event_at: now,
+          last_os_event_desc: result.message ?? (result.found ? 'OS validada no VDESK' : 'OS não encontrada no VDESK'),
+          inconsistency_code: result.found ? null : 'OS_NOT_FOUND',
+          severity: result.found ? 'info' : 'critico',
+          updated_at: now,
+        }))
+      );
+
+      queryClient.invalidateQueries({ queryKey: ['correlation-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets-needing-correlation'] });
+      queryClient.invalidateQueries({ queryKey: ['inconsistency-report'] });
     } finally {
       setIsCorrelating(false);
     }
-  }, [ticketsNeedingCorrelation, correlateTicket]);
+  }, [ticketsNeedingCorrelation, queryClient, updateTicketByScope]);
 
   // Função para atualizar todos os dados
   const refreshAll = useCallback(() => {

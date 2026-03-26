@@ -24,15 +24,24 @@ function getSupabaseAdmin() {
   )
 }
 
+function getAuthHeader(req: Request): string | null {
+  return req.headers.get('Authorization') ?? req.headers.get('authorization')
+}
+
 async function getAuthUserId(req: Request): Promise<string | null> {
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader) return null
+  const authHeader = getAuthHeader(req)
+  if (!authHeader?.startsWith('Bearer ')) return null
+  const token = authHeader.replace('Bearer ', '')
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
   )
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token)
+  if (!claimsError && claimsData?.claims?.sub) {
+    return claimsData.claims.sub as string
+  }
+  const { data: { user } } = await supabase.auth.getUser(token)
   return user?.id ?? null
 }
 
@@ -61,15 +70,31 @@ async function isHubAdmin(userId: string): Promise<boolean> {
 async function hasAreaUploadRole(userId: string, areaId: string | null): Promise<boolean> {
   if (!areaId) return false
   const admin = getSupabaseAdmin()
+  const { data: area } = await admin
+    .from('hub_areas')
+    .select('key')
+    .eq('id', areaId)
+    .maybeSingle()
+
+  if (!area?.key) return false
+
+  const { data: inheritance } = await admin
+    .from('hub_area_inheritance')
+    .select('parent_area_key')
+    .eq('child_area_key', area.key)
+
+  const allowedAreaKeys = new Set([
+    area.key,
+    ...(inheritance ?? []).map((row: { parent_area_key: string }) => row.parent_area_key),
+  ])
+
   const { data } = await admin
     .from('hub_area_members')
-    .select('area_role')
+    .select('area_role, hub_areas!hub_area_members_area_id_fkey(key)')
     .eq('user_id', userId)
-    .eq('area_id', areaId)
     .eq('is_active', true)
     .in('area_role', ['owner', 'operacional'])
-    .maybeSingle()
-  return !!data
+  return (data ?? []).some((membership: any) => allowedAreaKeys.has(membership.hub_areas?.key))
 }
 
 // Maps template keys to their target table and field mapping
