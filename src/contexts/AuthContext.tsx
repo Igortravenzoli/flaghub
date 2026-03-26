@@ -127,7 +127,9 @@ function measurePerformance(name: string, startMark: string, endMark: string) {
   }
 }
 
-async function checkElevatedMfaRequirement(roleCode: string | null): Promise<boolean> {
+async function checkElevatedMfaRequirement(roleCode: string | null, userEmail?: string | null): Promise<boolean> {
+  // Monitor user is exempt from MFA
+  if (isMonitorUser(userEmail)) return false;
   if (!hasElevated(roleCode)) return false;
 
   const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
