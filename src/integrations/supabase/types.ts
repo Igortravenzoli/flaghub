@@ -2861,9 +2861,18 @@ export type Database = {
         Returns: boolean
       }
       hub_check_my_ip: { Args: never; Returns: Json }
+      hub_effective_network_id: { Args: { p_user_id: string }; Returns: number }
+      hub_has_area_network_role: {
+        Args: { p_area_key: string; p_network_id: number; p_roles?: string[] }
+        Returns: boolean
+      }
       hub_is_admin: { Args: never; Returns: boolean }
       hub_is_ip_allowed: { Args: never; Returns: boolean }
       hub_request_ip: { Args: never; Returns: string }
+      hub_resolve_area_network_id: {
+        Args: { p_area_key: string }
+        Returns: number
+      }
       hub_user_has_area: { Args: { p_area_id: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_gestao: { Args: never; Returns: boolean }

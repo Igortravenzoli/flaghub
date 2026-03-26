@@ -1,28 +1,18 @@
-// manual-upload-publish v1.0 — Publica linhas validadas de um batch para tabelas curadas
+// manual-upload-publish v1.1 — Publica linhas validadas de um batch para tabelas curadas
+// Now supports area-based roles (owner) in addition to global admin/gestao
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const ALLOWED_UPLOAD_ROLES = new Set(['admin', 'gestao'])
-
 function resolveCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('origin')
-  const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') || '')
-    .split(',')
-    .map((value: string) => value.trim())
-    .filter(Boolean)
-
-  const allowOrigin = origin && allowedOrigins.includes(origin)
-    ? origin
-    : allowedOrigins[0] || 'null'
-
   return {
     ...corsHeaders,
-    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Origin': origin ?? '*',
     'Vary': 'Origin',
   }
 }
@@ -34,45 +24,77 @@ function getSupabaseAdmin() {
   )
 }
 
-async function validateAuth(req: Request): Promise<string | null> {
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader) return null
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
-  return user?.id ?? null
+function getAuthHeader(req: Request): string | null {
+  return req.headers.get('Authorization') ?? req.headers.get('authorization')
 }
 
-async function validateAuthorizedUser(req: Request): Promise<{ userId: string; userRole: string | null } | null> {
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
-
+async function getAuthUserId(req: Request): Promise<string | null> {
+  const authHeader = getAuthHeader(req)
+  if (!authHeader?.startsWith('Bearer ')) return null
   const token = authHeader.replace('Bearer ', '')
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
   )
-
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token)
-  if (claimsError || !claimsData?.claims?.sub) return null
+  if (!claimsError && claimsData?.claims?.sub) {
+    return claimsData.claims.sub as string
+  }
+  const { data: { user } } = await supabase.auth.getUser(token)
+  return user?.id ?? null
+}
 
-  const userId = claimsData.claims.sub as string
-  const { data: roleData, error: roleError } = await supabase
+async function hasGlobalUploadRole(userId: string): Promise<boolean> {
+  const admin = getSupabaseAdmin()
+  const { data } = await admin
     .from('user_roles')
     .select('role')
     .eq('user_id', userId)
-    .single()
+    .in('role', ['admin', 'gestao'])
+    .maybeSingle()
+  return !!data
+}
 
-  if (roleError) {
-    console.error('[ManualUploadPublish] Failed to load role:', roleError)
-    return { userId, userRole: null }
-  }
+async function isHubAdmin(userId: string): Promise<boolean> {
+  const admin = getSupabaseAdmin()
+  const { data } = await admin
+    .from('hub_user_global_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('role', 'admin')
+    .maybeSingle()
+  return !!data
+}
 
-  return { userId, userRole: roleData?.role ?? null }
+async function hasAreaUploadRole(userId: string, areaId: string | null): Promise<boolean> {
+  if (!areaId) return false
+  const admin = getSupabaseAdmin()
+  const { data: area } = await admin
+    .from('hub_areas')
+    .select('key')
+    .eq('id', areaId)
+    .maybeSingle()
+
+  if (!area?.key) return false
+
+  const { data: inheritance } = await admin
+    .from('hub_area_inheritance')
+    .select('parent_area_key')
+    .eq('child_area_key', area.key)
+
+  const allowedAreaKeys = new Set([
+    area.key,
+    ...(inheritance ?? []).map((row: { parent_area_key: string }) => row.parent_area_key),
+  ])
+
+  const { data } = await admin
+    .from('hub_area_members')
+    .select('area_role, hub_areas!hub_area_members_area_id_fkey(key)')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .in('area_role', ['owner', 'operacional'])
+  return (data ?? []).some((membership: any) => allowedAreaKeys.has(membership.hub_areas?.key))
 }
 
 // Maps template keys to their target table and field mapping
@@ -128,20 +150,12 @@ serve(async (req: Request) => {
   const admin = getSupabaseAdmin()
 
   try {
-    const authUser = await validateAuthorizedUser(req)
-    if (!authUser?.userId) {
+    const userId = await getAuthUserId(req)
+    if (!userId) {
       return new Response(JSON.stringify({ error: 'Autenticação obrigatória' }), {
         status: 401, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
     }
-
-    if (!authUser.userRole || !ALLOWED_UPLOAD_ROLES.has(authUser.userRole)) {
-      return new Response(JSON.stringify({ error: 'Acesso negado' }), {
-        status: 403, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const userId = authUser.userId
 
     const body = await req.json()
     const { batch_id } = body
@@ -155,7 +169,7 @@ serve(async (req: Request) => {
     // 1. Load batch with template
     const { data: batch, error: bErr } = await admin
       .from('manual_import_batches')
-      .select('*, manual_import_templates!manual_import_batches_template_id_fkey(key)')
+      .select('*, manual_import_templates!manual_import_batches_template_id_fkey(key, area_id)')
       .eq('id', batch_id)
       .single()
 
@@ -165,11 +179,18 @@ serve(async (req: Request) => {
       })
     }
 
-    // Check status
-    if (!['validated', 'parsed'].includes(batch.status)) {
-      return new Response(JSON.stringify({
-        error: `Batch em status '${batch.status}', não pode ser publicado. Status esperado: validated ou parsed`,
-      }), { status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+    // Authorization: global admin/gestao OR hub admin OR area owner/operacional
+    const batchAreaId = batch.area_id || (batch as any).manual_import_templates?.area_id || null
+    const [globalOk, hubAdmin, areaOk] = await Promise.all([
+      hasGlobalUploadRole(userId),
+      isHubAdmin(userId),
+      hasAreaUploadRole(userId, batchAreaId),
+    ])
+
+    if (!globalOk && !hubAdmin && !areaOk) {
+      return new Response(JSON.stringify({ error: 'Acesso negado — requer papel de Owner ou Admin na área' }), {
+        status: 403, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     const templateKey = (batch as any).manual_import_templates?.key
@@ -179,11 +200,50 @@ serve(async (req: Request) => {
       })
     }
 
+    if (batch.status === 'published') {
+      return new Response(JSON.stringify({
+        success: true,
+        batch_id,
+        template: templateKey,
+        target_table: PUBLISH_TARGETS[templateKey]?.table ?? 'manual_import_rows',
+        published_rows: 0,
+        already_published: true,
+        note: 'Batch já estava publicado',
+      }), { headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // Check status
+    if (!['validated', 'parsed'].includes(batch.status)) {
+      return new Response(JSON.stringify({
+        error: `Batch em status '${batch.status}', não pode ser publicado. Status esperado: validated ou parsed`,
+      }), { status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+    }
+
     const target = PUBLISH_TARGETS[templateKey]
     if (!target) {
-      return new Response(JSON.stringify({ error: `Sem publish target para template '${templateKey}'` }), {
-        status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+      // For templates without a publish target (e.g. helpdesk_v1),
+      // just mark as published — rows stay in manual_import_rows as raw data
+      await admin.from('manual_import_batches').update({
+        status: 'published',
+        published_at: new Date().toISOString(),
+        published_by: userId,
+      }).eq('id', batch_id)
+
+      await admin.rpc('hub_audit_log', {
+        p_action: 'manual_upload_publish',
+        p_entity_type: 'manual_import_batch',
+        p_entity_id: batch_id,
+        p_metadata: { template_key: templateKey, target_table: 'manual_import_rows (raw)', published: 0 },
       })
+
+      return new Response(JSON.stringify({
+        success: true,
+        batch_id,
+        template: templateKey,
+        target_table: 'manual_import_rows',
+        published_rows: 0,
+        note: 'Dados armazenados como raw — sem tabela curada configurada',
+      }), { headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
     }
 
     // 2. Load valid rows

@@ -8,8 +8,26 @@ import { supabase } from '@/integrations/supabase/client';
 
 // URL base do Supabase (extraída do client)
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-if (!SUPABASE_URL) throw new Error('Missing VITE_SUPABASE_URL');
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+async function getEdgeAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+
+  if (!accessToken) {
+    throw new Error('Sessão expirada. Faça login novamente.');
+  }
+
+  return {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON_KEY,
+  };
+}
 
 export interface TicketOSRecord {
   cliente: string;
@@ -60,16 +78,13 @@ export interface ConsultaResponse {
 export async function correlacionarTicketViaProxy(
   ticketNestle: string
 ): Promise<CorrelacaoResponse> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const headers = await getEdgeAuthHeaders();
   
   const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os?action=correlacao&ticketNestle=${encodeURIComponent(ticketNestle)}`;
   
   const response = await fetch(functionUrl, {
     method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${session?.access_token || ''}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -122,7 +137,7 @@ export interface BatchCorrelationResponse {
 export async function correlacionarBatchViaProxy(
   tickets: string[]
 ): Promise<BatchCorrelationResponse> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const headers = await getEdgeAuthHeaders();
 
   const functionUrl = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os?action=correlacao-batch`;
 
@@ -132,10 +147,7 @@ export async function correlacionarBatchViaProxy(
   try {
     const response = await fetch(functionUrl, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session?.access_token || ''}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({ tickets }),
       signal: controller.signal,
     });
@@ -165,7 +177,7 @@ export async function consultarTicketsViaProxy(params: {
   pageNumber?: number;
   pageSize?: number;
 }): Promise<ConsultaResponse> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const headers = await getEdgeAuthHeaders();
   
   const queryParams = new URLSearchParams({ action: 'consultar' });
   
@@ -183,10 +195,7 @@ export async function consultarTicketsViaProxy(params: {
   
   const response = await fetch(functionUrl, {
     method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${session?.access_token || ''}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
   });
 
   if (!response.ok) {

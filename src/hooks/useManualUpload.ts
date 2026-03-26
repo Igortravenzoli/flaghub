@@ -4,6 +4,40 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+async function invokeEdgeFunctionWithAuth<T>(functionName: string, body: Record<string, unknown>): Promise<T> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+
+  if (!accessToken) {
+    throw new Error('Sessão expirada. Faça login novamente.');
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || `Function failed: ${response.status}`);
+  }
+
+  return payload as T;
+}
+
 export interface UploadResult {
   batch_id: string;
   template: string;
@@ -52,45 +86,23 @@ async function parseXlsx(file: File): Promise<Record<string, string>[]> {
     raw: false,
   });
 
-  const normalize = (value: unknown) =>
-    String(value ?? '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-
-  const expectedHeaders = new Set([
-    'cliente',
-    'responsavel',
-    'solucao',
-    'status',
-    'inicio',
-    'fim',
-    'obs',
-    'contato',
-    'licenca',
-    'atuacao',
-    'puxada',
-  ]);
-
+  // Find the first row with at least 3 non-empty text cells as the header row
   let headerRowIndex = -1;
-  let bestScore = 0;
 
-  for (let i = 0; i < matrix.length; i++) {
+  for (let i = 0; i < Math.min(matrix.length, 15); i++) {
     const row = matrix[i] ?? [];
-    const score = row.reduce<number>((acc, cell) => {
-      const key = normalize(cell);
-      return acc + (key && expectedHeaders.has(key) ? 1 : 0);
-    }, 0);
-
-    if (score > bestScore) {
-      bestScore = score;
+    const nonEmptyCells = row.filter((cell) => {
+      const val = String(cell ?? '').trim();
+      // Must be a non-empty string that looks like a header (not purely numeric)
+      return val.length > 0 && isNaN(Number(val));
+    });
+    if (nonEmptyCells.length >= 3) {
       headerRowIndex = i;
+      break;
     }
   }
 
-  if (headerRowIndex === -1 || bestScore < 3) {
+  if (headerRowIndex === -1) {
     throw new Error('Não foi possível identificar o cabeçalho da planilha');
   }
 
@@ -136,8 +148,47 @@ function rowsToCsv(rows: Record<string, any>[]): string {
  * that would cause issues when stored as JSONB.
  */
 function sanitizeText(text: string): string {
-  // Remove null bytes and other problematic Unicode
   return text.replace(/\0/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+}
+
+function extractJsonRecords(parsed: any): Record<string, any>[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) {
+    return parsed.records;
+  }
+  return [parsed];
+}
+
+function chunkJsonRecords(records: Record<string, any>[], maxBytes = 900_000): string[] {
+  if (records.length === 0) return [];
+
+  const encoder = new TextEncoder();
+  const chunks: string[] = [];
+  let currentChunk: Record<string, any>[] = [];
+
+  for (const record of records) {
+    const singlePayload = JSON.stringify({ records: [record] });
+    if (encoder.encode(singlePayload).length > maxBytes) {
+      throw new Error('Um registro do JSON excede o limite de importação.');
+    }
+
+    const nextChunk = [...currentChunk, record];
+    const nextPayload = JSON.stringify({ records: nextChunk });
+
+    if (currentChunk.length > 0 && encoder.encode(nextPayload).length > maxBytes) {
+      chunks.push(JSON.stringify({ records: currentChunk }));
+      currentChunk = [record];
+      continue;
+    }
+
+    currentChunk = nextChunk;
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(JSON.stringify({ records: currentChunk }));
+  }
+
+  return chunks;
 }
 
 export function useManualUpload({ templateKey, onComplete }: UseManualUploadOptions) {
@@ -155,7 +206,6 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
     }));
     setFileStatuses([...statuses]);
 
-    // If purge mode, delete all existing records from the curated table first
     if (mode === 'purge') {
       const targetTable = TEMPLATE_TABLES[templateKey];
       if (targetTable) {
@@ -163,7 +213,7 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           const { error: delErr } = await supabase
             .from(targetTable as any)
             .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000'); // delete all rows
+            .neq('id', '00000000-0000-0000-0000-000000000000');
           if (delErr) {
             console.warn('[Purge] Falha ao limpar tabela:', delErr.message);
             toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
@@ -194,65 +244,81 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           throw new Error(`Formato não suportado: .${ext}`);
         }
 
-        // Validate MIME type to prevent malicious file uploads
         const allowedMimeTypes = new Set([
           'text/csv',
-          'text/plain',                          // some systems report CSV as text/plain
+          'text/plain',
           'application/json',
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
-          'application/vnd.ms-excel',             // xls
-          'application/octet-stream',             // fallback for some browsers
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          'application/octet-stream',
         ]);
         if (file.type && !allowedMimeTypes.has(file.type)) {
           throw new Error(`Tipo de arquivo não permitido: ${file.type}. Envie CSV, JSON ou XLSX.`);
         }
 
-        // Validate file size (max 10MB)
         const MAX_FILE_SIZE = 10 * 1024 * 1024;
         if (file.size > MAX_FILE_SIZE) {
           throw new Error(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo: 10MB.`);
         }
 
-        let fileContent: string;
         let fileType: 'csv' | 'json';
+        let chunks: string[] = [];
 
         if (ext === 'xlsx' || ext === 'xls') {
-          // Parse XLSX/XLS client-side, convert to CSV for the edge function
           const rows = await parseXlsx(file);
           if (rows.length === 0) throw new Error('Planilha vazia ou sem dados');
-          fileContent = rowsToCsv(rows);
+          chunks = [rowsToCsv(rows)];
           fileType = 'csv';
         } else if (ext === 'json') {
-          fileContent = sanitizeText(await file.text());
+          const rawText = sanitizeText(await file.text());
+          const parsed = JSON.parse(rawText);
+          const records = extractJsonRecords(parsed);
+          if (records.length === 0) throw new Error('JSON vazio ou sem registros');
+          chunks = chunkJsonRecords(records);
           fileType = 'json';
         } else {
-          fileContent = sanitizeText(await file.text());
+          chunks = [sanitizeText(await file.text())];
           fileType = 'csv';
         }
 
-        const { data, error } = await supabase.functions.invoke('manual-upload-parse', {
-          body: {
+        let parseResult: UploadResult | null = null;
+
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const chunkData = await invokeEdgeFunctionWithAuth<UploadResult & { error?: string }>('manual-upload-parse', {
             template_key: templateKey,
-            file_content: fileContent,
+            file_content: chunks[ci],
             file_type: fileType,
-          },
-        });
-
-        if (error) throw new Error(error.message || 'Erro ao processar arquivo');
-        if (data?.error) throw new Error(data.error);
-
-        const parseResult = data as UploadResult;
-
-        // Auto-publish if there are valid rows
-        if (parseResult.valid_rows > 0 && parseResult.status !== 'rejected') {
-          const { data: pubData, error: pubError } = await supabase.functions.invoke('manual-upload-publish', {
-            body: { batch_id: parseResult.batch_id },
           });
-          if (pubError || pubData?.error) {
-            console.warn('[AutoPublish] Falha:', pubError?.message || pubData?.error);
-          } else {
-            parseResult.status = 'published';
+
+          if (chunkData?.error) {
+            throw new Error(chunkData.error);
           }
+
+          const currentResult = chunkData as UploadResult;
+
+          if (currentResult.valid_rows > 0 && currentResult.status !== 'rejected') {
+            const pubData = await invokeEdgeFunctionWithAuth<{ error?: string }>('manual-upload-publish', {
+              batch_id: currentResult.batch_id,
+            });
+            if (pubData?.error) {
+              console.warn('[AutoPublish] Falha:', pubData.error);
+            } else {
+              currentResult.status = 'published';
+            }
+          }
+
+          parseResult = !parseResult
+            ? currentResult
+            : {
+                ...currentResult,
+                total_rows: parseResult.total_rows + currentResult.total_rows,
+                valid_rows: parseResult.valid_rows + currentResult.valid_rows,
+                invalid_rows: parseResult.invalid_rows + currentResult.invalid_rows,
+              };
+        }
+
+        if (!parseResult) {
+          throw new Error('Nenhum dado foi processado');
         }
 
         statuses[i].status = 'success';
