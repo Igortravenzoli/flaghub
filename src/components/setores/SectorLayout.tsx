@@ -37,7 +37,9 @@ interface SectorLayoutProps {
 export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, kioskMode }: SectorLayoutProps) {
   // Detect kiosk mode from parent or prop
   const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
-  const isAdmin = useHubIsAdmin();
+  const isHubAdmin = useHubIsAdmin();
+  const { isAdmin: isAuthAdmin } = useAuth();
+  const isAdmin = isHubAdmin || isAuthAdmin;
   const { isOwner, isOperacional, getAreaRole } = useHubAreas();
 
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
