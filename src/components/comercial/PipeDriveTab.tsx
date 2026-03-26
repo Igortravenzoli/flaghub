@@ -43,7 +43,7 @@ const MOCK_NEGOCIOS_MENSAL: NegociosMensal[] = [
 
 const MOCK_VARIACAO = {
   percentualVariacao: -48.09,
-  direcao: 'down' as const,
+  direcao: 'down' as 'up' | 'down',
   periodoLabel: 'Q1 2026 (jan–mar)',
 };
 
