@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database, Power, PowerOff } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database, Power, PowerOff, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 
