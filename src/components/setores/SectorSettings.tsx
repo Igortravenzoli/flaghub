@@ -19,7 +19,7 @@ interface SectorSettingsProps {
   syncFunctions?: { name: string; label: string; payload?: Record<string, unknown> }[];
 }
 
-export function SectorSettings({ sectorName, syncFunctions = [] }: SectorSettingsProps) {
+export function SectorSettings({ sectorName, sectorKey, syncFunctions = [] }: SectorSettingsProps) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState('5');
   const [emailAlerts, setEmailAlerts] = useState(false);
