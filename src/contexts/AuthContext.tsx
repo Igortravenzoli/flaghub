@@ -5,6 +5,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Profile } from "@/types/database";
 import { hasElevated, hasManagement, hasQuality, hasOperational, canPerformImport, canManageConfig } from "@/lib/roleMap";
+import { isMonitorUser } from "@/lib/monitorUser";
 
 interface AuthState {
   user: User | null;
