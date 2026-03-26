@@ -63,14 +63,14 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 **Prioridade:** P1 | **Dependência:** Fase 2
 
 #### 3.1 HelpDesk reorganizado
-- [ ] /dashboard HelpDesk: painel gerencial com tarja grande (padrão Fábrica)
-- [ ] Submenu Tickets com abas: Painel Tickets, Importações, Configurações, Pesquisar, Busca VDesk
-- [ ] Permissão Tickets herda do HelpDesk
-- [ ] Importação JSON restrita a Owner
+- [x] /dashboard HelpDesk: painel gerencial com tarja grande (padrão Fábrica)
+- [x] Submenu Tickets com abas: Painel Tickets, Importações, Configurações, Pesquisar, Busca VDesk
+- [x] Permissão Tickets herda do HelpDesk
+- [x] Importação JSON restrita a Owner
 
 #### 3.2 Navegação consistente
-- [ ] Padronizar menus laterais por setor
-- [ ] Garantir compatibilidade sem quebrar rotas existentes
+- [x] Padronizar menus laterais por setor (sidebar simplificada, sem submenus aninhados)
+- [x] Garantir compatibilidade sem quebrar rotas existentes
 
 ### Fase 4 — Alertas por Setor
 **Prioridade:** P2 | **Dependência:** Fase 1 (tabelas)

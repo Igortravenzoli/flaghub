@@ -2,12 +2,10 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
-  Ticket,
   Upload,
   Users,
   Settings,
   Monitor,
-  Search,
   ChevronLeft,
   ChevronRight,
   LogIn,
@@ -15,7 +13,6 @@ import {
   Headphones,
   Loader2,
   TrendingUp,
-  Package,
   Factory,
   Server,
   ShieldCheck,
@@ -24,7 +21,6 @@ import {
   RefreshCw,
   UserCheck,
   LayoutGrid,
-  Eye,
   ScrollText,
 } from 'lucide-react';
 import { useState } from 'react';
