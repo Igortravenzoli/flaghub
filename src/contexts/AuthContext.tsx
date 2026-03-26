@@ -599,12 +599,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, mfaRequired: false }));
   }, []);
 
+  const isMonitor = isMonitorUser(state.user?.email);
   const isAdmin = hasElevated(state.roleCode);
   const isGestao = hasManagement(state.roleCode) && !hasElevated(state.roleCode);
   const isQualidade = hasQuality(state.roleCode);
   const isOperacional = hasOperational(state.roleCode);
-  const canImport = canPerformImport(state.roleCode);
-  const canManageSettingsFlag = canManageConfig(state.roleCode);
+  const canImport = isMonitor ? false : canPerformImport(state.roleCode);
+  const canManageSettingsFlag = isMonitor ? false : canManageConfig(state.roleCode);
 
   // Derive the DB role name from obfuscated code for backward compatibility
   const roleFromCode = ((): AppRole | null => {
