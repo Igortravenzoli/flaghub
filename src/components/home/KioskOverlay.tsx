@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Minimize2 } from 'lucide-react';
+import { Minimize2, Clock } from 'lucide-react';
 import type { SectorInfo } from '@/data/mockSectorData';
+import KioskSectorView from './KioskSectorView';
 
-// Lazy-load sector dashboards for kiosk
+// Fallback: full dashboards for sectors without curated kiosk views
 import QualidadeDashboard from '@/pages/setores/QualidadeDashboard';
 import ComercialDashboard from '@/pages/setores/ComercialDashboard';
 import CustomerServiceDashboard from '@/pages/setores/CustomerServiceDashboard';
@@ -14,16 +15,16 @@ import ProdutosDashboard from '@/pages/setores/ProdutosDashboard';
 import HelpdeskDashboard from '@/pages/setores/HelpdeskDashboard';
 import Dashboard from '@/pages/Dashboard';
 
-const sectorComponents: Record<string, React.ComponentType> = {
+/** Sectors that have curated kiosk views */
+const CURATED_SECTORS = new Set(['helpdesk', 'fabrica', 'comercial', 'customer-service', 'qualidade', 'infraestrutura']);
+
+const fallbackComponents: Record<string, React.ComponentType> = {
   tickets_os: Dashboard,
-  qualidade: QualidadeDashboard,
-  comercial: ComercialDashboard,
-  'customer-service': CustomerServiceDashboard,
-  fabrica: FabricaDashboard,
-  infraestrutura: InfraestruturaDashboard,
   produtos: ProdutosDashboard,
-  helpdesk: HelpdeskDashboard,
 };
+
+/** Refresh interval: 3 minutes (not aggressive) */
+const REFRESH_INTERVAL_MS = 180_000;
 
 interface KioskOverlayProps {
   activeSectors: SectorInfo[];
@@ -34,8 +35,8 @@ interface KioskOverlayProps {
 
 export default function KioskOverlay({ activeSectors, currentIndex, rotateEnabled, onExit }: KioskOverlayProps) {
   const currentSector = activeSectors[currentIndex % activeSectors.length];
-  const SectorComponent = sectorComponents[currentSector?.slug];
   const prevThemeRef = useRef<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
 
   // Force dark theme in kiosk mode
   useEffect(() => {
@@ -52,11 +53,12 @@ export default function KioskOverlay({ activeSectors, currentIndex, rotateEnable
     };
   }, []);
 
-  // Auto-refresh data periodically (every 2 minutes)
+  // Smart auto-refresh: trigger refetch every 3 minutes
   useEffect(() => {
     const interval = setInterval(() => {
       window.dispatchEvent(new Event('focus'));
-    }, 120_000);
+      setLastRefresh(new Date());
+    }, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
 
@@ -71,10 +73,19 @@ export default function KioskOverlay({ activeSectors, currentIndex, rotateEnable
     );
   }
 
+  const isCurated = CURATED_SECTORS.has(currentSector.slug);
+  const FallbackComponent = fallbackComponents[currentSector.slug];
+
   return (
     <div className="fixed inset-0 z-[100] bg-background overflow-auto" data-kiosk="true">
-      {/* Top bar — minimal, only exit */}
+      {/* Top bar — minimal controls + last update */}
       <div className="fixed top-4 right-4 z-[110] flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity duration-300">
+        {/* Discrete last-update indicator */}
+        <Badge variant="outline" className="font-mono text-[10px] bg-card/80 backdrop-blur-sm gap-1">
+          <Clock className="h-3 w-3" />
+          {lastRefresh.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+        </Badge>
+
         {rotateEnabled && activeSectors.length > 1 && (
           <Badge variant="secondary" className="font-mono text-xs bg-card/80 backdrop-blur-sm">
             {currentSector.name} • {(currentIndex % activeSectors.length) + 1}/{activeSectors.length}
@@ -86,8 +97,14 @@ export default function KioskOverlay({ activeSectors, currentIndex, rotateEnable
       </div>
 
       {/* Dashboard content */}
-      <div className="p-6">
-        {SectorComponent ? <SectorComponent /> : <p className="text-muted-foreground text-center mt-20">Dashboard "{currentSector.name}" não encontrado</p>}
+      <div className="p-6 pt-8">
+        {isCurated ? (
+          <KioskSectorView sectorSlug={currentSector.slug} sectorName={currentSector.name} />
+        ) : FallbackComponent ? (
+          <FallbackComponent />
+        ) : (
+          <p className="text-muted-foreground text-center mt-20">Dashboard "{currentSector.name}" não encontrado</p>
+        )}
       </div>
     </div>
   );
