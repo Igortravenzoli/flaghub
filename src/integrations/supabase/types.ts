@@ -251,6 +251,53 @@ export type Database = {
           },
         ]
       }
+      comercial_vendas: {
+        Row: {
+          batch_id: string | null
+          closed_date: string | null
+          created_at: string
+          deal_title: string | null
+          deal_value: number | null
+          id: string
+          observation: string | null
+          organization: string | null
+          period_month: string | null
+          source_sheet: string | null
+        }
+        Insert: {
+          batch_id?: string | null
+          closed_date?: string | null
+          created_at?: string
+          deal_title?: string | null
+          deal_value?: number | null
+          id?: string
+          observation?: string | null
+          organization?: string | null
+          period_month?: string | null
+          source_sheet?: string | null
+        }
+        Update: {
+          batch_id?: string | null
+          closed_date?: string | null
+          created_at?: string
+          deal_title?: string | null
+          deal_value?: number | null
+          id?: string
+          observation?: string | null
+          organization?: string | null
+          period_month?: string | null
+          source_sheet?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comercial_vendas_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "manual_import_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cs_fila_manual_records: {
         Row: {
           batch_id: string | null

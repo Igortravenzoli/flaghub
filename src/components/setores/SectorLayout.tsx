@@ -44,8 +44,10 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
 
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
   const hasMembership = !!areaRole;
-  const canImport = areaKey ? (isOwner(areaKey) || isOperacional(areaKey) || isAdmin) : isAdmin;
-  const canSettings = areaKey ? (hasMembership || isAdmin) : isAdmin;
+  const isAreaOwner = areaKey ? isOwner(areaKey) : false;
+  // Owner tem acesso completo (importações, configurações, extraTabs) — não depende de role admin global
+  const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
+  const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
   const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'helpdesk') && canImport;
 
   if (isKiosk) {
