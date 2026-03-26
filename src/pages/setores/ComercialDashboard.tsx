@@ -315,6 +315,10 @@ export default function ComercialDashboard() {
           <TabsContent value="pesquisa" className="space-y-4 mt-0">
             <PesquisaTab />
           </TabsContent>
+
+          <TabsContent value="pipedrive" className="space-y-4 mt-0">
+            <PipeDriveTab />
+          </TabsContent>
         </Tabs>
       )}
 
