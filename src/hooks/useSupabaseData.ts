@@ -24,14 +24,13 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
         query = query.eq('network_id', networkId);
       }
 
-      const { data, error } = await query.limit(1).single();
+      const { data, error } = await query.limit(1).maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
       return data as DashboardSummary | null;
     },
-    // Por padrão, só executar quando networkId estiver definido
-    enabled:
-      options?.enabled ?? (networkId !== undefined && networkId !== null),
+    // SSO users may not have networkId but v_dashboard_summary now respects area-based access
+    enabled: options?.enabled ?? true,
     refetchInterval: 60000, // Auto-refresh a cada 60s
   });
 }
