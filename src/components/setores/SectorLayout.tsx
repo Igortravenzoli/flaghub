@@ -45,10 +45,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
   const hasMembership = !!areaRole;
   const isAreaOwner = areaKey ? isOwner(areaKey) : false;
-  // Owner tem acesso completo (importações, configurações, extraTabs) — não depende de role admin global
+  // Owner/operacional can import; leitura can only view dashboard + extraTabs
   const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
   const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
-  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'helpdesk') && canImport;
+  // Any member (leitura+) can see extraTabs; admins always can
+  const canViewExtraTabs = hasMembership || isAdmin;
+  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
 
   if (isKiosk) {
     return (
@@ -94,7 +96,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
             <LayoutDashboard className="h-3.5 w-3.5" />
             Dashboard
           </TabsTrigger>
-          {extraTabs?.map((tab) => (
+          {canViewExtraTabs && extraTabs?.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} className="gap-1">
               {tab.icon}
               {tab.label}
@@ -118,7 +120,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
           {children}
         </TabsContent>
 
-        {extraTabs?.map((tab) => (
+        {canViewExtraTabs && extraTabs?.map((tab) => (
           <TabsContent key={tab.id} value={tab.id} className="mt-4">
             {tab.content}
           </TabsContent>
