@@ -134,7 +134,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
           <TabsContent value="settings" className="mt-4" forceMount={undefined}>
             <Suspense fallback={<div className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-32 w-full" /></div>}>
               <div className="space-y-4">
-                <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
+                <SectorSettings sectorName={title} sectorKey={areaKey} syncFunctions={syncFunctions} />
                 {integrations && (
                   <SectorIntegrations integrations={integrations} sectorName={title} />
                 )}
