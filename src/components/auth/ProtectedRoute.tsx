@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 import type { AppRole } from '@/types/database';
+import { isMonitorBlockedRoute } from '@/lib/monitorUser';
 
 interface ProtectedRouteProps {
   children: ReactNode;
