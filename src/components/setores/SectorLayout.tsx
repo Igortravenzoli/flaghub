@@ -1,9 +1,11 @@
 import { ReactNode, useState, lazy, Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, LayoutDashboard, Upload, Settings } from 'lucide-react';
+import { Clock, LayoutDashboard, Upload, Settings, Lock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
+import { useHubAreas } from '@/hooks/useHubAreas';
+import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import type { Integration } from './SectorIntegrations';
 
 // Lazy-loaded heavy tab contents to avoid loading when tab is not active
@@ -34,7 +36,13 @@ interface SectorLayoutProps {
 export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, kioskMode }: SectorLayoutProps) {
   // Detect kiosk mode from parent or prop
   const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
-  const showImports = areaKey === 'customer-service' || areaKey === 'comercial';
+  const isAdmin = useHubIsAdmin();
+  const { isOwner, isOperacional, getAreaRole } = useHubAreas();
+
+  const areaRole = areaKey ? getAreaRole(areaKey) : null;
+  const canImport = areaKey ? (isOwner(areaKey) || isAdmin) : isAdmin;
+  const canSettings = areaKey ? (isOperacional(areaKey) || isAdmin) : isAdmin;
+  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial') && canImport;
 
   if (isKiosk) {
     return (
