@@ -11,7 +11,7 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
   Headphones, Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
-  Ticket, Search, Zap,
+  Ticket, Search,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
