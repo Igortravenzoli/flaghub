@@ -11,7 +11,7 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
   Headphones, Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
-  Ticket, Search, Zap,
+  Ticket, Search,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -341,36 +341,6 @@ export default function HelpdeskDashboard() {
         { name: 'vdesk-sync-helpdesk', label: 'Sincronizar Helpdesk (VDesk)' },
       ]}
     >
-      {/* === Hero Header === */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-card border border-border/50 p-6 mb-6">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-1/2 -right-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
-          <div className="absolute -bottom-1/2 -left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
-        </div>
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-5">
-            <div className="relative">
-              <div className="absolute inset-0 bg-primary/50 rounded-2xl blur-xl" />
-              <div className="relative p-3.5 rounded-2xl bg-gradient-to-br from-primary to-primary/80">
-                <Headphones className="h-8 w-8 text-primary-foreground" />
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <Zap className="h-4 w-4 text-primary" />
-              Monitoramento em tempo real dos atendimentos
-            </p>
-          </div>
-          {lastSync && (
-            <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-card/80 backdrop-blur-md border border-primary/30">
-              <div className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-primary" />
-              </div>
-              <span className="text-sm font-medium text-foreground">Online</span>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Top bar: sync badge + consultant filter */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">

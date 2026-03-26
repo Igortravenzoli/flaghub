@@ -9,14 +9,17 @@ import { Badge } from '@/components/ui/badge';
 import { Bell, Clock, RefreshCw, Mail, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { SectorAlerts } from './SectorAlerts';
 
 interface SectorSettingsProps {
   sectorName: string;
+  /** Sector key for alert rules (e.g. 'helpdesk', 'fabrica') */
+  sectorKey?: string;
   /** Edge function name(s) to invoke for immediate sync */
   syncFunctions?: { name: string; label: string; payload?: Record<string, unknown> }[];
 }
 
-export function SectorSettings({ sectorName, syncFunctions = [] }: SectorSettingsProps) {
+export function SectorSettings({ sectorName, sectorKey, syncFunctions = [] }: SectorSettingsProps) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState('5');
   const [emailAlerts, setEmailAlerts] = useState(false);
@@ -201,6 +204,8 @@ export function SectorSettings({ sectorName, syncFunctions = [] }: SectorSetting
           A configuração de retenção foi centralizada no menu Admin para controle estruturado.
         </p>
       </Card>
+
+      {sectorKey && <SectorAlerts sector={sectorKey} sectorLabel={sectorName} />}
 
       <Button onClick={handleSave} className="w-full gap-2">
         <Save className="h-4 w-4" />

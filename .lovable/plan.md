@@ -76,14 +76,14 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 **Prioridade:** P2 | **Dependência:** Fase 1 (tabelas)
 
 #### 4.1 Configuração de alertas
-- [ ] UI por setor: ativar/desativar, escolher canal, condição, limiar
-- [ ] Canais: email, webhook Telegram, webhook Teams
-- [ ] Destinatários: somente usuários cadastrados (sem email livre)
-- [ ] SMTP/credentials: somente Admin configura
+- [x] UI por setor: ativar/desativar, escolher canal, condição, limiar
+- [x] Canais: email, webhook Telegram, webhook Teams (seleção via alert_channels)
+- [x] Destinatários: somente usuários cadastrados (sem email livre)
+- [x] SMTP/credentials: somente Admin configura (createRule/toggle restritos a isAdmin)
 
 #### 4.2 Visualização
-- [ ] Último disparo, status do alerta
-- [ ] Log de entregas
+- [x] Último disparo, status do alerta (badge com tempo relativo)
+- [x] Log de entregas (últimas 5 por regra, expandível)
 
 ### Fase 5 — Kiosk Otimizado por Setor
 **Prioridade:** P2 | **Dependência:** Fase 3
