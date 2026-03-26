@@ -109,6 +109,65 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 - PRD específico já implementado (dashboard, base de clientes, fila operacional)
 - Alertas e Kiosk seguirão regras transversais
 
+#### 6.2 Normalização de Dados Comerciais
+
+##### Fonte 1 — Pesquisa de Satisfação de Clientes (Pesquisa_FLAG_Clientes)
+- **Formato:** XLSX, aba única, ~80+ linhas
+- **Colunas-chave para normalização:**
+  - `Codigo Puxada` → ID único do cliente (mapeia para `vdesk_clients.id`)
+  - `Cliente` → nome curto / apelido
+  - `Razao Social` → razão social completa
+  - `Bandeira` → Danone, DPA, Froneri, Nestlé, Heineken, Nespresso, Outros
+  - `Status` → Ativo / Inativo / Bloqueado
+  - `Cidade`, `UF` → localização geográfica
+  - `Servidor Flag` → S1, S4, SX (infraestrutura de hospedagem)
+  - Notas por produto (0-5): Flexx ERP, Decision, Avante Sales, Flexx Sales, Connect Sales, Flexx GPS, Flexx Go, Connect Merchan, Flexx Promo, Sofia IA
+  - Campos qualitativos: "Pensou em trocar?", "Indicaria a Flag?", relatos livres
+- **Regras de normalização:**
+  - Notas "Sem Relato" / "NÃO USA" → null (não contabilizar na média)
+  - Notas numéricas (0-5) → int, validar range
+  - Respostas S/N → boolean
+  - Bandeira: padronizar capitalização (ex: "DPA" → "DPA", "Danone" → "Danone")
+  - Codigo Puxada: int, chave de cruzamento com vdesk_clients
+- **Tabela destino sugerida:** `comercial_pesquisa_satisfacao`
+  - Campos: id, cliente_id (FK vdesk_clients), bandeira, data_pesquisa, responsavel_contato, notas_por_produto (JSONB), qualitativo (JSONB), created_at
+
+##### Fonte 2 — Acompanhamento Comercial (Comercial_Informação_IGOR)
+- **Formato:** XLSX, múltiplas abas por ano (2021-2025+)
+- **Duas tabelas por aba:**
+  - **Perdas:** Quant, Data, Codigo, Cliente, Sistema, Bandeira/Marca, Motivo, Valor Mensal, Encerramento, Status
+  - **Novos (Ganhos):** Quant, Data, Codigo, Cliente, Sistema, Bandeira/Marca, Valor Mensal
+- **Regras de normalização:**
+  - Data: formatos mistos (MM/YYYY, "jan/2025", "Out/24") → normalizar para ISO date (primeiro dia do mês)
+  - Bandeira: padronizar ("HNK" → "Heineken", "NESTLÉ" / "NESTLE" → "Nestlé", "OUTROS" → "Outros", "GAROTO" → "Garoto", "DAN" → "Danone", "NESTLE / PURINA" → "Purina")
+  - Sistema: normalizar ("SUITE FLEXX" / "Suite Flexx" → "Suite Flexx", "Flexxgps ME LEVA" → "Flexx GPS")
+  - Valor Mensal: parse BRL (R$ X.XXX,XX) → numeric, considerar nulos
+  - Status: "Bloqueado", "Cancelado", "Encerrado em DD/MM/YY", "Não formalizado" → enum normalizado
+  - Codigo: int, chave de cruzamento com vdesk_clients
+- **Tabela destino sugerida:** `comercial_movimentacao_clientes`
+  - Campos: id, cliente_codigo, cliente_nome, tipo (perda/ganho), data_evento, sistema, bandeira, motivo, valor_mensal, status_encerramento, ano_referencia, created_at
+
+##### Fonte 3 — Intelliwan CRM (screenshots de referência)
+- **Dados externos (não importados diretamente):**
+  - Vendas realizadas por cliente (bar chart horizontal por bandeira)
+  - Venda total (deal value BRL) com variação percentual
+  - Negócios ganhos por mês (bar chart mensal com meta de R$ 110K)
+- **Uso no Hub:** referência visual para KPIs do Comercial
+  - KPI: Venda Total do período → card grande com variação
+  - KPI: Vendas por Cliente/Bandeira → gráfico horizontal
+  - KPI: Negócios ganhos mês a mês → bar chart com meta
+  - Filtro por período customizado (Q1 2026: jan-mar)
+- **Nota:** dados de CRM poderão ser sincronizados via API futura; por ora, importação manual XLSX/CSV
+
+##### Regras transversais de importação Comercial
+- Importação via SectorImportArea (incremental ou expurgo)
+- Validação de MIME: .xlsx, .xls, .csv
+- Limite 10MB por arquivo
+- Deduplicação por (cliente_codigo + data_evento + tipo) para movimentação
+- Deduplicação por (cliente_id + data_pesquisa) para pesquisa satisfação
+- Histórico de importações segregado por setor "comercial"
+- Owner pode importar; leitura para demais roles
+
 ---
 
 ## Regras Transversais
