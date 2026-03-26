@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
-import { Badge } from '@/components/ui/badge';
 import { Clock, FileText, Users, TrendingUp, Monitor, Server, Wrench, Shield, Layers, Package, CheckCircle, AlertTriangle, HeartPulse, Code2, Bug, Plane, ListTodo } from 'lucide-react';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
 import { useHelpdeskKpis } from '@/hooks/useHelpdeskKpis';
@@ -10,7 +9,6 @@ import { useCustomerServiceKpis } from '@/hooks/useCustomerServiceKpis';
 import { useQualidadeKpis } from '@/hooks/useQualidadeKpis';
 import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
-import { Skeleton } from '@/components/ui/skeleton';
 
 interface KioskSectorViewProps {
   sectorSlug: string;
@@ -54,10 +52,11 @@ function HelpdeskKiosk() {
 // ── Fábrica KPI View ──
 function FabricaKiosk() {
   const { items, isLoading } = useFabricaKpis();
-  const health = usePbiHealthBatch(items?.map(i => i.id) || [], 'fabrica');
+  const ids = useMemo(() => (items || []).map(i => i.id), [items]);
+  const health = usePbiHealthBatch(ids);
 
   const stats = useMemo(() => {
-    if (!items) return { total: 0, inProgress: 0, aguardandoTeste: 0, avioes: 0, bugs: 0 };
+    if (!items) return { total: 0, inProgress: 0, aguardandoTeste: 0, avioes: 0 };
     const inProgressStates = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
     const testStates = new Set(['Aguardando Teste']);
     return {
@@ -65,7 +64,6 @@ function FabricaKiosk() {
       inProgress: items.filter(i => inProgressStates.has(i.state || '')).length,
       aguardandoTeste: items.filter(i => testStates.has(i.state || '')).length,
       avioes: items.filter(i => (i.tags || '').toLowerCase().includes('aviao')).length,
-      bugs: items.filter(i => i.work_item_type === 'Bug').length,
     };
   }, [items]);
 
@@ -79,9 +77,9 @@ function FabricaKiosk() {
       </div>
       {health.overview && (
         <div className="mt-4 grid grid-cols-3 gap-4">
-          <DashboardKpiCard label="Saúde Verde" value={Number(health.overview.verde_count || 0)} icon={HeartPulse} isLoading={false} delay={320} />
-          <DashboardKpiCard label="Saúde Amarela" value={Number(health.overview.amarelo_count || 0)} icon={AlertTriangle} isLoading={false} delay={400} />
-          <DashboardKpiCard label="Saúde Vermelha" value={Number(health.overview.vermelho_count || 0)} icon={AlertTriangle} isLoading={false} delay={480} />
+          <DashboardKpiCard label="Saúde Verde" value={health.overview.verde} icon={HeartPulse} isLoading={false} delay={320} />
+          <DashboardKpiCard label="Saúde Amarela" value={health.overview.amarelo} icon={AlertTriangle} isLoading={false} delay={400} />
+          <DashboardKpiCard label="Saúde Vermelha" value={health.overview.vermelho} icon={AlertTriangle} isLoading={false} delay={480} />
         </div>
       )}
     </MetricMetadataProvider>
@@ -90,17 +88,7 @@ function FabricaKiosk() {
 
 // ── Comercial KPI View ──
 function ComercialKiosk() {
-  const { data, isLoading } = useComercialKpis();
-
-  const stats = useMemo(() => {
-    if (!data) return { total: 0, ativos: 0, inativos: 0, bloqueados: 0 };
-    return {
-      total: data.length,
-      ativos: data.filter(c => c.status?.toLowerCase() === 'ativo').length,
-      inativos: data.filter(c => c.status?.toLowerCase() === 'inativo').length,
-      bloqueados: data.filter(c => c.status?.toLowerCase() === 'bloqueado').length,
-    };
-  }, [data]);
+  const { stats, isLoading } = useComercialKpis();
 
   return (
     <MetricMetadataProvider areaKey="comercial">
@@ -116,26 +104,15 @@ function ComercialKiosk() {
 
 // ── Customer Service KPI View ──
 function CustomerServiceKiosk() {
-  const { items, implantacoes, filaManual, isLoading } = useCustomerServiceKpis();
-
-  const stats = useMemo(() => {
-    const implAtivas = implantacoes?.filter(i => !['Finalizado', 'Encerrado', 'Concluído'].includes(i.status_implantacao || '')).length || 0;
-    const implFinalizadas = (implantacoes?.length || 0) - implAtivas;
-    return {
-      totalFila: filaManual?.length || 0,
-      implAtivas,
-      implFinalizadas,
-      totalDevops: items?.length || 0,
-    };
-  }, [items, implantacoes, filaManual]);
+  const { implAndamento, implFinalizadas, filaManual, totalFilaCS, isLoading } = useCustomerServiceKpis();
 
   return (
     <MetricMetadataProvider areaKey="customer-service">
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <DashboardKpiCard label="Implantações Ativas" value={stats.implAtivas} icon={Package} isLoading={isLoading} />
-        <DashboardKpiCard label="Fila" value={stats.totalFila} icon={Layers} isLoading={isLoading} delay={80} />
-        <DashboardKpiCard label="Finalizadas" value={stats.implFinalizadas} icon={CheckCircle} isLoading={isLoading} delay={160} />
-        <DashboardKpiCard label="Itens DevOps" value={stats.totalDevops} icon={Code2} isLoading={isLoading} delay={240} />
+        <DashboardKpiCard label="Implantações Ativas" value={implAndamento} icon={Package} isLoading={isLoading} />
+        <DashboardKpiCard label="Fila" value={filaManual.length} icon={Layers} isLoading={isLoading} delay={80} />
+        <DashboardKpiCard label="Finalizadas" value={implFinalizadas} icon={CheckCircle} isLoading={isLoading} delay={160} />
+        <DashboardKpiCard label="Itens DevOps" value={totalFilaCS} icon={Code2} isLoading={isLoading} delay={240} />
       </div>
     </MetricMetadataProvider>
   );
@@ -144,7 +121,8 @@ function CustomerServiceKiosk() {
 // ── Qualidade KPI View ──
 function QualidadeKiosk() {
   const { items, isLoading } = useQualidadeKpis();
-  const health = usePbiHealthBatch(items?.map(i => i.id).filter(Boolean) as number[] || [], 'qualidade');
+  const ids = useMemo(() => (items || []).map(i => i.id).filter((id): id is number => id != null), [items]);
+  const health = usePbiHealthBatch(ids);
 
   const stats = useMemo(() => {
     if (!items) return { total: 0, emTeste: 0, aguardandoDeploy: 0, retornoQa: 0 };
@@ -152,7 +130,7 @@ function QualidadeKiosk() {
       total: items.length,
       emTeste: items.filter(i => i.state === 'Em Teste').length,
       aguardandoDeploy: items.filter(i => i.state === 'Aguardando Deploy').length,
-      retornoQa: items.filter(i => (i as any).qa_retorno_count > 0).length,
+      retornoQa: items.filter(i => (i.qa_retorno_count ?? 0) > 0).length,
     };
   }, [items]);
 
@@ -166,9 +144,9 @@ function QualidadeKiosk() {
       </div>
       {health.overview && (
         <div className="mt-4 grid grid-cols-3 gap-4">
-          <DashboardKpiCard label="Verde" value={Number(health.overview.verde_count || 0)} icon={HeartPulse} isLoading={false} delay={320} />
-          <DashboardKpiCard label="Amarelo" value={Number(health.overview.amarelo_count || 0)} icon={AlertTriangle} isLoading={false} delay={400} />
-          <DashboardKpiCard label="Vermelho" value={Number(health.overview.vermelho_count || 0)} icon={AlertTriangle} isLoading={false} delay={480} />
+          <DashboardKpiCard label="Verde" value={health.overview.verde} icon={HeartPulse} isLoading={false} delay={320} />
+          <DashboardKpiCard label="Amarelo" value={health.overview.amarelo} icon={AlertTriangle} isLoading={false} delay={400} />
+          <DashboardKpiCard label="Vermelho" value={health.overview.vermelho} icon={AlertTriangle} isLoading={false} delay={480} />
         </div>
       )}
     </MetricMetadataProvider>
