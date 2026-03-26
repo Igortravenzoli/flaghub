@@ -72,7 +72,7 @@ export default function SyncCentral() {
       if (error) throw error;
       return data;
     },
-    refetchInterval: 10000,
+    refetchInterval: 60000, // 60s — reduz carga no banco
   });
 
   const refreshSyncData = () => {
