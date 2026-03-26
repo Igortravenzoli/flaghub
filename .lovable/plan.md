@@ -41,10 +41,10 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 - [ ] Histórico mínimo operacional na Central de Sync
 
 #### 1.5 Tabelas backend (Supabase)
-- [ ] sector_health — status de saúde por setor/dependência
-- [ ] alert_rules — regras de alerta por setor/KPI
-- [ ] alert_channels — canais (email, telegram, teams)
-- [ ] alert_deliveries — log de envios
+- [x] sector_health — status de saúde por setor/dependência
+- [x] alert_rules — regras de alerta por setor/KPI
+- [x] alert_channels — canais (email, telegram, teams)
+- [x] alert_deliveries — log de envios
 
 ### Fase 2 — Permissões e Visibilidade
 **Prioridade:** P1 | **Dependência:** Fase 1
