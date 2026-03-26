@@ -321,18 +321,6 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
           throw new Error('Nenhum dado foi processado');
         }
 
-        // Auto-publish if there are valid rows
-        if (parseResult.valid_rows > 0 && parseResult.status !== 'rejected') {
-          const pubData = await invokeEdgeFunctionWithAuth<{ error?: string }>('manual-upload-publish', {
-            batch_id: parseResult.batch_id,
-          });
-          if (pubData?.error) {
-            console.warn('[AutoPublish] Falha:', pubData.error);
-          } else {
-            parseResult.status = 'published';
-          }
-        }
-
         statuses[i].status = 'success';
         statuses[i].result = parseResult;
         successCount++;

@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import { useTickets, useDashboardSummary, useSettings, useStatusMappings } from './useSupabaseData';
+import { useTickets, useDashboardSummary, useSettings, useStatusMappings, useResolvedAreaNetwork } from './useSupabaseData';
 import { useAuth } from './useAuth';
 import type { DBTicket, InternalStatus, TicketSeverity } from '@/types/database';
 import type { 
@@ -164,23 +164,27 @@ export function useTicketAnalysisDB() {
   // Permitir query assim que autenticado (RLS cuida do filtro por network).
   // Para SSO sem networkId, o RPC get_tickets agora faz fallback via hub_resolve_area_network_id.
   const canQueryTickets = !authLoading && isAuthenticated;
+  const { data: areaNetworkId, isLoading: areaNetworkLoading } = useResolvedAreaNetwork('tickets_os', {
+    enabled: canQueryTickets,
+  });
+  const effectiveNetworkId = areaNetworkId ?? (!areaNetworkLoading ? networkId ?? undefined : undefined);
+  const canRunNetworkQueries = canQueryTickets && !areaNetworkLoading && effectiveNetworkId !== undefined;
 
   const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useTickets(
     {
-      // Se networkId ainda não carregou, passa undefined — o RPC resolve via área
-      networkId: networkId ?? undefined,
+      networkId: effectiveNetworkId,
       limit: 100,
     },
-    { enabled: canQueryTickets }
+    { enabled: canRunNetworkQueries }
   );
 
   const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useDashboardSummary(
-    networkId ?? undefined,
-    { enabled: canQueryTickets }
+    effectiveNetworkId,
+    { enabled: canRunNetworkQueries }
   );
 
-  const { data: settings } = useSettings(networkId ?? undefined);
-  const { data: statusMappings = [] } = useStatusMappings(networkId ?? undefined);
+   const { data: settings } = useSettings(effectiveNetworkId);
+   const { data: statusMappings = [] } = useStatusMappings(effectiveNetworkId);
 
   const noOsGraceHours = settings?.no_os_grace_hours ?? 24;
 
@@ -315,7 +319,7 @@ export function useTicketAnalysisDB() {
     filtros,
     atualizarFiltro,
     limparFiltros,
-    isLoading: authLoading || ticketsLoading,
+    isLoading: authLoading || areaNetworkLoading || ticketsLoading || summaryLoading,
     refresh,
     ordensServico: [], // Legacy - OS agora está dentro dos tickets
   };

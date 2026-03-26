@@ -51,6 +51,24 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
   });
 }
 
+export function useResolvedAreaNetwork(areaKey?: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['hub-area-network', areaKey],
+    queryFn: async () => {
+      if (!areaKey) return null;
+
+      const { data, error } = await supabase.rpc('hub_resolve_area_network_id' as any, {
+        p_area_key: areaKey,
+      });
+
+      if (error) throw error;
+      return (data as number | null) ?? null;
+    },
+    enabled: (options?.enabled ?? true) && !!areaKey,
+    staleTime: 60_000,
+  });
+}
+
 // Hook para buscar tickets com filtros
 export function useTickets(
   filters?: {
