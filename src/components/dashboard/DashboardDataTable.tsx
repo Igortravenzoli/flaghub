@@ -33,6 +33,8 @@ interface DashboardDataTableProps<T> {
   data: T[];
   isLoading?: boolean;
   pageSize?: number;
+  /** Allow user to choose page size */
+  pageSizeOptions?: number[];
   searchable?: boolean;
   searchPlaceholder?: string;
   onRowClick?: (row: T) => void;
