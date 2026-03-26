@@ -2,12 +2,10 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
-  Ticket,
   Upload,
   Users,
   Settings,
   Monitor,
-  Search,
   ChevronLeft,
   ChevronRight,
   LogIn,
@@ -15,7 +13,6 @@ import {
   Headphones,
   Loader2,
   TrendingUp,
-  Package,
   Factory,
   Server,
   ShieldCheck,
@@ -24,7 +21,6 @@ import {
   RefreshCw,
   UserCheck,
   LayoutGrid,
-  Eye,
   ScrollText,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -50,26 +46,7 @@ const sectorItems: NavItem[] = [
   { label: 'Fábrica', path: '/setor/fabrica', icon: Factory },
   { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server },
   { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck },
-  {
-    label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones,
-    children: [
-      { label: 'Dashboard Helpdesk', path: '/setor/helpdesk', icon: LayoutDashboard },
-      { label: 'Tickets', path: '/dashboard', icon: Ticket,
-        children: [
-          { label: 'Painel Tickets', path: '/dashboard', icon: Ticket },
-          { label: 'Importações', path: '/importacoes', icon: Upload },
-          { label: 'Configurações', path: '/configuracoes', icon: Settings },
-        ],
-      },
-      { label: 'Pesquisar', path: '/tickets', icon: Search,
-        children: [
-          { label: 'Tickets', path: '/tickets', icon: Ticket },
-          { label: 'Busca VDesk', path: '/ticket-busca', icon: Search },
-        ],
-      },
-      { label: 'Acompanhamento', path: '/acompanhamento', icon: Eye },
-    ],
-  },
+  { label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones },
 ];
 
 const adminItems: NavItem[] = [
@@ -87,16 +64,9 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
-  const [helpdeskOpen, setHelpdeskOpen] = useState(false);
-  const [pesquisarOpen, setPesquisarOpen] = useState(false);
-  const [ticketsOpen, setTicketsOpen] = useState(false);
   const { isAuthenticated, isLoading, isAdmin, isMonitor, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
-  const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/configuracoes'];
-  const isHelpdeskActive = helpdeskPaths.includes(location.pathname);
-  const isPesquisarActive = ['/tickets', '/ticket-busca'].includes(location.pathname);
-  const isTicketsActive = ['/dashboard', '/configuracoes'].includes(location.pathname);
 
   const handleAuthAction = async () => {
     if (isLoading) return;
@@ -133,75 +103,6 @@ export function Sidebar() {
     );
   };
 
-  const renderChildItem = (child: NavItem, level = 0) => {
-    const ChildIcon = child.icon;
-    const childActive = isActive(child.path);
-
-    // Handle submenus with children (Tickets, Pesquisar)
-    if (child.children) {
-      const isTicketsSub = child.label === 'Tickets';
-      const isOpen = isTicketsSub ? ticketsOpen : pesquisarOpen;
-      const setOpen = isTicketsSub ? setTicketsOpen : setPesquisarOpen;
-      const isSubActive = isTicketsSub ? isTicketsActive : isPesquisarActive;
-
-      return (
-        <div key={child.label}>
-          <button
-            onClick={() => setOpen(!isOpen)}
-            className={cn(
-              "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all w-full",
-              isSubActive
-                ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
-                : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-            )}
-          >
-            <ChildIcon className="h-3.5 w-3.5" />
-            <span className="flex-1 text-left">{child.label}</span>
-            <ChevronRight className={cn("h-3 w-3 transition-transform", isOpen && "rotate-90")} />
-          </button>
-          {isOpen && (
-            <div className="ml-3 pl-2 border-l border-sidebar-border space-y-0.5 mt-0.5">
-              {child.children.map((sub) => {
-                const SubIcon = sub.icon;
-                const subActive = isActive(sub.path);
-                return (
-                  <Link
-                    key={sub.path + sub.label}
-                    to={sub.path}
-                    className={cn(
-                      "flex items-center gap-2 px-2 py-1 rounded-md text-[11px] transition-all",
-                      subActive
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
-                        : "text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-                    )}
-                  >
-                    <SubIcon className="h-3 w-3" />
-                    <span>{sub.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <Link
-        key={child.path}
-        to={child.path}
-        className={cn(
-          "flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all",
-          childActive
-            ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
-            : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-        )}
-      >
-        <ChildIcon className="h-3.5 w-3.5" />
-        <span>{child.label}</span>
-      </Link>
-    );
-  };
 
   return (
     <aside
@@ -253,38 +154,7 @@ export function Sidebar() {
             )}
             {collapsed && <div className="border-t border-sidebar-border my-2" />}
 
-            {sectorItems.map((item) => {
-              if (item.children) {
-                const Icon = item.icon;
-                return (
-                  <div key={item.label}>
-                    <button
-                      onClick={() => { navigate(item.path); setHelpdeskOpen(!helpdeskOpen); }}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm w-full",
-                        isHelpdeskActive
-                          ? "bg-flag-gold text-flag-navy font-semibold shadow-lg shadow-flag-gold/20"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        collapsed && "justify-center px-2"
-                      )}
-                      title={collapsed ? item.label : undefined}
-                    >
-                      <Icon className="h-4 w-4 flex-shrink-0" />
-                      {!collapsed && <span className="font-medium flex-1 text-left">{item.label}</span>}
-                      {!collapsed && (
-                        <ChevronRight className={cn("h-3 w-3 transition-transform", helpdeskOpen && "rotate-90")} />
-                      )}
-                    </button>
-                    {!collapsed && helpdeskOpen && (
-                      <div className="ml-4 pl-3 border-l border-sidebar-border space-y-0.5 mt-0.5">
-                        {item.children.map((child) => renderChildItem(child))}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              return renderNavItem(item);
-            })}
+            {sectorItems.map(renderNavItem)}
 
             {/* Admin — only visible to admins */}
             {isAdmin && (

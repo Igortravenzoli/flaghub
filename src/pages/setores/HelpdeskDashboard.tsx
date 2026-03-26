@@ -11,6 +11,7 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
   Headphones, Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
+  Ticket, Search, Zap,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,13 +22,19 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// Lazy load ticket sub-pages for tab embedding
+const DashboardPage = lazy(() => import('@/pages/Dashboard'));
+const TicketsPage = lazy(() => import('@/pages/Tickets'));
+const TicketBuscaPage = lazy(() => import('@/pages/TicketBuscaComponente'));
 
 const integrations: Integration[] = [
   { name: 'VDesk Helpdesk API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Dashboard Helpdesk' },
@@ -293,6 +300,34 @@ export default function HelpdeskDashboard() {
       label: h.data ? new Date(h.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '',
     }));
 
+  const tabFallback = (
+    <div className="space-y-3 p-4">
+      <Skeleton className="h-8 w-full" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+
+  const ticketExtraTabs = [
+    {
+      id: 'tickets-painel',
+      label: 'Painel Tickets',
+      icon: <Ticket className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><DashboardPage /></Suspense>,
+    },
+    {
+      id: 'tickets-pesquisar',
+      label: 'Pesquisar',
+      icon: <Search className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><TicketsPage /></Suspense>,
+    },
+    {
+      id: 'tickets-busca-vdesk',
+      label: 'Busca VDesk',
+      icon: <Search className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><TicketBuscaPage /></Suspense>,
+    },
+  ];
+
   return (
     <SectorLayout
       title="Helpdesk"
@@ -300,10 +335,47 @@ export default function HelpdeskDashboard() {
       lastUpdate=""
       integrations={integrations}
       areaKey="helpdesk"
+      extraTabs={ticketExtraTabs}
       syncFunctions={[
         { name: 'vdesk-sync-helpdesk', label: 'Sincronizar Helpdesk (VDesk)' },
       ]}
     >
+      {/* === Hero Header === */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-card border border-border/50 p-8 mb-6">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-1/2 -right-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
+          <div className="absolute -bottom-1/2 -left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+        </div>
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="relative">
+              <div className="absolute inset-0 bg-primary/50 rounded-2xl blur-xl" />
+              <div className="relative p-4 rounded-2xl bg-gradient-to-br from-primary to-primary/80">
+                <Headphones className="h-10 w-10 text-primary-foreground" />
+              </div>
+            </div>
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                Helpdesk
+              </h2>
+              <p className="text-base text-muted-foreground mt-1 flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                Central de atendimento e suporte — VDesk
+              </p>
+            </div>
+          </div>
+          {lastSync && (
+            <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-card/80 backdrop-blur-md border border-primary/30">
+              <div className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-primary" />
+              </div>
+              <span className="text-sm font-medium text-foreground">Online</span>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Top bar: sync badge + consultant filter */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
