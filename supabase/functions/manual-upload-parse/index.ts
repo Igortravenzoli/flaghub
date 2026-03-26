@@ -1,4 +1,5 @@
-// manual-upload-parse v1.0 — Parse e validação de uploads manuais (CSV/XLSX/JSON)
+// manual-upload-parse v1.1 — Parse e validação de uploads manuais (CSV/XLSX/JSON)
+// Now supports area-based roles (owner) in addition to global admin/gestao
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -7,11 +8,8 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const ALLOWED_UPLOAD_ROLES = new Set(['admin', 'gestao'])
-
 function resolveCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('origin')
-
   return {
     ...corsHeaders,
     'Access-Control-Allow-Origin': origin ?? '*',
@@ -26,7 +24,8 @@ function getSupabaseAdmin() {
   )
 }
 
-async function validateAuth(req: Request): Promise<string | null> {
+/** Validate auth and return userId. Role check is done separately per-template. */
+async function getAuthUserId(req: Request): Promise<string | null> {
   const authHeader = req.headers.get('authorization')
   if (!authHeader) return null
   const supabase = createClient(
@@ -38,33 +37,43 @@ async function validateAuth(req: Request): Promise<string | null> {
   return user?.id ?? null
 }
 
-async function validateAuthorizedUser(req: Request): Promise<{ userId: string; userRole: string | null } | null> {
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
-
-  const token = authHeader.replace('Bearer ', '')
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } }
-  )
-
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token)
-  if (claimsError || !claimsData?.claims?.sub) return null
-
-  const userId = claimsData.claims.sub as string
-  const { data: roleData, error: roleError } = await supabase
+/** Check if user has global admin/gestao role */
+async function hasGlobalUploadRole(userId: string): Promise<boolean> {
+  const admin = getSupabaseAdmin()
+  const { data } = await admin
     .from('user_roles')
     .select('role')
     .eq('user_id', userId)
-    .single()
+    .in('role', ['admin', 'gestao'])
+    .maybeSingle()
+  return !!data
+}
 
-  if (roleError) {
-    console.error('[ManualUploadParse] Failed to load role:', roleError)
-    return { userId, userRole: null }
-  }
+/** Check if user is hub admin */
+async function isHubAdmin(userId: string): Promise<boolean> {
+  const admin = getSupabaseAdmin()
+  const { data } = await admin
+    .from('hub_user_global_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('role', 'admin')
+    .maybeSingle()
+  return !!data
+}
 
-  return { userId, userRole: roleData?.role ?? null }
+/** Check if user has area-level owner/operacional role for template's area */
+async function hasAreaUploadRole(userId: string, areaId: string | null): Promise<boolean> {
+  if (!areaId) return false
+  const admin = getSupabaseAdmin()
+  const { data } = await admin
+    .from('hub_area_members')
+    .select('area_role')
+    .eq('user_id', userId)
+    .eq('area_id', areaId)
+    .eq('is_active', true)
+    .in('area_role', ['owner', 'operacional'])
+    .maybeSingle()
+  return !!data
 }
 
 /** Remove null bytes and problematic Unicode escape sequences from strings */
@@ -100,12 +109,10 @@ function parseCSV(text: string): Record<string, string>[] {
 
 function parseJsonRows(text: string): Record<string, any>[] {
   const parsed = JSON.parse(text)
-
   if (Array.isArray(parsed)) return parsed
   if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) {
     return parsed.records
   }
-
   return [parsed]
 }
 
@@ -163,20 +170,12 @@ serve(async (req: Request) => {
   const admin = getSupabaseAdmin()
 
   try {
-    const authUser = await validateAuthorizedUser(req)
-    if (!authUser?.userId) {
+    const userId = await getAuthUserId(req)
+    if (!userId) {
       return new Response(JSON.stringify({ error: 'Autenticação obrigatória' }), {
         status: 401, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
     }
-
-    if (!authUser.userRole || !ALLOWED_UPLOAD_ROLES.has(authUser.userRole)) {
-      return new Response(JSON.stringify({ error: 'Acesso negado' }), {
-        status: 403, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const userId = authUser.userId
 
     const body = await req.json()
     const { upload_id, template_key, file_content, file_type } = body
@@ -197,6 +196,19 @@ serve(async (req: Request) => {
     if (tErr || !template) {
       return new Response(JSON.stringify({ error: `Template '${template_key}' não encontrado` }), {
         status: 404, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Authorization: global admin/gestao OR hub admin OR area owner/operacional
+    const [globalOk, hubAdmin, areaOk] = await Promise.all([
+      hasGlobalUploadRole(userId),
+      isHubAdmin(userId),
+      hasAreaUploadRole(userId, template.area_id),
+    ])
+
+    if (!globalOk && !hubAdmin && !areaOk) {
+      return new Response(JSON.stringify({ error: 'Acesso negado — requer papel de Owner ou Admin na área' }), {
+        status: 403, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
     }
 

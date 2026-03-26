@@ -162,13 +162,12 @@ export function useTicketAnalysisDB() {
   const { networkId, isLoading: authLoading, isAdmin, isAuthenticated } = useAuth();
 
   // Permitir query assim que autenticado (RLS cuida do filtro por network).
-  // Não depender de isAdmin ou networkId para habilitar - eles hidratam depois.
+  // Para SSO sem networkId, o RPC get_tickets agora faz fallback via hub_resolve_area_network_id.
   const canQueryTickets = !authLoading && isAuthenticated;
-  const canQueryNetworkScoped = !authLoading && isAuthenticated && networkId !== null;
 
   const { data: tickets = [], isLoading: ticketsLoading, refetch: refetchTickets } = useTickets(
     {
-      // Se networkId ainda não carregou, passa undefined e RLS filtra via auth_network_id()
+      // Se networkId ainda não carregou, passa undefined — o RPC resolve via área
       networkId: networkId ?? undefined,
       limit: 100,
     },
@@ -177,7 +176,7 @@ export function useTicketAnalysisDB() {
 
   const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useDashboardSummary(
     networkId ?? undefined,
-    { enabled: canQueryNetworkScoped }
+    { enabled: canQueryTickets }
   );
 
   const { data: settings } = useSettings(networkId ?? undefined);
