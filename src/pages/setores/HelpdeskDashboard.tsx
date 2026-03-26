@@ -335,7 +335,7 @@ export default function HelpdeskDashboard() {
       lastUpdate=""
       integrations={integrations}
       templateKey="helpdesk_v1"
-      areaKey="helpdesk"
+      areaKey="tickets_os"
       extraTabs={ticketExtraTabs}
       syncFunctions={[
         { name: 'vdesk-sync-helpdesk', label: 'Sincronizar Helpdesk (VDesk)' },
