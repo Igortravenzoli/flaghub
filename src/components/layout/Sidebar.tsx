@@ -50,26 +50,7 @@ const sectorItems: NavItem[] = [
   { label: 'Fábrica', path: '/setor/fabrica', icon: Factory },
   { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server },
   { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck },
-  {
-    label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones,
-    children: [
-      { label: 'Dashboard Helpdesk', path: '/setor/helpdesk', icon: LayoutDashboard },
-      { label: 'Tickets', path: '/dashboard', icon: Ticket,
-        children: [
-          { label: 'Painel Tickets', path: '/dashboard', icon: Ticket },
-          { label: 'Importações', path: '/importacoes', icon: Upload },
-          { label: 'Configurações', path: '/configuracoes', icon: Settings },
-        ],
-      },
-      { label: 'Pesquisar', path: '/tickets', icon: Search,
-        children: [
-          { label: 'Tickets', path: '/tickets', icon: Ticket },
-          { label: 'Busca VDesk', path: '/ticket-busca', icon: Search },
-        ],
-      },
-      { label: 'Acompanhamento', path: '/acompanhamento', icon: Eye },
-    ],
-  },
+  { label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones },
 ];
 
 const adminItems: NavItem[] = [
