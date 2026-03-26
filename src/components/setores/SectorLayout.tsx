@@ -42,7 +42,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
   const canImport = areaKey ? (isOwner(areaKey) || isAdmin) : isAdmin;
   const canSettings = areaKey ? (isOperacional(areaKey) || isAdmin) : isAdmin;
-  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial') && canImport;
+  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'helpdesk') && canImport;
 
   if (isKiosk) {
     return (
