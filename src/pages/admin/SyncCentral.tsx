@@ -346,7 +346,7 @@ export default function SyncCentral() {
               <TableRow><TableCell colSpan={8} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
             )}
             {!jobsLoading && jobs.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhum job configurado</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Nenhum job configurado</TableCell></TableRow>
             )}
             {jobs.map((job: any) => {
               const isRunning = runningJobs.has(job.id);
