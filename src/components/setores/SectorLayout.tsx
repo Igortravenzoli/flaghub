@@ -40,8 +40,9 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const { isOwner, isOperacional, getAreaRole } = useHubAreas();
 
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
-  const canImport = areaKey ? (isOwner(areaKey) || isAdmin) : isAdmin;
-  const canSettings = areaKey ? (isOperacional(areaKey) || isAdmin) : isAdmin;
+  const hasMembership = !!areaRole;
+  const canImport = areaKey ? (isOwner(areaKey) || isOperacional(areaKey) || isAdmin) : isAdmin;
+  const canSettings = areaKey ? (hasMembership || isAdmin) : isAdmin;
   const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'helpdesk') && canImport;
 
   if (isKiosk) {
