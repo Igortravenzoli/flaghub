@@ -2,21 +2,24 @@ import { useState, useEffect } from 'react';
 import { useTicketAnalysis } from '@/hooks/useTicketAnalysis';
 import { useAutoCorrelation } from '@/hooks/useAutoCorrelation';
 import { useAuth } from '@/hooks/useAuth';
-import { HeroHeader } from '@/components/dashboard/HeroHeader';
-import { ModernStatCard } from '@/components/dashboard/ModernStatCard';
-import { ActionBar } from '@/components/dashboard/ActionBar';
+import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
+import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { CorrelationProgress } from '@/components/dashboard/CorrelationProgress';
 import { CriticalAlerts } from '@/components/dashboard/CriticalAlerts';
 import { RecentTickets } from '@/components/dashboard/RecentTickets';
 import { KioskMode } from '@/components/dashboard/KioskMode';
 import { DashboardExport } from '@/components/dashboard/DashboardExport';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { 
   Ticket, 
   CheckCircle, 
   AlertTriangle, 
   Eye,
   X,
+  RefreshCw,
+  Maximize2,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,13 +35,11 @@ export default function Dashboard() {
   
   // Correlação automática ao carregar (somente quando autenticado)
   useEffect(() => {
-    // Aguardar autenticação
     if (isAuthLoading || !networkId) {
       console.log('[Dashboard] Aguardando autenticação...', { isAuthLoading, networkId });
       return;
     }
     
-    // Executa correlação ao montar
     const runInitialCorrelation = async () => {
       try {
         console.log('[Dashboard] Executando correlação inicial para network:', networkId);
@@ -51,7 +52,6 @@ export default function Dashboard() {
     
     runInitialCorrelation();
     
-    // Auto-refresh e correlação a cada 60 segundos
     const interval = setInterval(async () => {
       setLastUpdate(new Date());
       try {
@@ -64,11 +64,9 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [correlateAllPending, networkId, isAuthLoading]);
   
-  // Filtrar tickets por status selecionado
   const ticketsFiltrados = ticketsConsolidados.filter(t => {
     switch (statusFilter) {
       case 'ok':
-        // Tickets OK = info ou success (com OS vinculada)
         return t.severidade === 'info' || t.severidade === 'success';
       case 'semOS':
         return t.severidade === 'critical';
@@ -79,13 +77,9 @@ export default function Dashboard() {
     }
   });
   
-  // Tickets recentes (últimos 10, respeitando filtro)
   const ticketsRecentes = ticketsFiltrados.slice(0, 10);
-  
-  // Tickets críticos (para alertas, sempre mostra todos os críticos)
   const ticketsCriticos = ticketsConsolidados.filter(t => t.severidade === 'critical');
   
-  // Função para alternar filtro (clique novamente remove filtro)
   const handleFilterClick = (filter: StatusFilter) => {
     setStatusFilter(prev => prev === filter ? 'all' : filter);
   };
@@ -131,71 +125,87 @@ export default function Dashboard() {
   }
   
   return (
-    <div className="min-h-screen p-6 lg:p-8 space-y-6">
-      {/* Hero Header */}
-      <HeroHeader lastUpdate={lastUpdate} />
-
-      {/* Action Bar + Export */}
-      <div className="flex items-center justify-end gap-2">
-        <DashboardExport 
-          estatisticas={estatisticas} 
-          tickets={ticketsFiltrados} 
-          filterLabel={statusFilter === 'ok' ? 'Tickets OK' : statusFilter === 'semOS' ? 'Sem OS' : statusFilter === 'observacao' ? 'Em Observação' : undefined}
+    <div className="space-y-4 animate-fade-in">
+      {/* Top bar: sync badge + actions */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <DashboardLastSyncBadge
+          syncedAt={lastUpdate.toISOString()}
+          status="ok"
         />
-        <ActionBar 
-          onRefresh={handleRefresh}
-          onKioskMode={() => setKioskMode(true)}
-          isCorrelating={isCorrelating}
-        />
+        <div className="flex items-center gap-2">
+          <DashboardExport 
+            estatisticas={estatisticas} 
+            tickets={ticketsFiltrados} 
+            filterLabel={statusFilter === 'ok' ? 'Tickets OK' : statusFilter === 'semOS' ? 'Sem OS' : statusFilter === 'observacao' ? 'Em Observação' : undefined}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-8"
+            onClick={handleRefresh}
+            disabled={isCorrelating}
+          >
+            {isCorrelating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {isCorrelating ? 'Sincronizando...' : 'Sincronizar'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-8"
+            onClick={() => setKioskMode(true)}
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+            Modo TV
+          </Button>
+        </div>
       </div>
-      
+
       {/* Progress de correlação */}
       <CorrelationProgress 
         progress={correlationProgress} 
         isCorrelating={isCorrelating} 
       />
       
-      {/* Stats Cards - Grid moderno */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-        <ModernStatCard
-          title="Total de Tickets"
+      {/* KPI Cards — padrão setorial */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <DashboardKpiCard
+          label="Total de Tickets"
           value={estatisticas.totalTickets}
           icon={Ticket}
-          subtitle="Tickets ativos no sistema"
-          trend="neutral"
           onClick={() => handleFilterClick('all')}
-          isActive={statusFilter === 'all'}
+          active={statusFilter === 'all'}
+          tooltipDescription="Tickets ativos no sistema"
         />
-        <ModernStatCard
-          title="Tickets OK"
+        <DashboardKpiCard
+          label="Tickets OK"
           value={estatisticas.ticketsOK}
           icon={CheckCircle}
-          severity="success"
-          subtitle="Com OS vinculada"
-          trend="up"
-          trendValue="+12%"
+          accent="bg-[hsl(var(--success))]"
           onClick={() => handleFilterClick('ok')}
-          isActive={statusFilter === 'ok'}
+          active={statusFilter === 'ok'}
+          tooltipDescription="Com OS vinculada"
         />
-        <ModernStatCard
-          title="Sem OS"
+        <DashboardKpiCard
+          label="Sem OS"
           value={estatisticas.ticketsSemOS}
           icon={AlertTriangle}
-          severity="critical"
-          subtitle="Fora do prazo configurado"
-          trend="down"
-          trendValue="-5%"
+          accent="bg-[hsl(var(--critical))]"
           onClick={() => handleFilterClick('semOS')}
-          isActive={statusFilter === 'semOS'}
+          active={statusFilter === 'semOS'}
+          tooltipDescription="Fora do prazo configurado"
         />
-        <ModernStatCard
-          title="Em Observação"
+        <DashboardKpiCard
+          label="Em Observação"
           value={estatisticas.ticketsObservacao}
           icon={Eye}
-          severity="warning"
-          subtitle="Requer atenção"
+          accent="bg-[hsl(var(--warning))]"
           onClick={() => handleFilterClick('observacao')}
-          isActive={statusFilter === 'observacao'}
+          active={statusFilter === 'observacao'}
+          tooltipDescription="Requer atenção"
         />
       </div>
       
