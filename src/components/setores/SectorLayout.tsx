@@ -42,6 +42,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const isAdmin = isHubAdmin || isAuthAdmin;
   const { isOwner, isOperacional, getAreaRole } = useHubAreas();
 
+  const areasLoading = useHubAreas().isLoading;
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
   const hasMembership = !!areaRole;
   const isAreaOwner = areaKey ? isOwner(areaKey) : false;
@@ -49,7 +50,8 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
   const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
   // Any member (leitura+) can see extraTabs; admins always can
-  const canViewExtraTabs = hasMembership || isAdmin;
+  // While loading, show tabs to avoid flash of hidden content
+  const canViewExtraTabs = areasLoading || hasMembership || isAdmin;
   const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
 
   if (isKiosk) {
