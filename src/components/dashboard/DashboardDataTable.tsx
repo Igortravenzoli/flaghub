@@ -130,7 +130,8 @@ export function DashboardDataTable<T extends Record<string, any>>({
   columns,
   data,
   isLoading,
-  pageSize = 20,
+  pageSize: initialPageSize = 30,
+  pageSizeOptions = [20, 30, 50, 100],
   searchable = true,
   searchPlaceholder = 'Buscar...',
   onRowClick,
@@ -140,6 +141,7 @@ export function DashboardDataTable<T extends Record<string, any>>({
   disableAutoColumnFilters = false,
 }: DashboardDataTableProps<T>) {
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
