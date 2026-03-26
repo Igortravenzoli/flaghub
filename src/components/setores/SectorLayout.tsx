@@ -100,10 +100,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
               Importações
             </TabsTrigger>
           )}
-          <TabsTrigger value="settings" className="gap-1">
-            <Settings className="h-3.5 w-3.5" />
-            Configurações
-          </TabsTrigger>
+          {canSettings && (
+            <TabsTrigger value="settings" className="gap-1">
+              <Settings className="h-3.5 w-3.5" />
+              Configurações
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="dashboard" className="mt-4 space-y-4">
