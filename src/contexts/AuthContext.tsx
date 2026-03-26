@@ -618,6 +618,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       role: roleFromCode,
+      isMonitor,
       signIn,
       signUp,
       signOut,
@@ -634,6 +635,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       state,
       roleFromCode,
+      isMonitor,
       signIn,
       signUp,
       signOut,
