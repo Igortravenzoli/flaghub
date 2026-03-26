@@ -15,6 +15,7 @@ import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { getCurrentOfficialSprintCode, extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
+import { useAuth } from '@/hooks/useAuth';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Server,
