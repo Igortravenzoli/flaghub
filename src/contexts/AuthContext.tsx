@@ -21,6 +21,7 @@ interface AuthState {
 }
 
 export interface AuthContextValue extends AuthState {
+  isMonitor: boolean;
   signIn: (
     email: string,
     password: string
