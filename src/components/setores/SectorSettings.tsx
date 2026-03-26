@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Bell, Clock, RefreshCw, Mail, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { SectorAlerts } from './SectorAlerts';
 
 interface SectorSettingsProps {
   sectorName: string;
