@@ -2861,6 +2861,7 @@ export type Database = {
         Returns: boolean
       }
       hub_check_my_ip: { Args: never; Returns: Json }
+      hub_effective_network_id: { Args: { p_user_id: string }; Returns: number }
       hub_has_area_network_role: {
         Args: { p_area_key: string; p_network_id: number; p_roles?: string[] }
         Returns: boolean
