@@ -695,6 +695,27 @@ export type Database = {
           },
         ]
       }
+      hub_area_inheritance: {
+        Row: {
+          child_area_key: string
+          created_at: string
+          id: string
+          parent_area_key: string
+        }
+        Insert: {
+          child_area_key: string
+          created_at?: string
+          id?: string
+          parent_area_key: string
+        }
+        Update: {
+          child_area_key?: string
+          created_at?: string
+          id?: string
+          parent_area_key?: string
+        }
+        Relationships: []
+      }
       hub_area_members: {
         Row: {
           area_id: string
