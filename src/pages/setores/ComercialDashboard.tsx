@@ -192,6 +192,7 @@ export default function ComercialDashboard() {
             <TabsTrigger value="esteira-saude" className="text-xs">Esteira / Saúde</TabsTrigger>
             <TabsTrigger value="movimentacao" className="text-xs">Movimentação</TabsTrigger>
             <TabsTrigger value="pesquisa" className="text-xs">Pesquisa Satisfação</TabsTrigger>
+            <TabsTrigger value="pipedrive" className="text-xs">PipeDrive</TabsTrigger>
           </TabsList>
 
           <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
