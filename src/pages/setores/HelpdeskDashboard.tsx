@@ -334,6 +334,7 @@ export default function HelpdeskDashboard() {
       subtitle="KPIs de Atendimento — VDesk"
       lastUpdate=""
       integrations={integrations}
+      templateKey="helpdesk_v1"
       areaKey="helpdesk"
       extraTabs={ticketExtraTabs}
       syncFunctions={[
