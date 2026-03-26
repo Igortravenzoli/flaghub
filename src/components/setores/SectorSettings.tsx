@@ -205,6 +205,8 @@ export function SectorSettings({ sectorName, sectorKey, syncFunctions = [] }: Se
         </p>
       </Card>
 
+      {sectorKey && <SectorAlerts sector={sectorKey} sectorLabel={sectorName} />}
+
       <Button onClick={handleSave} className="w-full gap-2">
         <Save className="h-4 w-4" />
         Salvar Configurações de {sectorName}
