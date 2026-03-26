@@ -96,7 +96,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
             <LayoutDashboard className="h-3.5 w-3.5" />
             Dashboard
           </TabsTrigger>
-          {extraTabs?.map((tab) => (
+          {canViewExtraTabs && extraTabs?.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} className="gap-1">
               {tab.icon}
               {tab.label}
@@ -120,7 +120,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
           {children}
         </TabsContent>
 
-        {extraTabs?.map((tab) => (
+        {canViewExtraTabs && extraTabs?.map((tab) => (
           <TabsContent key={tab.id} value={tab.id} className="mt-4">
             {tab.content}
           </TabsContent>
