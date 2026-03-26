@@ -55,9 +55,9 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 - [x] Bloqueio visual de ações sem permissão (abas Importações/Configurações condicionais por role)
 
 #### 2.2 Usuário monitor
-- [ ] monitor@flag.com.br: role operacional, somente leitura, somente Kiosk
-- [ ] Exceção de MFA exclusiva deste usuário
-- [ ] Sem acesso a importações, configurações ou administração
+- [x] monitor@flag.com.br: role operacional, somente leitura, somente Kiosk
+- [x] Exceção de MFA exclusiva deste usuário
+- [x] Sem acesso a importações, configurações ou administração
 
 ### Fase 3 — Estrutura Setorial e Navegação
 **Prioridade:** P1 | **Dependência:** Fase 2

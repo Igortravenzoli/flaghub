@@ -15,6 +15,7 @@ import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { getCurrentOfficialSprintCode, extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
+import { useAuth } from '@/hooks/useAuth';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Server,
@@ -35,11 +36,13 @@ interface SectorCardData {
 
 export default function Home() {
   const navigate = useNavigate();
+  const { isMonitor } = useAuth();
   const [kioskActive, setKioskActive] = useState(false);
   const [kioskCurrentIndex, setKioskCurrentIndex] = useState(0);
   const [kioskRotate, setKioskRotate] = useState(false);
   const [kioskInterval, setKioskInterval] = useState(30);
   const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
+  const [monitorAutoStarted, setMonitorAutoStarted] = useState(false);
 
   // Real data hooks
   const comercial = useComercialKpis();
@@ -118,6 +121,20 @@ export default function Home() {
   ];
 
   const activeSectors = mockSectors.filter((s) => kioskSelectedSlugs.includes(s.slug));
+
+  // Auto-start Kiosk for monitor user
+  useEffect(() => {
+    if (isMonitor && !monitorAutoStarted && !kioskActive) {
+      const allSlugs = mockSectors.map(s => s.slug);
+      setKioskSelectedSlugs(allSlugs);
+      setKioskRotate(true);
+      setKioskInterval(30);
+      setKioskCurrentIndex(0);
+      setKioskActive(true);
+      setMonitorAutoStarted(true);
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
+  }, [isMonitor, monitorAutoStarted, kioskActive]);
 
   const exitKiosk = useCallback(() => {
     setKioskActive(false);

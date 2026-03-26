@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 import type { AppRole } from '@/types/database';
+import { isMonitorBlockedRoute } from '@/lib/monitorUser';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -10,7 +11,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, role, signOut, mfaRequired, pendingApproval } = useAuth();
+  const { isAuthenticated, isLoading, role, signOut, mfaRequired, pendingApproval, isMonitor } = useAuth();
   const location = useLocation();
   const [isStuck, setIsStuck] = useState(false);
   const timeoutRef = useRef<number | null>(null);
@@ -70,6 +71,11 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   // Pending approval: user authenticated but no role assigned yet
   if (pendingApproval && location.pathname !== '/pending-approval') {
     return <Navigate to="/pending-approval" replace />;
+  }
+
+  // Monitor user: block restricted routes, redirect to /home (Kiosk)
+  if (isMonitor && isMonitorBlockedRoute(location.pathname)) {
+    return <Navigate to="/home" replace />;
   }
 
   // Verificar roles se especificados

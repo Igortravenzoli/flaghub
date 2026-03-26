@@ -90,7 +90,7 @@ export function Sidebar() {
   const [helpdeskOpen, setHelpdeskOpen] = useState(false);
   const [pesquisarOpen, setPesquisarOpen] = useState(false);
   const [ticketsOpen, setTicketsOpen] = useState(false);
-  const { isAuthenticated, isLoading, isAdmin, profile, signOut } = useAuth();
+  const { isAuthenticated, isLoading, isAdmin, isMonitor, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
   const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/configuracoes'];
@@ -242,57 +242,62 @@ export function Sidebar() {
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {navItems.map(renderNavItem)}
 
-        {/* Separator: Áreas */}
-        {!collapsed && (
-          <div className="pt-3 pb-1 px-3">
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Áreas</span>
-          </div>
-        )}
-        {collapsed && <div className="border-t border-sidebar-border my-2" />}
-
-        {sectorItems.map((item) => {
-          if (item.children) {
-            const Icon = item.icon;
-            return (
-              <div key={item.label}>
-                <button
-                  onClick={() => { navigate(item.path); setHelpdeskOpen(!helpdeskOpen); }}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm w-full",
-                    isHelpdeskActive
-                      ? "bg-flag-gold text-flag-navy font-semibold shadow-lg shadow-flag-gold/20"
-                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    collapsed && "justify-center px-2"
-                  )}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <Icon className="h-4 w-4 flex-shrink-0" />
-                  {!collapsed && <span className="font-medium flex-1 text-left">{item.label}</span>}
-                  {!collapsed && (
-                    <ChevronRight className={cn("h-3 w-3 transition-transform", helpdeskOpen && "rotate-90")} />
-                  )}
-                </button>
-                {!collapsed && helpdeskOpen && (
-                  <div className="ml-4 pl-3 border-l border-sidebar-border space-y-0.5 mt-0.5">
-                    {item.children.map((child) => renderChildItem(child))}
-                  </div>
-                )}
-              </div>
-            );
-          }
-          return renderNavItem(item);
-        })}
-
-        {/* Admin — only visible to admins */}
-        {isAdmin && (
+        {/* Monitor user: only show Home, no sectors or admin */}
+        {!isMonitor && (
           <>
+            {/* Separator: Áreas */}
             {!collapsed && (
               <div className="pt-3 pb-1 px-3">
-                <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Admin</span>
+                <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Áreas</span>
               </div>
             )}
             {collapsed && <div className="border-t border-sidebar-border my-2" />}
-            {adminItems.map(renderNavItem)}
+
+            {sectorItems.map((item) => {
+              if (item.children) {
+                const Icon = item.icon;
+                return (
+                  <div key={item.label}>
+                    <button
+                      onClick={() => { navigate(item.path); setHelpdeskOpen(!helpdeskOpen); }}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm w-full",
+                        isHelpdeskActive
+                          ? "bg-flag-gold text-flag-navy font-semibold shadow-lg shadow-flag-gold/20"
+                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        collapsed && "justify-center px-2"
+                      )}
+                      title={collapsed ? item.label : undefined}
+                    >
+                      <Icon className="h-4 w-4 flex-shrink-0" />
+                      {!collapsed && <span className="font-medium flex-1 text-left">{item.label}</span>}
+                      {!collapsed && (
+                        <ChevronRight className={cn("h-3 w-3 transition-transform", helpdeskOpen && "rotate-90")} />
+                      )}
+                    </button>
+                    {!collapsed && helpdeskOpen && (
+                      <div className="ml-4 pl-3 border-l border-sidebar-border space-y-0.5 mt-0.5">
+                        {item.children.map((child) => renderChildItem(child))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return renderNavItem(item);
+            })}
+
+            {/* Admin — only visible to admins */}
+            {isAdmin && (
+              <>
+                {!collapsed && (
+                  <div className="pt-3 pb-1 px-3">
+                    <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold">Admin</span>
+                  </div>
+                )}
+                {collapsed && <div className="border-t border-sidebar-border my-2" />}
+                {adminItems.map(renderNavItem)}
+              </>
+            )}
           </>
         )}
       </nav>
