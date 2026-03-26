@@ -388,9 +388,26 @@ export function DashboardDataTable<T extends Record<string, any>>({
         </Table>
       </div>
 
-      {sorted.length > pageSize && (
+      {sorted.length > 0 && (
         <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-          <span>{sorted.length} registros • Página {page + 1} de {totalPages}</span>
+          <div className="flex items-center gap-3">
+            <span>{sorted.length} registros • Página {page + 1} de {totalPages}</span>
+            {pageSizeOptions.length > 1 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Exibir</span>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>
+                  <SelectTrigger className="h-7 w-[70px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pageSizeOptions.map(size => (
+                      <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           <div className="flex gap-1">
             <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
               <ChevronLeft className="h-4 w-4" />
