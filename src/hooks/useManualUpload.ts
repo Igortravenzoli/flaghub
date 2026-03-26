@@ -52,45 +52,23 @@ async function parseXlsx(file: File): Promise<Record<string, string>[]> {
     raw: false,
   });
 
-  const normalize = (value: unknown) =>
-    String(value ?? '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-
-  const expectedHeaders = new Set([
-    'cliente',
-    'responsavel',
-    'solucao',
-    'status',
-    'inicio',
-    'fim',
-    'obs',
-    'contato',
-    'licenca',
-    'atuacao',
-    'puxada',
-  ]);
-
+  // Find the first row with at least 3 non-empty text cells as the header row
   let headerRowIndex = -1;
-  let bestScore = 0;
 
-  for (let i = 0; i < matrix.length; i++) {
+  for (let i = 0; i < Math.min(matrix.length, 15); i++) {
     const row = matrix[i] ?? [];
-    const score = row.reduce<number>((acc, cell) => {
-      const key = normalize(cell);
-      return acc + (key && expectedHeaders.has(key) ? 1 : 0);
-    }, 0);
-
-    if (score > bestScore) {
-      bestScore = score;
+    const nonEmptyCells = row.filter((cell) => {
+      const val = String(cell ?? '').trim();
+      // Must be a non-empty string that looks like a header (not purely numeric)
+      return val.length > 0 && isNaN(Number(val));
+    });
+    if (nonEmptyCells.length >= 3) {
       headerRowIndex = i;
+      break;
     }
   }
 
-  if (headerRowIndex === -1 || bestScore < 3) {
+  if (headerRowIndex === -1) {
     throw new Error('Não foi possível identificar o cabeçalho da planilha');
   }
 
