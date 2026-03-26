@@ -109,7 +109,7 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 - [x] PRD específico já implementado (dashboard, base de clientes, fila operacional)
 - [x] Alertas e Kiosk seguirão regras transversais
 
-#### 6.2 Normalização de Dados Comerciais
+#### 6.2 Normalização de Dados Comerciais ✅
 
 ##### Fonte 1 — Pesquisa de Satisfação de Clientes (Pesquisa_FLAG_Clientes)
 - **Formato:** XLSX, aba única, ~80+ linhas
