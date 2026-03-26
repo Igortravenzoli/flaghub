@@ -89,17 +89,17 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 **Prioridade:** P2 | **Dependência:** Fase 3
 
 #### 5.1 Curadoria de indicadores por setor (TV)
-- Fábrica: atividades sprint, aguardando teste, aviões
-- Helpdesk: registros hoje, horas acumuladas, top 3 sistemas
-- Comercial: total clientes, ativos vs inativos, pipeline
-- CS: implantações ativas, fila, finalizadas
-- Qualidade: PBIs monitorados, saúde (verde/amarelo/vermelho)
-- Infraestrutura: itens em fila, prioridade, bloqueios
+- [x] Fábrica: atividades sprint, aguardando teste, aviões
+- [x] Helpdesk: registros hoje, horas acumuladas, top 3 sistemas
+- [x] Comercial: total clientes, ativos vs inativos, bloqueados
+- [x] CS: implantações ativas, fila, finalizadas
+- [x] Qualidade: PBIs monitorados, saúde (verde/amarelo/vermelho)
+- [x] Infraestrutura: itens em fila, prioridade, bloqueios
 
 #### 5.2 Atualização automática
-- [ ] Sincronizar com próxima coleta válida
-- [ ] Indicador discreto de última atualização
-- [ ] Evitar refresh agressivo
+- [x] Sincronizar com próxima coleta válida (refresh a cada 3min via window focus event)
+- [x] Indicador discreto de última atualização (badge com horário no canto superior)
+- [x] Evitar refresh agressivo (intervalo de 3min, sem refetchOnWindowFocus)
 
 ### Fase 6 — Setores com PRD Próprio
 **Prioridade:** P3 | **Dependência:** Fases anteriores
