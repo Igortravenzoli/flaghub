@@ -342,28 +342,23 @@ export default function HelpdeskDashboard() {
       ]}
     >
       {/* === Hero Header === */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-card border border-border/50 p-8 mb-6">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-card border border-border/50 p-6 mb-6">
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-1/2 -right-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
           <div className="absolute -bottom-1/2 -left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
         </div>
         <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-5">
             <div className="relative">
               <div className="absolute inset-0 bg-primary/50 rounded-2xl blur-xl" />
-              <div className="relative p-4 rounded-2xl bg-gradient-to-br from-primary to-primary/80">
-                <Headphones className="h-10 w-10 text-primary-foreground" />
+              <div className="relative p-3.5 rounded-2xl bg-gradient-to-br from-primary to-primary/80">
+                <Headphones className="h-8 w-8 text-primary-foreground" />
               </div>
             </div>
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight text-foreground">
-                Helpdesk
-              </h2>
-              <p className="text-base text-muted-foreground mt-1 flex items-center gap-2">
-                <Zap className="h-4 w-4 text-primary" />
-                Central de atendimento e suporte — VDesk
-              </p>
-            </div>
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              Monitoramento em tempo real dos atendimentos
+            </p>
           </div>
           {lastSync && (
             <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-card/80 backdrop-blur-md border border-primary/30">
