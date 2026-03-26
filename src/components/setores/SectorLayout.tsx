@@ -109,18 +109,22 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
         ))}
 
         {showImports && (
-          <TabsContent value="imports" className="mt-4">
-            <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
+          <TabsContent value="imports" className="mt-4" forceMount={undefined}>
+            <Suspense fallback={<div className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-32 w-full" /></div>}>
+              <SectorImportArea sectorName={title} templateKey={templateKey} areaKey={areaKey} />
+            </Suspense>
           </TabsContent>
         )}
 
-        <TabsContent value="settings" className="mt-4">
-          <div className="space-y-4">
-            <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
-            {integrations && (
-              <SectorIntegrations integrations={integrations} sectorName={title} />
-            )}
-          </div>
+        <TabsContent value="settings" className="mt-4" forceMount={undefined}>
+          <Suspense fallback={<div className="space-y-3"><Skeleton className="h-8 w-full" /><Skeleton className="h-32 w-full" /></div>}>
+            <div className="space-y-4">
+              <SectorSettings sectorName={title} syncFunctions={syncFunctions} />
+              {integrations && (
+                <SectorIntegrations integrations={integrations} sectorName={title} />
+              )}
+            </div>
+          </Suspense>
         </TabsContent>
         </Tabs>
       </div>
