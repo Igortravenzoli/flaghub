@@ -95,7 +95,7 @@ export default function AccessRequests() {
   // Per-request approval settings
   const [approvalSettings, setApprovalSettings] = useState<Record<string, { role: string; confidential: boolean }>>({});
 
-  const getSettings = (id: string) => approvalSettings[id] ?? { role: 'viewer', confidential: false };
+  const getSettings = (id: string) => approvalSettings[id] ?? { role: 'leitura', confidential: false };
 
   return (
     <div className="p-6 space-y-6">
@@ -132,9 +132,10 @@ export default function AccessRequests() {
                   <TableCell className="text-sm text-muted-foreground">{new Date(req.requested_at).toLocaleString('pt-BR')}</TableCell>
                   <TableCell>
                     <Select value={settings.role} onValueChange={(v) => setApprovalSettings(prev => ({ ...prev, [req.id]: { ...settings, role: v } }))}>
-                      <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="viewer">Viewer</SelectItem>
+                        <SelectItem value="leitura">Leitura</SelectItem>
+                        <SelectItem value="operacional">Operacional</SelectItem>
                         <SelectItem value="owner">Owner</SelectItem>
                       </SelectContent>
                     </Select>

@@ -50,9 +50,9 @@ Ele deve refletir o estado real implementado e reduzir drift entre VS Code e Lov
 **Prioridade:** P1 | **Dependência:** Fase 1
 
 #### 2.1 Matriz de permissões
-- [ ] Roles refinados: leitura, operacional, owner, admin
-- [ ] Herança de permissão: HelpDesk → Tickets automático
-- [ ] Bloqueio visual de ações sem permissão
+- [x] Roles refinados: leitura, operacional, owner (+ admin global)
+- [x] Herança de permissão: HelpDesk → Tickets automático (hub_area_inheritance + hub_user_has_area)
+- [x] Bloqueio visual de ações sem permissão (abas Importações/Configurações condicionais por role)
 
 #### 2.2 Usuário monitor
 - [ ] monitor@flag.com.br: role operacional, somente leitura, somente Kiosk
