@@ -333,9 +333,11 @@ export default function SyncCentral() {
             <TableRow>
               <TableHead>Job</TableHead>
               <TableHead>Integração</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Saúde</TableHead>
+              <TableHead>Ativo</TableHead>
               <TableHead>Intervalo</TableHead>
               <TableHead>Último Run</TableHead>
+              <TableHead>Próximo Run</TableHead>
               <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
