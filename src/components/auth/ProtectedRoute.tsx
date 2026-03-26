@@ -73,6 +73,11 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
     return <Navigate to="/pending-approval" replace />;
   }
 
+  // Monitor user: block restricted routes, redirect to /home (Kiosk)
+  if (isMonitor && isMonitorBlockedRoute(location.pathname)) {
+    return <Navigate to="/home" replace />;
+  }
+
   // Verificar roles se especificados
   if (requiredRoles && requiredRoles.length > 0) {
     if (!role || !requiredRoles.includes(role)) {

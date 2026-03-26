@@ -90,7 +90,7 @@ export function Sidebar() {
   const [helpdeskOpen, setHelpdeskOpen] = useState(false);
   const [pesquisarOpen, setPesquisarOpen] = useState(false);
   const [ticketsOpen, setTicketsOpen] = useState(false);
-  const { isAuthenticated, isLoading, isAdmin, profile, signOut } = useAuth();
+  const { isAuthenticated, isLoading, isAdmin, isMonitor, profile, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
   const helpdeskPaths = ['/setor/helpdesk', '/dashboard', '/tickets', '/ticket-busca', '/acompanhamento', '/configuracoes'];

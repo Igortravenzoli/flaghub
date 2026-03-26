@@ -122,6 +122,20 @@ export default function Home() {
 
   const activeSectors = mockSectors.filter((s) => kioskSelectedSlugs.includes(s.slug));
 
+  // Auto-start Kiosk for monitor user
+  useEffect(() => {
+    if (isMonitor && !monitorAutoStarted && !kioskActive) {
+      const allSlugs = mockSectors.map(s => s.slug);
+      setKioskSelectedSlugs(allSlugs);
+      setKioskRotate(true);
+      setKioskInterval(30);
+      setKioskCurrentIndex(0);
+      setKioskActive(true);
+      setMonitorAutoStarted(true);
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
+  }, [isMonitor, monitorAutoStarted, kioskActive]);
+
   const exitKiosk = useCallback(() => {
     setKioskActive(false);
     document.exitFullscreen?.().catch(() => {});
