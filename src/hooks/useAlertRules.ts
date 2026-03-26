@@ -126,13 +126,14 @@ export function useAlertMutations() {
 
   const createChannel = useMutation({
     mutationFn: async (channel: { label: string; channel_type: string; config?: Record<string, unknown> | null; is_active?: boolean }) => {
-      const { error } = await supabase.from('alert_channels').insert({
+      const row: Record<string, unknown> = {
         label: channel.label,
         channel_type: channel.channel_type,
         config: channel.config ?? null,
         is_active: channel.is_active ?? true,
         created_by: user?.id ?? null,
-      });
+      };
+      const { error } = await supabase.from('alert_channels').insert(row as any);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alert_channels'] }),
