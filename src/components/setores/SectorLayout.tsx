@@ -1,11 +1,15 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, lazy, Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Clock, LayoutDashboard, Upload, Settings } from 'lucide-react';
-import { SectorImportArea } from './SectorImportArea';
-import { SectorSettings } from './SectorSettings';
-import { SectorIntegrations, Integration } from './SectorIntegrations';
+import { Skeleton } from '@/components/ui/skeleton';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
+import type { Integration } from './SectorIntegrations';
+
+// Lazy-loaded heavy tab contents to avoid loading when tab is not active
+const SectorImportArea = lazy(() => import('./SectorImportArea').then(m => ({ default: m.SectorImportArea })));
+const SectorSettings = lazy(() => import('./SectorSettings').then(m => ({ default: m.SectorSettings })));
+const SectorIntegrations = lazy(() => import('./SectorIntegrations').then(m => ({ default: m.SectorIntegrations })));
 
 interface SyncFunction {
   name: string;
