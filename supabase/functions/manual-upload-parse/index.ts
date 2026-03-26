@@ -11,18 +11,10 @@ const ALLOWED_UPLOAD_ROLES = new Set(['admin', 'gestao'])
 
 function resolveCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('origin')
-  const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') || '')
-    .split(',')
-    .map((value: string) => value.trim())
-    .filter(Boolean)
-
-  const allowOrigin = origin && allowedOrigins.includes(origin)
-    ? origin
-    : allowedOrigins[0] || 'null'
 
   return {
     ...corsHeaders,
-    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Origin': origin ?? '*',
     'Vary': 'Origin',
   }
 }
@@ -95,7 +87,6 @@ function parseCSV(text: string): Record<string, string>[] {
   const lines = text.split('\n').filter(l => l.trim())
   if (lines.length < 2) return []
   
-  // Detect separator
   const sep = lines[0].includes(';') ? ';' : ','
   const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ''))
   
@@ -105,6 +96,17 @@ function parseCSV(text: string): Record<string, string>[] {
     headers.forEach((h, i) => { row[h] = values[i] || '' })
     return row
   })
+}
+
+function parseJsonRows(text: string): Record<string, any>[] {
+  const parsed = JSON.parse(text)
+
+  if (Array.isArray(parsed)) return parsed
+  if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) {
+    return parsed.records
+  }
+
+  return [parsed]
 }
 
 function normalizeHeader(value: string): string {
@@ -185,7 +187,6 @@ serve(async (req: Request) => {
       })
     }
 
-    // 1. Load template
     const { data: template, error: tErr } = await admin
       .from('manual_import_templates')
       .select('*')
@@ -199,15 +200,12 @@ serve(async (req: Request) => {
       })
     }
 
-    // 2. Parse file content
     let rows: Record<string, any>[]
     const detectedType = file_type || 'csv'
 
     if (detectedType === 'json') {
-      const parsed = JSON.parse(file_content)
-      rows = Array.isArray(parsed) ? parsed : [parsed]
+      rows = parseJsonRows(file_content)
     } else {
-      // CSV (also handles TSV with semicolons)
       rows = parseCSV(file_content)
     }
 
