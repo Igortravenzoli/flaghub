@@ -67,49 +67,33 @@ interface UseManualUploadOptions {
 const TEMPLATE_TABLES: Record<string, string> = {
   cs_implantacoes_v1: 'cs_implantacoes_records',
   cs_fila_cs_v1: 'cs_fila_manual_records',
+  comercial_pesquisa_v1: 'comercial_pesquisa_satisfacao',
 };
 
 /**
- * Parse an XLSX/XLS file into an array of row objects (first sheet),
- * auto-detecting the real header row (ignores title/blank rows).
+ * Try to detect header row in a sheet matrix.
+ * Returns the header row index or -1 if not found.
  */
-async function parseXlsx(file: File): Promise<Record<string, string>[]> {
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error('Planilha vazia');
-
-  const sheet = workbook.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json<(string | number | boolean | Date | null)[]>(sheet, {
-    header: 1,
-    defval: '',
-    raw: false,
-  });
-
-  // Find the first row with at least 3 non-empty text cells as the header row
-  let headerRowIndex = -1;
-
+function detectHeaderRow(matrix: any[][]): number {
   for (let i = 0; i < Math.min(matrix.length, 15); i++) {
     const row = matrix[i] ?? [];
     const nonEmptyCells = row.filter((cell) => {
       const val = String(cell ?? '').trim();
-      // Must be a non-empty string that looks like a header (not purely numeric)
       return val.length > 0 && isNaN(Number(val));
     });
-    if (nonEmptyCells.length >= 3) {
-      headerRowIndex = i;
-      break;
-    }
+    if (nonEmptyCells.length >= 3) return i;
   }
+  return -1;
+}
 
-  if (headerRowIndex === -1) {
-    throw new Error('Não foi possível identificar o cabeçalho da planilha');
-  }
-
-  const headers = (matrix[headerRowIndex] ?? []).map((cell) => String(cell ?? '').trim());
+/**
+ * Parse a single sheet into row objects given a known header row index.
+ */
+function sheetMatrixToRows(matrix: any[][], headerRowIndex: number): Record<string, string>[] {
+  const headers = (matrix[headerRowIndex] ?? []).map((cell: any) => String(cell ?? '').trim());
   const dataRows = matrix
     .slice(headerRowIndex + 1)
-    .filter((row) => row.some((cell) => String(cell ?? '').trim() !== ''));
+    .filter((row) => row.some((cell: any) => String(cell ?? '').trim() !== ''));
 
   return dataRows.map((row) => {
     const out: Record<string, string> = {};
@@ -119,6 +103,136 @@ async function parseXlsx(file: File): Promise<Record<string, string>[]> {
     });
     return out;
   });
+}
+
+/**
+ * Check if a workbook has the multi-sheet pesquisa format
+ * (IMPORT_RESPONDENTES + IMPORT_AVALIACOES_PRODUTO).
+ */
+function isPesquisaMultiSheet(workbook: XLSX.WorkBook): boolean {
+  return workbook.SheetNames.includes('IMPORT_RESPONDENTES') &&
+    workbook.SheetNames.includes('IMPORT_AVALIACOES_PRODUTO');
+}
+
+/**
+ * Merge IMPORT_RESPONDENTES and IMPORT_AVALIACOES_PRODUTO sheets
+ * into a flat format compatible with comercial_pesquisa_satisfacao.
+ */
+function parsePesquisaMultiSheet(workbook: XLSX.WorkBook): Record<string, string>[] {
+  // Parse respondents
+  const respSheet = workbook.Sheets['IMPORT_RESPONDENTES'];
+  const respMatrix = XLSX.utils.sheet_to_json<any[]>(respSheet, { header: 1, defval: '', raw: false });
+  const respHeaderIdx = detectHeaderRow(respMatrix);
+  if (respHeaderIdx === -1) throw new Error('Não foi possível identificar o cabeçalho da aba IMPORT_RESPONDENTES');
+  const respondents = sheetMatrixToRows(respMatrix, respHeaderIdx);
+
+  // Parse product ratings
+  const avalSheet = workbook.Sheets['IMPORT_AVALIACOES_PRODUTO'];
+  const avalMatrix = XLSX.utils.sheet_to_json<any[]>(avalSheet, { header: 1, defval: '', raw: false });
+  const avalHeaderIdx = detectHeaderRow(avalMatrix);
+  if (avalHeaderIdx === -1) throw new Error('Não foi possível identificar o cabeçalho da aba IMPORT_AVALIACOES_PRODUTO');
+  const avaliacoes = sheetMatrixToRows(avalMatrix, avalHeaderIdx);
+
+  // Group ratings by respondent_id
+  const ratingsByRespondent = new Map<string, Record<string, string>>();
+  for (const a of avaliacoes) {
+    const rid = a.respondent_id;
+    if (!rid) continue;
+    if (!ratingsByRespondent.has(rid)) ratingsByRespondent.set(rid, {});
+    const product = a.product?.trim();
+    const noteRaw = a.note_raw?.trim();
+    if (product && noteRaw) {
+      ratingsByRespondent.get(rid)![product] = noteRaw;
+    }
+  }
+
+  // Parse qualitative questions if available
+  const qualByRespondent = new Map<string, Record<string, string>>();
+  if (workbook.SheetNames.includes('IMPORT_PERGUNTAS')) {
+    const qSheet = workbook.Sheets['IMPORT_PERGUNTAS'];
+    const qMatrix = XLSX.utils.sheet_to_json<any[]>(qSheet, { header: 1, defval: '', raw: false });
+    const qHeaderIdx = detectHeaderRow(qMatrix);
+    if (qHeaderIdx !== -1) {
+      const perguntas = sheetMatrixToRows(qMatrix, qHeaderIdx);
+      for (const p of perguntas) {
+        const rid = p.respondent_id;
+        if (!rid) continue;
+        if (!qualByRespondent.has(rid)) qualByRespondent.set(rid, {});
+        const qid = p.question_id?.trim() || p.question_text?.trim();
+        const resp = p.response_raw?.trim();
+        if (qid && resp) {
+          qualByRespondent.get(rid)![qid] = resp;
+          if (p.detail_raw?.trim() && p.detail_raw.trim() !== resp) {
+            qualByRespondent.get(rid)![`${qid}_detalhe`] = p.detail_raw.trim();
+          }
+        }
+      }
+    }
+  }
+
+  // Merge into flat rows
+  return respondents.map((r) => {
+    const rid = r.respondent_id || r.codigo_puxada || '';
+    const notas = ratingsByRespondent.get(rid) ?? {};
+    const qual = qualByRespondent.get(rid) ?? {};
+
+    return {
+      codigo_puxada: r.codigo_puxada || rid,
+      cliente: r.cliente || r.razao_social || '',
+      razao_social: r.razao_social || '',
+      bandeira: r.bandeira || '',
+      status: r.status || '',
+      cidade: r.cidade || '',
+      uf: r.uf || '',
+      conseguiu_contato: r.conseguiu_contato || '',
+      nome_contato: r.nome_contato || '',
+      telefone_contato: r.telefone_contato || '',
+      data_contato: r.data_contato || r.data_pesquisa || '',
+      responsavel_contato: r.responsavel_contato || '',
+      notas_por_produto: JSON.stringify(notas),
+      qualitativo: JSON.stringify(qual),
+    };
+  });
+}
+
+/**
+ * Parse an XLSX/XLS file into an array of row objects,
+ * auto-detecting the real header row (ignores title/blank rows).
+ * Supports multi-sheet pesquisa format and tries multiple sheets.
+ */
+async function parseXlsx(file: File): Promise<Record<string, string>[]> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+
+  if (workbook.SheetNames.length === 0) throw new Error('Planilha vazia');
+
+  // Special handling for multi-sheet pesquisa format
+  if (isPesquisaMultiSheet(workbook)) {
+    return parsePesquisaMultiSheet(workbook);
+  }
+
+  // Try sheets in order: prefer IMPORT_* sheets, then all sheets
+  const importSheets = workbook.SheetNames.filter((n) => n.startsWith('IMPORT_'));
+  const sheetsToTry = importSheets.length > 0
+    ? [...importSheets, ...workbook.SheetNames.filter((n) => !n.startsWith('IMPORT_'))]
+    : workbook.SheetNames;
+
+  for (const sheetName of sheetsToTry) {
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json<any[]>(sheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+    });
+
+    const headerRowIndex = detectHeaderRow(matrix);
+    if (headerRowIndex !== -1) {
+      const rows = sheetMatrixToRows(matrix, headerRowIndex);
+      if (rows.length > 0) return rows;
+    }
+  }
+
+  throw new Error('Não foi possível identificar o cabeçalho da planilha');
 }
 
 /**
