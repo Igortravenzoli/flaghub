@@ -33,7 +33,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 // Lazy load ticket sub-pages for tab embedding
 const DashboardPage = lazy(() => import('@/pages/Dashboard'));
-const TicketsPage = lazy(() => import('@/pages/Tickets'));
 const TicketBuscaPage = lazy(() => import('@/pages/TicketBuscaComponente'));
 
 const integrations: Integration[] = [
@@ -313,12 +312,6 @@ export default function HelpdeskDashboard() {
       label: 'Painel Tickets',
       icon: <Ticket className="h-3.5 w-3.5" />,
       content: <Suspense fallback={tabFallback}><DashboardPage /></Suspense>,
-    },
-    {
-      id: 'tickets-pesquisar',
-      label: 'Pesquisar',
-      icon: <Search className="h-3.5 w-3.5" />,
-      content: <Suspense fallback={tabFallback}><TicketsPage /></Suspense>,
     },
     {
       id: 'tickets-busca-vdesk',

@@ -97,9 +97,22 @@ async function hasAreaUploadRole(userId: string, areaId: string | null): Promise
   return (data ?? []).some((membership: any) => allowedAreaKeys.has(membership.hub_areas?.key))
 }
 
+// Safely parse a date value — returns null for non-date strings like "Sem Relato"
+function safeDate(val: any): string | null {
+  if (!val || typeof val !== 'string') return null
+  const trimmed = val.trim()
+  // Reject obvious non-date text
+  if (!/\d/.test(trimmed)) return null
+  // Try ISO or common date formats
+  const d = new Date(trimmed)
+  if (isNaN(d.getTime())) return null
+  return d.toISOString().slice(0, 10)
+}
+
 // Maps template keys to their target table and field mapping
 const PUBLISH_TARGETS: Record<string, {
   table: string
+  onConflict?: string
   mapRow: (normalized: Record<string, any>, batchId: string) => Record<string, any>
 }> = {
   cs_implantacoes_v1: {
@@ -136,6 +149,24 @@ const PUBLISH_TARGETS: Record<string, {
       prioridade: n.prioridade || null,
       observacoes: n.observacoes || null,
       raw: n,
+    }),
+  },
+  comercial_pesquisa_v1: {
+    table: 'comercial_pesquisa_satisfacao',
+    onConflict: 'cliente_codigo,data_pesquisa',
+    mapRow: (n, batchId) => ({
+      batch_id: batchId,
+      cliente_codigo: n.cliente_codigo ? Number(n.cliente_codigo) : null,
+      cliente_nome: n.cliente_nome || null,
+      bandeira: n.bandeira || null,
+      data_pesquisa: safeDate(n.data_pesquisa),
+      responsavel_contato: n.responsavel_contato || null,
+      notas_por_produto: typeof n.notas_por_produto === 'string'
+        ? (() => { try { return JSON.parse(n.notas_por_produto) } catch { return {} } })()
+        : (n.notas_por_produto || {}),
+      qualitativo: typeof n.qualitativo === 'string'
+        ? (() => { try { return JSON.parse(n.qualitativo) } catch { return {} } })()
+        : (n.qualitativo || {}),
     }),
   },
 }
@@ -262,14 +293,27 @@ serve(async (req: Request) => {
       })
     }
 
-    // 3. Map rows to target table format
-    const records = rows.map((r: { normalized: Record<string, any> }) => target.mapRow(r.normalized as Record<string, any>, batch_id))
+    // 3. Map rows to target table format and deduplicate by conflict key (last wins)
+    let records = rows.map((r: { normalized: Record<string, any> }) => target.mapRow(r.normalized as Record<string, any>, batch_id))
+
+    if (target.onConflict) {
+      const conflictKeys = target.onConflict.split(',').map((k: string) => k.trim())
+      const dedup = new Map<string, Record<string, any>>()
+      for (const rec of records) {
+        const key = conflictKeys.map((k: string) => String(rec[k] ?? '')).join('||')
+        dedup.set(key, rec)
+      }
+      records = Array.from(dedup.values())
+    }
 
     // 4. Insert into curated table
     let publishedCount = 0
     for (let i = 0; i < records.length; i += 100) {
       const chunk = records.slice(i, i + 100)
-      const { error: iErr } = await admin.from(target.table).insert(chunk)
+      const query = target.onConflict
+        ? admin.from(target.table).upsert(chunk, { onConflict: target.onConflict })
+        : admin.from(target.table).insert(chunk)
+      const { error: iErr } = await query
       if (iErr) throw new Error(`Falha ao publicar: ${iErr.message}`)
       publishedCount += chunk.length
     }
