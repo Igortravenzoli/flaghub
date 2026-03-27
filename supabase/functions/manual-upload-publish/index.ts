@@ -300,7 +300,10 @@ serve(async (req: Request) => {
     let publishedCount = 0
     for (let i = 0; i < records.length; i += 100) {
       const chunk = records.slice(i, i + 100)
-      const { error: iErr } = await admin.from(target.table).insert(chunk)
+      const query = target.onConflict
+        ? admin.from(target.table).upsert(chunk, { onConflict: target.onConflict })
+        : admin.from(target.table).insert(chunk)
+      const { error: iErr } = await query
       if (iErr) throw new Error(`Falha ao publicar: ${iErr.message}`)
       publishedCount += chunk.length
     }
