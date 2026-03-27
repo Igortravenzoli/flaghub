@@ -138,6 +138,23 @@ const PUBLISH_TARGETS: Record<string, {
       raw: n,
     }),
   },
+  comercial_pesquisa_v1: {
+    table: 'comercial_pesquisa_satisfacao',
+    mapRow: (n, batchId) => ({
+      batch_id: batchId,
+      cliente_codigo: n.cliente_codigo ? Number(n.cliente_codigo) : null,
+      cliente_nome: n.cliente_nome || null,
+      bandeira: n.bandeira || null,
+      data_pesquisa: n.data_pesquisa || null,
+      responsavel_contato: n.responsavel_contato || null,
+      notas_por_produto: typeof n.notas_por_produto === 'string'
+        ? (() => { try { return JSON.parse(n.notas_por_produto) } catch { return {} } })()
+        : (n.notas_por_produto || {}),
+      qualitativo: typeof n.qualitativo === 'string'
+        ? (() => { try { return JSON.parse(n.qualitativo) } catch { return {} } })()
+        : (n.qualitativo || {}),
+    }),
+  },
 }
 
 serve(async (req: Request) => {
