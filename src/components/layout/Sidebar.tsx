@@ -22,17 +22,24 @@ import {
   UserCheck,
   LayoutGrid,
   ScrollText,
+  Lock,
+  Download,
+  Mail,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
+import { useHubAreas } from '@/hooks/useHubAreas';
+import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface NavItem {
   label: string;
   path: string;
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
+  areaKey?: string;
   children?: NavItem[];
 }
 
@@ -41,12 +48,12 @@ const navItems: NavItem[] = [
 ];
 
 const sectorItems: NavItem[] = [
-  { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp },
-  { label: 'Customer Service', path: '/setor/customer-service', icon: LayoutGrid },
-  { label: 'Fábrica', path: '/setor/fabrica', icon: Factory },
-  { label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones },
-  { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server },
-  { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck },
+  { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp, areaKey: 'comercial' },
+  { label: 'Customer Service', path: '/setor/customer-service', icon: LayoutGrid, areaKey: 'customer-service' },
+  { label: 'Fábrica', path: '/setor/fabrica', icon: Factory, areaKey: 'fabrica' },
+  { label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones, areaKey: 'tickets_os' },
+  { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server, areaKey: 'infraestrutura' },
+  { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck, areaKey: 'qualidade' },
 ];
 
 const adminItems: NavItem[] = [
@@ -55,6 +62,7 @@ const adminItems: NavItem[] = [
   { label: 'Permissões', path: '/admin/permissions', icon: Shield, adminOnly: true },
   { label: 'Central de Sync', path: '/admin/sync', icon: RefreshCw, adminOnly: true },
   { label: 'Uploads Manuais', path: '/admin/uploads', icon: Upload, adminOnly: true },
+  { label: 'Email & Webhooks', path: '/admin/email-config', icon: Mail, adminOnly: true },
   { label: 'Retenção de Dados', path: '/configuracoes', icon: Settings, adminOnly: true },
   { label: 'IP Allowlist', path: '/admin/ip-allowlist', icon: Globe, adminOnly: true },
   { label: 'Audit Log', path: '/admin/audit', icon: ScrollText, adminOnly: true },
@@ -64,7 +72,10 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
-  const { isAuthenticated, isLoading, isAdmin, isMonitor, profile, signOut } = useAuth();
+  const { isAuthenticated, isLoading, isAdmin: isAuthAdmin, isMonitor, profile, signOut } = useAuth();
+  const isHubAdmin = useHubIsAdmin();
+  const isAdmin = isAuthAdmin || isHubAdmin;
+  const { hasArea, isLoading: areasLoading } = useHubAreas();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -81,9 +92,38 @@ export function Sidebar() {
     }
   };
 
-  const renderNavItem = (item: NavItem) => {
+  const renderNavItem = (item: NavItem, disabled?: boolean) => {
     const active = isActive(item.path);
     const Icon = item.icon;
+    
+    if (disabled) {
+      return (
+        <Tooltip key={item.path}>
+          <TooltipTrigger asChild>
+            <Link
+              key={item.path}
+              to={item.path}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm opacity-40 cursor-default",
+                "text-sidebar-foreground/50",
+                collapsed && "justify-center px-2"
+              )}
+              title={collapsed ? `${item.label} (sem acesso)` : undefined}
+            >
+              <Icon className="h-4 w-4 flex-shrink-0" />
+              {!collapsed && (
+                <span className="font-medium flex-1">{item.label}</span>
+              )}
+              {!collapsed && <Lock className="h-3 w-3 text-sidebar-foreground/30" />}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p className="text-xs">Solicite acesso ao administrador</p>
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+
     return (
       <Link
         key={item.path}
@@ -103,6 +143,20 @@ export function Sidebar() {
     );
   };
 
+  const handleInstallPWA = () => {
+    const deferredPrompt = (window as any).__pwaInstallPrompt;
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+    } else {
+      // Fallback: show instructions
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        alert('Para instalar: toque em "Compartilhar" e depois "Adicionar à Tela Inicial".');
+      } else {
+        alert('Para instalar: abra o menu do navegador e selecione "Instalar aplicativo".');
+      }
+    }
+  };
 
   return (
     <aside
@@ -141,7 +195,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-        {navItems.map(renderNavItem)}
+        {navItems.map(item => renderNavItem(item))}
 
         {/* Monitor user: only show Home, no sectors or admin */}
         {!isMonitor && (
@@ -154,7 +208,10 @@ export function Sidebar() {
             )}
             {collapsed && <div className="border-t border-sidebar-border my-2" />}
 
-            {sectorItems.map(renderNavItem)}
+            {sectorItems.map(item => {
+              const hasAccess = areasLoading || isAdmin || (item.areaKey ? hasArea(item.areaKey) : true);
+              return renderNavItem(item, !hasAccess);
+            })}
 
             {/* Admin — only visible to admins */}
             {isAdmin && (
@@ -165,7 +222,7 @@ export function Sidebar() {
                   </div>
                 )}
                 {collapsed && <div className="border-t border-sidebar-border my-2" />}
-                {adminItems.map(renderNavItem)}
+                {adminItems.map(item => renderNavItem(item))}
               </>
             )}
           </>
@@ -174,6 +231,24 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="p-4 border-t border-sidebar-border space-y-3">
+        {/* Install App button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size={collapsed ? "icon" : "sm"}
+              onClick={handleInstallPWA}
+              className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+            >
+              <Download className="h-4 w-4" />
+              {!collapsed && <span className="ml-2 text-xs">Instalar App</span>}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p className="text-xs">Instalar como aplicativo</p>
+          </TooltipContent>
+        </Tooltip>
+
         <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between")}>
           {!collapsed && <span className="text-xs text-sidebar-foreground/60">Tema</span>}
           <ThemeToggle />
