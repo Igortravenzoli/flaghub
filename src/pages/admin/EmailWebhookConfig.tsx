@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,13 @@ import { Mail, Webhook, Save, Eye, EyeOff, Plus, Trash2, TestTube, Loader2 } fro
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
+interface WebhookEntry {
+  id: string;
+  label: string;
+  type: 'teams' | 'telegram';
+  url: string;
+}
+
 export default function EmailWebhookConfig() {
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState('587');
@@ -20,15 +27,62 @@ export default function EmailWebhookConfig() {
   const [showPass, setShowPass] = useState(false);
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
+  const [loadingConfig, setLoadingConfig] = useState(true);
 
-  const [webhooks, setWebhooks] = useState<{ id: string; label: string; type: 'teams' | 'telegram'; url: string }[]>([]);
+  const [webhooks, setWebhooks] = useState<WebhookEntry[]>([]);
   const [newWebhookLabel, setNewWebhookLabel] = useState('');
   const [newWebhookType, setNewWebhookType] = useState<'teams' | 'telegram'>('teams');
   const [newWebhookUrl, setNewWebhookUrl] = useState('');
+  const [savingWebhooks, setSavingWebhooks] = useState(false);
+
+  // Load saved config on mount
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const { data: channels, error } = await supabase
+          .from('alert_channels')
+          .select('*')
+          .order('label');
+        if (error) throw error;
+
+        // Load SMTP config
+        const smtpChannel = channels?.find(
+          (c) => c.channel_type === 'email' && c.label === 'SMTP Principal'
+        );
+        if (smtpChannel?.config && typeof smtpChannel.config === 'object') {
+          const cfg = smtpChannel.config as Record<string, unknown>;
+          setSmtpHost((cfg.host as string) || '');
+          setSmtpPort(String(cfg.port || '587'));
+          setSmtpUser((cfg.user as string) || '');
+          setSmtpFrom((cfg.from as string) || '');
+          setSmtpTls(cfg.tls !== false);
+          // password is never stored in config for security — user must re-enter
+        }
+
+        // Load webhooks
+        const webhookChannels = channels?.filter(
+          (c) => c.channel_type === 'teams' || c.channel_type === 'telegram'
+        ) || [];
+        setWebhooks(
+          webhookChannels.map((wh) => ({
+            id: wh.id,
+            label: wh.label,
+            type: wh.channel_type as 'teams' | 'telegram',
+            url: ((wh.config as Record<string, unknown>)?.url as string) || '',
+          }))
+        );
+      } catch (err: any) {
+        console.error('Erro ao carregar configurações:', err);
+      } finally {
+        setLoadingConfig(false);
+      }
+    };
+    loadConfig();
+  }, []);
 
   const handleSaveSMTP = async () => {
-    if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
-      toast.error('Preencha todos os campos obrigatórios');
+    if (!smtpHost || !smtpUser || !smtpFrom) {
+      toast.error('Preencha todos os campos obrigatórios (host, usuário, remetente)');
       return;
     }
     setSavingSmtp(true);
@@ -49,11 +103,11 @@ export default function EmailWebhookConfig() {
 
   const handleTestSMTP = async () => {
     if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
-      toast.error('Preencha os campos SMTP antes de testar');
+      toast.error('Preencha os campos SMTP antes de testar (incluindo senha)');
       return;
     }
     setTestingSmtp(true);
-    toast.info('Enviando e-mail de teste...');
+    toast.info('Testando conexão SMTP...');
     try {
       const { data, error } = await supabase.functions.invoke('smtp-test', {
         body: {
@@ -67,7 +121,7 @@ export default function EmailWebhookConfig() {
       });
       if (error) throw error;
       if (data?.success) {
-        toast.success(data.message || 'E-mail de teste enviado com sucesso!');
+        toast.success(data.message || 'Teste SMTP concluído com sucesso!');
       } else {
         toast.error('Falha no teste: ' + (data?.error || 'Erro desconhecido'));
       }
@@ -78,26 +132,54 @@ export default function EmailWebhookConfig() {
     }
   };
 
-  const addWebhook = () => {
+  const addWebhook = async () => {
     if (!newWebhookLabel || !newWebhookUrl) {
       toast.error('Preencha label e URL do webhook');
       return;
     }
-    setWebhooks([...webhooks, {
-      id: crypto.randomUUID(),
-      label: newWebhookLabel,
-      type: newWebhookType,
-      url: newWebhookUrl,
-    }]);
-    setNewWebhookLabel('');
-    setNewWebhookUrl('');
-    toast.success('Webhook adicionado');
+    setSavingWebhooks(true);
+    try {
+      const { data, error } = await supabase.from('alert_channels').insert({
+        channel_type: newWebhookType,
+        label: newWebhookLabel,
+        config: { url: newWebhookUrl } as any,
+        is_active: true,
+      }).select().single();
+      if (error) throw error;
+      setWebhooks([...webhooks, {
+        id: data.id,
+        label: newWebhookLabel,
+        type: newWebhookType,
+        url: newWebhookUrl,
+      }]);
+      setNewWebhookLabel('');
+      setNewWebhookUrl('');
+      toast.success('Webhook salvo com sucesso');
+    } catch (err: any) {
+      toast.error('Erro ao salvar webhook: ' + (err.message || String(err)));
+    } finally {
+      setSavingWebhooks(false);
+    }
   };
 
-  const removeWebhook = (id: string) => {
-    setWebhooks(webhooks.filter(w => w.id !== id));
-    toast.success('Webhook removido');
+  const removeWebhook = async (id: string) => {
+    try {
+      const { error } = await supabase.from('alert_channels').delete().eq('id', id);
+      if (error) throw error;
+      setWebhooks(webhooks.filter(w => w.id !== id));
+      toast.success('Webhook removido');
+    } catch (err: any) {
+      toast.error('Erro ao remover: ' + (err.message || String(err)));
+    }
   };
+
+  if (loadingConfig) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -120,29 +202,17 @@ export default function EmailWebhookConfig() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Servidor SMTP</Label>
-              <Input
-                placeholder="smtp.office365.com"
-                value={smtpHost}
-                onChange={(e) => setSmtpHost(e.target.value)}
-              />
+              <Input placeholder="smtp.office365.com" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Porta</Label>
-              <Input
-                placeholder="587"
-                value={smtpPort}
-                onChange={(e) => setSmtpPort(e.target.value)}
-              />
+              <Input placeholder="587" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Usuário</Label>
-              <Input
-                placeholder="noreply@flag.com.br"
-                value={smtpUser}
-                onChange={(e) => setSmtpUser(e.target.value)}
-              />
+              <Input placeholder="noreply@flag.com.br" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Senha</Label>
@@ -153,25 +223,17 @@ export default function EmailWebhookConfig() {
                   value={smtpPass}
                   onChange={(e) => setSmtpPass(e.target.value)}
                 />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full w-10"
-                  onClick={() => setShowPass(!showPass)}
-                >
+                <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-full w-10" onClick={() => setShowPass(!showPass)}>
                   {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
+              <p className="text-[10px] text-muted-foreground">A senha não é exibida após salvar por segurança.</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Email Remetente</Label>
-              <Input
-                placeholder="alertas@flag.com.br"
-                value={smtpFrom}
-                onChange={(e) => setSmtpFrom(e.target.value)}
-              />
+              <Input placeholder="alertas@flag.com.br" value={smtpFrom} onChange={(e) => setSmtpFrom(e.target.value)} />
             </div>
             <div className="flex items-center gap-3 pt-6">
               <Label className="text-xs">TLS/STARTTLS</Label>
@@ -182,7 +244,7 @@ export default function EmailWebhookConfig() {
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" className="gap-1.5" onClick={handleTestSMTP} disabled={testingSmtp}>
               {testingSmtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
-              {testingSmtp ? 'Testando...' : 'Testar Envio'}
+              {testingSmtp ? 'Testando...' : 'Testar Conexão'}
             </Button>
             <Button size="sm" className="gap-1.5" onClick={handleSaveSMTP} disabled={savingSmtp}>
               {savingSmtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
@@ -205,7 +267,6 @@ export default function EmailWebhookConfig() {
             Configure URLs de webhook para enviar alertas dos setores via Microsoft Teams ou Telegram.
           </p>
 
-          {/* Existing webhooks */}
           {webhooks.length > 0 && (
             <div className="space-y-2">
               {webhooks.map((wh) => (
@@ -217,12 +278,7 @@ export default function EmailWebhookConfig() {
                     <p className="text-sm font-medium truncate">{wh.label}</p>
                     <p className="text-xs text-muted-foreground truncate">{wh.url}</p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-destructive"
-                    onClick={() => removeWebhook(wh.id)}
-                  >
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeWebhook(wh.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -232,15 +288,10 @@ export default function EmailWebhookConfig() {
 
           <Separator />
 
-          {/* Add new webhook */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Label</Label>
-              <Input
-                placeholder="Ex: Canal Operações"
-                value={newWebhookLabel}
-                onChange={(e) => setNewWebhookLabel(e.target.value)}
-              />
+              <Input placeholder="Ex: Canal Operações" value={newWebhookLabel} onChange={(e) => setNewWebhookLabel(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Tipo</Label>
@@ -255,16 +306,12 @@ export default function EmailWebhookConfig() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">URL Webhook</Label>
-              <Input
-                placeholder="https://..."
-                value={newWebhookUrl}
-                onChange={(e) => setNewWebhookUrl(e.target.value)}
-              />
+              <Input placeholder="https://..." value={newWebhookUrl} onChange={(e) => setNewWebhookUrl(e.target.value)} />
             </div>
           </div>
           <div className="flex justify-end">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={addWebhook}>
-              <Plus className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={addWebhook} disabled={savingWebhooks}>
+              {savingWebhooks ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               Adicionar Webhook
             </Button>
           </div>
