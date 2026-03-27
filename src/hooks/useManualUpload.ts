@@ -67,6 +67,7 @@ interface UseManualUploadOptions {
 const TEMPLATE_TABLES: Record<string, string> = {
   cs_implantacoes_v1: 'cs_implantacoes_records',
   cs_fila_cs_v1: 'cs_fila_manual_records',
+  comercial_pesquisa_v1: 'comercial_pesquisa_satisfacao',
 };
 
 /**
