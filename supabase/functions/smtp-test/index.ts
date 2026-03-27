@@ -1,7 +1,7 @@
 // smtp-test — Envia um e-mail de teste usando configuração SMTP fornecida
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { SmtpClient } from 'https://deno.land/x/smtp@v0.7.0/mod.ts'
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -18,7 +18,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
   try {
-    // Auth check – only admin
+    // Auth check
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) return new Response(JSON.stringify({ error: 'Não autenticado' }), { status: 401, headers: cors })
 
@@ -54,21 +54,19 @@ serve(async (req) => {
     }
 
     const recipient = to || user.email || from
+    const smtpPort = Number(port) || 587
 
-    const client = new SmtpClient()
-
-    const connectConfig = {
-      hostname: host,
-      port: Number(port) || 587,
-      username: smtpUser,
-      password: pass,
-    }
-
-    if (tls) {
-      await client.connectTLS(connectConfig)
-    } else {
-      await client.connect(connectConfig)
-    }
+    const client = new SMTPClient({
+      connection: {
+        hostname: host,
+        port: smtpPort,
+        tls: smtpPort === 465,
+        auth: {
+          username: smtpUser,
+          password: pass,
+        },
+      },
+    })
 
     await client.send({
       from: from,
@@ -80,7 +78,7 @@ serve(async (req) => {
           <h2 style="color:#333;">✅ Teste SMTP — HubFusion</h2>
           <p>Se você está lendo este e-mail, a configuração SMTP está funcionando corretamente.</p>
           <hr style="border:none;border-top:1px solid #eee;margin:20px 0;" />
-          <p style="font-size:12px;color:#999;">Servidor: ${host}:${port} | Remetente: ${from}</p>
+          <p style="font-size:12px;color:#999;">Servidor: ${host}:${smtpPort} | Remetente: ${from}</p>
         </div>
       `,
     })
