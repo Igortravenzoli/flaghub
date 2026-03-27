@@ -35,7 +35,7 @@ export default function EmailWebhookConfig() {
     try {
       const config = { host: smtpHost, port: smtpPort, user: smtpUser, from: smtpFrom, tls: smtpTls };
       const { error } = await supabase.from('alert_channels').upsert(
-        { channel_type: 'smtp', label: 'SMTP Principal', config: config as any, is_active: true },
+        { channel_type: 'email', label: 'SMTP Principal', config: config as any, is_active: true },
         { onConflict: 'channel_type,label' }
       );
       if (error) throw error;
