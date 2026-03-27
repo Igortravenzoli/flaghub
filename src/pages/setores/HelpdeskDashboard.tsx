@@ -33,7 +33,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 // Lazy load ticket sub-pages for tab embedding
 const DashboardPage = lazy(() => import('@/pages/Dashboard'));
-const TicketsPage = lazy(() => import('@/pages/Tickets'));
 const TicketBuscaPage = lazy(() => import('@/pages/TicketBuscaComponente'));
 
 const integrations: Integration[] = [
