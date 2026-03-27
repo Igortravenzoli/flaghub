@@ -157,7 +157,7 @@ const PUBLISH_TARGETS: Record<string, {
       cliente_codigo: n.cliente_codigo ? Number(n.cliente_codigo) : null,
       cliente_nome: n.cliente_nome || null,
       bandeira: n.bandeira || null,
-      data_pesquisa: n.data_pesquisa || null,
+      data_pesquisa: safeDate(n.data_pesquisa),
       responsavel_contato: n.responsavel_contato || null,
       notas_por_produto: typeof n.notas_por_produto === 'string'
         ? (() => { try { return JSON.parse(n.notas_por_produto) } catch { return {} } })()
