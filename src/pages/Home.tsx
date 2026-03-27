@@ -42,7 +42,7 @@ export default function Home() {
   const [kioskRotate, setKioskRotate] = useState(false);
   const [kioskInterval, setKioskInterval] = useState(30);
   const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
-  const [monitorAutoStarted, setMonitorAutoStarted] = useState(false);
+  const [showMonitorKioskPicker, setShowMonitorKioskPicker] = useState(false);
 
   // Real data hooks
   const comercial = useComercialKpis();
