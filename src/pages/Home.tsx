@@ -42,7 +42,7 @@ export default function Home() {
   const [kioskRotate, setKioskRotate] = useState(false);
   const [kioskInterval, setKioskInterval] = useState(30);
   const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
-  const [monitorAutoStarted, setMonitorAutoStarted] = useState(false);
+  const [showMonitorKioskPicker, setShowMonitorKioskPicker] = useState(false);
 
   // Real data hooks
   const comercial = useComercialKpis();
@@ -122,19 +122,12 @@ export default function Home() {
 
   const activeSectors = mockSectors.filter((s) => kioskSelectedSlugs.includes(s.slug));
 
-  // Auto-start Kiosk for monitor user
+  // Show kiosk picker dialog for monitor user on first load
   useEffect(() => {
-    if (isMonitor && !monitorAutoStarted && !kioskActive) {
-      const allSlugs = mockSectors.map(s => s.slug);
-      setKioskSelectedSlugs(allSlugs);
-      setKioskRotate(true);
-      setKioskInterval(30);
-      setKioskCurrentIndex(0);
-      setKioskActive(true);
-      setMonitorAutoStarted(true);
-      document.documentElement.requestFullscreen?.().catch(() => {});
+    if (isMonitor && !showMonitorKioskPicker && !kioskActive) {
+      setShowMonitorKioskPicker(true);
     }
-  }, [isMonitor, monitorAutoStarted, kioskActive]);
+  }, [isMonitor, showMonitorKioskPicker, kioskActive]);
 
   const exitKiosk = useCallback(() => {
     setKioskActive(false);
@@ -241,6 +234,16 @@ export default function Home() {
           onStart={startKiosk}
         />
       </div>
+
+      {/* Monitor user: externally-controlled kiosk picker */}
+      {isMonitor && (
+        <KioskConfigDialog
+          sectors={sectorCards.map((s) => ({ slug: s.slug, name: s.name }))}
+          onStart={startKiosk}
+          externalOpen={showMonitorKioskPicker}
+          onExternalOpenChange={setShowMonitorKioskPicker}
+        />
+      )}
     </div>
   );
 }

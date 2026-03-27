@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tv, Play, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -16,13 +16,30 @@ interface SectorOption {
 interface KioskConfigDialogProps {
   sectors: SectorOption[];
   onStart: (config: { selectedSlugs: string[]; rotateEnabled: boolean; intervalSec: number }) => void;
+  /** When true, dialog opens without needing the card trigger */
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
 }
 
-export default function KioskConfigDialog({ sectors, onStart }: KioskConfigDialogProps) {
-  const [open, setOpen] = useState(false);
-  const [rotateEnabled, setRotateEnabled] = useState(false);
+export default function KioskConfigDialog({ sectors, onStart, externalOpen, onExternalOpenChange }: KioskConfigDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const [rotateEnabled, setRotateEnabled] = useState(true);
   const [intervalSec, setIntervalSec] = useState('30');
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>(sectors.map((s) => s.slug));
+
+  const isControlled = externalOpen !== undefined;
+  const open = isControlled ? externalOpen : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (isControlled) onExternalOpenChange?.(v);
+    else setInternalOpen(v);
+  };
+
+  // Reset selections when opening
+  useEffect(() => {
+    if (open) {
+      setSelectedSlugs(sectors.map((s) => s.slug));
+    }
+  }, [open, sectors]);
 
   const toggleSector = (slug: string) => {
     setSelectedSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
@@ -35,15 +52,17 @@ export default function KioskConfigDialog({ sectors, onStart }: KioskConfigDialo
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Card className="p-5 cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 border-2 border-dashed border-primary/30 hover:border-primary/60 flex flex-col items-center justify-center text-center min-h-[160px] group">
-          <div className="p-3 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors mb-3">
-            <Tv className="h-7 w-7 text-primary" />
-          </div>
-          <h3 className="font-bold text-foreground">Modo Kiosk / TV</h3>
-          <p className="text-xs text-muted-foreground mt-1">Exibir dashboards em tela cheia</p>
-        </Card>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Card className="p-5 cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 border-2 border-dashed border-primary/30 hover:border-primary/60 flex flex-col items-center justify-center text-center min-h-[160px] group">
+            <div className="p-3 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors mb-3">
+              <Tv className="h-7 w-7 text-primary" />
+            </div>
+            <h3 className="font-bold text-foreground">Modo Kiosk / TV</h3>
+            <p className="text-xs text-muted-foreground mt-1">Exibir dashboards em tela cheia</p>
+          </Card>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -80,7 +99,7 @@ export default function KioskConfigDialog({ sectors, onStart }: KioskConfigDialo
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Áreas a exibir</Label>
+              <Label className="text-sm font-medium">Painéis a exibir</Label>
               <div className="flex gap-2">
                 <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setSelectedSlugs(sectors.map((s) => s.slug))}>
                   Todos

@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Loader2, ShieldAlert, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { HubFusionAnimation } from '@/components/auth/HubFusionAnimation';
 
@@ -24,6 +25,7 @@ export default function Login() {
   const [isAzureLoading, setIsAzureLoading] = useState(false);
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [localLoginOpen, setLocalLoginOpen] = useState(false);
   const attemptsRef = useRef(0);
   const lockoutTimerRef = useRef<number | null>(null);
 
@@ -59,7 +61,6 @@ export default function Login() {
         toast.error('Erro ao conectar com Microsoft', { description: error.message });
         setIsAzureLoading(false);
       }
-      // Se não houver erro, o usuário será redirecionado para o Azure
     } catch (err) {
       toast.error('Erro inesperado ao conectar com Microsoft');
       setIsAzureLoading(false);
@@ -79,7 +80,6 @@ export default function Login() {
     setIsSubmitting(true);
 
     try {
-      // Call rate-limited login endpoint
       let fnData: Record<string, unknown> | null = null;
       let fnErrorMsg = '';
 
@@ -122,13 +122,11 @@ export default function Login() {
         }
       } else if (fnData?.session) {
         const session = fnData.session as { access_token: string; refresh_token: string };
-        // Set session from the edge function response
         try {
           await supabase.auth.setSession({
             access_token: session.access_token,
             refresh_token: session.refresh_token,
           });
-          console.log('[Login] Session set successfully');
         } catch (setSessionErr) {
           console.error('[Login] setSession failed:', setSessionErr);
           throw setSessionErr;
@@ -137,7 +135,6 @@ export default function Login() {
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
 
-        // Check if user has elevated role → force MFA before navigating
         try {
           const { data: maskedCode, error: rpcErr } = await supabase.rpc("auth_user_role_masked");
           if (rpcErr) {
@@ -161,7 +158,6 @@ export default function Login() {
     }
   };
 
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -174,26 +170,22 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2 pb-2">
-          
-          {/* Animated Hub Fusion */}
           <HubFusionAnimation />
-          
           <CardDescription>
             Central de KPIs e Dashboards Setoriais
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {/* Botão SSO Microsoft */}
+        <CardContent className="space-y-4">
+          {/* SSO Microsoft — Primary */}
           <Button 
-            variant="outline" 
-            className="w-full mb-4 h-11"
+            className="w-full h-12 text-base font-semibold gap-3"
             onClick={handleAzureLogin}
             disabled={isAzureLoading}
           >
             {isAzureLoading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <svg className="h-5 w-5 mr-2" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg className="h-5 w-5" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
                 <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
                 <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
@@ -202,20 +194,27 @@ export default function Login() {
             )}
             Entrar com Microsoft
           </Button>
-          
-          {/* Separador */}
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">ou</span>
-            </div>
-          </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          {/* Local login — Collapsible */}
+          <Collapsible open={localLoginOpen} onOpenChange={setLocalLoginOpen}>
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center">
+                <Separator className="w-full" />
+              </div>
+              <div className="relative flex justify-center">
+                <CollapsibleTrigger asChild>
+                  <button className="bg-card px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 rounded-full border border-border/50 hover:border-border">
+                    Acesso local
+                    <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${localLoginOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                </CollapsibleTrigger>
+              </div>
+            </div>
+
+            <CollapsibleContent className="data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
+              <form onSubmit={handleLogin} className="space-y-3 pt-2">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
+                  <Label htmlFor="login-email" className="text-sm">Email</Label>
                   <Input
                     id="login-email"
                     type="email"
@@ -226,7 +225,7 @@ export default function Login() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="login-password">Senha</Label>
+                  <Label htmlFor="login-password" className="text-sm">Senha</Label>
                   <Input
                     id="login-password"
                     type="password"
@@ -242,7 +241,7 @@ export default function Login() {
                     <span>Bloqueado por {remainingSeconds}s — muitas tentativas falharam.</span>
                   </div>
                 )}
-                <Button type="submit" className="w-full" disabled={isSubmitting || isLockedOut()}>
+                <Button type="submit" variant="secondary" className="w-full" disabled={isSubmitting || isLockedOut()}>
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -255,8 +254,10 @@ export default function Login() {
                   )}
                 </Button>
               </form>
+            </CollapsibleContent>
+          </Collapsible>
 
-          <p className="text-xs text-muted-foreground text-center mt-6">
+          <p className="text-xs text-muted-foreground text-center mt-4">
             Ao continuar, você concorda com os termos de uso e política de privacidade.
           </p>
         </CardContent>
