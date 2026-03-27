@@ -2,13 +2,12 @@ import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Monitor, Loader2, ShieldAlert } from 'lucide-react';
+import { Loader2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { HubFusionAnimation } from '@/components/auth/HubFusionAnimation';
 
@@ -20,7 +19,7 @@ export default function Login() {
   const location = useLocation();
   const { signIn, signInWithAzure, isLoading } = useAuth();
   
-  const [loginData, setLoginData] = useState({ email: '', password: '', rememberMe: false });
+  const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAzureLoading, setIsAzureLoading] = useState(false);
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
@@ -235,18 +234,6 @@ export default function Login() {
                     value={loginData.password}
                     onChange={(e) => setLoginData(prev => ({ ...prev, password: e.target.value }))}
                     required
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
-                    Manter conectado por 15 dias
-                  </Label>
-                  <Switch
-                    id="remember-me"
-                    checked={loginData.rememberMe}
-                    onCheckedChange={(checked) => 
-                      setLoginData(prev => ({ ...prev, rememberMe: checked }))
-                    }
                   />
                 </div>
                 {isLockedOut() && (
