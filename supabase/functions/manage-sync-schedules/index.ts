@@ -8,7 +8,12 @@ const corsHeaders = {
 };
 
 
-const PROJECT_REF = "nxmgppfyltwsqryfxkbm";
+// Derive PROJECT_REF from SUPABASE_URL so each environment (DEV/PROD) uses its own ref automatically
+const PROJECT_REF = (() => {
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const match = url.match(/https:\/\/([^.]+)\.supabase\.co/);
+  return match?.[1] ?? "unknown";
+})();
 
 
 const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; functionName: string }> = {
