@@ -112,6 +112,7 @@ function safeDate(val: any): string | null {
 // Maps template keys to their target table and field mapping
 const PUBLISH_TARGETS: Record<string, {
   table: string
+  onConflict?: string
   mapRow: (normalized: Record<string, any>, batchId: string) => Record<string, any>
 }> = {
   cs_implantacoes_v1: {
@@ -152,6 +153,7 @@ const PUBLISH_TARGETS: Record<string, {
   },
   comercial_pesquisa_v1: {
     table: 'comercial_pesquisa_satisfacao',
+    onConflict: 'cliente_codigo,data_pesquisa',
     mapRow: (n, batchId) => ({
       batch_id: batchId,
       cliente_codigo: n.cliente_codigo ? Number(n.cliente_codigo) : null,
@@ -298,7 +300,10 @@ serve(async (req: Request) => {
     let publishedCount = 0
     for (let i = 0; i < records.length; i += 100) {
       const chunk = records.slice(i, i + 100)
-      const { error: iErr } = await admin.from(target.table).insert(chunk)
+      const query = target.onConflict
+        ? admin.from(target.table).upsert(chunk, { onConflict: target.onConflict })
+        : admin.from(target.table).insert(chunk)
+      const { error: iErr } = await query
       if (iErr) throw new Error(`Falha ao publicar: ${iErr.message}`)
       publishedCount += chunk.length
     }
