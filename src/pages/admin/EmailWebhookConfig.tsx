@@ -162,6 +162,29 @@ export default function EmailWebhookConfig() {
     }
   };
 
+  const [testingWebhookId, setTestingWebhookId] = useState<string | null>(null);
+
+  const testWebhook = async (wh: WebhookEntry) => {
+    setTestingWebhookId(wh.id);
+    try {
+      const payload = wh.type === 'teams'
+        ? { "@type": "MessageCard", "@context": "http://schema.org/extensions", summary: "HubFusion Test", themeColor: "0076D7", title: "🔔 HubFusion - Teste de Webhook", text: `Webhook **${wh.label}** configurado com sucesso!` }
+        : { text: `🔔 HubFusion - Teste de Webhook\n\nWebhook "${wh.label}" configurado com sucesso!` };
+
+      const res = await fetch(wh.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(wh.type === 'telegram' ? { chat_id: new URL(wh.url).searchParams.get('chat_id') || '', text: payload.text, parse_mode: 'HTML' } : payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.success(`Teste enviado para ${wh.type === 'teams' ? 'Teams' : 'Telegram'} com sucesso!`);
+    } catch (err: any) {
+      toast.error('Falha no teste: ' + (err.message || String(err)));
+    } finally {
+      setTestingWebhookId(null);
+    }
+  };
+
   const removeWebhook = async (id: string) => {
     try {
       const { error } = await supabase.from('alert_channels').delete().eq('id', id);
@@ -278,6 +301,9 @@ export default function EmailWebhookConfig() {
                     <p className="text-sm font-medium truncate">{wh.label}</p>
                     <p className="text-xs text-muted-foreground truncate">{wh.url}</p>
                   </div>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => testWebhook(wh)} disabled={testingWebhookId === wh.id} title="Testar webhook">
+                    {testingWebhookId === wh.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
+                  </Button>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeWebhook(wh.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
