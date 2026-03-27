@@ -180,13 +180,13 @@ export default function EmailWebhookConfig() {
           </div>
           <Separator />
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleTestSMTP}>
-              <TestTube className="h-3.5 w-3.5" />
-              Testar Envio
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleTestSMTP} disabled={testingSmtp}>
+              {testingSmtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
+              {testingSmtp ? 'Testando...' : 'Testar Envio'}
             </Button>
-            <Button size="sm" className="gap-1.5" onClick={handleSaveSMTP}>
-              <Save className="h-3.5 w-3.5" />
-              Salvar SMTP
+            <Button size="sm" className="gap-1.5" onClick={handleSaveSMTP} disabled={savingSmtp}>
+              {savingSmtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {savingSmtp ? 'Salvando...' : 'Salvar SMTP'}
             </Button>
           </div>
         </CardContent>
