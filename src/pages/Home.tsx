@@ -234,6 +234,16 @@ export default function Home() {
           onStart={startKiosk}
         />
       </div>
+
+      {/* Monitor user: externally-controlled kiosk picker */}
+      {isMonitor && (
+        <KioskConfigDialog
+          sectors={sectorCards.map((s) => ({ slug: s.slug, name: s.name }))}
+          onStart={startKiosk}
+          externalOpen={showMonitorKioskPicker}
+          onExternalOpenChange={setShowMonitorKioskPicker}
+        />
+      )}
     </div>
   );
 }
