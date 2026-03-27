@@ -166,20 +166,19 @@ export default function EmailWebhookConfig() {
 
   const testWebhook = async (wh: WebhookEntry) => {
     setTestingWebhookId(wh.id);
+    toast.info('Enviando teste...');
     try {
-      const payload = wh.type === 'teams'
-        ? { "@type": "MessageCard", "@context": "http://schema.org/extensions", summary: "HubFusion Test", themeColor: "0076D7", title: "🔔 HubFusion - Teste de Webhook", text: `Webhook **${wh.label}** configurado com sucesso!` }
-        : { text: `🔔 HubFusion - Teste de Webhook\n\nWebhook "${wh.label}" configurado com sucesso!` };
-
-      const res = await fetch(wh.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(wh.type === 'telegram' ? { chat_id: new URL(wh.url).searchParams.get('chat_id') || '', text: payload.text, parse_mode: 'HTML' } : payload),
+      const { data, error } = await supabase.functions.invoke('webhook-test', {
+        body: { url: wh.url, type: wh.type, label: wh.label },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      toast.success(`Teste enviado para ${wh.type === 'teams' ? 'Teams' : 'Telegram'} com sucesso!`);
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(data.message || 'Teste enviado com sucesso!');
+      } else {
+        toast.error('Falha no teste: ' + (data?.error || 'Erro desconhecido'));
+      }
     } catch (err: any) {
-      toast.error('Falha no teste: ' + (err.message || String(err)));
+      toast.error('Erro ao testar webhook: ' + (err.message || String(err)));
     } finally {
       setTestingWebhookId(null);
     }
