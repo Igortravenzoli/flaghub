@@ -237,18 +237,6 @@ export default function Login() {
                     required
                   />
                 </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
-                    Manter conectado por 15 dias
-                  </Label>
-                  <Switch
-                    id="remember-me"
-                    checked={loginData.rememberMe}
-                    onCheckedChange={(checked) => 
-                      setLoginData(prev => ({ ...prev, rememberMe: checked }))
-                    }
-                  />
-                </div>
                 {isLockedOut() && (
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                     <ShieldAlert className="h-4 w-4 flex-shrink-0" />

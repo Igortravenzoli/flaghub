@@ -42,15 +42,14 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const isAdmin = isHubAdmin || isAuthAdmin;
   const { isOwner, isOperacional, getAreaRole, isLoading: isAreasLoading } = useHubAreas();
 
-  const isTicketsOsArea = areaKey === 'tickets_os';
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
   const hasMembership = !!areaRole;
   const isAreaOwner = areaKey ? isOwner(areaKey) : false;
-  // Flexibilização específica do Helpdesk/Tickets: sempre exibe abas e importação no frontend
-  const canImport = isTicketsOsArea ? true : areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
-  const canSettings = isTicketsOsArea ? true : areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
-  const canViewExtraTabs = isTicketsOsArea || isAreasLoading || hasMembership || isAdmin;
-  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || isTicketsOsArea) && canImport;
+  // Permission checks: always require area membership or admin — no frontend bypasses
+  const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
+  const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
+  const canViewExtraTabs = isAreasLoading || hasMembership || isAdmin;
+  const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
 
   if (isKiosk) {
     return (
