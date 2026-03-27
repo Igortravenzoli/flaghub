@@ -6,8 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Mail, Webhook, Save, Eye, EyeOff, Plus, Trash2, TestTube } from 'lucide-react';
+import { Mail, Webhook, Save, Eye, EyeOff, Plus, Trash2, TestTube, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function EmailWebhookConfig() {
   const [smtpHost, setSmtpHost] = useState('');
