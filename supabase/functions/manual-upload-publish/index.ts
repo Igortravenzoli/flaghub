@@ -97,6 +97,18 @@ async function hasAreaUploadRole(userId: string, areaId: string | null): Promise
   return (data ?? []).some((membership: any) => allowedAreaKeys.has(membership.hub_areas?.key))
 }
 
+// Safely parse a date value — returns null for non-date strings like "Sem Relato"
+function safeDate(val: any): string | null {
+  if (!val || typeof val !== 'string') return null
+  const trimmed = val.trim()
+  // Reject obvious non-date text
+  if (!/\d/.test(trimmed)) return null
+  // Try ISO or common date formats
+  const d = new Date(trimmed)
+  if (isNaN(d.getTime())) return null
+  return d.toISOString().slice(0, 10)
+}
+
 // Maps template keys to their target table and field mapping
 const PUBLISH_TARGETS: Record<string, {
   table: string
