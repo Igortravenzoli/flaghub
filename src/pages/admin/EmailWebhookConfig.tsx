@@ -168,14 +168,15 @@ export default function EmailWebhookConfig() {
     setTestingWebhookId(wh.id);
     toast.info('Enviando teste...');
     try {
-      const { data, error } = await supabase.functions.invoke('webhook-test', {
+      const { data: rawData, error } = await supabase.functions.invoke('webhook-test', {
         body: { url: wh.url, type: wh.type, label: wh.label },
       });
       if (error) throw error;
-      if (data?.success) {
-        toast.success(data.message || 'Teste enviado com sucesso!');
+      const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+      if (parsed?.success) {
+        toast.success(parsed.message || 'Teste enviado com sucesso!');
       } else {
-        toast.error('Falha no teste: ' + (data?.error || 'Erro desconhecido'));
+        toast.error('Falha no teste: ' + (parsed?.error || 'Erro desconhecido'));
       }
     } catch (err: any) {
       toast.error('Erro ao testar webhook: ' + (err.message || String(err)));
