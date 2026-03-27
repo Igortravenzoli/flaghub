@@ -30,13 +30,19 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await admin.auth.getUser(token)
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Token inválido' }), { status: 401, headers: cors })
 
-    // Check admin role
-    const { data: roles } = await admin
+    // Check admin role via both role tables
+    const { data: hubRoles } = await admin
       .from('hub_user_global_roles')
       .select('role')
       .eq('user_id', user.id)
       .in('role', ['admin', 'gestao'])
-    if (!roles || roles.length === 0) {
+    const { data: legacyRoles } = await admin
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .in('role', ['admin', 'gestao'])
+    const hasPermission = (hubRoles && hubRoles.length > 0) || (legacyRoles && legacyRoles.length > 0)
+    if (!hasPermission) {
       return new Response(JSON.stringify({ error: 'Sem permissão' }), { status: 403, headers: cors })
     }
 
