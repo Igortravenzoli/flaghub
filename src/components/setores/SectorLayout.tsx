@@ -1,12 +1,14 @@
 import { ReactNode, useState, lazy, Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, LayoutDashboard, Upload, Settings, Lock } from 'lucide-react';
+import { Clock, LayoutDashboard, Upload, Settings, Lock, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
 import { useHubAreas } from '@/hooks/useHubAreas';
-import { useHubIsAdmin } from '@/hooks/useHubPermissions';
+import { useHubIsAdmin, useAccessRequests } from '@/hooks/useHubPermissions';
 import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
 import type { Integration } from './SectorIntegrations';
 
 // Lazy-loaded heavy tab contents to avoid loading when tab is not active
@@ -38,18 +40,43 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   // Detect kiosk mode from parent or prop
   const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
   const isHubAdmin = useHubIsAdmin();
-  const { isAdmin: isAuthAdmin } = useAuth();
+  const { isAdmin: isAuthAdmin, user } = useAuth();
   const isAdmin = isHubAdmin || isAuthAdmin;
-  const { isOwner, isOperacional, getAreaRole, isLoading: isAreasLoading } = useHubAreas();
+  const { isOwner, isOperacional, getAreaRole, hasArea, areas, isLoading: isAreasLoading } = useHubAreas();
+  const { requestAccess, requests } = useAccessRequests();
 
   const areaRole = areaKey ? getAreaRole(areaKey) : null;
   const hasMembership = !!areaRole;
   const isAreaOwner = areaKey ? isOwner(areaKey) : false;
+  const hasAccess = isAreasLoading || isAdmin || (areaKey ? hasArea(areaKey) : true);
+
+  // Check if user already has a pending request for this area
+  const areaRecord = areas.find(a => a.key === areaKey);
+  const hasPendingRequest = areaRecord && requests.some(
+    r => r.area_id === areaRecord.id && r.user_id === user?.id && r.status === 'pending'
+  );
+
   // Permission checks: always require area membership or admin — no frontend bypasses
   const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
   const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
   const canViewExtraTabs = isAreasLoading || hasMembership || isAdmin;
   const showImports = (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
+
+  const handleRequestAccess = async () => {
+    if (!areaRecord) return;
+    try {
+      await requestAccess.mutateAsync({ areaId: areaRecord.id });
+      toast.success('Solicitação de acesso enviada!', {
+        description: 'Um administrador será notificado para aprovar seu acesso.',
+      });
+    } catch (err: any) {
+      if (err?.message?.includes('duplicate')) {
+        toast.info('Solicitação já enviada', { description: 'Aguarde a aprovação do administrador.' });
+      } else {
+        toast.error('Erro ao solicitar acesso', { description: err?.message });
+      }
+    }
+  };
 
   if (isKiosk) {
     return (
@@ -68,6 +95,44 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
             )}
           </div>
           {children}
+        </div>
+      </MetricMetadataProvider>
+    );
+  }
+
+  // Access denied view
+  if (!isAreasLoading && !hasAccess) {
+    return (
+      <MetricMetadataProvider areaKey={areaKey}>
+        <div className="p-6 space-y-6 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+              {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="p-4 rounded-full bg-muted mb-4">
+              <ShieldAlert className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <h2 className="text-lg font-semibold text-foreground mb-2">Acesso Restrito</h2>
+            <p className="text-sm text-muted-foreground max-w-md mb-6">
+              Você não possui permissão para acessar o setor <strong>{title}</strong>.
+              Solicite acesso ao administrador para visualizar os dados deste setor.
+            </p>
+            {hasPendingRequest ? (
+              <Badge variant="secondary" className="gap-1.5 px-4 py-2 text-sm">
+                <Clock className="h-4 w-4" />
+                Solicitação pendente de aprovação
+              </Badge>
+            ) : (
+              <Button onClick={handleRequestAccess} className="gap-2" disabled={requestAccess.isPending}>
+                <Lock className="h-4 w-4" />
+                Solicitar Acesso
+              </Button>
+            )}
+          </div>
         </div>
       </MetricMetadataProvider>
     );
