@@ -315,12 +315,6 @@ export default function HelpdeskDashboard() {
       content: <Suspense fallback={tabFallback}><DashboardPage /></Suspense>,
     },
     {
-      id: 'tickets-pesquisar',
-      label: 'Pesquisar',
-      icon: <Search className="h-3.5 w-3.5" />,
-      content: <Suspense fallback={tabFallback}><TicketsPage /></Suspense>,
-    },
-    {
       id: 'tickets-busca-vdesk',
       label: 'Busca VDesk',
       icon: <Search className="h-3.5 w-3.5" />,

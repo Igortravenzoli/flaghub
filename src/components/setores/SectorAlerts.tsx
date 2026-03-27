@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Bell, Plus, Trash2, Send, Clock, AlertTriangle, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAlertRules, useAlertChannels, useAlertDeliveries, useAlertMutations } from '@/hooks/useAlertRules';
 import { useAuth } from '@/hooks/useAuth';
+import { useHubAreas } from '@/hooks/useHubAreas';
+import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -18,6 +20,54 @@ interface SectorAlertsProps {
   sector: string;
   sectorLabel: string;
 }
+
+// Pre-defined KPIs per sector for dropdown selection
+const SECTOR_KPIS: Record<string, { key: string; label: string }[]> = {
+  tickets_os: [
+    { key: 'total_tickets', label: 'Total de Tickets' },
+    { key: 'tickets_sem_os', label: 'Tickets sem OS' },
+    { key: 'tickets_criticos', label: 'Tickets Críticos' },
+    { key: 'tickets_observacao', label: 'Tickets em Observação' },
+    { key: 'taxa_correlacao', label: 'Taxa de Correlação (%)' },
+    { key: 'total_registros', label: 'Total Registros Helpdesk' },
+    { key: 'horas_acumuladas', label: 'Horas Acumuladas' },
+    { key: 'consultores_ativos', label: 'Consultores Ativos' },
+  ],
+  fabrica: [
+    { key: 'pbis_total', label: 'Total de PBIs' },
+    { key: 'pbis_vermelho', label: 'PBIs em Vermelho' },
+    { key: 'pbis_amarelo', label: 'PBIs em Amarelo' },
+    { key: 'overflow_count', label: 'Transbordos' },
+    { key: 'avg_lead_time', label: 'Lead Time Médio (dias)' },
+    { key: 'backlog_count', label: 'Itens no Backlog' },
+    { key: 'fabrica_count', label: 'Itens em Fábrica' },
+    { key: 'qualidade_count', label: 'Itens em Qualidade' },
+  ],
+  comercial: [
+    { key: 'clientes_novos', label: 'Clientes Novos' },
+    { key: 'clientes_encerrados', label: 'Clientes Encerrados' },
+    { key: 'valor_mensal_total', label: 'Valor Mensal Total' },
+    { key: 'vendas_total', label: 'Total de Vendas' },
+    { key: 'nps_medio', label: 'NPS Médio' },
+  ],
+  'customer-service': [
+    { key: 'fila_total', label: 'Total na Fila' },
+    { key: 'fila_prioridade_alta', label: 'Fila Prioridade Alta' },
+    { key: 'implantacoes_ativas', label: 'Implantações Ativas' },
+    { key: 'horas_implantacao', label: 'Horas de Implantação' },
+  ],
+  infraestrutura: [
+    { key: 'itens_total', label: 'Total de Itens' },
+    { key: 'itens_criticos', label: 'Itens Críticos' },
+    { key: 'itens_atrasados', label: 'Itens Atrasados' },
+  ],
+  qualidade: [
+    { key: 'bugs_total', label: 'Total de Bugs' },
+    { key: 'bugs_criticos', label: 'Bugs Críticos' },
+    { key: 'bugs_atrasados', label: 'Bugs Atrasados' },
+    { key: 'taxa_retorno_qa', label: 'Taxa Retorno QA (%)' },
+  ],
+};
 
 const CONDITION_OPTIONS = [
   { value: 'above', label: 'Acima de' },
@@ -58,7 +108,13 @@ function DeliveryLog({ ruleId }: { ruleId: string }) {
 }
 
 export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
-  const { isAdmin } = useAuth();
+  const { isAdmin: isAuthAdmin } = useAuth();
+  const isHubAdmin = useHubIsAdmin();
+  const { isOwner } = useHubAreas();
+  const isAdmin = isHubAdmin || isAuthAdmin;
+  const isSectorOwner = isOwner(sector);
+  const canManage = isAdmin || isSectorOwner;
+
   const { data: rules, isLoading: rulesLoading } = useAlertRules(sector);
   const { data: channels, isLoading: channelsLoading } = useAlertChannels();
   const { createRule, updateRule, deleteRule } = useAlertMutations();
@@ -71,15 +127,17 @@ export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
   const [threshold, setThreshold] = useState('');
   const [channelId, setChannelId] = useState('');
 
+  const availableKpis = SECTOR_KPIS[sector] ?? [];
+
   const handleCreate = async () => {
-    if (!metricKey.trim()) {
-      toast.error('Informe a métrica');
+    if (!metricKey) {
+      toast.error('Selecione a métrica');
       return;
     }
     try {
       await createRule.mutateAsync({
         sector,
-        metric_key: metricKey.trim(),
+        metric_key: metricKey,
         condition_type: condition,
         threshold: threshold ? Number(threshold) : null,
         enabled: true,
@@ -115,6 +173,7 @@ export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
   };
 
   const isLoading = rulesLoading || channelsLoading;
+  const getKpiLabel = (key: string) => availableKpis.find(k => k.key === key)?.label ?? key;
 
   return (
     <Card className="p-5">
@@ -123,7 +182,7 @@ export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
           <Bell className="h-4 w-4 text-primary" />
           <h4 className="font-semibold text-foreground">Alertas — {sectorLabel}</h4>
         </div>
-        {isAdmin && (
+        {canManage && (
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowForm(!showForm)}>
             <Plus className="h-3.5 w-3.5" />
             Nova Regra
@@ -136,13 +195,17 @@ export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
         <div className="mb-4 p-4 rounded-lg border border-primary/30 bg-primary/5 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Métrica (key)</Label>
-              <Input
-                placeholder="ex: total_registros"
-                value={metricKey}
-                onChange={(e) => setMetricKey(e.target.value)}
-                className="h-8 text-sm"
-              />
+              <Label className="text-xs">Métrica (KPI)</Label>
+              <Select value={metricKey} onValueChange={setMetricKey}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Selecionar KPI..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableKpis.map((kpi) => (
+                    <SelectItem key={kpi.key} value={kpi.key}>{kpi.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Condição</Label>
@@ -183,7 +246,7 @@ export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
                     </SelectItem>
                   ))}
                   {(!channels || channels.filter(c => c.is_active).length === 0) && (
-                    <SelectItem value="__none" disabled>Nenhum canal cadastrado</SelectItem>
+                    <SelectItem value="__none" disabled>Nenhum canal cadastrado (configure em Admin)</SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -209,7 +272,7 @@ export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
         <div className="text-center py-8 text-muted-foreground">
           <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40" />
           <p className="text-sm">Nenhuma regra de alerta configurada para este setor.</p>
-          {isAdmin && <p className="text-xs mt-1">Clique em "Nova Regra" para começar.</p>}
+          {canManage && <p className="text-xs mt-1">Clique em "Nova Regra" para começar.</p>}
         </div>
       ) : (
         <div className="space-y-2">
@@ -225,11 +288,11 @@ export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
                     <Switch
                       checked={rule.enabled}
                       onCheckedChange={(v) => handleToggle(rule.id, v)}
-                      disabled={!isAdmin}
+                      disabled={!canManage}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground truncate">
-                        {rule.metric_key}
+                        {getKpiLabel(rule.metric_key)}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {condLabel}{rule.threshold != null ? ` ${rule.threshold}` : ''} 
@@ -252,7 +315,7 @@ export function SectorAlerts({ sector, sectorLabel }: SectorAlertsProps) {
                     >
                       {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                     </Button>
-                    {isAdmin && (
+                    {canManage && (
                       <Button
                         variant="ghost"
                         size="icon"
