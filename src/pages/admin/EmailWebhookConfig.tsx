@@ -18,20 +18,64 @@ export default function EmailWebhookConfig() {
   const [smtpFrom, setSmtpFrom] = useState('');
   const [smtpTls, setSmtpTls] = useState(true);
   const [showPass, setShowPass] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [savingSmtp, setSavingSmtp] = useState(false);
 
   const [webhooks, setWebhooks] = useState<{ id: string; label: string; type: 'teams' | 'telegram'; url: string }[]>([]);
   const [newWebhookLabel, setNewWebhookLabel] = useState('');
   const [newWebhookType, setNewWebhookType] = useState<'teams' | 'telegram'>('teams');
   const [newWebhookUrl, setNewWebhookUrl] = useState('');
 
-  const handleSaveSMTP = () => {
-    // TODO: Save to Supabase secrets / alert_channels
-    toast.success('Configurações SMTP salvas com sucesso');
+  const handleSaveSMTP = async () => {
+    if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+    setSavingSmtp(true);
+    try {
+      const config = { host: smtpHost, port: smtpPort, user: smtpUser, from: smtpFrom, tls: smtpTls };
+      const { error } = await supabase.from('alert_channels').upsert(
+        { channel_type: 'smtp', label: 'SMTP Principal', config: config as any, is_active: true },
+        { onConflict: 'channel_type,label' }
+      );
+      if (error) throw error;
+      toast.success('Configurações SMTP salvas com sucesso');
+    } catch (err: any) {
+      toast.error('Erro ao salvar: ' + (err.message || String(err)));
+    } finally {
+      setSavingSmtp(false);
+    }
   };
 
-  const handleTestSMTP = () => {
+  const handleTestSMTP = async () => {
+    if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
+      toast.error('Preencha os campos SMTP antes de testar');
+      return;
+    }
+    setTestingSmtp(true);
     toast.info('Enviando e-mail de teste...');
-    // TODO: invoke edge function to test SMTP
+    try {
+      const { data, error } = await supabase.functions.invoke('smtp-test', {
+        body: {
+          host: smtpHost,
+          port: Number(smtpPort) || 587,
+          user: smtpUser,
+          pass: smtpPass,
+          from: smtpFrom,
+          tls: smtpTls,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(data.message || 'E-mail de teste enviado com sucesso!');
+      } else {
+        toast.error('Falha no teste: ' + (data?.error || 'Erro desconhecido'));
+      }
+    } catch (err: any) {
+      toast.error('Erro ao testar SMTP: ' + (err.message || String(err)));
+    } finally {
+      setTestingSmtp(false);
+    }
   };
 
   const addWebhook = () => {
