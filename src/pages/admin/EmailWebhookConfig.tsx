@@ -301,6 +301,9 @@ export default function EmailWebhookConfig() {
                     <p className="text-sm font-medium truncate">{wh.label}</p>
                     <p className="text-xs text-muted-foreground truncate">{wh.url}</p>
                   </div>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => testWebhook(wh)} disabled={testingWebhookId === wh.id} title="Testar webhook">
+                    {testingWebhookId === wh.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
+                  </Button>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeWebhook(wh.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
