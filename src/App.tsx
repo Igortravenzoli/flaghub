@@ -35,6 +35,7 @@ import SyncCentral from "@/pages/admin/SyncCentral";
 import IpAllowlist from "@/pages/admin/IpAllowlist";
 import ManualUploads from "@/pages/admin/ManualUploads";
 import AuditLogs from "@/pages/admin/AuditLogs";
+import EmailWebhookConfig from "@/pages/admin/EmailWebhookConfig";
 
 const queryClient = new QueryClient({
   defaultOptions: {
