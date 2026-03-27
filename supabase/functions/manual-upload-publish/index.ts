@@ -293,8 +293,18 @@ serve(async (req: Request) => {
       })
     }
 
-    // 3. Map rows to target table format
-    const records = rows.map((r: { normalized: Record<string, any> }) => target.mapRow(r.normalized as Record<string, any>, batch_id))
+    // 3. Map rows to target table format and deduplicate by conflict key (last wins)
+    let records = rows.map((r: { normalized: Record<string, any> }) => target.mapRow(r.normalized as Record<string, any>, batch_id))
+
+    if (target.onConflict) {
+      const conflictKeys = target.onConflict.split(',').map((k: string) => k.trim())
+      const dedup = new Map<string, Record<string, any>>()
+      for (const rec of records) {
+        const key = conflictKeys.map((k: string) => String(rec[k] ?? '')).join('||')
+        dedup.set(key, rec)
+      }
+      records = Array.from(dedup.values())
+    }
 
     // 4. Insert into curated table
     let publishedCount = 0
