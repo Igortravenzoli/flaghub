@@ -922,6 +922,7 @@ serve(async (req: Request) => {
     // ALL heavy work runs in background
     const backgroundWork = async () => {
       const bgAdmin = getSupabaseAdmin()
+      const bgStartMs = Date.now()
 
       // ── Step 1: Sync all queries sequentially ──
       const results: Array<{ query_id: string; name: string; success: boolean; error?: string }> = []
@@ -997,6 +998,23 @@ serve(async (req: Request) => {
         },
       })
       console.log('[DevOpsSyncAll:BG] All background work complete')
+
+      // ── Persist sync run status ──
+      const bgDuration = Date.now() - bgStartMs
+      if (runId) {
+        await bgAdmin.from('hub_sync_runs').update({
+          status: failed > 0 ? 'error' : 'ok',
+          finished_at: new Date().toISOString(),
+          duration_ms: bgDuration,
+          items_found: generalQueries.length,
+          items_upserted: succeeded,
+          error: failed > 0 ? `${failed} queries falharam` : null,
+          meta: { children: childrenResult, iteration_history: iterHistory, lifecycle_health: lifecycleHealth },
+        }).eq('id', runId)
+      }
+      if (syncJobId) {
+        await bgAdmin.from('hub_sync_jobs').update({ last_run_at: new Date().toISOString() }).eq('id', syncJobId)
+      }
     }
 
     // @ts-ignore - EdgeRuntime.waitUntil available in Supabase Edge Functions
