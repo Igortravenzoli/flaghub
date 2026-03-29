@@ -96,6 +96,10 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
       case 'mes_anterior': return 'Mês anterior';
       case '1y': return 'Último ano';
       case 'all': return 'Todos';
+      case 'q1': return '1º Trimestre';
+      case 'q2': return '2º Trimestre';
+      case 'q3': return '3º Trimestre';
+      case 'q4': return '4º Trimestre';
       case 'custom': return 'Personalizado';
       default: return preset;
     }
