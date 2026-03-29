@@ -42,6 +42,22 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
       case 'all':
         // 10 years back — effectively "all data"
         return { from: subYears(now, 10), to: endOfDay(now) };
+      case 'q1': {
+        const y = now.getFullYear();
+        return { from: new Date(y, 0, 1), to: endOfDay(new Date(y, 2, 31)) };
+      }
+      case 'q2': {
+        const y = now.getFullYear();
+        return { from: new Date(y, 3, 1), to: endOfDay(new Date(y, 5, 30)) };
+      }
+      case 'q3': {
+        const y = now.getFullYear();
+        return { from: new Date(y, 6, 1), to: endOfDay(new Date(y, 8, 30)) };
+      }
+      case 'q4': {
+        const y = now.getFullYear();
+        return { from: new Date(y, 9, 1), to: endOfDay(new Date(y, 11, 31)) };
+      }
       case 'custom':
         return {
           from: customFrom || subDays(now, 30),
