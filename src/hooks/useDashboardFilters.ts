@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { startOfMonth, endOfMonth, subDays, subMonths, startOfDay, endOfDay, subYears } from 'date-fns';
 
-export type FilterPreset = '7d' | '30d' | '90d' | '6m' | 'mes_atual' | 'mes_anterior' | '1y' | 'all' | 'custom';
+export type FilterPreset = '7d' | '30d' | '90d' | '6m' | 'mes_atual' | 'mes_anterior' | '1y' | 'all' | 'custom' | 'q1' | 'q2' | 'q3' | 'q4';
 
 export interface DashboardFilters {
   preset: FilterPreset;
@@ -42,6 +42,22 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
       case 'all':
         // 10 years back — effectively "all data"
         return { from: subYears(now, 10), to: endOfDay(now) };
+      case 'q1': {
+        const y = now.getFullYear();
+        return { from: new Date(y, 0, 1), to: endOfDay(new Date(y, 2, 31)) };
+      }
+      case 'q2': {
+        const y = now.getFullYear();
+        return { from: new Date(y, 3, 1), to: endOfDay(new Date(y, 5, 30)) };
+      }
+      case 'q3': {
+        const y = now.getFullYear();
+        return { from: new Date(y, 6, 1), to: endOfDay(new Date(y, 8, 30)) };
+      }
+      case 'q4': {
+        const y = now.getFullYear();
+        return { from: new Date(y, 9, 1), to: endOfDay(new Date(y, 11, 31)) };
+      }
       case 'custom':
         return {
           from: customFrom || subDays(now, 30),
@@ -80,6 +96,10 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
       case 'mes_anterior': return 'Mês anterior';
       case '1y': return 'Último ano';
       case 'all': return 'Todos';
+      case 'q1': return '1º Trimestre';
+      case 'q2': return '2º Trimestre';
+      case 'q3': return '3º Trimestre';
+      case 'q4': return '4º Trimestre';
       case 'custom': return 'Personalizado';
       default: return preset;
     }

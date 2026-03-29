@@ -12,7 +12,7 @@ import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { Users, UserCheck, UserX, ShieldBan, HeartPulse, AlertTriangle, Layers } from 'lucide-react';
+import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -22,6 +22,7 @@ import type { Integration } from '@/components/setores/SectorIntegrations';
 import { MovimentacaoTab } from '@/components/comercial/MovimentacaoTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
 import { PipeDriveTab } from '@/components/comercial/PipeDriveTab';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
@@ -80,7 +81,8 @@ export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
   const [activeTab, setActiveTab] = useState('kpi-oficial');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
-  const filters = useDashboardFilters('30d');
+  const currentYear = new Date().getFullYear();
+  const filters = useDashboardFilters('1y');
   const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
   const { exportCSV, exportPDF } = useDashboardExport();
@@ -125,9 +127,7 @@ export default function ComercialDashboard() {
   const handleExportPDF = () => exportPDF({
     title: 'Base de Clientes', area: 'Comercial', periodLabel: filters.presetLabel,
     kpis: [
-      { label: 'Total Clientes', value: stats.total },
       { label: 'Ativos', value: stats.ativos },
-      { label: 'Inativos', value: stats.inativos },
       { label: 'Bloqueados', value: stats.bloqueados },
     ],
     columns: ['id', 'nome', 'apelido', 'bandeira', 'status'],
@@ -165,12 +165,13 @@ export default function ComercialDashboard() {
         presetControl="dropdown"
         presetsLabel="Período"
         presets={[
-          { value: '7d', label: '7d' },
-          { value: '30d', label: '30d' },
-          { value: '90d', label: '90d' },
-          { value: '6m', label: '6m' },
-          { value: '1y', label: '1a' },
-          { value: 'all', label: 'Todos' },
+          { value: 'mes_atual', label: 'Mês atual' },
+          { value: 'mes_anterior', label: 'Mês anterior' },
+          { value: 'q1', label: `1º Tri ${currentYear}` },
+          { value: 'q2', label: `2º Tri ${currentYear}` },
+          { value: 'q3', label: `3º Tri ${currentYear}` },
+          { value: 'q4', label: `4º Tri ${currentYear}` },
+          { value: '1y', label: `Ano ${currentYear}` },
         ]}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
@@ -196,48 +197,79 @@ export default function ComercialDashboard() {
           </TabsList>
 
           <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <DashboardKpiCard
-                label="Total Clientes"
-                value={stats.total}
-                icon={Users}
-                isLoading={isLoading}
-              />
+            <div className="grid grid-cols-2 gap-4">
               <DashboardKpiCard
                 label="Ativos"
                 value={stats.ativos}
                 icon={UserCheck}
                 isLoading={isLoading}
-                delay={80}
                 active={statusFilter === 'ativo'}
                 onClick={() => handleKpiClick('ativo')}
-              />
-              <DashboardKpiCard
-                label="Inativos"
-                value={stats.inativos}
-                icon={UserX}
-                isLoading={isLoading}
-                delay={160}
-                active={statusFilter === 'inativo'}
-                onClick={() => handleKpiClick('inativo')}
               />
               <DashboardKpiCard
                 label="Bloqueados"
                 value={stats.bloqueados}
                 icon={ShieldBan}
                 isLoading={isLoading}
-                delay={240}
+                delay={80}
                 active={statusFilter === 'bloqueado'}
                 onClick={() => handleKpiClick('bloqueado')}
               />
             </div>
+
+            {/* Chart: Clientes Ativos por Bandeira */}
+            {(() => {
+              const ativosClients = (statusFilter === 'todos' || statusFilter === 'ativo')
+                ? clients.filter(c => c.status?.toLowerCase() === 'ativo')
+                : [];
+              const bandeiraMap = new Map<string, number>();
+              ativosClients.forEach(c => {
+                const b = c.bandeira || 'Sem bandeira';
+                bandeiraMap.set(b, (bandeiraMap.get(b) || 0) + 1);
+              });
+              const chartData = Array.from(bandeiraMap.entries())
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count);
+              const COLORS = [
+                'hsl(var(--primary))',
+                'hsl(var(--accent))',
+                'hsl(var(--muted-foreground))',
+                'hsl(210, 70%, 55%)',
+                'hsl(160, 60%, 45%)',
+                'hsl(30, 80%, 55%)',
+                'hsl(280, 60%, 55%)',
+                'hsl(0, 65%, 55%)',
+              ];
+              return chartData.length > 0 && !isLoading ? (
+                <Card className="p-4 space-y-2">
+                  <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
+                  <p className="text-xs text-muted-foreground">{ativosClients.length} clientes ativos em {chartData.length} bandeiras</p>
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                        <Tooltip
+                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                          formatter={(value: number) => [value, 'Clientes']}
+                        />
+                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                          {chartData.map((_, i) => (
+                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              ) : null;
+            })()}
 
             <div className="flex items-center gap-2 mt-1 mb-1">
               <span className="text-xs text-muted-foreground">Filtrar:</span>
               <ToggleGroup type="single" value={statusFilter} onValueChange={(v) => setStatusFilter((v || 'todos') as ClientStatusFilter)} size="sm">
                 <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
                 <ToggleGroupItem value="ativo" className="text-xs h-7 px-3">Ativos</ToggleGroupItem>
-                <ToggleGroupItem value="inativo" className="text-xs h-7 px-3">Inativos</ToggleGroupItem>
                 <ToggleGroupItem value="bloqueado" className="text-xs h-7 px-3">Bloqueados</ToggleGroupItem>
               </ToggleGroup>
             </div>
