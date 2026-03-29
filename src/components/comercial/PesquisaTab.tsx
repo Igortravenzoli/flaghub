@@ -339,6 +339,13 @@ export function PesquisaTab() {
         subtitle="Pesquisa de Satisfação"
         fields={drawerFields}
       />
+
+      <ImportModeDialog
+        open={importModeOpen}
+        onClose={() => { setImportModeOpen(false); setPendingFile(null); }}
+        onConfirm={handleImportConfirm}
+        fileName={pendingFile?.name}
+      />
     </div>
   );
 }
