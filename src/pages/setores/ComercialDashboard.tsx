@@ -81,7 +81,8 @@ export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
   const [activeTab, setActiveTab] = useState('kpi-oficial');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
-  const filters = useDashboardFilters('30d');
+  const currentYear = new Date().getFullYear();
+  const filters = useDashboardFilters('1y');
   const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
   const { exportCSV, exportPDF } = useDashboardExport();
