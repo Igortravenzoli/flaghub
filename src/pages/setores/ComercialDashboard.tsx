@@ -78,8 +78,9 @@ const operationalColumns = [
 ] as DataTableColumn<any>[];
 
 export default function ComercialDashboard() {
-  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
+  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('ativo');
   const [activeTab, setActiveTab] = useState('kpi-oficial');
+  const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
   const filters = useDashboardFilters('1y');
