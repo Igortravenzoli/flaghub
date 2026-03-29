@@ -294,20 +294,27 @@ export default function ComercialDashboard() {
             </div>
 
             {!isLoading && clients.length === 0 ? (
-              <DashboardEmptyState description="Nenhum cliente encontrado com o filtro selecionado." />
-            ) : (
-              <DashboardDataTable
-                title="Base de Clientes"
-                subtitle={`${totalClientes} clientes${statusFilter !== 'todos' ? ` (${statusFilter})` : ''}`}
-                columns={columns}
-                data={clients}
-                isLoading={isLoading}
-                getRowKey={(r) => r.id}
-                onRowClick={(r) => setDrawerClient(r)}
-                searchPlaceholder="Buscar cliente..."
-                columnFilters={tableColumnFilters}
-              />
-            )}
+            {(() => {
+              const filteredClients = selectedBandeira
+                ? clients.filter(c => (c.bandeira || 'Sem bandeira') === selectedBandeira)
+                : clients;
+              const count = filteredClients.length;
+              return !isLoading && count === 0 ? (
+                <DashboardEmptyState description="Nenhum cliente encontrado com o filtro selecionado." />
+              ) : (
+                <DashboardDataTable
+                  title="Base de Clientes"
+                  subtitle={`${count} clientes${statusFilter !== 'todos' ? ` (${statusFilter})` : ''}${selectedBandeira ? ` • ${selectedBandeira}` : ''}`}
+                  columns={columns}
+                  data={filteredClients}
+                  isLoading={isLoading}
+                  getRowKey={(r) => r.id}
+                  onRowClick={(r) => setDrawerClient(r)}
+                  searchPlaceholder="Buscar cliente..."
+                  columnFilters={tableColumnFilters}
+                />
+              );
+            })()}
           </TabsContent>
 
           <TabsContent value="operacional" className="space-y-4 mt-0">
