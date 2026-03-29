@@ -78,6 +78,8 @@ export function PesquisaTab() {
   const { uploadSurvey, isUploading, lastResult } = useSurveyUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [drawerItem, setDrawerItem] = useState<SurveyResponse | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [importModeOpen, setImportModeOpen] = useState(false);
 
   const latestAggregate = aggregates[0]?.payload;
 
