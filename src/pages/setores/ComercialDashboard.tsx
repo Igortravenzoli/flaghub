@@ -12,7 +12,7 @@ import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { Users, UserCheck, UserX, ShieldBan, HeartPulse, AlertTriangle, Layers } from 'lucide-react';
+import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -22,6 +22,7 @@ import type { Integration } from '@/components/setores/SectorIntegrations';
 import { MovimentacaoTab } from '@/components/comercial/MovimentacaoTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
 import { PipeDriveTab } from '@/components/comercial/PipeDriveTab';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
