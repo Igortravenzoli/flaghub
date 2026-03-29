@@ -137,7 +137,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Validate JWT from the request
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return Response.json({ error: "Missing authorization" }, { status: 401, headers: corsHeaders });
@@ -155,11 +154,24 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { import_name, file_name, rows, survey_context } = body as {
+    const {
+      import_name,
+      file_name,
+      rows,
+      survey_context,
+      import_id: existingImportId,
+      chunk_index,
+      total_chunks,
+      import_mode,
+    } = body as {
       import_name: string;
       file_name: string;
       rows: Record<string, string>[];
       survey_context?: { source?: string; survey_date?: string };
+      import_id?: string;
+      chunk_index?: number;
+      total_chunks?: number;
+      import_mode?: "incremental" | "purge";
     };
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
@@ -169,24 +181,52 @@ Deno.serve(async (req) => {
       return Response.json({ error: "import_name and file_name are required" }, { status: 400, headers: corsHeaders });
     }
 
-    // ── 1. Create import record ──────────────────────────────────
-    const { data: importRec, error: impErr } = await supabaseAdmin
-      .from("survey_imports")
-      .insert({
-        import_name,
-        file_name,
-        status: "processing",
-        rows_received: rows.length,
-        imported_by: user.id,
-      })
-      .select("id")
-      .single();
+    const isFirstChunk = !existingImportId || chunk_index === 0;
+    const isLastChunk = !total_chunks || (chunk_index ?? 0) >= (total_chunks - 1);
 
-    if (impErr || !importRec) {
-      return Response.json({ error: `Failed to create import: ${impErr?.message}` }, { status: 500, headers: corsHeaders });
+    // ── Purge mode: clear all existing survey data on first chunk ──
+    if (isFirstChunk && import_mode === "purge") {
+      console.log("Purge mode: clearing existing survey data");
+      await supabaseAdmin.from("survey_aggregates").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabaseAdmin.from("survey_responses").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabaseAdmin.from("survey_imports").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     }
 
-    const importId = importRec.id;
+    // ── 1. Create or reuse import record ─────────────────────────
+    let importId: string;
+    if (existingImportId && !isFirstChunk) {
+      importId = existingImportId;
+      // Update rows_received count
+      const { data: existing } = await supabaseAdmin
+        .from("survey_imports")
+        .select("rows_received")
+        .eq("id", importId)
+        .single();
+      if (existing) {
+        await supabaseAdmin
+          .from("survey_imports")
+          .update({ rows_received: (existing.rows_received ?? 0) + rows.length })
+          .eq("id", importId);
+      }
+    } else {
+      const { data: importRec, error: impErr } = await supabaseAdmin
+        .from("survey_imports")
+        .insert({
+          import_name,
+          file_name,
+          status: "processing",
+          rows_received: rows.length,
+          imported_by: user.id,
+        })
+        .select("id")
+        .single();
+
+      if (impErr || !importRec) {
+        return Response.json({ error: `Failed to create import: ${impErr?.message}` }, { status: 500, headers: corsHeaders });
+      }
+      importId = importRec.id;
+    }
+
     const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
 
     // ── 2. Normalize each row ────────────────────────────────────
@@ -213,7 +253,6 @@ Deno.serve(async (req) => {
         const contactResp = getVal(row, headers, "Responsável pelo contato");
         const obsInternal = getVal(row, headers, "Obs.: Miller para Ana e Arthur");
 
-        // Qualitative
         const trocaSistema = getVal(row, headers, "Vocês já pensaram em trocar de sistema?");
         const motivoTroca = getVal(row, headers, "Motivo Troca Sistema");
         const indicaria = getVal(row, headers, "Vocês indicariam a Flag?");
@@ -221,7 +260,6 @@ Deno.serve(async (req) => {
         const temRelato = getVal(row, headers, "Alguma relato ou obsevação?");
         const relatoObs = getVal(row, headers, "Relato Observação");
 
-        // Products
         const products: any[] = [];
         const rowComplaintTags = new Set<string>();
         const allObsTexts: string[] = [];
@@ -248,7 +286,6 @@ Deno.serve(async (req) => {
             complaint_tags: obsTags,
           });
 
-          // Aggregate per product
           if (!productStats.has(prod.key)) {
             productStats.set(prod.key, { scores: [], complaints: new Set() });
           }
@@ -259,33 +296,28 @@ Deno.serve(async (req) => {
           obsTags.forEach((t) => ps.complaints.add(t));
         }
 
-        // Also classify qualitative texts
         const qualTexts = [motivoTroca, motivoNaoIndicacao, relatoObs].filter(Boolean);
         for (const text of qualTexts) {
           classifyComplaints(text).forEach((t) => rowComplaintTags.add(t));
           if (text) allObsTexts.push(text);
         }
 
-        // Track global complaint tags
         for (const tag of rowComplaintTags) {
           if (!allComplaintTags.has(tag)) {
             allComplaintTags.set(tag, { count: 0, examples: [], products: new Set() });
           }
           const ct = allComplaintTags.get(tag)!;
           ct.count++;
-          // Add examples (max 3)
           for (const obs of allObsTexts) {
             if (ct.examples.length < 3 && !ct.examples.includes(obs)) {
               ct.examples.push(obs.substring(0, 200));
             }
           }
-          // Track affected products
           products.forEach((p) => {
             if (p.complaint_tags.includes(tag)) ct.products.add(p.product_key);
           });
         }
 
-        // Build NPS proxy from "indicaria"
         const indicariaVal = normalizeYesNo(indicaria);
         const npsProxy = indicariaVal === "yes" ? "promoter_proxy" : indicariaVal === "no" ? "detractor_proxy" : "unknown";
 
@@ -328,7 +360,6 @@ Deno.serve(async (req) => {
           complaint_tags: Array.from(rowComplaintTags),
         };
 
-        // Derived data for quick queries
         const ratedProducts = products.filter((p) => p.usage_status === "rated" && p.score !== null);
         const avgScore = ratedProducts.length > 0
           ? Number((ratedProducts.reduce((s, p) => s + p.score, 0) / ratedProducts.length).toFixed(2))
@@ -342,10 +373,8 @@ Deno.serve(async (req) => {
           nps_proxy: npsProxy,
         };
 
-        // Parse survey date
         let surveyDate: string | null = null;
         if (contactDate) {
-          // Handle Excel serial dates or date strings
           const numDate = Number(contactDate);
           if (!isNaN(numDate) && numDate > 40000 && numDate < 50000) {
             const d = new Date((numDate - 25569) * 86400 * 1000);
@@ -387,80 +416,155 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── 4. Compute aggregate ─────────────────────────────────────
-    const allScores = normalizedResponses
-      .map((r) => r.derived.avg_score)
-      .filter((s): s is number => s !== null);
+    // ── 4. On last chunk: compute aggregate and finalize ─────────
+    if (isLastChunk) {
+      // Re-read ALL responses for this import to compute full aggregate
+      const { data: allResponses } = await supabaseAdmin
+        .from("survey_responses")
+        .select("derived, payload")
+        .eq("import_id", importId);
 
-    const productsAggregate = Array.from(productStats.entries()).map(([key, stats]) => {
-      const prod = PRODUCTS.find((p) => p.key === key);
-      return {
-        product_key: key,
-        product_name: prod?.name ?? key,
-        avaliacoes_validas: stats.scores.length,
-        nota_media: calculateAverage(stats.scores),
-        csat: calculateCsat(stats.scores),
-        principais_reclamacoes: Array.from(stats.complaints).slice(0, 5),
+      const fullProductStats = new Map<string, { scores: number[]; complaints: Set<string> }>();
+      const fullComplaintTags = new Map<string, { count: number; examples: string[]; products: Set<string> }>();
+
+      for (const resp of (allResponses ?? [])) {
+        const products = resp.payload?.products ?? [];
+        for (const prod of products) {
+          if (!fullProductStats.has(prod.product_key)) {
+            fullProductStats.set(prod.product_key, { scores: [], complaints: new Set() });
+          }
+          const ps = fullProductStats.get(prod.product_key)!;
+          if (prod.usage_status === "rated" && prod.score !== null) {
+            ps.scores.push(prod.score);
+          }
+          (prod.complaint_tags ?? []).forEach((t: string) => ps.complaints.add(t));
+        }
+
+        const tags = resp.payload?.complaint_tags ?? [];
+        const obsTexts: string[] = [];
+        for (const prod of products) {
+          if (prod.observation_text && prod.observation_text.toUpperCase() !== "SEM OBSERVAÇÃO." && prod.observation_text.toUpperCase() !== "SEM OBSERVAÇÃO") {
+            obsTexts.push(prod.observation_text);
+          }
+        }
+        const qualTexts = [resp.payload?.troca_sistema?.motivo, resp.payload?.general_feedback?.report_text].filter(Boolean);
+        obsTexts.push(...qualTexts);
+
+        for (const tag of tags) {
+          if (!fullComplaintTags.has(tag)) {
+            fullComplaintTags.set(tag, { count: 0, examples: [], products: new Set() });
+          }
+          const ct = fullComplaintTags.get(tag)!;
+          ct.count++;
+          for (const obs of obsTexts) {
+            if (ct.examples.length < 3 && !ct.examples.includes(obs)) {
+              ct.examples.push(String(obs).substring(0, 200));
+            }
+          }
+          for (const prod of products) {
+            if ((prod.complaint_tags ?? []).includes(tag)) ct.products.add(prod.product_key);
+          }
+        }
+      }
+
+      const totalRows = allResponses?.length ?? 0;
+      const allScores = (allResponses ?? [])
+        .map((r) => r.derived?.avg_score)
+        .filter((s): s is number => s !== null);
+
+      const productsAggregate = Array.from(fullProductStats.entries()).map(([key, stats]) => {
+        const prod = PRODUCTS.find((p) => p.key === key);
+        return {
+          product_key: key,
+          product_name: prod?.name ?? key,
+          avaliacoes_validas: stats.scores.length,
+          nota_media: calculateAverage(stats.scores),
+          csat: calculateCsat(stats.scores),
+          principais_reclamacoes: Array.from(stats.complaints).slice(0, 5),
+        };
+      });
+
+      const motivos = Array.from(fullComplaintTags.entries())
+        .map(([tag, data]) => ({
+          tag,
+          count: data.count,
+          examples: data.examples,
+          produtos_mais_afetados: Array.from(data.products),
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      const aggregatePayload = {
+        schema_version: "1.0",
+        summary: {
+          total_clientes_pesquisados: totalRows,
+          respostas_validas: totalRows,
+          respostas_invalidas: 0,
+          nota_media_geral: calculateAverage(allScores),
+          csat_geral: calculateCsat(allScores),
+          nps: { value: null, type: "unavailable", zone: null },
+        },
+        motivos_insatisfacao: motivos,
+        products: productsAggregate,
       };
-    });
 
-    const motivos = Array.from(allComplaintTags.entries())
-      .map(([tag, data]) => ({
-        tag,
-        count: data.count,
-        examples: data.examples,
-        produtos_mais_afetados: Array.from(data.products),
-      }))
-      .sort((a, b) => b.count - a.count);
+      // Delete previous aggregate for this import, then insert new
+      await supabaseAdmin.from("survey_aggregates").delete().eq("import_id", importId);
+      const { data: aggRec, error: aggErr } = await supabaseAdmin
+        .from("survey_aggregates")
+        .insert({ import_id: importId, payload: aggregatePayload })
+        .select("id")
+        .single();
 
-    const aggregatePayload = {
-      schema_version: "1.0",
-      summary: {
-        total_clientes_pesquisados: rows.length,
-        respostas_validas: validCount,
-        respostas_invalidas: invalidCount,
-        nota_media_geral: calculateAverage(allScores),
-        csat_geral: calculateCsat(allScores),
-        nps: { value: null, type: "unavailable", zone: null },
-      },
-      motivos_insatisfacao: motivos,
-      products: productsAggregate,
-    };
+      if (aggErr) {
+        console.error("Aggregate insert error:", aggErr);
+      }
 
-    // ── 5. Insert aggregate ──────────────────────────────────────
-    const { data: aggRec, error: aggErr } = await supabaseAdmin
-      .from("survey_aggregates")
-      .insert({ import_id: importId, payload: aggregatePayload })
-      .select("id")
-      .single();
+      // Get total valid/invalid counts from all chunks
+      const { data: importMeta } = await supabaseAdmin
+        .from("survey_imports")
+        .select("rows_received")
+        .eq("id", importId)
+        .single();
 
-    if (aggErr) {
-      console.error("Aggregate insert error:", aggErr);
+      await supabaseAdmin
+        .from("survey_imports")
+        .update({
+          status: "completed",
+          rows_valid: totalRows,
+          rows_invalid: (importMeta?.rows_received ?? totalRows) - totalRows,
+          aggregate_id: aggRec?.id ?? null,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", importId);
+
+      return Response.json(
+        {
+          import_id: importId,
+          status: "completed",
+          summary: {
+            rows_received: importMeta?.rows_received ?? totalRows,
+            rows_valid: totalRows,
+            rows_invalid: 0,
+            responses_created: totalRows,
+          },
+          aggregate_id: aggRec?.id ?? null,
+        },
+        { headers: corsHeaders },
+      );
     }
 
-    // ── 6. Update import record ──────────────────────────────────
-    await supabaseAdmin
-      .from("survey_imports")
-      .update({
-        status: "completed",
-        rows_valid: validCount,
-        rows_invalid: invalidCount,
-        aggregate_id: aggRec?.id ?? null,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", importId);
-
+    // Not last chunk — return partial result with import_id for continuation
     return Response.json(
       {
         import_id: importId,
-        status: "completed",
+        status: "processing",
         summary: {
           rows_received: rows.length,
           rows_valid: validCount,
           rows_invalid: invalidCount,
           responses_created: normalizedResponses.length,
         },
-        aggregate_id: aggRec?.id ?? null,
+        aggregate_id: null,
       },
       { headers: corsHeaders },
     );
