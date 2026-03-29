@@ -261,12 +261,36 @@ export function PesquisaTab() {
         )}
       </Card>
 
+      {/* Product filter */}
+      {productOptions.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Filtrar por produto:</span>
+          <Badge
+            variant={selectedProduct === null ? 'default' : 'outline'}
+            className="cursor-pointer text-xs"
+            onClick={() => setSelectedProduct(null)}
+          >
+            Todos
+          </Badge>
+          {productOptions.map((p) => (
+            <Badge
+              key={p.key}
+              variant={selectedProduct === p.key ? 'default' : 'outline'}
+              className="cursor-pointer text-xs"
+              onClick={() => setSelectedProduct(selectedProduct === p.key ? null : p.key)}
+            >
+              {p.name}
+            </Badge>
+          ))}
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <DashboardKpiCard label="Clientes Pesquisados" value={kpis.total} icon={Users} isLoading={isLoading} />
+        <DashboardKpiCard label={selectedProduct ? 'Clientes c/ Produto' : 'Clientes Pesquisados'} value={kpis.total} icon={Users} isLoading={isLoading} />
         <DashboardKpiCard label="Nota Média" value={kpis.mediaGeral?.toFixed(2) ?? '—'} icon={Star} isLoading={isLoading} delay={80} />
         <DashboardKpiCard label="CSAT (%)" value={kpis.csatGeral != null ? `${kpis.csatGeral}%` : '—'} icon={BarChart3} isLoading={isLoading} delay={160} />
-        <DashboardKpiCard label="Produtos Avaliados" value={kpis.bandeiras} icon={BarChart3} isLoading={isLoading} delay={240} />
+        <DashboardKpiCard label="Produtos Avaliados" value={kpis.produtosAvaliados} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
       {/* Product Chart */}
