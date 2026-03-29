@@ -127,9 +127,7 @@ export default function ComercialDashboard() {
   const handleExportPDF = () => exportPDF({
     title: 'Base de Clientes', area: 'Comercial', periodLabel: filters.presetLabel,
     kpis: [
-      { label: 'Total Clientes', value: stats.total },
       { label: 'Ativos', value: stats.ativos },
-      { label: 'Inativos', value: stats.inativos },
       { label: 'Bloqueados', value: stats.bloqueados },
     ],
     columns: ['id', 'nome', 'apelido', 'bandeira', 'status'],
