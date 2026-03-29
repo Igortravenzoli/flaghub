@@ -293,7 +293,6 @@ export default function ComercialDashboard() {
               </ToggleGroup>
             </div>
 
-            {!isLoading && clients.length === 0 ? (
             {(() => {
               const filteredClients = selectedBandeira
                 ? clients.filter(c => (c.bandeira || 'Sem bandeira') === selectedBandeira)
