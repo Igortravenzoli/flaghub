@@ -51,6 +51,8 @@ export interface SurveyImportRecord {
   completed_at: string | null;
 }
 
+export type SurveyImportMode = 'incremental' | 'purge';
+
 // ── XLSX parser (wide format) ────────────────────────────────────
 function detectHeaderRow(matrix: any[][]): number {
   for (let i = 0; i < Math.min(matrix.length, 15); i++) {
@@ -105,7 +107,7 @@ export function useSurveyUpload() {
   const [lastResult, setLastResult] = useState<SurveyImportSummary | null>(null);
   const queryClient = useQueryClient();
 
-  const uploadSurvey = useCallback(async (file: File, importName?: string) => {
+  const uploadSurvey = useCallback(async (file: File, importName?: string, mode: SurveyImportMode = 'incremental') => {
     setIsUploading(true);
     setLastResult(null);
 
@@ -117,12 +119,13 @@ export function useSurveyUpload() {
       if (!session?.access_token) throw new Error('Sessão expirada. Faça login novamente.');
 
       // Chunk rows to stay under 2MB edge function limit
-      const MAX_ROWS_PER_CHUNK = 80;
+      const MAX_ROWS_PER_CHUNK = 200;
       const chunks: Record<string, string>[][] = [];
       for (let i = 0; i < rows.length; i += MAX_ROWS_PER_CHUNK) {
         chunks.push(rows.slice(i, i + MAX_ROWS_PER_CHUNK));
       }
 
+      let importId: string | null = null;
       let finalResult: SurveyImportSummary | null = null;
 
       for (let ci = 0; ci < chunks.length; ci++) {
@@ -138,11 +141,20 @@ export function useSurveyUpload() {
             file_name: file.name,
             rows: chunks[ci],
             survey_context: { source: importName || file.name },
+            import_id: importId,
+            chunk_index: ci,
+            total_chunks: chunks.length,
+            import_mode: ci === 0 ? mode : 'incremental', // purge only on first chunk
           }),
         });
 
         const payload = await res.json();
         if (!res.ok) throw new Error(payload?.error || `Erro ${res.status}`);
+
+        // Capture import_id from first chunk for continuation
+        if (ci === 0) {
+          importId = payload.import_id;
+        }
         finalResult = payload as SurveyImportSummary;
       }
 

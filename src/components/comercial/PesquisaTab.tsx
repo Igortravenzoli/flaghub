@@ -13,7 +13,9 @@ import {
   useSurveyImports,
   useSurveyUpload,
   SurveyResponse,
+  SurveyImportMode,
 } from '@/hooks/useSurveyImport';
+import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { Star, Users, BarChart3, Upload, FileSpreadsheet, CheckCircle2, Clock, TrendingDown, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
@@ -76,6 +78,8 @@ export function PesquisaTab() {
   const { uploadSurvey, isUploading, lastResult } = useSurveyUpload();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [drawerItem, setDrawerItem] = useState<SurveyResponse | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [importModeOpen, setImportModeOpen] = useState(false);
 
   const latestAggregate = aggregates[0]?.payload;
 
@@ -118,8 +122,17 @@ export function PesquisaTab() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    await uploadSurvey(file);
-  }, [uploadSurvey]);
+    setPendingFile(file);
+    setImportModeOpen(true);
+  }, []);
+
+  const handleImportConfirm = useCallback(async (mode: ImportMode) => {
+    setImportModeOpen(false);
+    if (!pendingFile) return;
+    const surveyMode: SurveyImportMode = mode === 'purge' ? 'purge' : 'incremental';
+    await uploadSurvey(pendingFile, undefined, surveyMode);
+    setPendingFile(null);
+  }, [pendingFile, uploadSurvey]);
 
   // ── Drawer fields ──────────────────────────────────────────────
   const drawerFields: DrawerField[] = useMemo(() => {
@@ -325,6 +338,13 @@ export function PesquisaTab() {
         title={drawerItem?.client_name || undefined}
         subtitle="Pesquisa de Satisfação"
         fields={drawerFields}
+      />
+
+      <ImportModeDialog
+        open={importModeOpen}
+        onClose={() => { setImportModeOpen(false); setPendingFile(null); }}
+        onConfirm={handleImportConfirm}
+        fileName={pendingFile?.name}
       />
     </div>
   );
