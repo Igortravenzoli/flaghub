@@ -909,6 +909,25 @@ serve(async (req: Request) => {
     console.log(`[DevOpsSyncAll] Syncing ${generalQueries.length} active general queries (background)`)
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+
+    // ── Find sync job and create run record ──
+    const { data: syncJob } = await admin
+      .from('hub_sync_jobs')
+      .select('id')
+      .eq('job_key', 'devops_sync_all_default')
+      .maybeSingle()
+
+    const syncJobId = syncJob?.id
+    let runId: number | null = null
+    if (syncJobId) {
+      const { data: run } = await admin
+        .from('hub_sync_runs')
+        .insert({ job_id: syncJobId, status: 'running', started_at: new Date().toISOString() })
+        .select('id')
+        .single()
+      runId = run?.id ?? null
+    }
+
     const isCron = validateCronSecret(req)
     const forwardHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
