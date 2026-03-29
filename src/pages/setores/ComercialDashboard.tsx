@@ -78,8 +78,9 @@ const operationalColumns = [
 ] as DataTableColumn<any>[];
 
 export default function ComercialDashboard() {
-  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('todos');
+  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('ativo');
   const [activeTab, setActiveTab] = useState('kpi-oficial');
+  const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
   const filters = useDashboardFilters('1y');
@@ -240,10 +241,24 @@ export default function ComercialDashboard() {
                 'hsl(280, 60%, 55%)',
                 'hsl(0, 65%, 55%)',
               ];
+              const handleBarClick = (data: any) => {
+                if (data?.name) {
+                  setSelectedBandeira(prev => prev === data.name ? null : data.name);
+                }
+              };
               return chartData.length > 0 && !isLoading ? (
                 <Card className="p-4 space-y-2">
-                  <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
-                  <p className="text-xs text-muted-foreground">{ativosClients.length} clientes ativos em {chartData.length} bandeiras</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
+                      <p className="text-xs text-muted-foreground">{ativosClients.length} clientes ativos em {chartData.length} bandeiras</p>
+                    </div>
+                    {selectedBandeira && (
+                      <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedBandeira(null)}>
+                        {selectedBandeira} ✕
+                      </Badge>
+                    )}
+                  </div>
                   <div className="h-[260px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
@@ -253,9 +268,13 @@ export default function ComercialDashboard() {
                           contentStyle={{ fontSize: 12, borderRadius: 8 }}
                           formatter={(value: number) => [value, 'Clientes']}
                         />
-                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                          {chartData.map((_, i) => (
-                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        <Bar dataKey="count" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                          {chartData.map((entry, i) => (
+                            <Cell
+                              key={i}
+                              fill={COLORS[i % COLORS.length]}
+                              opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.3 : 1}
+                            />
                           ))}
                         </Bar>
                       </BarChart>
@@ -274,21 +293,27 @@ export default function ComercialDashboard() {
               </ToggleGroup>
             </div>
 
-            {!isLoading && clients.length === 0 ? (
-              <DashboardEmptyState description="Nenhum cliente encontrado com o filtro selecionado." />
-            ) : (
-              <DashboardDataTable
-                title="Base de Clientes"
-                subtitle={`${totalClientes} clientes${statusFilter !== 'todos' ? ` (${statusFilter})` : ''}`}
-                columns={columns}
-                data={clients}
-                isLoading={isLoading}
-                getRowKey={(r) => r.id}
-                onRowClick={(r) => setDrawerClient(r)}
-                searchPlaceholder="Buscar cliente..."
-                columnFilters={tableColumnFilters}
-              />
-            )}
+            {(() => {
+              const filteredClients = selectedBandeira
+                ? clients.filter(c => (c.bandeira || 'Sem bandeira') === selectedBandeira)
+                : clients;
+              const count = filteredClients.length;
+              return !isLoading && count === 0 ? (
+                <DashboardEmptyState description="Nenhum cliente encontrado com o filtro selecionado." />
+              ) : (
+                <DashboardDataTable
+                  title="Base de Clientes"
+                  subtitle={`${count} clientes${statusFilter !== 'todos' ? ` (${statusFilter})` : ''}${selectedBandeira ? ` • ${selectedBandeira}` : ''}`}
+                  columns={columns}
+                  data={filteredClients}
+                  isLoading={isLoading}
+                  getRowKey={(r) => r.id}
+                  onRowClick={(r) => setDrawerClient(r)}
+                  searchPlaceholder="Buscar cliente..."
+                  columnFilters={tableColumnFilters}
+                />
+              );
+            })()}
           </TabsContent>
 
           <TabsContent value="operacional" className="space-y-4 mt-0">
