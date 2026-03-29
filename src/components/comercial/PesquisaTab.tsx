@@ -80,22 +80,61 @@ export function PesquisaTab() {
   const [drawerItem, setDrawerItem] = useState<SurveyResponse | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [importModeOpen, setImportModeOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
 
   const latestAggregate = aggregates[0]?.payload;
 
-  // ── KPIs from latest aggregate ─────────────────────────────────
+  // ── All product keys for filter ────────────────────────────────
+  const productOptions = useMemo(() => {
+    if (!latestAggregate?.products) return [];
+    return (latestAggregate.products as any[])
+      .filter((p: any) => p.avaliacoes_validas > 0)
+      .map((p: any) => ({ key: p.product_key, name: p.product_name }));
+  }, [latestAggregate]);
+
+  // ── KPIs: recalculate from responses when product filter is active
   const kpis = useMemo(() => {
-    if (!latestAggregate?.summary) {
-      return { total: responses.length, mediaGeral: null, csatGeral: null, bandeiras: 0 };
+    if (!selectedProduct) {
+      if (!latestAggregate?.summary) {
+        return { total: responses.length, mediaGeral: null, csatGeral: null, produtosAvaliados: 0 };
+      }
+      const s = latestAggregate.summary;
+      return {
+        total: s.total_clientes_pesquisados ?? responses.length,
+        mediaGeral: s.nota_media_geral,
+        csatGeral: s.csat_geral,
+        produtosAvaliados: (latestAggregate.products as any[])?.filter((p: any) => p.avaliacoes_validas > 0).length ?? 0,
+      };
     }
-    const s = latestAggregate.summary;
+
+    // Filter KPIs for selected product
+    let ratedScores: number[] = [];
+    let totalWithProduct = 0;
+
+    for (const r of responses) {
+      const products = r.payload?.products ?? [];
+      const prod = products.find((p: any) => p.product_key === selectedProduct);
+      if (!prod) continue;
+      totalWithProduct++;
+      if (prod.usage_status === 'rated' && prod.score != null) {
+        ratedScores.push(prod.score);
+      }
+    }
+
+    const avg = ratedScores.length > 0
+      ? Number((ratedScores.reduce((a, b) => a + b, 0) / ratedScores.length).toFixed(2))
+      : null;
+    const csat = ratedScores.length > 0
+      ? Number(((ratedScores.filter(s => s >= 4).length / ratedScores.length) * 100).toFixed(1))
+      : null;
+
     return {
-      total: s.total_clientes_pesquisados ?? responses.length,
-      mediaGeral: s.nota_media_geral,
-      csatGeral: s.csat_geral,
-      bandeiras: latestAggregate.products?.length ?? 0,
+      total: totalWithProduct,
+      mediaGeral: avg,
+      csatGeral: csat,
+      produtosAvaliados: 1,
     };
-  }, [latestAggregate, responses.length]);
+  }, [latestAggregate, responses, selectedProduct]);
 
   // ── Product chart data ─────────────────────────────────────────
   const productChart = useMemo(() => {
@@ -104,6 +143,7 @@ export function PesquisaTab() {
       .filter((p: any) => p.avaliacoes_validas > 0)
       .sort((a: any, b: any) => (b.nota_media ?? 0) - (a.nota_media ?? 0))
       .map((p: any) => ({
+        key: p.product_key,
         name: p.product_name,
         media: p.nota_media ?? 0,
         csat: p.csat ?? 0,
@@ -222,22 +262,56 @@ export function PesquisaTab() {
         )}
       </Card>
 
+      {/* Product filter */}
+      {productOptions.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Filtrar por produto:</span>
+          <Badge
+            variant={selectedProduct === null ? 'default' : 'outline'}
+            className="cursor-pointer text-xs"
+            onClick={() => setSelectedProduct(null)}
+          >
+            Todos
+          </Badge>
+          {productOptions.map((p) => (
+            <Badge
+              key={p.key}
+              variant={selectedProduct === p.key ? 'default' : 'outline'}
+              className="cursor-pointer text-xs"
+              onClick={() => setSelectedProduct(selectedProduct === p.key ? null : p.key)}
+            >
+              {p.name}
+            </Badge>
+          ))}
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <DashboardKpiCard label="Clientes Pesquisados" value={kpis.total} icon={Users} isLoading={isLoading} />
+        <DashboardKpiCard label={selectedProduct ? 'Clientes c/ Produto' : 'Clientes Pesquisados'} value={kpis.total} icon={Users} isLoading={isLoading} />
         <DashboardKpiCard label="Nota Média" value={kpis.mediaGeral?.toFixed(2) ?? '—'} icon={Star} isLoading={isLoading} delay={80} />
         <DashboardKpiCard label="CSAT (%)" value={kpis.csatGeral != null ? `${kpis.csatGeral}%` : '—'} icon={BarChart3} isLoading={isLoading} delay={160} />
-        <DashboardKpiCard label="Produtos Avaliados" value={kpis.bandeiras} icon={BarChart3} isLoading={isLoading} delay={240} />
+        <DashboardKpiCard label="Produtos Avaliados" value={kpis.produtosAvaliados} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
       {/* Product Chart */}
       {productChart.length > 0 && (
         <Card className="p-4 space-y-2">
           <h3 className="text-sm font-semibold">Nota Média por Produto</h3>
-          <p className="text-xs text-muted-foreground">Escala 0–5 • Apenas avaliações válidas (rated)</p>
+          <p className="text-xs text-muted-foreground">Escala 0–5 • Clique em uma barra para filtrar os KPIs</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={productChart} margin={{ top: 8, right: 16, bottom: 60, left: 0 }} layout="horizontal">
+              <BarChart
+                data={productChart}
+                margin={{ top: 8, right: 16, bottom: 60, left: 0 }}
+                layout="horizontal"
+                onClick={(e) => {
+                  if (e?.activePayload?.[0]?.payload?.key) {
+                    const key = e.activePayload[0].payload.key;
+                    setSelectedProduct(selectedProduct === key ? null : key);
+                  }
+                }}
+              >
                 <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-40} textAnchor="end" interval={0} />
                 <YAxis domain={[0, 5]} tick={{ fontSize: 11 }} />
                 <Tooltip
@@ -248,9 +322,13 @@ export function PesquisaTab() {
                   }}
                   labelFormatter={(label) => label}
                 />
-                <Bar dataKey="media" radius={[4, 4, 0, 0]}>
-                  {productChart.map((_: any, i: number) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                <Bar dataKey="media" radius={[4, 4, 0, 0]} className="cursor-pointer">
+                  {productChart.map((entry: any, i: number) => (
+                    <Cell
+                      key={i}
+                      fill={COLORS[i % COLORS.length]}
+                      opacity={selectedProduct && entry.key !== selectedProduct ? 0.3 : 1}
+                    />
                   ))}
                 </Bar>
               </BarChart>
