@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
@@ -9,7 +9,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { useComercialMovimentacao, MovimentacaoCliente } from '@/hooks/useComercialMovimentacao';
 import { useMovimentacaoImport } from '@/hooks/useMovimentacaoImport';
-import { TrendingUp, TrendingDown, DollarSign, BarChart3, Upload, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart3, Percent, Upload, Loader2 } from 'lucide-react';
 
 const columns: DataTableColumn<MovimentacaoCliente>[] = [
   { key: 'cliente_codigo', header: 'Código', className: 'font-mono text-xs w-16' },
@@ -24,12 +24,6 @@ const columns: DataTableColumn<MovimentacaoCliente>[] = [
   { key: 'bandeira', header: 'Bandeira', render: (r) => r.bandeira ? <Badge variant="outline" className="text-xs">{r.bandeira}</Badge> : '—' },
   { key: 'sistema', header: 'Sistema', className: 'text-xs text-muted-foreground' },
   {
-    key: 'valor_mensal', header: 'Valor Mensal', render: (r) =>
-      r.valor_mensal != null
-        ? `R$ ${r.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-        : '—',
-  },
-  {
     key: 'data_evento', header: 'Data', className: 'text-xs',
     render: (r) => r.data_evento ? new Date(r.data_evento).toLocaleDateString('pt-BR') : '—',
   },
@@ -43,8 +37,46 @@ interface Props {
 
 export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
   const [tipoFilter, setTipoFilter] = useState<'todos' | 'perda' | 'ganho'>('todos');
+  const [anoFilter, setAnoFilter] = useState<string>('todos');
   const [drawerItem, setDrawerItem] = useState<MovimentacaoCliente | null>(null);
-  const { items, stats, isLoading, isError, refetch } = useComercialMovimentacao(tipoFilter, dateFrom, dateTo);
+  const { items: rawItems, allItems, stats: rawStats, isLoading, isError, refetch } = useComercialMovimentacao(tipoFilter, dateFrom, dateTo);
+
+  // Filter by year
+  const items = useMemo(() => {
+    if (anoFilter === 'todos') return rawItems;
+    const year = parseInt(anoFilter);
+    return rawItems.filter((i) => {
+      if (i.ano_referencia) return i.ano_referencia === year;
+      if (i.data_evento) return new Date(i.data_evento).getFullYear() === year;
+      return false;
+    });
+  }, [rawItems, anoFilter]);
+
+  // Recalculate stats for filtered items
+  const stats = useMemo(() => {
+    const perdas = items.filter((i) => i.tipo === 'perda');
+    const ganhos = items.filter((i) => i.tipo === 'ganho');
+    const total = items.length;
+    const pctGanhos = total > 0 ? Math.round((ganhos.length / total) * 100) : 0;
+    const pctPerdas = total > 0 ? Math.round((perdas.length / total) * 100) : 0;
+    return {
+      totalGanhos: ganhos.length,
+      totalPerdas: perdas.length,
+      pctGanhos,
+      pctPerdas,
+      saldoClientes: ganhos.length - perdas.length,
+    };
+  }, [items]);
+
+  // Available years from data
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    for (const i of allItems) {
+      if (i.ano_referencia) years.add(i.ano_referencia);
+      else if (i.data_evento) years.add(new Date(i.data_evento).getFullYear());
+    }
+    return [...years].sort((a, b) => b - a);
+  }, [allItems]);
 
   // Import state
   const fileRef = useRef<HTMLInputElement>(null);
@@ -71,16 +103,12 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
     }
   }, [pendingFile, upload, refetch]);
 
-  const formatBRL = (v: number) =>
-    `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-
   const drawerFields: DrawerField[] = drawerItem ? [
     { label: 'Código', value: drawerItem.cliente_codigo },
     { label: 'Cliente', value: drawerItem.cliente_nome },
     { label: 'Tipo', value: drawerItem.tipo === 'ganho' ? 'Ganho' : 'Perda' },
     { label: 'Bandeira', value: drawerItem.bandeira },
     { label: 'Sistema', value: drawerItem.sistema },
-    { label: 'Valor Mensal', value: drawerItem.valor_mensal != null ? formatBRL(drawerItem.valor_mensal) : '—' },
     { label: 'Categoria', value: drawerItem.motivo },
     { label: 'Observação', value: drawerItem.status_encerramento },
     { label: 'Data', value: drawerItem.data_evento ? new Date(drawerItem.data_evento).toLocaleDateString('pt-BR') : '—' },
@@ -110,19 +138,30 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <DashboardKpiCard label="Ganhos" value={stats.totalGanhos} icon={TrendingUp} isLoading={isLoading} />
-        <DashboardKpiCard label="Perdas" value={stats.totalPerdas} icon={TrendingDown} isLoading={isLoading} delay={80} />
-        <DashboardKpiCard label="Receita Ganha" value={formatBRL(stats.valorGanhos)} icon={DollarSign} isLoading={isLoading} delay={160} />
+        <DashboardKpiCard label="Ganhos" value={`${stats.pctGanhos}%`} icon={TrendingUp} isLoading={isLoading} />
+        <DashboardKpiCard label="Perdas" value={`${stats.pctPerdas}%`} icon={TrendingDown} isLoading={isLoading} delay={80} />
+        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={Percent} isLoading={isLoading} delay={160} />
         <DashboardKpiCard label="Saldo (Clientes)" value={stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes)} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
-      <div className="flex items-center gap-2 mt-1 mb-1">
-        <span className="text-xs text-muted-foreground">Filtrar:</span>
-        <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => setTipoFilter((v || 'todos') as any)} size="sm">
-          <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
-          <ToggleGroupItem value="ganho" className="text-xs h-7 px-3">Ganhos</ToggleGroupItem>
-          <ToggleGroupItem value="perda" className="text-xs h-7 px-3">Perdas</ToggleGroupItem>
-        </ToggleGroup>
+      <div className="flex items-center gap-4 mt-1 mb-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Tipo:</span>
+          <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => setTipoFilter((v || 'todos') as any)} size="sm">
+            <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
+            <ToggleGroupItem value="ganho" className="text-xs h-7 px-3">Ganhos</ToggleGroupItem>
+            <ToggleGroupItem value="perda" className="text-xs h-7 px-3">Perdas</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Ano:</span>
+          <ToggleGroup type="single" value={anoFilter} onValueChange={(v) => setAnoFilter(v || 'todos')} size="sm">
+            <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
+            {availableYears.map((y) => (
+              <ToggleGroupItem key={y} value={String(y)} className="text-xs h-7 px-3">{y}</ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
       </div>
 
       {!isLoading && items.length === 0 ? (
@@ -130,7 +169,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
       ) : (
         <DashboardDataTable
           title="Movimentação de Clientes"
-          subtitle={`${items.length} registros${tipoFilter !== 'todos' ? ` (${tipoFilter === 'ganho' ? 'ganhos' : 'perdas'})` : ''}`}
+          subtitle={`${items.length} registros${tipoFilter !== 'todos' ? ` (${tipoFilter === 'ganho' ? 'ganhos' : 'perdas'})` : ''}${anoFilter !== 'todos' ? ` • ${anoFilter}` : ''}`}
           columns={columns}
           data={items}
           isLoading={isLoading}
