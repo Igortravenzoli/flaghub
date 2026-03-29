@@ -122,8 +122,17 @@ export function PesquisaTab() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    await uploadSurvey(file);
-  }, [uploadSurvey]);
+    setPendingFile(file);
+    setImportModeOpen(true);
+  }, []);
+
+  const handleImportConfirm = useCallback(async (mode: ImportMode) => {
+    setImportModeOpen(false);
+    if (!pendingFile) return;
+    const surveyMode: SurveyImportMode = mode === 'purge' ? 'purge' : 'incremental';
+    await uploadSurvey(pendingFile, undefined, surveyMode);
+    setPendingFile(null);
+  }, [pendingFile, uploadSurvey]);
 
   // ── Drawer fields ──────────────────────────────────────────────
   const drawerFields: DrawerField[] = useMemo(() => {
