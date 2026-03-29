@@ -2240,6 +2240,190 @@ export type Database = {
           },
         ]
       }
+      survey_aggregates: {
+        Row: {
+          created_at: string
+          id: string
+          import_id: string
+          payload: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          import_id: string
+          payload: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          import_id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_aggregates_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "survey_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      survey_ai_runs: {
+        Row: {
+          aggregate_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          error_summary: Json
+          id: string
+          import_id: string
+          input_payload: Json
+          mode: string
+          output_payload: Json | null
+          status: string
+        }
+        Insert: {
+          aggregate_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          error_summary?: Json
+          id?: string
+          import_id: string
+          input_payload?: Json
+          mode: string
+          output_payload?: Json | null
+          status?: string
+        }
+        Update: {
+          aggregate_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          error_summary?: Json
+          id?: string
+          import_id?: string
+          input_payload?: Json
+          mode?: string
+          output_payload?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_ai_runs_aggregate_id_fkey"
+            columns: ["aggregate_id"]
+            isOneToOne: false
+            referencedRelation: "survey_aggregates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "survey_ai_runs_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "survey_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      survey_imports: {
+        Row: {
+          aggregate_id: string | null
+          completed_at: string | null
+          created_at: string
+          error_summary: Json
+          file_hash: string | null
+          file_name: string
+          id: string
+          import_name: string
+          imported_by: string
+          rows_invalid: number
+          rows_received: number
+          rows_valid: number
+          schema_version: string
+          status: string
+          taxonomy_version: string
+        }
+        Insert: {
+          aggregate_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_summary?: Json
+          file_hash?: string | null
+          file_name: string
+          id?: string
+          import_name: string
+          imported_by: string
+          rows_invalid?: number
+          rows_received?: number
+          rows_valid?: number
+          schema_version?: string
+          status?: string
+          taxonomy_version?: string
+        }
+        Update: {
+          aggregate_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error_summary?: Json
+          file_hash?: string | null
+          file_name?: string
+          id?: string
+          import_name?: string
+          imported_by?: string
+          rows_invalid?: number
+          rows_received?: number
+          rows_valid?: number
+          schema_version?: string
+          status?: string
+          taxonomy_version?: string
+        }
+        Relationships: []
+      }
+      survey_responses: {
+        Row: {
+          bandeira: string | null
+          client_code: string | null
+          client_name: string | null
+          created_at: string
+          derived: Json
+          id: string
+          import_id: string
+          payload: Json
+          survey_date: string | null
+        }
+        Insert: {
+          bandeira?: string | null
+          client_code?: string | null
+          client_name?: string | null
+          created_at?: string
+          derived?: Json
+          id?: string
+          import_id: string
+          payload: Json
+          survey_date?: string | null
+        }
+        Update: {
+          bandeira?: string | null
+          client_code?: string | null
+          client_name?: string | null
+          created_at?: string
+          derived?: Json
+          id?: string
+          import_id?: string
+          payload?: Json
+          survey_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_responses_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "survey_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
           assigned_to: string | null
