@@ -241,10 +241,24 @@ export default function ComercialDashboard() {
                 'hsl(280, 60%, 55%)',
                 'hsl(0, 65%, 55%)',
               ];
+              const handleBarClick = (data: any) => {
+                if (data?.name) {
+                  setSelectedBandeira(prev => prev === data.name ? null : data.name);
+                }
+              };
               return chartData.length > 0 && !isLoading ? (
                 <Card className="p-4 space-y-2">
-                  <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
-                  <p className="text-xs text-muted-foreground">{ativosClients.length} clientes ativos em {chartData.length} bandeiras</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
+                      <p className="text-xs text-muted-foreground">{ativosClients.length} clientes ativos em {chartData.length} bandeiras</p>
+                    </div>
+                    {selectedBandeira && (
+                      <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedBandeira(null)}>
+                        {selectedBandeira} ✕
+                      </Badge>
+                    )}
+                  </div>
                   <div className="h-[260px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
@@ -254,9 +268,13 @@ export default function ComercialDashboard() {
                           contentStyle={{ fontSize: 12, borderRadius: 8 }}
                           formatter={(value: number) => [value, 'Clientes']}
                         />
-                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                          {chartData.map((_, i) => (
-                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        <Bar dataKey="count" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                          {chartData.map((entry, i) => (
+                            <Cell
+                              key={i}
+                              fill={COLORS[i % COLORS.length]}
+                              opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.3 : 1}
+                            />
                           ))}
                         </Bar>
                       </BarChart>
