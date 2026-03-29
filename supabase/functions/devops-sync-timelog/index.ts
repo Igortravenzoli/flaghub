@@ -319,6 +319,27 @@ async function processTimeLogs(pat: string) {
     status: 'processed',
     processed_at: new Date().toISOString(),
   })
+
+  // ── Persist sync run status to hub_sync_runs / hub_sync_jobs ──
+  const { data: syncJob } = await sb
+    .from('hub_sync_jobs')
+    .select('id')
+    .eq('job_key', 'devops-sync-timelog')
+    .maybeSingle()
+
+  if (syncJob?.id) {
+    await sb.from('hub_sync_runs').insert({
+      job_id: syncJob.id,
+      status: 'ok',
+      started_at: new Date(Date.now() - durationMs).toISOString(),
+      finished_at: new Date().toISOString(),
+      duration_ms: durationMs,
+      items_found: allRows.length,
+      items_upserted: upserted + inserted,
+    })
+    await sb.from('hub_sync_jobs').update({ last_run_at: new Date().toISOString() }).eq('id', syncJob.id)
+  }
+}
 }
 
 serve(async (req) => {
