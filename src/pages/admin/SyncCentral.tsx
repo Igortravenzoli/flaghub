@@ -362,6 +362,9 @@ export default function SyncCentral() {
               const recentErrors = jobRuns.slice(0, 3).filter((r: any) => r.status === 'error').length;
               const healthStatus = !lastRun ? 'unknown' : recentErrors >= 2 ? 'degradado' : lastRun.status === 'error' ? 'falhando' : 'ativo';
 
+              // Derive last execution time: prefer job.last_run_at, fallback to most recent run
+              const lastExecAt = job.last_run_at || lastRun?.finished_at || lastRun?.started_at || null;
+
               const healthBadge = () => {
                 switch (healthStatus) {
                   case 'ativo': return <Badge variant="default" className="gap-1"><CheckCircle className="h-3 w-3" />Ativo</Badge>;
@@ -420,7 +423,7 @@ export default function SyncCentral() {
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {job.last_run_at ? new Date(job.last_run_at).toLocaleString('pt-BR') : '—'}
+                    {lastExecAt ? new Date(lastExecAt).toLocaleString('pt-BR') : '—'}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {job.next_run_at ? new Date(job.next_run_at).toLocaleString('pt-BR') : '—'}
