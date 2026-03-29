@@ -165,12 +165,13 @@ export default function ComercialDashboard() {
         presetControl="dropdown"
         presetsLabel="Período"
         presets={[
-          { value: '7d', label: '7d' },
-          { value: '30d', label: '30d' },
-          { value: '90d', label: '90d' },
-          { value: '6m', label: '6m' },
-          { value: '1y', label: '1a' },
-          { value: 'all', label: 'Todos' },
+          { value: 'mes_atual', label: 'Mês atual' },
+          { value: 'mes_anterior', label: 'Mês anterior' },
+          { value: 'q1', label: `1º Tri ${currentYear}` },
+          { value: 'q2', label: `2º Tri ${currentYear}` },
+          { value: 'q3', label: `3º Tri ${currentYear}` },
+          { value: 'q4', label: `4º Tri ${currentYear}` },
+          { value: '1y', label: `Ano ${currentYear}` },
         ]}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
