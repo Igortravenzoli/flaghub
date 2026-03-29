@@ -80,22 +80,61 @@ export function PesquisaTab() {
   const [drawerItem, setDrawerItem] = useState<SurveyResponse | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [importModeOpen, setImportModeOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
 
   const latestAggregate = aggregates[0]?.payload;
 
-  // ── KPIs from latest aggregate ─────────────────────────────────
+  // ── All product keys for filter ────────────────────────────────
+  const productOptions = useMemo(() => {
+    if (!latestAggregate?.products) return [];
+    return (latestAggregate.products as any[])
+      .filter((p: any) => p.avaliacoes_validas > 0)
+      .map((p: any) => ({ key: p.product_key, name: p.product_name }));
+  }, [latestAggregate]);
+
+  // ── KPIs: recalculate from responses when product filter is active
   const kpis = useMemo(() => {
-    if (!latestAggregate?.summary) {
-      return { total: responses.length, mediaGeral: null, csatGeral: null, bandeiras: 0 };
+    if (!selectedProduct) {
+      if (!latestAggregate?.summary) {
+        return { total: responses.length, mediaGeral: null, csatGeral: null, produtosAvaliados: 0 };
+      }
+      const s = latestAggregate.summary;
+      return {
+        total: s.total_clientes_pesquisados ?? responses.length,
+        mediaGeral: s.nota_media_geral,
+        csatGeral: s.csat_geral,
+        produtosAvaliados: (latestAggregate.products as any[])?.filter((p: any) => p.avaliacoes_validas > 0).length ?? 0,
+      };
     }
-    const s = latestAggregate.summary;
+
+    // Filter KPIs for selected product
+    let ratedScores: number[] = [];
+    let totalWithProduct = 0;
+
+    for (const r of responses) {
+      const products = r.payload?.products ?? [];
+      const prod = products.find((p: any) => p.product_key === selectedProduct);
+      if (!prod) continue;
+      totalWithProduct++;
+      if (prod.usage_status === 'rated' && prod.score != null) {
+        ratedScores.push(prod.score);
+      }
+    }
+
+    const avg = ratedScores.length > 0
+      ? Number((ratedScores.reduce((a, b) => a + b, 0) / ratedScores.length).toFixed(2))
+      : null;
+    const csat = ratedScores.length > 0
+      ? Number(((ratedScores.filter(s => s >= 4).length / ratedScores.length) * 100).toFixed(1))
+      : null;
+
     return {
-      total: s.total_clientes_pesquisados ?? responses.length,
-      mediaGeral: s.nota_media_geral,
-      csatGeral: s.csat_geral,
-      bandeiras: latestAggregate.products?.length ?? 0,
+      total: totalWithProduct,
+      mediaGeral: avg,
+      csatGeral: csat,
+      produtosAvaliados: 1,
     };
-  }, [latestAggregate, responses.length]);
+  }, [latestAggregate, responses, selectedProduct]);
 
   // ── Product chart data ─────────────────────────────────────────
   const productChart = useMemo(() => {
