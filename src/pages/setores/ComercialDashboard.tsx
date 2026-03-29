@@ -197,48 +197,79 @@ export default function ComercialDashboard() {
           </TabsList>
 
           <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <DashboardKpiCard
-                label="Total Clientes"
-                value={stats.total}
-                icon={Users}
-                isLoading={isLoading}
-              />
+            <div className="grid grid-cols-2 gap-4">
               <DashboardKpiCard
                 label="Ativos"
                 value={stats.ativos}
                 icon={UserCheck}
                 isLoading={isLoading}
-                delay={80}
                 active={statusFilter === 'ativo'}
                 onClick={() => handleKpiClick('ativo')}
-              />
-              <DashboardKpiCard
-                label="Inativos"
-                value={stats.inativos}
-                icon={UserX}
-                isLoading={isLoading}
-                delay={160}
-                active={statusFilter === 'inativo'}
-                onClick={() => handleKpiClick('inativo')}
               />
               <DashboardKpiCard
                 label="Bloqueados"
                 value={stats.bloqueados}
                 icon={ShieldBan}
                 isLoading={isLoading}
-                delay={240}
+                delay={80}
                 active={statusFilter === 'bloqueado'}
                 onClick={() => handleKpiClick('bloqueado')}
               />
             </div>
+
+            {/* Chart: Clientes Ativos por Bandeira */}
+            {(() => {
+              const ativosClients = (statusFilter === 'todos' || statusFilter === 'ativo')
+                ? clients.filter(c => c.status?.toLowerCase() === 'ativo')
+                : [];
+              const bandeiraMap = new Map<string, number>();
+              ativosClients.forEach(c => {
+                const b = c.bandeira || 'Sem bandeira';
+                bandeiraMap.set(b, (bandeiraMap.get(b) || 0) + 1);
+              });
+              const chartData = Array.from(bandeiraMap.entries())
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count);
+              const COLORS = [
+                'hsl(var(--primary))',
+                'hsl(var(--accent))',
+                'hsl(var(--muted-foreground))',
+                'hsl(210, 70%, 55%)',
+                'hsl(160, 60%, 45%)',
+                'hsl(30, 80%, 55%)',
+                'hsl(280, 60%, 55%)',
+                'hsl(0, 65%, 55%)',
+              ];
+              return chartData.length > 0 && !isLoading ? (
+                <Card className="p-4 space-y-2">
+                  <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
+                  <p className="text-xs text-muted-foreground">{ativosClients.length} clientes ativos em {chartData.length} bandeiras</p>
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                        <Tooltip
+                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                          formatter={(value: number) => [value, 'Clientes']}
+                        />
+                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                          {chartData.map((_, i) => (
+                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              ) : null;
+            })()}
 
             <div className="flex items-center gap-2 mt-1 mb-1">
               <span className="text-xs text-muted-foreground">Filtrar:</span>
               <ToggleGroup type="single" value={statusFilter} onValueChange={(v) => setStatusFilter((v || 'todos') as ClientStatusFilter)} size="sm">
                 <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
                 <ToggleGroupItem value="ativo" className="text-xs h-7 px-3">Ativos</ToggleGroupItem>
-                <ToggleGroupItem value="inativo" className="text-xs h-7 px-3">Inativos</ToggleGroupItem>
                 <ToggleGroupItem value="bloqueado" className="text-xs h-7 px-3">Bloqueados</ToggleGroupItem>
               </ToggleGroup>
             </div>
