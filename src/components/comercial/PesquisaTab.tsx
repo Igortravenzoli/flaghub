@@ -298,10 +298,20 @@ export function PesquisaTab() {
       {productChart.length > 0 && (
         <Card className="p-4 space-y-2">
           <h3 className="text-sm font-semibold">Nota Média por Produto</h3>
-          <p className="text-xs text-muted-foreground">Escala 0–5 • Apenas avaliações válidas (rated)</p>
+          <p className="text-xs text-muted-foreground">Escala 0–5 • Clique em uma barra para filtrar os KPIs</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={productChart} margin={{ top: 8, right: 16, bottom: 60, left: 0 }} layout="horizontal">
+              <BarChart
+                data={productChart}
+                margin={{ top: 8, right: 16, bottom: 60, left: 0 }}
+                layout="horizontal"
+                onClick={(e) => {
+                  if (e?.activePayload?.[0]?.payload?.key) {
+                    const key = e.activePayload[0].payload.key;
+                    setSelectedProduct(selectedProduct === key ? null : key);
+                  }
+                }}
+              >
                 <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-40} textAnchor="end" interval={0} />
                 <YAxis domain={[0, 5]} tick={{ fontSize: 11 }} />
                 <Tooltip
@@ -312,9 +322,13 @@ export function PesquisaTab() {
                   }}
                   labelFormatter={(label) => label}
                 />
-                <Bar dataKey="media" radius={[4, 4, 0, 0]}>
-                  {productChart.map((_: any, i: number) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                <Bar dataKey="media" radius={[4, 4, 0, 0]} className="cursor-pointer">
+                  {productChart.map((entry: any, i: number) => (
+                    <Cell
+                      key={i}
+                      fill={COLORS[i % COLORS.length]}
+                      opacity={selectedProduct && entry.key !== selectedProduct ? 0.3 : 1}
+                    />
                   ))}
                 </Bar>
               </BarChart>
