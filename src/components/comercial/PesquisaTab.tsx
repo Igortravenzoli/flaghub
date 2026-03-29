@@ -13,7 +13,9 @@ import {
   useSurveyImports,
   useSurveyUpload,
   SurveyResponse,
+  SurveyImportMode,
 } from '@/hooks/useSurveyImport';
+import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { Star, Users, BarChart3, Upload, FileSpreadsheet, CheckCircle2, Clock, TrendingDown, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
