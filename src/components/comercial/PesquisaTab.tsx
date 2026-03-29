@@ -143,6 +143,7 @@ export function PesquisaTab() {
       .filter((p: any) => p.avaliacoes_validas > 0)
       .sort((a: any, b: any) => (b.nota_media ?? 0) - (a.nota_media ?? 0))
       .map((p: any) => ({
+        key: p.product_key,
         name: p.product_name,
         media: p.nota_media ?? 0,
         csat: p.csat ?? 0,
