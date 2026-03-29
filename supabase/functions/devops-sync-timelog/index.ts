@@ -340,7 +340,6 @@ async function processTimeLogs(pat: string) {
     await sb.from('hub_sync_jobs').update({ last_run_at: new Date().toISOString() }).eq('id', syncJob.id)
   }
 }
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
