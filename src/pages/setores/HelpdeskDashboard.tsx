@@ -406,7 +406,17 @@ export default function HelpdeskDashboard() {
 
       {isError ? (
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />
-      ) : !isLoading && !hasData ? (
+      ) : isLoading ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+        </div>
+      ) : !hasData ? (
         <DashboardEmptyState description="Nenhum dado de helpdesk encontrado. Execute o sync via Admin > Sync Central para carregar os dados da API." />
       ) : (
         <>
