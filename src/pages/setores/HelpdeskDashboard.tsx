@@ -409,29 +409,7 @@ export default function HelpdeskDashboard() {
         <DashboardEmptyState description="Nenhum dado de helpdesk encontrado. Execute o sync via Admin > Sync Central para carregar os dados da API." />
       ) : (
         <>
-          {/* === Day selector + Hero KPI Cards === */}
-          <div className="flex items-center gap-2 mt-1 mb-2">
-            <label className="text-xs text-muted-foreground font-medium">Dia:</label>
-            <Input
-              type="date"
-              value={selectedDay}
-              onChange={e => setSelectedDay(e.target.value)}
-              className="h-8 w-40 text-xs"
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => setSelectedDay(new Date().toISOString().slice(0, 10))}
-            >
-              Hoje
-            </Button>
-            {selectedDay && (
-              <Badge variant="outline" className="text-[10px]">
-                {new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
-              </Badge>
-            )}
-          </div>
+           {/* === Hero KPI Cards === */}
 
           {/* Daily KPIs based on selected day */}
           {(() => {
