@@ -10,7 +10,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { useComercialMovimentacao, MovimentacaoCliente } from '@/hooks/useComercialMovimentacao';
 import { useMovimentacaoImport } from '@/hooks/useMovimentacaoImport';
-import { TrendingUp, TrendingDown, BarChart3, Percent, Upload, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart3, Upload, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from 'recharts';
 
 const columns: DataTableColumn<MovimentacaoCliente>[] = [
@@ -163,9 +163,9 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <DashboardKpiCard label="Ganhos" value={`${stats.pctGanhos}%`} icon={TrendingUp} isLoading={isLoading} />
-        <DashboardKpiCard label="Perdas" value={`${stats.pctPerdas}%`} icon={TrendingDown} isLoading={isLoading} delay={80} />
-        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={Percent} isLoading={isLoading} delay={160} />
+        <DashboardKpiCard label="Ganhos (Clientes)" value={stats.totalGanhos} icon={TrendingUp} isLoading={isLoading} />
+        <DashboardKpiCard label="Perdas (Clientes)" value={stats.totalPerdas} icon={TrendingDown} isLoading={isLoading} delay={80} />
+        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={BarChart3} isLoading={isLoading} delay={160} />
         <DashboardKpiCard label="Saldo (Clientes)" value={stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes)} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
