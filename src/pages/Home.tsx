@@ -80,10 +80,10 @@ export default function Home() {
   const sectorCards: SectorCardData[] = [
     {
       slug: 'comercial', name: 'Comercial', icon: 'TrendingUp',
-      kpiLabel: 'Clientes Ativos / Bloqueados', kpiValue: `${comercial.stats.ativos || 0} / ${comercial.stats.bloqueados || 0}`,
-      kpiSource: 'useComercialKpis.stats',
-      isLoading: comercial.isLoading, path: '/setor/comercial',
-      hasConnection: true, connectionStatus: comercial.isError ? 'down' : 'up',
+      kpiLabel: 'Ganhos / Perdas (Clientes)', kpiValue: `${movimentacao.stats.totalGanhos} / ${movimentacao.stats.totalPerdas}`,
+      kpiSource: 'useComercialMovimentacao.stats',
+      isLoading: movimentacao.isLoading, path: '/setor/comercial',
+      hasConnection: true, connectionStatus: movimentacao.isError ? 'down' : 'up',
     },
     {
       slug: 'customer-service', name: 'Customer Service', icon: 'LayoutGrid',
