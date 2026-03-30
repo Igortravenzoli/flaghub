@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { 
-  Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
+  Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
   TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow
 } from 'lucide-react';
@@ -227,6 +227,7 @@ export default function FabricaDashboard() {
   const [fabKpiFilter, setFabKpiFilter] = useState<FabKpiFilter>('all');
   const [expandedPbis, setExpandedPbis] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
+  const [searchAutoSwitched, setSearchAutoSwitched] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
@@ -260,6 +261,30 @@ export default function FabricaDashboard() {
       setSprintFilter(currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]);
     }
   }, [fab.sortedSprints, sprintFilter]);
+
+  // Auto-switch sprint when searching for a task ID that exists in a different sprint
+  useEffect(() => {
+    if (!search.trim()) {
+      if (searchAutoSwitched) setSearchAutoSwitched(null);
+      return;
+    }
+    const q = search.trim();
+    // Only auto-switch for numeric ID searches
+    const searchId = /^\d+$/.test(q) ? Number(q) : null;
+    if (!searchId) return;
+
+    // Check if item exists in current sprint filter
+    const inCurrent = sprintFilter === 'all' || fab.items.some(i => i.id === searchId && i.iteration_path === sprintFilter);
+    if (inCurrent) return;
+
+    // Find the item across ALL items
+    const match = fab.allItems.find(i => i.id === searchId);
+    if (match?.iteration_path && fab.sortedSprints.includes(match.iteration_path)) {
+      setSearchAutoSwitched(match.iteration_path);
+      setSprintFilter(match.iteration_path);
+      setPage(0);
+    }
+  }, [search, fab.allItems, fab.items, fab.sortedSprints, sprintFilter, searchAutoSwitched]);
 
   const colabChartData = useMemo(() =>
     Object.entries(fab.porColaborador)
@@ -892,6 +917,25 @@ export default function FabricaDashboard() {
                         className="pl-8 h-8 text-sm"
                       />
                     </div>
+                    {searchAutoSwitched && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="secondary" className="text-[10px] gap-1 animate-fade-in">
+                          <Search className="h-3 w-3" />
+                          Sprint alterada para exibir item #{search}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 text-[10px] px-1.5"
+                          onClick={() => {
+                            setSearch('');
+                            setSearchAutoSwitched(null);
+                          }}
+                        >
+                          <X className="h-3 w-3 mr-0.5" /> Limpar
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
 

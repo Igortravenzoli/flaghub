@@ -93,61 +93,135 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
       totalHoras: Math.round((s.total_minutos ?? 0) / 60 * 10) / 10,
     }));
 
-  // Get the latest snapshot with POPULATED raw data (not empty arrays)
-  const latestWithRaw = scopedSnapshots.find(s => {
-    if (!s.raw || typeof s.raw !== 'object') return false;
-    const r = s.raw as any;
-    return (r.registrosPorConsultor?.length > 0) ||
-           (r.ocorrenciasPorTipo?.length > 0) ||
-           (r.acumulado?.totalRegistros > 0);
-  });
+  // ── Aggregate raw KPI data across ALL daily snapshots in the period ──
+  // Each daily snapshot's raw contains partial data; we merge them for the full picture
+  const dailySnapshots = Array.from(snapshotsByDay.values());
+
+  function aggregateRawArray(key: string, nameField: string): { nome: string; quantidade: number; totalRegistros: number; totalMinutos: number }[] {
+    const map = new Map<string, { quantidade: number; totalRegistros: number; totalMinutos: number }>();
+    for (const s of dailySnapshots) {
+      const r = (s.raw && typeof s.raw === 'object') ? s.raw as any : {};
+      const arr = r[key] || [];
+      for (const entry of arr) {
+        const nome = entry[nameField] || entry.nome || entry.consultor || entry.tipo || 'N/A';
+        const prev = map.get(nome) || { quantidade: 0, totalRegistros: 0, totalMinutos: 0 };
+        prev.quantidade += (entry.quantidade || entry.total || entry.totalRegistros || 0);
+        prev.totalRegistros += (entry.totalRegistros || entry.quantidade || 0);
+        prev.totalMinutos += (entry.totalMinutos || 0);
+        map.set(nome, prev);
+      }
+    }
+    return Array.from(map.entries()).map(([nome, v]) => ({ nome, ...v }));
+  }
+
+  // If only one daily snapshot, use its raw directly (backward compatible)
+  // If multiple, aggregate across all
+  const useSingleRaw = dailySnapshots.length <= 1;
+  const latestWithRaw = useSingleRaw
+    ? scopedSnapshots.find(s => {
+        if (!s.raw || typeof s.raw !== 'object') return false;
+        const r = s.raw as any;
+        return (r.registrosPorConsultor?.length > 0) ||
+               (r.ocorrenciasPorTipo?.length > 0) ||
+               (r.acumulado?.totalRegistros > 0);
+      })
+    : null;
   const raw = latestWithRaw?.raw || {};
 
-  // Parse KPIs from raw JSONB
-  const registrosPorConsultor: ConsultorKpi[] = (raw.registrosPorConsultor || []).map((c: any) => ({
-    nome: c.consultor || c.nome || 'N/A',
-    totalRegistros: c.totalRegistros || c.quantidade || 0,
-    totalMinutos: c.totalMinutos || 0,
-  }));
+  // Parse KPIs — single snapshot mode or aggregate mode
+  const registrosPorConsultor: ConsultorKpi[] = useSingleRaw
+    ? ((raw as any).registrosPorConsultor || []).map((c: any) => ({
+        nome: c.consultor || c.nome || 'N/A',
+        totalRegistros: c.totalRegistros || c.quantidade || 0,
+        totalMinutos: c.totalMinutos || 0,
+      }))
+    : aggregateRawArray('registrosPorConsultor', 'consultor').map(a => ({
+        nome: a.nome,
+        totalRegistros: a.totalRegistros || a.quantidade,
+        totalMinutos: a.totalMinutos,
+      }));
 
-  const tipoChamadoTempoMedio: TipoChamadoKpi[] = (raw.tipoChamadoTempoMedio || []).map((t: any) => ({
-    tipo: t.tipo || t.tipoChamado || 'N/A',
-    quantidade: t.quantidade || t.totalRegistros || 0,
-    tempoMedio: t.tempoMedio || t.tempoMedioMinutos || 0,
-  }));
+  const tipoChamadoTempoMedio: TipoChamadoKpi[] = useSingleRaw
+    ? ((raw as any).tipoChamadoTempoMedio || []).map((t: any) => ({
+        tipo: t.tipo || t.tipoChamado || 'N/A',
+        quantidade: t.quantidade || t.totalRegistros || 0,
+        tempoMedio: t.tempoMedio || t.tempoMedioMinutos || 0,
+      }))
+    : aggregateRawArray('tipoChamadoTempoMedio', 'tipo').map(a => ({
+        tipo: a.nome,
+        quantidade: a.quantidade,
+        tempoMedio: a.totalMinutos > 0 && a.quantidade > 0 ? Math.round(a.totalMinutos / a.quantidade * 10) / 10 : 0,
+      }));
 
-  const registrosPorSistema: RegistroPorGrupo[] = (raw.registrosPorSistema || []).map((s: any) => ({
-    nome: s.nomeSistema || s.sistema || s.nome || 'N/A',
-    quantidade: s.totalRegistros || s.quantidade || 0,
-  }));
+  const registrosPorSistema: RegistroPorGrupo[] = useSingleRaw
+    ? ((raw as any).registrosPorSistema || []).map((s: any) => ({
+        nome: s.nomeSistema || s.sistema || s.nome || 'N/A',
+        quantidade: s.totalRegistros || s.quantidade || 0,
+      }))
+    : aggregateRawArray('registrosPorSistema', 'nomeSistema').map(a => ({
+        nome: a.nome,
+        quantidade: a.quantidade,
+      }));
 
-  const registrosPorBandeira: RegistroPorGrupo[] = (raw.registrosPorBandeira || []).map((b: any) => ({
-    nome: b.bandeira || b.nome || 'N/A',
-    quantidade: b.quantidade || b.totalRegistros || 0,
-  }));
+  const registrosPorBandeira: RegistroPorGrupo[] = useSingleRaw
+    ? ((raw as any).registrosPorBandeira || []).map((b: any) => ({
+        nome: b.bandeira || b.nome || 'N/A',
+        quantidade: b.quantidade || b.totalRegistros || 0,
+      }))
+    : aggregateRawArray('registrosPorBandeira', 'bandeira').map(a => ({
+        nome: a.nome,
+        quantidade: a.quantidade,
+      }));
 
-  const registrosPorCliente: RegistroPorGrupo[] = (raw.registrosPorCliente || []).map((c: any) => ({
-    nome: c.cliente || c.nome || 'N/A',
-    quantidade: c.quantidade || c.totalRegistros || 0,
-  }));
+  const registrosPorCliente: RegistroPorGrupo[] = useSingleRaw
+    ? ((raw as any).registrosPorCliente || []).map((c: any) => ({
+        nome: c.cliente || c.nome || 'N/A',
+        quantidade: c.quantidade || c.totalRegistros || 0,
+      }))
+    : aggregateRawArray('registrosPorCliente', 'cliente').map(a => ({
+        nome: a.nome,
+        quantidade: a.quantidade,
+      }));
 
-  const horasTotaisPorDia: HorasDia[] = (raw.horasTotaisPorDia || []).map((h: any) => ({
-    data: h.data || h.dia || '',
-    totalMinutos: h.totalMinutos || 0,
-    totalHoras: Math.round((h.totalMinutos || 0) / 60 * 10) / 10,
-  }));
+  const horasTotaisPorDia: HorasDia[] = useSingleRaw
+    ? ((raw as any).horasTotaisPorDia || []).map((h: any) => ({
+        data: h.data || h.dia || '',
+        totalMinutos: h.totalMinutos || 0,
+        totalHoras: Math.round((h.totalMinutos || 0) / 60 * 10) / 10,
+      }))
+    : (() => {
+        const map = new Map<string, number>();
+        for (const s of dailySnapshots) {
+          const r = (s.raw && typeof s.raw === 'object') ? s.raw as any : {};
+          for (const h of (r.horasTotaisPorDia || [])) {
+            const data = h.data || h.dia || '';
+            map.set(data, (map.get(data) || 0) + (h.totalMinutos || 0));
+          }
+        }
+        return Array.from(map.entries()).map(([data, totalMinutos]) => ({
+          data,
+          totalMinutos,
+          totalHoras: Math.round(totalMinutos / 60 * 10) / 10,
+        }));
+      })();
 
-  const ocorrenciasPorTipo: RegistroPorGrupo[] = (raw.ocorrenciasPorTipo || []).map((o: any) => ({
-    nome: o.tipo || o.nome || 'N/A',
-    quantidade: o.total || o.quantidade || o.totalRegistros || 0,
-  }));
+  const ocorrenciasPorTipo: RegistroPorGrupo[] = useSingleRaw
+    ? ((raw as any).ocorrenciasPorTipo || []).map((o: any) => ({
+        nome: o.tipo || o.nome || 'N/A',
+        quantidade: o.total || o.quantidade || o.totalRegistros || 0,
+      }))
+    : aggregateRawArray('ocorrenciasPorTipo', 'tipo').map(a => ({
+        nome: a.nome,
+        quantidade: a.quantidade,
+      }));
 
-  // Acumulado
-  const acumulado = raw.acumulado || {};
-  const totalRegistros = acumulado.totalRegistros || 
-    registrosPorConsultor.reduce((s, c) => s + c.totalRegistros, 0);
-  const totalMinutos = acumulado.totalMinutos || 
-    registrosPorConsultor.reduce((s, c) => s + c.totalMinutos, 0);
+  // Acumulado — sum across daily snapshots
+  const totalRegistros = useSingleRaw
+    ? ((raw as any).acumulado?.totalRegistros || registrosPorConsultor.reduce((s, c) => s + c.totalRegistros, 0))
+    : historico.reduce((s, h) => s + h.totalRegistros, 0) || registrosPorConsultor.reduce((s, c) => s + c.totalRegistros, 0);
+  const totalMinutos = useSingleRaw
+    ? ((raw as any).acumulado?.totalMinutos || registrosPorConsultor.reduce((s, c) => s + c.totalMinutos, 0))
+    : historico.reduce((s, h) => s + h.totalMinutos, 0) || registrosPorConsultor.reduce((s, c) => s + c.totalMinutos, 0);
   const totalHoras = Math.round(totalMinutos / 60 * 10) / 10;
 
   // Daily hours for today
@@ -157,7 +231,7 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
     horasTotaisPorDia.length > 0 ? horasTotaisPorDia[horasTotaisPorDia.length - 1].totalHoras : 0;
 
   const lastCollected = scopedSnapshots[0]?.collected_at || null;
-  const periodo = raw.periodo || null;
+  const periodo = useSingleRaw ? (raw as any).periodo || null : null;
 
   // Total snapshots in period for transparency
   const totalSnapshotsNoPeriodo = scopedSnapshots.length;
