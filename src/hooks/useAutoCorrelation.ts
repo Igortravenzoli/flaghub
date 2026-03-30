@@ -65,6 +65,7 @@ export function useAutoCorrelation() {
         return supabase
           .from('tickets')
           .update({
+            has_os: true,
             os_found_in_vdesk: true,
             os_number: allOsNumbers,
             inconsistency_code: finalInconsistencyCode,
