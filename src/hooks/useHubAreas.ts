@@ -73,9 +73,13 @@ export function useHubAreas() {
   const allAreas = areasQuery.data ?? [];
   const inheritance = inheritanceQuery.data ?? [];
 
+  /** Normalize area key: convert hyphens to underscores to match DB keys */
+  const normalizeKey = (key: string) => key.replace(/-/g, '_');
+
   /** Get user's membership for a given area key (direct or inherited) */
   const getMembership = (areaKey: string): HubAreaMember | undefined => {
-    const area = allAreas.find(a => a.key === areaKey);
+    const normalized = normalizeKey(areaKey);
+    const area = allAreas.find(a => a.key === normalized || a.key === areaKey);
     if (!area) return undefined;
 
     // Direct membership
