@@ -58,6 +58,7 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
       return (data || []) as HelpdeskSnapshot[];
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const snapshots = query.data || [];
