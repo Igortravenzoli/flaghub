@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import KioskOverlay from '@/components/home/KioskOverlay';
 import KioskConfigDialog from '@/components/home/KioskConfigDialog';
 import { useComercialKpis } from '@/hooks/useComercialKpis';
+import { useComercialMovimentacao } from '@/hooks/useComercialMovimentacao';
 import { useHelpdeskKpis } from '@/hooks/useHelpdeskKpis';
 import { useFabricaKpis } from '@/hooks/useFabricaKpis';
 import { useQualidadeKpis } from '@/hooks/useQualidadeKpis';
