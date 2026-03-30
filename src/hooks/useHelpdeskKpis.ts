@@ -135,7 +135,7 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
 
   // Parse KPIs — single snapshot mode or aggregate mode
   const registrosPorConsultor: ConsultorKpi[] = useSingleRaw
-    ? ((raw as any).registrosPorConsultor || []).map((c: any) => ({
+    ? (resolveConsultorArray(raw as any)).map((c: any) => ({
         nome: c.consultor || c.nome || 'N/A',
         totalRegistros: c.totalRegistros || c.quantidade || c.total || 0,
         totalMinutos: c.totalMinutos || c.minutos || 0,
