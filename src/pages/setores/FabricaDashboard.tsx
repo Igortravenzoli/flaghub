@@ -435,8 +435,15 @@ export default function FabricaDashboard() {
         return t === typeFilter;
       });
     }
+    if (collaboratorFilter) {
+      items = items.filter(i => {
+        const display = i.assigned_to_display || '';
+        const shortName = display.split(' ').slice(0, 2).join(' ');
+        return shortName === collaboratorFilter || display === collaboratorFilter;
+      });
+    }
     return items;
-  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, typeFilter]);
+  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, typeFilter, collaboratorFilter]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
