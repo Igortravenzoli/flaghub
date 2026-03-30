@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface DevopsOperationalItem {
@@ -36,6 +36,7 @@ export function useDevopsOperationalQueue(queryNames: string[]) {
       return (data || []) as DevopsOperationalItem[];
     },
     staleTime: 2 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const items = query.data || [];

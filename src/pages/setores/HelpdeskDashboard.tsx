@@ -170,7 +170,7 @@ function ChartTooltip({ active, payload, label }: any) {
 type ActiveView = 'consultores' | 'sistemas' | 'bandeiras' | 'clientes' | 'tipos' | 'chamados' | null;
 
 export default function HelpdeskDashboard() {
-  const filters = useDashboardFilters('30d');
+  const filters = useDashboardFilters('hoje');
   const kpis = useHelpdeskKpis(filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [activeView, setActiveView] = useState<ActiveView>(null);
@@ -387,6 +387,7 @@ export default function HelpdeskDashboard() {
         presetControl="dropdown"
         presetsLabel="Período"
         presets={[
+          { value: 'hoje', label: 'Hoje' },
           { value: '7d', label: '7d' },
           { value: '30d', label: '30d' },
           { value: '90d', label: '90d' },
@@ -405,7 +406,17 @@ export default function HelpdeskDashboard() {
 
       {isError ? (
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />
-      ) : !isLoading && !hasData ? (
+      ) : isLoading ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+        </div>
+      ) : !hasData ? (
         <DashboardEmptyState description="Nenhum dado de helpdesk encontrado. Execute o sync via Admin > Sync Central para carregar os dados da API." />
       ) : (
         <>

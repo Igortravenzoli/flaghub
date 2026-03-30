@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface HelpdeskSnapshot {
@@ -58,6 +58,7 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
       return (data || []) as HelpdeskSnapshot[];
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const snapshots = query.data || [];

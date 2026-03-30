@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
@@ -136,6 +136,7 @@ export function useFabricaKpis(
       );
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const lastSyncQuery = useQuery({

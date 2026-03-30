@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { startOfMonth, endOfMonth, subDays, subMonths, startOfDay, endOfDay, subYears } from 'date-fns';
 
-export type FilterPreset = '7d' | '30d' | '90d' | '6m' | 'mes_atual' | 'mes_anterior' | '1y' | 'all' | 'custom' | 'q1' | 'q2' | 'q3' | 'q4';
+export type FilterPreset = 'hoje' | '7d' | '30d' | '90d' | '6m' | 'mes_atual' | 'mes_anterior' | '1y' | 'all' | 'custom' | 'q1' | 'q2' | 'q3' | 'q4';
 
 export interface DashboardFilters {
   preset: FilterPreset;
@@ -23,6 +23,8 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
   const dates = useMemo(() => {
     const now = new Date();
     switch (preset) {
+      case 'hoje':
+        return { from: startOfDay(now), to: endOfDay(now) };
       case '7d':
         return { from: subDays(now, 7), to: endOfDay(now) };
       case '30d':
@@ -88,6 +90,7 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
 
   const presetLabel = useMemo(() => {
     switch (preset) {
+      case 'hoje': return 'Hoje';
       case '7d': return 'Últimos 7 dias';
       case '30d': return 'Últimos 30 dias';
       case '90d': return 'Últimos 90 dias';
