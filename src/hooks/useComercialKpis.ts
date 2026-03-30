@@ -45,6 +45,7 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos', dat
       return fetchAllClients('*', filter) as Promise<ComercialClient[]>;
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const lastSyncQuery = useQuery({

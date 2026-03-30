@@ -36,6 +36,7 @@ export function useDevopsOperationalQueue(queryNames: string[]) {
       return (data || []) as DevopsOperationalItem[];
     },
     staleTime: 2 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const items = query.data || [];
