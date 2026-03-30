@@ -343,7 +343,14 @@ export default function HelpdeskDashboard() {
 
       {/* Top bar: sync badge + consultant filter */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
+        <div className="flex items-center gap-3">
+          <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
+          {totalSnapshotsNoPeriodo > 0 && (
+            <Badge variant="outline" className="text-[10px] gap-1">
+              {totalSnapshotsNoPeriodo} snapshots • {diasComDados} dias
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {selectedConsultants.length > 0 && (
             <div className="flex items-center gap-1 flex-wrap">
