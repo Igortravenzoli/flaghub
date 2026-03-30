@@ -37,6 +37,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
       return (data || []) as CSKpiItem[];
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const filaQuery = useQuery({

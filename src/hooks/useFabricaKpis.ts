@@ -136,6 +136,7 @@ export function useFabricaKpis(
       );
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const lastSyncQuery = useQuery({
