@@ -387,6 +387,7 @@ export default function HelpdeskDashboard() {
         presetControl="dropdown"
         presetsLabel="Período"
         presets={[
+          { value: 'hoje', label: 'Hoje' },
           { value: '7d', label: '7d' },
           { value: '30d', label: '30d' },
           { value: '90d', label: '90d' },
