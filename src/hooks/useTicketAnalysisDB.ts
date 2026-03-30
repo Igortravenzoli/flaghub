@@ -34,6 +34,10 @@ function mapStatus(dbStatus: InternalStatus | null): StatusNormalizado {
   return map[dbStatus] || 'nao_mapeado';
 }
 
+function hasLinkedOS(ticket: DBTicket): boolean {
+  return Boolean(ticket.os_found_in_vdesk || ticket.has_os || ticket.os_number?.trim());
+}
+
 // Converter DBTicket para formato legado da UI
 function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemServico | null; osMultiplas: OrdemServico[] } {
   const rawPayload = ticket.raw_payload as Record<string, string> || {};
@@ -192,7 +196,7 @@ export function useTicketAnalysisDB() {
   const ticketsConsolidados = useMemo<TicketConsolidado[]>(() => {
     return tickets.map((dbTicket: DBTicket) => {
       const { ticket, os, osMultiplas } = dbTicketToLegacy(dbTicket);
-      const horasSemOS = (!dbTicket.has_os && !dbTicket.os_found_in_vdesk) ? calcularHorasSemOS(dbTicket.opened_at) : null;
+      const horasSemOS = !hasLinkedOS(dbTicket) ? calcularHorasSemOS(dbTicket.opened_at) : null;
       const inconsistencias = getInconsistencias(dbTicket, noOsGraceHours);
       
       return {
@@ -214,10 +218,10 @@ export function useTicketAnalysisDB() {
       return {
         totalTickets: Number(summary.total_tickets) || 0,
         ticketsOK: Number(summary.tickets_ok) || 0,
-        ticketsSemOS: Number(summary.tickets_criticos) || 0,
+        ticketsSemOS: Number(summary.tickets_sem_os) || 0,
         ticketsObservacao: Number(summary.tickets_atencao) || 0,
         ticketsPorSeveridade: {
-          critical: Number(summary.tickets_criticos) || 0,
+          critical: Number(summary.tickets_sem_os) || 0,
           warning: Number(summary.tickets_atencao) || 0,
           info: Number(summary.tickets_ok) || 0,
           success: 0,
@@ -241,12 +245,15 @@ export function useTicketAnalysisDB() {
     
     ticketsConsolidados.forEach(tc => {
       stats.ticketsPorSeveridade[tc.severidade]++;
-      if (tc.severidade === 'critical') {
+      if (!tc.osVinculada) {
         stats.ticketsSemOS++;
+        stats.ticketsPorSeveridade.critical++;
       } else if (tc.severidade === 'warning') {
         stats.ticketsObservacao++;
+        stats.ticketsPorSeveridade.warning++;
       } else {
         stats.ticketsOK++;
+        stats.ticketsPorSeveridade[tc.severidade]++;
       }
     });
     

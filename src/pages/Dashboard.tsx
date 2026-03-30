@@ -67,18 +67,18 @@ export default function Dashboard() {
   const ticketsFiltrados = ticketsConsolidados.filter(t => {
     switch (statusFilter) {
       case 'ok':
-        return t.severidade === 'info' || t.severidade === 'success';
+        return !!t.osVinculada;
       case 'semOS':
-        return t.severidade === 'critical';
+        return !t.osVinculada;
       case 'observacao':
-        return t.severidade === 'warning';
+        return t.severidade === 'warning' && !!t.osVinculada;
       default:
         return true;
     }
   });
   
   const ticketsRecentes = ticketsFiltrados.slice(0, 10);
-  const ticketsCriticos = ticketsConsolidados.filter(t => t.severidade === 'critical');
+  const ticketsCriticos = ticketsConsolidados.filter(t => !t.osVinculada);
   
   const handleFilterClick = (filter: StatusFilter) => {
     setStatusFilter(prev => prev === filter ? 'all' : filter);
