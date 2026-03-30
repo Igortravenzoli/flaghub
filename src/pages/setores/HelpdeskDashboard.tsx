@@ -299,6 +299,12 @@ export default function HelpdeskDashboard() {
       label: h.data ? new Date(h.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '',
     }));
 
+  // Historical trend from snapshots
+  const historicoTrend = historico.map(h => ({
+    ...h,
+    label: h.date ? new Date(h.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '',
+  }));
+
   const tabFallback = (
     <div className="space-y-3 p-4">
       <Skeleton className="h-8 w-full" />
