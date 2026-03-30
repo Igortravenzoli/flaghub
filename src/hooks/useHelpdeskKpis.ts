@@ -132,8 +132,8 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
   const registrosPorConsultor: ConsultorKpi[] = useSingleRaw
     ? ((raw as any).registrosPorConsultor || []).map((c: any) => ({
         nome: c.consultor || c.nome || 'N/A',
-        totalRegistros: c.totalRegistros || c.quantidade || 0,
-        totalMinutos: c.totalMinutos || 0,
+        totalRegistros: c.totalRegistros || c.quantidade || c.total || 0,
+        totalMinutos: c.totalMinutos || c.minutos || 0,
       }))
     : aggregateRawArray('registrosPorConsultor', 'consultor').map(a => ({
         nome: a.nome,
