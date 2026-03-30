@@ -462,7 +462,6 @@ export default function HelpdeskDashboard() {
                   label={`Horas ${selectedDay === new Date().toISOString().slice(0, 10) ? 'Hoje' : new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
                   value={dayHoras}
                   suffix="h"
-                  description={dayMinutos > 0 ? `${dayMinutos} minutos` : 'Sem dados para este dia'}
                   icon={TrendingUp}
                   isLoading={isLoading}
                   delay={160}
