@@ -69,7 +69,7 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
   let osVinculada: OrdemServico | null = null;
   const osMultiplas: OrdemServico[] = [];
 
-  if (ticket.has_os && ticket.os_number) {
+  if ((ticket.has_os || ticket.os_found_in_vdesk) && ticket.os_number) {
     if (vdeskData && vdeskData.length > 0) {
       // Usar dados completos do VDESK
       vdeskData.forEach((vd: any) => {
