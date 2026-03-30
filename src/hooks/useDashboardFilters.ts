@@ -90,6 +90,7 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
 
   const presetLabel = useMemo(() => {
     switch (preset) {
+      case 'hoje': return 'Hoje';
       case '7d': return 'Últimos 7 dias';
       case '30d': return 'Últimos 30 dias';
       case '90d': return 'Últimos 90 dias';
