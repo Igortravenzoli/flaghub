@@ -45,6 +45,7 @@ export function useQualidadeKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: s
       );
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   // Fetch retorno QA counts from state_history (primary), pbi_lifecycle_summary, and custom_fields (fallbacks)

@@ -37,6 +37,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
       return (data || []) as InfraItem[];
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const lastSyncQuery = useQuery({
