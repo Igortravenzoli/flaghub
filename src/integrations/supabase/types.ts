@@ -2999,13 +2999,18 @@ export type Database = {
           inconsistency_code: string
           internal_status: Database["public"]["Enums"]["internal_status"]
           last_import_id: number
+          last_os_event_at: string
+          last_os_event_desc: string
           network_id: number
           opened_at: string
+          os_found_in_vdesk: boolean
           os_number: string
+          raw_payload: Json
           severity: Database["public"]["Enums"]["ticket_severity"]
           ticket_external_id: string
           ticket_type: string
           updated_at: string
+          vdesk_payload: Json
         }[]
       }
       get_tickets_needing_os_validation: {
