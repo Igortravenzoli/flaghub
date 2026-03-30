@@ -29,6 +29,9 @@ import {
   useBuscarPorOS,
   useBuscarPorCliente,
 } from '@/hooks/useTicketsOSApi';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
 import { VpnWarningAlert, useVpnWarning } from '@/components/VpnWarningAlert';
 
 interface SearchParams {
@@ -41,6 +44,8 @@ interface SearchParams {
 }
 
 export function TicketBuscaComponente() {
+  const { networkId } = useAuth();
+  const queryClient = useQueryClient();
   const [params, setParams] = useState<SearchParams>({
     ticketNestle: '',
     programador: '',
@@ -96,6 +101,39 @@ export function TicketBuscaComponente() {
       setCorrelacaoTrigger(true);
     }
   };
+
+  // Persist correlation results to DB when found
+  useEffect(() => {
+    if (!correlacaoData || !networkId) return;
+    const ticket = correlacaoData.ticket;
+    if (!ticket) return;
+
+    const found = correlacaoData.success && correlacaoData.osEncontradas.length > 0;
+    const allOs = correlacaoData.osEncontradas.join(', ');
+    const lastRecord = correlacaoData.data?.[correlacaoData.data.length - 1];
+
+    const payload: Record<string, unknown> = {
+      os_found_in_vdesk: found,
+      has_os: found,
+      os_number: found ? allOs : null,
+      vdesk_payload: found ? (correlacaoData.data as any) : null,
+      last_os_event_at: found ? (lastRecord?.dataHistorico || lastRecord?.dataRegistro || null) : null,
+      last_os_event_desc: found ? (lastRecord?.descricaoOS || lastRecord?.descricao || null) : null,
+      inconsistency_code: found ? null : 'OS_NOT_FOUND',
+      severity: found ? 'info' : 'critico',
+      updated_at: new Date().toISOString(),
+    };
+
+    supabase
+      .from('tickets')
+      .update(payload)
+      .eq('ticket_external_id', ticket)
+      .eq('network_id', networkId)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      });
+  }, [correlacaoData, networkId, queryClient]);
 
   // Detectar erros de VPN em qualquer busca
   useEffect(() => {
