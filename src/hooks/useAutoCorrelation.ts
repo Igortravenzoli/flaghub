@@ -165,13 +165,14 @@ export function useAutoCorrelation() {
     setSummary(null);
 
     try {
-      // Buscar tickets pendentes
+      // Buscar tickets pendentes: nunca correlacionados OU marcados como não encontrados
+      // (permitir re-correlação para tickets que podem ter recebido OS após o último check)
       const { data: tickets, error } = await supabase
         .from('tickets')
         .select('ticket_external_id')
         .eq('network_id', networkId)
         .eq('is_active', true)
-        .is('os_found_in_vdesk', null);
+        .or('os_found_in_vdesk.is.null,os_found_in_vdesk.eq.false');
 
       if (error) throw error;
 
