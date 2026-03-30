@@ -639,32 +639,24 @@ export default function HelpdeskDashboard() {
                           <div className="space-y-2.5 h-full overflow-y-auto">
                             {top10Sistemas.map((s, i) => {
                               const maxQtd = top10Sistemas[0]?.quantidade || 1;
-                              const pct = Math.max(4, Math.round((s.quantidade / maxQtd) * 100));
+                              const pct = Math.max(5, Math.round((s.quantidade / maxQtd) * 100));
                               return (
-                                <div key={s.nome} className="group" style={{ animationDelay: `${i * 80}ms` }}>
+                                <div key={s.nome} className="group">
                                   <div className="flex items-center justify-between text-sm mb-1">
                                     <span className="text-foreground font-medium truncate max-w-[60%]">{s.nome}</span>
                                     <span className="text-xs font-bold text-foreground">{s.quantidade}</span>
                                   </div>
-                                  <div className="h-5 bg-muted rounded-full overflow-hidden flex items-center">
+                                  <div className="h-5 bg-muted rounded-full overflow-hidden flex items-center relative">
                                     <div
-                                      className="h-full rounded-full flex items-center justify-end pr-1.5 transition-all ease-out"
+                                      className="h-full rounded-full flex items-center justify-end pr-1.5"
                                       style={{
                                         width: `${pct}%`,
                                         background: CHART_COLORS[i % CHART_COLORS.length],
-                                        animation: `bar-grow-${i} 0.8s ease-out forwards`,
-                                        animationDelay: `${i * 100}ms`,
                                       }}
                                     >
                                       <Phone className="h-3 w-3 text-white/90 flex-shrink-0" />
                                     </div>
                                   </div>
-                                  <style>{`
-                                    @keyframes bar-grow-${i} {
-                                      from { width: 0%; }
-                                      to { width: ${pct}%; }
-                                    }
-                                  `}</style>
                                 </div>
                               );
                             })}
