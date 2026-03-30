@@ -17,7 +17,7 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
     queryFn: async () => {
       let query = supabase
         .from('tickets')
-        .select('network_id, severity, has_os, updated_at')
+        .select('network_id, severity, has_os, os_found_in_vdesk, updated_at')
         .eq('is_active', true);
 
       if (networkId !== undefined && networkId !== null) {
