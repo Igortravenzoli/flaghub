@@ -170,7 +170,7 @@ function ChartTooltip({ active, payload, label }: any) {
 type ActiveView = 'consultores' | 'sistemas' | 'bandeiras' | 'clientes' | 'tipos' | 'chamados' | null;
 
 export default function HelpdeskDashboard() {
-  const filters = useDashboardFilters('30d');
+  const filters = useDashboardFilters('hoje');
   const kpis = useHelpdeskKpis(filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [activeView, setActiveView] = useState<ActiveView>(null);
