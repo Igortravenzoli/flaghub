@@ -36,6 +36,13 @@ export interface HorasDia {
   totalHoras: number;
 }
 
+export interface HistoricoEntry {
+  date: string;
+  totalRegistros: number;
+  totalMinutos: number;
+  totalHoras: number;
+}
+
 export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
   const fromKey = dateFrom ? dateFrom.toISOString().slice(0, 10) : 'all';
   const toKey = dateTo ? dateTo.toISOString().slice(0, 10) : 'all';
@@ -64,11 +71,32 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
       })
     : snapshots;
 
+  // ── Aggregate across ALL scoped snapshots for historical view ──
+  // Group snapshots by date, take the latest per day for KPI aggregation
+  const snapshotsByDay = new Map<string, HelpdeskSnapshot>();
+  for (const s of scopedSnapshots) {
+    if (!s.collected_at) continue;
+    const day = s.collected_at.slice(0, 10);
+    const existing = snapshotsByDay.get(day);
+    if (!existing || (s.collected_at > (existing.collected_at || ''))) {
+      snapshotsByDay.set(day, s);
+    }
+  }
+
+  // Build historical trend from daily snapshots
+  const historico: HistoricoEntry[] = Array.from(snapshotsByDay.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, s]) => ({
+      date,
+      totalRegistros: s.total_registros ?? 0,
+      totalMinutos: s.total_minutos ?? 0,
+      totalHoras: Math.round((s.total_minutos ?? 0) / 60 * 10) / 10,
+    }));
+
   // Get the latest snapshot with POPULATED raw data (not empty arrays)
   const latestWithRaw = scopedSnapshots.find(s => {
     if (!s.raw || typeof s.raw !== 'object') return false;
     const r = s.raw as any;
-    // Check if at least one KPI array has data
     return (r.registrosPorConsultor?.length > 0) ||
            (r.ocorrenciasPorTipo?.length > 0) ||
            (r.acumulado?.totalRegistros > 0);
@@ -131,10 +159,18 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
   const lastCollected = scopedSnapshots[0]?.collected_at || null;
   const periodo = raw.periodo || null;
 
+  // Total snapshots in period for transparency
+  const totalSnapshotsNoPeriodo = scopedSnapshots.length;
+  const diasComDados = snapshotsByDay.size;
+
   return {
     snapshots: scopedSnapshots,
     allSnapshots: snapshots,
     raw,
+    // Historical trend
+    historico,
+    totalSnapshotsNoPeriodo,
+    diasComDados,
     // Parsed KPIs
     registrosPorConsultor,
     tipoChamadoTempoMedio,
