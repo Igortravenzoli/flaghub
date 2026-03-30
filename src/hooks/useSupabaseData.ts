@@ -38,10 +38,10 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
       return {
         network_id: networkId ?? data[0].network_id,
         total_tickets: data.length,
-        tickets_ok: data.filter((ticket) => ticket.severity === 'info').length,
-        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico').length,
+        tickets_ok: data.filter((ticket) => ticket.severity === 'info' || ticket.os_found_in_vdesk === true).length,
+        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico' && ticket.os_found_in_vdesk !== true).length,
         tickets_atencao: data.filter((ticket) => ticket.severity === 'atencao').length,
-        tickets_sem_os: data.filter((ticket) => !ticket.has_os).length,
+        tickets_sem_os: data.filter((ticket) => !ticket.has_os && ticket.os_found_in_vdesk !== true).length,
         last_updated: lastUpdated,
       } as DashboardSummary;
     },
