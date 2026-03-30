@@ -17,7 +17,7 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
     queryFn: async () => {
       let query = supabase
         .from('tickets')
-        .select('network_id, severity, has_os, updated_at')
+        .select('network_id, severity, has_os, os_found_in_vdesk, updated_at')
         .eq('is_active', true);
 
       if (networkId !== undefined && networkId !== null) {
@@ -38,10 +38,10 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
       return {
         network_id: networkId ?? data[0].network_id,
         total_tickets: data.length,
-        tickets_ok: data.filter((ticket) => ticket.severity === 'info').length,
-        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico').length,
+        tickets_ok: data.filter((ticket) => ticket.severity === 'info' || ticket.os_found_in_vdesk === true).length,
+        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico' && ticket.os_found_in_vdesk !== true).length,
         tickets_atencao: data.filter((ticket) => ticket.severity === 'atencao').length,
-        tickets_sem_os: data.filter((ticket) => !ticket.has_os).length,
+        tickets_sem_os: data.filter((ticket) => !ticket.has_os && ticket.os_found_in_vdesk !== true).length,
         last_updated: lastUpdated,
       } as DashboardSummary;
     },
