@@ -192,7 +192,7 @@ export function useTicketAnalysisDB() {
   const ticketsConsolidados = useMemo<TicketConsolidado[]>(() => {
     return tickets.map((dbTicket: DBTicket) => {
       const { ticket, os, osMultiplas } = dbTicketToLegacy(dbTicket);
-      const horasSemOS = !dbTicket.has_os ? calcularHorasSemOS(dbTicket.opened_at) : null;
+      const horasSemOS = (!dbTicket.has_os && !dbTicket.os_found_in_vdesk) ? calcularHorasSemOS(dbTicket.opened_at) : null;
       const inconsistencias = getInconsistencias(dbTicket, noOsGraceHours);
       
       return {
