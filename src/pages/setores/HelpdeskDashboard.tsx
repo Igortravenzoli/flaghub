@@ -671,42 +671,86 @@ export default function HelpdeskDashboard() {
 
                 {/* Tab: Tendência */}
                 <TabsContent value="tendencia">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-primary" />
-                        Horas por Dia (últimos 30 dias)
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-72">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={horasTrend} margin={{ left: 0, right: 10, top: 5 }}>
-                            <defs>
-                              <linearGradient id="horasGrad" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
-                            <XAxis dataKey="label" className="text-xs" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                            <YAxis className="text-xs" tick={{ fontSize: 10 }} />
-                            <Tooltip content={<ChartTooltip />} />
-                            <Area
-                              type="monotone"
-                              dataKey="totalHoras"
-                              name="Horas"
-                              stroke="hsl(var(--primary))"
-                              strokeWidth={2}
-                              fill="url(#horasGrad)"
-                              dot={{ r: 2, fill: 'hsl(var(--primary))' }}
-                              activeDot={{ r: 5 }}
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <div className="grid grid-cols-1 gap-4">
+                    {/* Historical registros trend from snapshots */}
+                    {historicoTrend.length > 1 && (
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                            <TrendingUp className="h-4 w-4 text-primary" />
+                            Evolução de Registros por Dia (Histórico de Sincronizações)
+                          </CardTitle>
+                          <p className="text-xs text-muted-foreground">Cada ponto representa o último snapshot do dia</p>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="h-72">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={historicoTrend} margin={{ left: 0, right: 10, top: 5 }}>
+                                <defs>
+                                  <linearGradient id="regGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
+                                    <stop offset="100%" stopColor="hsl(var(--chart-2))" stopOpacity={0.02} />
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
+                                <XAxis dataKey="label" className="text-xs" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                                <YAxis className="text-xs" tick={{ fontSize: 10 }} />
+                                <Tooltip content={<ChartTooltip />} />
+                                <Area
+                                  type="monotone"
+                                  dataKey="totalRegistros"
+                                  name="Registros"
+                                  stroke="hsl(var(--chart-2))"
+                                  strokeWidth={2}
+                                  fill="url(#regGrad)"
+                                  dot={{ r: 3, fill: 'hsl(var(--chart-2))' }}
+                                  activeDot={{ r: 5 }}
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Hours per day trend */}
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-primary" />
+                          Horas por Dia
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={horasTrend} margin={{ left: 0, right: 10, top: 5 }}>
+                              <defs>
+                                <linearGradient id="horasGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                                  <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
+                              <XAxis dataKey="label" className="text-xs" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                              <YAxis className="text-xs" tick={{ fontSize: 10 }} />
+                              <Tooltip content={<ChartTooltip />} />
+                              <Area
+                                type="monotone"
+                                dataKey="totalHoras"
+                                name="Horas"
+                                stroke="hsl(var(--primary))"
+                                strokeWidth={2}
+                                fill="url(#horasGrad)"
+                                dot={{ r: 2, fill: 'hsl(var(--primary))' }}
+                                activeDot={{ r: 5 }}
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </TabsContent>
 
                 {/* Tab: Detalhes */}
