@@ -179,7 +179,7 @@ export default function HelpdeskDashboard() {
   const [chartTab, setChartTab] = useState('consultores');
 
   const {
-    allSnapshots,
+    allSnapshots, historico, totalSnapshotsNoPeriodo, diasComDados,
     registrosPorConsultor, tipoChamadoTempoMedio, registrosPorSistema,
     registrosPorBandeira, registrosPorCliente, ocorrenciasPorTipo,
     horasTotaisPorDia,
