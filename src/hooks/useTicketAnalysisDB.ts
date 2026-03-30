@@ -35,7 +35,13 @@ function mapStatus(dbStatus: InternalStatus | null): StatusNormalizado {
 }
 
 function hasLinkedOS(ticket: DBTicket): boolean {
-  return Boolean(ticket.os_found_in_vdesk || ticket.has_os || ticket.os_number?.trim());
+  const hasPayloadOS = Array.isArray(ticket.vdesk_payload)
+    && ticket.vdesk_payload.some((item) => Boolean(item?.os));
+
+  return ticket.os_found_in_vdesk === true
+    || Boolean(ticket.os_number?.trim())
+    || hasPayloadOS
+    || ticket.has_os === true;
 }
 
 // Converter DBTicket para formato legado da UI
@@ -73,7 +79,7 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
   let osVinculada: OrdemServico | null = null;
   const osMultiplas: OrdemServico[] = [];
 
-  if ((ticket.has_os || ticket.os_found_in_vdesk) && ticket.os_number) {
+  if (hasLinkedOS(ticket)) {
     if (vdeskData && vdeskData.length > 0) {
       // Usar dados completos do VDESK
       vdeskData.forEach((vd: any) => {

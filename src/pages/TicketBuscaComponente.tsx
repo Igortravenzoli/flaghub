@@ -114,24 +114,31 @@ export function TicketBuscaComponente() {
 
     const payload: Record<string, unknown> = {
       os_found_in_vdesk: found,
-      has_os: found,
-      os_number: found ? allOs : null,
       vdesk_payload: found ? (correlacaoData.data as any) : null,
-      last_os_event_at: found ? (lastRecord?.dataHistorico || lastRecord?.dataRegistro || null) : null,
-      last_os_event_desc: found ? (lastRecord?.descricaoOS || lastRecord?.descricao || null) : null,
+      last_os_event_at: found
+        ? (lastRecord?.dataHistorico || lastRecord?.dataRegistro || new Date().toISOString())
+        : new Date().toISOString(),
+      last_os_event_desc: found
+        ? (lastRecord?.descricaoOS || lastRecord?.descricao || correlacaoData.message || 'OS validada no VDESK')
+        : (correlacaoData.message || 'OS não encontrada no VDESK'),
       inconsistency_code: found ? null : 'OS_NOT_FOUND',
       severity: found ? 'info' : 'critico',
       updated_at: new Date().toISOString(),
+      ...(found ? { os_number: allOs } : {}),
     };
 
-    supabase
+    void supabase
       .from('tickets')
       .update(payload)
       .eq('ticket_external_id', ticket)
       .eq('network_id', networkId)
-      .then(() => {
+      .then(({ error }) => {
+        if (error) throw error;
         queryClient.invalidateQueries({ queryKey: ['tickets'] });
         queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      })
+      .catch((error) => {
+        console.error('[TicketBuscaComponente] Erro ao persistir correlação:', error);
       });
   }, [correlacaoData, networkId, queryClient]);
 

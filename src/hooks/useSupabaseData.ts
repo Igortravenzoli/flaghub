@@ -15,10 +15,10 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
   return useQuery({
     queryKey: ['dashboard-summary', networkId],
     queryFn: async () => {
-      let query = supabase
-        .from('tickets')
-        .select('network_id, severity, has_os, os_found_in_vdesk, updated_at')
-        .eq('is_active', true);
+        let query = supabase
+          .from('tickets')
+          .select('network_id, severity, has_os, os_found_in_vdesk, os_number, vdesk_payload, updated_at')
+          .eq('is_active', true);
 
       if (networkId !== undefined && networkId !== null) {
         query = query.eq('network_id', networkId);
@@ -35,13 +35,28 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
         return row.updated_at > latest ? row.updated_at : latest;
       }, null);
 
+      const hasLinkedOS = (ticket: {
+        has_os: boolean | null;
+        os_found_in_vdesk: boolean | null;
+        os_number: string | null;
+        vdesk_payload: unknown;
+      }) => {
+        const hasPayloadOS = Array.isArray(ticket.vdesk_payload)
+          && ticket.vdesk_payload.some((item) => Boolean((item as { os?: unknown })?.os));
+
+        return ticket.os_found_in_vdesk === true
+          || Boolean(ticket.os_number?.trim())
+          || hasPayloadOS
+          || ticket.has_os === true;
+      };
+
       return {
         network_id: networkId ?? data[0].network_id,
         total_tickets: data.length,
-        tickets_ok: data.filter((ticket) => ticket.severity === 'info' || ticket.os_found_in_vdesk === true).length,
-        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico' && ticket.os_found_in_vdesk !== true).length,
+        tickets_ok: data.filter((ticket) => ticket.severity === 'info' || hasLinkedOS(ticket)).length,
+        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico' && !hasLinkedOS(ticket)).length,
         tickets_atencao: data.filter((ticket) => ticket.severity === 'atencao').length,
-        tickets_sem_os: data.filter((ticket) => !ticket.has_os && ticket.os_found_in_vdesk !== true).length,
+        tickets_sem_os: data.filter((ticket) => !hasLinkedOS(ticket)).length,
         last_updated: lastUpdated,
       } as DashboardSummary;
     },

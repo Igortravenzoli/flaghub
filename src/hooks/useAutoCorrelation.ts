@@ -80,7 +80,6 @@ export function useAutoCorrelation() {
         return supabase
           .from('tickets')
           .update({
-            has_os: true,
             os_found_in_vdesk: true,
             os_number: allOsNumbers,
             inconsistency_code: finalInconsistencyCode,
@@ -96,14 +95,12 @@ export function useAutoCorrelation() {
         return supabase
           .from('tickets')
           .update({
-            has_os: false,
             os_found_in_vdesk: false,
-            os_number: null,
             inconsistency_code: 'OS_NOT_FOUND',
             severity: 'critico' as const,
             vdesk_payload: null,
-            last_os_event_at: null,
-            last_os_event_desc: null,
+            last_os_event_at: new Date().toISOString(),
+            last_os_event_desc: r.message || 'OS não encontrada no VDESK',
             updated_at: new Date().toISOString(),
           })
           .eq('ticket_external_id', r.ticket)
@@ -176,7 +173,6 @@ export function useAutoCorrelation() {
               await supabase
                 .from('tickets')
                 .update({
-                  has_os: true,
                   os_found_in_vdesk: true,
                   os_number: allOsNumbers,
                   inconsistency_code: null,
