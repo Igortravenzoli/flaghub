@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { 
-  Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, 
+  Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
   TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow
 } from 'lucide-react';
