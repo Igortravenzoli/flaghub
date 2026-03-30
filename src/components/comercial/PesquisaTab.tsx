@@ -18,6 +18,7 @@ import {
 import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { Star, Users, BarChart3, Upload, FileSpreadsheet, CheckCircle2, Clock, TrendingDown, AlertTriangle, ThumbsUp, Minus, ThumbsDown, ShieldAlert } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, ReferenceLine } from 'recharts';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // ── CSAT Classification ──────────────────────────────────────────
 type CsatFaixa = 'excelente' | 'bom' | 'atencao' | 'critico';
@@ -54,32 +55,9 @@ function classifyNps(avgScore: number | null): 'promoter' | 'neutral' | 'detract
   return 'detractor';
 }
 
-// ── Custom Tooltips ──────────────────────────────────────────────
-function CsatTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  const faixa = classifyCsat(d.csat);
-  const config = FAIXA_CONFIG[faixa];
-  return (
-    <div className="bg-popover border border-border rounded-lg shadow-xl px-4 py-3 text-xs space-y-1.5">
-      <p className="font-semibold text-foreground text-sm">{d.name}</p>
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground">CSAT:</span>
-        <span className="font-bold" style={{ color: config.color }}>{d.csat.toFixed(1)}%</span>
-        <Badge variant="outline" className={`text-[10px] px-1.5 ${config.bgClass}`}>{config.label}</Badge>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground">Nota Média:</span>
-        <span className="font-medium">{d.media.toFixed(2)}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground">Respostas:</span>
-        <span className="font-medium">{d.avaliacoes}</span>
-      </div>
-    </div>
-  );
-}
+type NpsFilter = 'all' | 'promoter' | 'neutral' | 'detractor';
 
+// ── Custom Tooltip ───────────────────────────────────────────────
 function MediaTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
@@ -98,12 +76,18 @@ function MediaTooltip({ active, payload }: any) {
         <span className="text-muted-foreground">Respostas:</span>
         <span className="font-medium">{d.avaliacoes}</span>
       </div>
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground">Faixa:</span>
+        <Badge variant="outline" className={`text-[10px] px-1.5 ${FAIXA_CONFIG[d.faixa as CsatFaixa]?.bgClass}`}>
+          {FAIXA_CONFIG[d.faixa as CsatFaixa]?.label}
+        </Badge>
+      </div>
     </div>
   );
 }
 
 // ── Table columns ────────────────────────────────────────────────
-const columns: DataTableColumn<SurveyResponse>[] = [
+const baseColumns: DataTableColumn<SurveyResponse>[] = [
   { key: 'client_code', header: 'Código', className: 'font-mono text-xs w-16' },
   { key: 'client_name', header: 'Cliente', className: 'max-w-[200px] truncate font-medium' },
   {
@@ -169,6 +153,8 @@ export function PesquisaTab() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [importModeOpen, setImportModeOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+  const [npsFilter, setNpsFilter] = useState<NpsFilter>('all');
+  const [tableProductFilter, setTableProductFilter] = useState<string>('all');
 
   const latestAggregate = aggregates[0]?.payload;
 
@@ -228,22 +214,25 @@ export function PesquisaTab() {
       : responses;
 
     let promoters = 0, neutrals = 0, detractors = 0, unrated = 0;
+    const promoterList: SurveyResponse[] = [];
+    const neutralList: SurveyResponse[] = [];
+    const detractorList: SurveyResponse[] = [];
 
     for (const r of relevantResponses) {
       if (selectedProduct) {
         const prod = (r.payload?.products ?? []).find((p: any) => p.product_key === selectedProduct);
         if (!prod || prod.score == null) { unrated++; continue; }
         const cls = classifyNps(prod.score);
-        if (cls === 'promoter') promoters++;
-        else if (cls === 'neutral') neutrals++;
-        else if (cls === 'detractor') detractors++;
+        if (cls === 'promoter') { promoters++; promoterList.push(r); }
+        else if (cls === 'neutral') { neutrals++; neutralList.push(r); }
+        else if (cls === 'detractor') { detractors++; detractorList.push(r); }
         else unrated++;
       } else {
         const avg = r.derived?.avg_score;
         const cls = classifyNps(avg);
-        if (cls === 'promoter') promoters++;
-        else if (cls === 'neutral') neutrals++;
-        else if (cls === 'detractor') detractors++;
+        if (cls === 'promoter') { promoters++; promoterList.push(r); }
+        else if (cls === 'neutral') { neutrals++; neutralList.push(r); }
+        else if (cls === 'detractor') { detractors++; detractorList.push(r); }
         else unrated++;
       }
     }
@@ -254,6 +243,7 @@ export function PesquisaTab() {
       promoterPct: rated > 0 ? Math.round((promoters / rated) * 100) : 0,
       neutralPct: rated > 0 ? Math.round((neutrals / rated) * 100) : 0,
       detractorPct: rated > 0 ? Math.round((detractors / rated) * 100) : 0,
+      promoterList, neutralList, detractorList,
     };
   }, [responses, selectedProduct]);
 
@@ -262,7 +252,7 @@ export function PesquisaTab() {
     if (!latestAggregate?.products) return [];
     return (latestAggregate.products as any[])
       .filter((p: any) => p.avaliacoes_validas > 0)
-      .sort((a: any, b: any) => (a.csat ?? 0) - (b.csat ?? 0))
+      .sort((a: any, b: any) => (a.nota_media ?? 0) - (b.nota_media ?? 0))
       .map((p: any) => ({
         key: p.product_key,
         name: p.product_name,
@@ -285,21 +275,40 @@ export function PesquisaTab() {
     if (!latestAggregate?.motivos_insatisfacao) return [];
     const all = latestAggregate.motivos_insatisfacao as any[];
     if (!selectedProduct) return all.slice(0, 5);
-
-    // Filter complaints that affect the selected product
     return all
       .filter((m: any) => (m.produtos_mais_afetados || []).includes(selectedProduct))
       .slice(0, 5);
   }, [latestAggregate, selectedProduct]);
 
-  // ── Filtered responses (respect selected product) ──────────────
+  // ── Filtered responses (respect selected product + NPS filter + table product filter) ──
   const filteredResponses = useMemo(() => {
-    if (!selectedProduct) return responses;
-    return responses.filter(r => {
-      const products = r.payload?.products ?? [];
-      return products.some((p: any) => p.product_key === selectedProduct && p.usage_status !== 'not_used');
-    });
-  }, [responses, selectedProduct]);
+    let result = responses;
+
+    // Product filter from chart/badge
+    if (selectedProduct) {
+      result = result.filter(r => {
+        const products = r.payload?.products ?? [];
+        return products.some((p: any) => p.product_key === selectedProduct && p.usage_status !== 'not_used');
+      });
+    }
+
+    // NPS classification filter
+    if (npsFilter !== 'all') {
+      if (npsFilter === 'promoter') result = npsStats.promoterList.filter(r => result.includes(r));
+      else if (npsFilter === 'neutral') result = npsStats.neutralList.filter(r => result.includes(r));
+      else if (npsFilter === 'detractor') result = npsStats.detractorList.filter(r => result.includes(r));
+    }
+
+    // Table product filter
+    if (tableProductFilter !== 'all') {
+      result = result.filter(r => {
+        const products = r.payload?.products ?? [];
+        return products.some((p: any) => p.product_key === tableProductFilter && p.usage_status === 'rated');
+      });
+    }
+
+    return result;
+  }, [responses, selectedProduct, npsFilter, npsStats, tableProductFilter]);
 
   // ── File upload ────────────────────────────────────────────────
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -358,6 +367,10 @@ export function PesquisaTab() {
     return fields;
   }, [drawerItem]);
 
+  const handleNpsKpiClick = (filter: NpsFilter) => {
+    setNpsFilter(prev => prev === filter ? 'all' : filter);
+  };
+
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
   return (
@@ -394,7 +407,7 @@ export function PesquisaTab() {
           <Badge
             variant={selectedProduct === null ? 'default' : 'outline'}
             className="cursor-pointer text-xs"
-            onClick={() => setSelectedProduct(null)}
+            onClick={() => { setSelectedProduct(null); setNpsFilter('all'); }}
           >
             Todos
           </Badge>
@@ -403,7 +416,7 @@ export function PesquisaTab() {
               key={p.key}
               variant={selectedProduct === p.key ? 'default' : 'outline'}
               className="cursor-pointer text-xs"
-              onClick={() => setSelectedProduct(selectedProduct === p.key ? null : p.key)}
+              onClick={() => { setSelectedProduct(selectedProduct === p.key ? null : p.key); setNpsFilter('all'); }}
             >
               {p.name}
             </Badge>
@@ -419,7 +432,7 @@ export function PesquisaTab() {
         <DashboardKpiCard label="Produtos Avaliados" value={kpis.produtosAvaliados} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
-      {/* Promoter / Neutral / Detractor */}
+      {/* Promoter / Neutral / Detractor — clickable KPIs */}
       {npsStats.rated > 0 && (
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -428,27 +441,48 @@ export function PesquisaTab() {
             <span className="text-xs text-muted-foreground ml-auto">Escala 0–5: Promotor ≥ 4.5 • Neutro ≥ 3.5 • Detrator &lt; 3.5</span>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(142,71%,45%)]/5 border border-[hsl(142,71%,45%)]/20">
+            <button
+              onClick={() => handleNpsKpiClick('promoter')}
+              className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                npsFilter === 'promoter'
+                  ? 'bg-[hsl(142,71%,45%)]/15 border-[hsl(142,71%,45%)]/50 ring-2 ring-[hsl(142,71%,45%)]/30'
+                  : 'bg-[hsl(142,71%,45%)]/5 border-[hsl(142,71%,45%)]/20 hover:bg-[hsl(142,71%,45%)]/10'
+              }`}
+            >
               <ThumbsUp className="h-5 w-5 text-[hsl(142,71%,45%)]" />
               <div>
                 <p className="text-xl font-bold text-[hsl(142,71%,45%)]">{npsStats.promoters}</p>
                 <p className="text-xs text-muted-foreground">Promotores ({npsStats.promoterPct}%)</p>
               </div>
-            </div>
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(43,85%,46%)]/5 border border-[hsl(43,85%,46%)]/20">
+            </button>
+            <button
+              onClick={() => handleNpsKpiClick('neutral')}
+              className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                npsFilter === 'neutral'
+                  ? 'bg-[hsl(43,85%,46%)]/15 border-[hsl(43,85%,46%)]/50 ring-2 ring-[hsl(43,85%,46%)]/30'
+                  : 'bg-[hsl(43,85%,46%)]/5 border-[hsl(43,85%,46%)]/20 hover:bg-[hsl(43,85%,46%)]/10'
+              }`}
+            >
               <Minus className="h-5 w-5 text-[hsl(43,85%,46%)]" />
               <div>
                 <p className="text-xl font-bold text-[hsl(43,85%,46%)]">{npsStats.neutrals}</p>
                 <p className="text-xs text-muted-foreground">Neutros ({npsStats.neutralPct}%)</p>
               </div>
-            </div>
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+            </button>
+            <button
+              onClick={() => handleNpsKpiClick('detractor')}
+              className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                npsFilter === 'detractor'
+                  ? 'bg-destructive/15 border-destructive/50 ring-2 ring-destructive/30'
+                  : 'bg-destructive/5 border-destructive/20 hover:bg-destructive/10'
+              }`}
+            >
               <ThumbsDown className="h-5 w-5 text-destructive" />
               <div>
                 <p className="text-xl font-bold text-destructive">{npsStats.detractors}</p>
                 <p className="text-xs text-muted-foreground">Detratores ({npsStats.detractorPct}%)</p>
               </div>
-            </div>
+            </button>
           </div>
           {/* Visual bar */}
           <div className="mt-3 h-3 rounded-full overflow-hidden flex">
@@ -456,6 +490,12 @@ export function PesquisaTab() {
             {npsStats.neutralPct > 0 && <div className="bg-[hsl(43,85%,46%)]" style={{ width: `${npsStats.neutralPct}%` }} />}
             {npsStats.detractorPct > 0 && <div className="bg-destructive" style={{ width: `${npsStats.detractorPct}%` }} />}
           </div>
+          {npsFilter !== 'all' && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Mostrando {npsFilter === 'promoter' ? 'promotores' : npsFilter === 'neutral' ? 'neutros' : 'detratores'} na tabela abaixo.
+              <button onClick={() => setNpsFilter('all')} className="ml-1 text-primary hover:underline">Limpar filtro</button>
+            </p>
+          )}
         </Card>
       )}
 
@@ -491,14 +531,14 @@ export function PesquisaTab() {
         </Card>
       )}
 
-      {/* CSAT Chart */}
+      {/* Nota Média Chart (with color grading) — main chart */}
       {productChart.length > 0 && (
         <Card className="p-4 space-y-2">
           <CardHeader className="p-0">
-            <CardTitle className="text-sm font-semibold">CSAT (%) por Produto</CardTitle>
-            <p className="text-xs text-muted-foreground">Ordenado do pior para o melhor • Clique em uma barra para filtrar</p>
+            <CardTitle className="text-sm font-semibold">Nota Média por Produto</CardTitle>
+            <p className="text-xs text-muted-foreground">Escala 0–5 • Cores refletem o desempenho • Clique para filtrar</p>
           </CardHeader>
-          <div className="h-[300px]">
+          <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={productChart}
@@ -512,49 +552,10 @@ export function PesquisaTab() {
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
                 <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-40} textAnchor="end" interval={0} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                <ReferenceLine y={75} stroke="hsl(43, 85%, 46%)" strokeDasharray="6 3" label={{ value: '75%', position: 'left', fontSize: 10, fill: 'hsl(43, 85%, 46%)' }} />
-                <Tooltip content={<CsatTooltip />} />
-                <Bar dataKey="csat" radius={[4, 4, 0, 0]} className="cursor-pointer">
-                  {productChart.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={FAIXA_CONFIG[entry.faixa].color}
-                      opacity={selectedProduct && entry.key !== selectedProduct ? 0.25 : 1}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      )}
-
-      {/* Nota Média Chart (with color grading) */}
-      {productChart.length > 0 && (
-        <Card className="p-4 space-y-2">
-          <CardHeader className="p-0">
-            <CardTitle className="text-sm font-semibold">Nota Média por Produto</CardTitle>
-            <p className="text-xs text-muted-foreground">Escala 0–5 • Cores refletem o desempenho</p>
-          </CardHeader>
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={[...productChart].sort((a, b) => a.media - b.media)}
-                margin={{ top: 8, right: 16, bottom: 60, left: 0 }}
-                onClick={(e) => {
-                  if (e?.activePayload?.[0]?.payload?.key) {
-                    const key = e.activePayload[0].payload.key;
-                    setSelectedProduct(selectedProduct === key ? null : key);
-                  }
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-40} textAnchor="end" interval={0} />
                 <YAxis domain={[0, 5]} tick={{ fontSize: 11 }} />
                 <Tooltip content={<MediaTooltip />} />
                 <Bar dataKey="media" radius={[4, 4, 0, 0]} className="cursor-pointer">
-                  {[...productChart].sort((a, b) => a.media - b.media).map((entry, i) => (
+                  {productChart.map((entry, i) => (
                     <Cell
                       key={i}
                       fill={getScoreColor(entry.media)}
@@ -627,22 +628,48 @@ export function PesquisaTab() {
         </Card>
       )}
 
-      {/* Responses Table (filtered) */}
-      {!isLoading && filteredResponses.length === 0 ? (
-        <DashboardEmptyState description={selectedProduct ? "Nenhuma resposta encontrada para este produto." : "Nenhuma pesquisa importada. Use o botão acima para importar a planilha wide-format."} />
-      ) : (
-        <DashboardDataTable
-          title="Respostas da Pesquisa"
-          subtitle={`${filteredResponses.length} respostas${selectedProduct ? ' (filtradas)' : ''}`}
-          columns={columns}
-          data={filteredResponses}
-          isLoading={isLoading}
-          getRowKey={(r) => r.id}
-          onRowClick={(r) => setDrawerItem(r)}
-          searchPlaceholder="Buscar cliente..."
-          columnFilters={columnFilters}
-        />
-      )}
+      {/* Responses Table (filtered) with product filter */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-semibold">Respostas da Pesquisa</h3>
+          {productOptions.length > 0 && (
+            <Select value={tableProductFilter} onValueChange={setTableProductFilter}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue placeholder="Filtrar por produto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os produtos</SelectItem>
+                {productOptions.map((p) => (
+                  <SelectItem key={p.key} value={p.key}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {(npsFilter !== 'all' || tableProductFilter !== 'all') && (
+            <button
+              onClick={() => { setNpsFilter('all'); setTableProductFilter('all'); }}
+              className="text-xs text-primary hover:underline"
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
+        {!isLoading && filteredResponses.length === 0 ? (
+          <DashboardEmptyState description={selectedProduct ? "Nenhuma resposta encontrada para este produto." : "Nenhuma pesquisa importada. Use o botão acima para importar a planilha wide-format."} />
+        ) : (
+          <DashboardDataTable
+            title=""
+            subtitle={`${filteredResponses.length} respostas${selectedProduct || npsFilter !== 'all' || tableProductFilter !== 'all' ? ' (filtradas)' : ''}`}
+            columns={baseColumns}
+            data={filteredResponses}
+            isLoading={isLoading}
+            getRowKey={(r) => r.id}
+            onRowClick={(r) => setDrawerItem(r)}
+            searchPlaceholder="Buscar cliente..."
+            columnFilters={columnFilters}
+          />
+        )}
+      </div>
 
       <DashboardDrawer
         open={!!drawerItem}

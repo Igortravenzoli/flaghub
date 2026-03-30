@@ -1,15 +1,17 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
-import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
+import { DashboardDataTable, DataTableColumn, ColumnFilter } from '@/components/dashboard/DashboardDataTable';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { useComercialMovimentacao, MovimentacaoCliente } from '@/hooks/useComercialMovimentacao';
 import { useMovimentacaoImport } from '@/hooks/useMovimentacaoImport';
 import { TrendingUp, TrendingDown, BarChart3, Percent, Upload, Loader2 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from 'recharts';
 
 const columns: DataTableColumn<MovimentacaoCliente>[] = [
   { key: 'cliente_codigo', header: 'Código', className: 'font-mono text-xs w-16' },
@@ -30,16 +32,23 @@ const columns: DataTableColumn<MovimentacaoCliente>[] = [
   { key: 'motivo', header: 'Categoria', className: 'max-w-[180px] truncate text-xs text-muted-foreground' },
 ];
 
+const tableColumnFilters: ColumnFilter[] = [
+  { key: 'cliente_nome', label: 'Cliente' },
+  { key: 'bandeira', label: 'Bandeira' },
+  { key: 'tipo', label: 'Tipo' },
+  { key: 'sistema', label: 'Sistema' },
+  { key: 'motivo', label: 'Categoria' },
+];
+
 interface Props {
   dateFrom?: Date;
   dateTo?: Date;
 }
 
 export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
-  const [tipoFilter, setTipoFilter] = useState<'todos' | 'perda' | 'ganho'>('todos');
   const [anoFilter, setAnoFilter] = useState<string>('todos');
   const [drawerItem, setDrawerItem] = useState<MovimentacaoCliente | null>(null);
-  const { items: rawItems, allItems, stats: rawStats, isLoading, isError, refetch } = useComercialMovimentacao(tipoFilter, dateFrom, dateTo);
+  const { items: rawItems, allItems, stats: rawStats, isLoading, isError, refetch } = useComercialMovimentacao('todos', dateFrom, dateTo);
 
   // Filter by year
   const items = useMemo(() => {
@@ -77,6 +86,22 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
     }
     return [...years].sort((a, b) => b - a);
   }, [allItems]);
+
+  // Bar chart data: perdas x ganhos grouped by month
+  const chartData = useMemo(() => {
+    const monthMap = new Map<string, { label: string; ganhos: number; perdas: number; sortKey: string }>();
+    for (const item of items) {
+      const d = item.data_evento ? new Date(item.data_evento) : null;
+      if (!d) continue;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+      if (!monthMap.has(key)) monthMap.set(key, { label, ganhos: 0, perdas: 0, sortKey: key });
+      const entry = monthMap.get(key)!;
+      if (item.tipo === 'ganho') entry.ganhos++;
+      else if (item.tipo === 'perda') entry.perdas++;
+    }
+    return Array.from(monthMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  }, [items]);
 
   // Import state
   const fileRef = useRef<HTMLInputElement>(null);
@@ -144,38 +169,56 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
         <DashboardKpiCard label="Saldo (Clientes)" value={stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes)} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
-      <div className="flex items-center gap-4 mt-1 mb-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Tipo:</span>
-          <ToggleGroup type="single" value={tipoFilter} onValueChange={(v) => setTipoFilter((v || 'todos') as any)} size="sm">
-            <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
-            <ToggleGroupItem value="ganho" className="text-xs h-7 px-3">Ganhos</ToggleGroupItem>
-            <ToggleGroupItem value="perda" className="text-xs h-7 px-3">Perdas</ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Ano:</span>
-          <ToggleGroup type="single" value={anoFilter} onValueChange={(v) => setAnoFilter(v || 'todos')} size="sm">
-            <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
-            {availableYears.map((y) => (
-              <ToggleGroupItem key={y} value={String(y)} className="text-xs h-7 px-3">{y}</ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
+      {/* Year filter only */}
+      <div className="flex items-center gap-2 mt-1 mb-1">
+        <span className="text-xs text-muted-foreground">Ano:</span>
+        <ToggleGroup type="single" value={anoFilter} onValueChange={(v) => setAnoFilter(v || 'todos')} size="sm">
+          <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
+          {availableYears.map((y) => (
+            <ToggleGroupItem key={y} value={String(y)} className="text-xs h-7 px-3">{y}</ToggleGroupItem>
+          ))}
+        </ToggleGroup>
       </div>
+
+      {/* Bar chart: Perdas x Ganhos por mês */}
+      {chartData.length > 0 && !isLoading && (
+        <Card className="p-4 space-y-2">
+          <CardHeader className="p-0">
+            <CardTitle className="text-sm font-semibold">Perdas × Ganhos por Mês</CardTitle>
+            <p className="text-xs text-muted-foreground">Visão gerencial da movimentação de clientes</p>
+          </CardHeader>
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" interval={0} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{ fontSize: 12, borderRadius: 8, background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}
+                  labelStyle={{ fontWeight: 600 }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="ganhos" name="Ganhos" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="perdas" name="Perdas" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
 
       {!isLoading && items.length === 0 ? (
         <DashboardEmptyState description="Nenhuma movimentação encontrada. Use o botão 'Importar XLSX' para carregar dados." />
       ) : (
         <DashboardDataTable
           title="Movimentação de Clientes"
-          subtitle={`${items.length} registros${tipoFilter !== 'todos' ? ` (${tipoFilter === 'ganho' ? 'ganhos' : 'perdas'})` : ''}${anoFilter !== 'todos' ? ` • ${anoFilter}` : ''}`}
+          subtitle={`${items.length} registros${anoFilter !== 'todos' ? ` • ${anoFilter}` : ''}`}
           columns={columns}
           data={items}
           isLoading={isLoading}
           getRowKey={(r) => r.id}
           onRowClick={(r) => setDrawerItem(r)}
           searchPlaceholder="Buscar cliente ou bandeira..."
+          columnFilters={tableColumnFilters}
         />
       )}
 
