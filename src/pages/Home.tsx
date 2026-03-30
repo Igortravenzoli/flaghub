@@ -47,6 +47,7 @@ export default function Home() {
 
   // Real data hooks
   const comercial = useComercialKpis();
+  const movimentacao = useComercialMovimentacao('todos');
   const helpdesk = useHelpdeskKpis();
 
   // Fábrica: use official current sprint
