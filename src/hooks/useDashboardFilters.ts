@@ -23,6 +23,8 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
   const dates = useMemo(() => {
     const now = new Date();
     switch (preset) {
+      case 'hoje':
+        return { from: startOfDay(now), to: endOfDay(now) };
       case '7d':
         return { from: subDays(now, 7), to: endOfDay(now) };
       case '30d':
