@@ -177,6 +177,7 @@ export default function HelpdeskDashboard() {
   const [drawerItem, setDrawerItem] = useState<any>(null);
   const [selectedConsultants, setSelectedConsultants] = useState<string[]>(loadConsultantFilter);
   const [chartTab, setChartTab] = useState('consultores');
+  const [selectedDay, setSelectedDay] = useState<string>(new Date().toISOString().slice(0, 10));
 
   const {
     allSnapshots, historico, totalSnapshotsNoPeriodo, diasComDados,
@@ -408,44 +409,75 @@ export default function HelpdeskDashboard() {
         <DashboardEmptyState description="Nenhum dado de helpdesk encontrado. Execute o sync via Admin > Sync Central para carregar os dados da API." />
       ) : (
         <>
-          {/* === Hero KPI Cards (main metrics) === */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-1">
-            <DashboardKpiCard
-              label="Total Registros"
-              value={filteredTotalRegistros}
-              icon={FileText}
-              isLoading={isLoading}
-              onClick={() => handleKpiClick('consultores')}
-              active={activeView === 'consultores'}
+          {/* === Day selector + Hero KPI Cards === */}
+          <div className="flex items-center gap-2 mt-1 mb-2">
+            <label className="text-xs text-muted-foreground font-medium">Dia:</label>
+            <Input
+              type="date"
+              value={selectedDay}
+              onChange={e => setSelectedDay(e.target.value)}
+              className="h-8 w-40 text-xs"
             />
-            <DashboardKpiCard
-              label="Horas Acumuladas"
-              value={filteredTotalHoras}
-              suffix="h"
-              icon={Clock}
-              isLoading={isLoading}
-              delay={80}
-              onClick={() => handleKpiClick('chamados')}
-              active={activeView === 'chamados'}
-            />
-            <DashboardKpiCard
-              label="Horas Hoje"
-              value={horasDiaTotal}
-              suffix="h"
-              icon={TrendingUp}
-              isLoading={isLoading}
-              delay={160}
-            />
-            <DashboardKpiCard
-              label="Consultores Ativos"
-              value={selectedConsultants.length || totalConsultores}
-              icon={Users}
-              isLoading={isLoading}
-              delay={240}
-              onClick={() => handleKpiClick('consultores')}
-              active={activeView === 'consultores'}
-            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setSelectedDay(new Date().toISOString().slice(0, 10))}
+            >
+              Hoje
+            </Button>
+            {selectedDay && (
+              <Badge variant="outline" className="text-[10px]">
+                {new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+              </Badge>
+            )}
           </div>
+
+          {/* Daily KPIs based on selected day */}
+          {(() => {
+            const dayData = horasTotaisPorDia.find(h => h.data === selectedDay);
+            const dayHoras = dayData?.totalHoras ?? 0;
+            const dayMinutos = dayData?.totalMinutos ?? 0;
+            return (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <DashboardKpiCard
+                  label="Total Registros"
+                  value={filteredTotalRegistros}
+                  icon={FileText}
+                  isLoading={isLoading}
+                  onClick={() => handleKpiClick('consultores')}
+                  active={activeView === 'consultores'}
+                />
+                <DashboardKpiCard
+                  label="Horas Acumuladas"
+                  value={filteredTotalHoras}
+                  suffix="h"
+                  icon={Clock}
+                  isLoading={isLoading}
+                  delay={80}
+                  onClick={() => handleKpiClick('chamados')}
+                  active={activeView === 'chamados'}
+                />
+                <DashboardKpiCard
+                  label={`Horas ${selectedDay === new Date().toISOString().slice(0, 10) ? 'Hoje' : new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
+                  value={dayHoras}
+                  suffix="h"
+                  icon={TrendingUp}
+                  isLoading={isLoading}
+                  delay={160}
+                />
+                <DashboardKpiCard
+                  label="Consultores Ativos"
+                  value={selectedConsultants.length || totalConsultores}
+                  icon={Users}
+                  isLoading={isLoading}
+                  delay={240}
+                  onClick={() => handleKpiClick('consultores')}
+                  active={activeView === 'consultores'}
+                />
+              </div>
+            );
+          })()}
 
           {/* === Secondary KPI row === */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
@@ -604,29 +636,47 @@ export default function HelpdeskDashboard() {
                       </CardHeader>
                       <CardContent>
                         <div className="h-80">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={top10Sistemas} layout="vertical" margin={{ left: 5, right: 20 }}>
-                              <CartesianGrid strokeDasharray="3 3" className="opacity-20" horizontal={false} />
-                              <XAxis type="number" className="text-xs" tick={{ fontSize: 10 }} />
-                              <YAxis type="category" dataKey="nome" width={110} tick={{ fontSize: 11 }} />
-                              <Tooltip content={<ChartTooltip />} />
-                              <Bar
-                                dataKey="quantidade"
-                                name="Registros"
-                                radius={[0, 6, 6, 0]}
-                                barSize={20}
-                              >
-                                {top10Sistemas.map((_, i) => (
-                                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                                ))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
+                          <div className="space-y-2.5 h-full overflow-y-auto">
+                            {top10Sistemas.map((s, i) => {
+                              const maxQtd = top10Sistemas[0]?.quantidade || 1;
+                              const pct = Math.max(4, Math.round((s.quantidade / maxQtd) * 100));
+                              return (
+                                <div key={s.nome} className="group" style={{ animationDelay: `${i * 80}ms` }}>
+                                  <div className="flex items-center justify-between text-sm mb-1">
+                                    <span className="text-foreground font-medium truncate max-w-[60%]">{s.nome}</span>
+                                    <span className="text-xs font-bold text-foreground">{s.quantidade}</span>
+                                  </div>
+                                  <div className="h-5 bg-muted rounded-full overflow-hidden flex items-center">
+                                    <div
+                                      className="h-full rounded-full flex items-center justify-end pr-1.5 transition-all ease-out"
+                                      style={{
+                                        width: `${pct}%`,
+                                        background: CHART_COLORS[i % CHART_COLORS.length],
+                                        animation: `bar-grow-${i} 0.8s ease-out forwards`,
+                                        animationDelay: `${i * 100}ms`,
+                                      }}
+                                    >
+                                      <Phone className="h-3 w-3 text-white/90 flex-shrink-0" />
+                                    </div>
+                                  </div>
+                                  <style>{`
+                                    @keyframes bar-grow-${i} {
+                                      from { width: 0%; }
+                                      to { width: ${pct}%; }
+                                    }
+                                  `}</style>
+                                </div>
+                              );
+                            })}
+                            {top10Sistemas.length === 0 && (
+                              <div className="text-center py-8 text-sm text-muted-foreground">Sem dados de sistemas</div>
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
 
-                    {/* Ranking mini-list */}
+                    {/* Top Clientes Impactados */}
                     <Card>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-semibold">Top Clientes Impactados</CardTitle>
@@ -639,7 +689,7 @@ export default function HelpdeskDashboard() {
                               .sort((a, b) => b.quantidade - a.quantidade)
                               .map((s, i, sortedArr) => {
                                 const maxQtd = sortedArr[0]?.quantidade || 1;
-                                const pct = Math.max(4, Math.round((s.quantidade / maxQtd) * 100));
+                                const pct = maxQtd > 0 ? Math.max(4, Math.round((s.quantidade / maxQtd) * 100)) : 4;
                                 return (
                                   <div key={s.nome} className="flex items-center gap-3">
                                     <span className="text-xs text-muted-foreground w-5 text-right font-mono">{i + 1}</span>
@@ -650,15 +700,14 @@ export default function HelpdeskDashboard() {
                                       </div>
                                       <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                                         <div
-                                          className="h-full rounded-full transition-all duration-500"
+                                          className="h-full rounded-full transition-all duration-700 ease-out"
                                           style={{
                                             width: `${pct}%`,
-                                            background: CHART_COLORS[i % CHART_COLORS.length],
+                                            background: `hsl(${Math.max(0, 200 - (s.quantidade / maxQtd) * 200)}, 70%, 50%)`,
                                           }}
                                         />
                                       </div>
                                     </div>
-                                    <Phone className="h-3.5 w-3.5 text-muted-foreground/70" />
                                   </div>
                                 );
                               })}

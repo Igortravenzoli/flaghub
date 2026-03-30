@@ -122,18 +122,23 @@ export function useHelpdeskKpis(dateFrom?: Date, dateTo?: Date) {
         if (!s.raw || typeof s.raw !== 'object') return false;
         const r = s.raw as any;
         return (r.registrosPorConsultor?.length > 0) ||
+               (r.porConsultor?.length > 0) ||
                (r.ocorrenciasPorTipo?.length > 0) ||
                (r.acumulado?.totalRegistros > 0);
       })
     : null;
   const raw = latestWithRaw?.raw || {};
 
+  // Helper to resolve consultant array from raw (handles multiple field names)
+  const resolveConsultorArray = (r: any) =>
+    r.registrosPorConsultor || r.porConsultor || [];
+
   // Parse KPIs — single snapshot mode or aggregate mode
   const registrosPorConsultor: ConsultorKpi[] = useSingleRaw
-    ? ((raw as any).registrosPorConsultor || []).map((c: any) => ({
+    ? (resolveConsultorArray(raw as any)).map((c: any) => ({
         nome: c.consultor || c.nome || 'N/A',
-        totalRegistros: c.totalRegistros || c.quantidade || 0,
-        totalMinutos: c.totalMinutos || 0,
+        totalRegistros: c.totalRegistros || c.quantidade || c.total || 0,
+        totalMinutos: c.totalMinutos || c.minutos || 0,
       }))
     : aggregateRawArray('registrosPorConsultor', 'consultor').map(a => ({
         nome: a.nome,

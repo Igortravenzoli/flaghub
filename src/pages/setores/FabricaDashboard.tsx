@@ -232,6 +232,7 @@ export default function FabricaDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
@@ -434,8 +435,15 @@ export default function FabricaDashboard() {
         return t === typeFilter;
       });
     }
+    if (collaboratorFilter) {
+      items = items.filter(i => {
+        const display = i.assigned_to_display || '';
+        const shortName = display.split(' ').slice(0, 2).join(' ');
+        return shortName === collaboratorFilter || display === collaboratorFilter;
+      });
+    }
     return items;
-  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, typeFilter]);
+  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, typeFilter, collaboratorFilter]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
@@ -712,6 +720,11 @@ export default function FabricaDashboard() {
             Tipo: {typeFilter} ✕
           </Badge>
         )}
+        {collaboratorFilter && (
+          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setCollaboratorFilter(null)}>
+            Colaborador: {collaboratorFilter} ✕
+          </Badge>
+        )}
       </div>
 
       {fab.isError ? (
@@ -813,7 +826,7 @@ export default function FabricaDashboard() {
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={Math.max(200, colabChartData.length * 32)}>
-                      <BarChart data={colabChartData} layout="vertical" margin={{ left: 0, right: 16 }}>
+                      <BarChart data={colabChartData} layout="vertical" margin={{ left: 0, right: 16 }} style={{ cursor: 'pointer' }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                         <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
                         <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={110} />
@@ -821,7 +834,26 @@ export default function FabricaDashboard() {
                           contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
                           labelStyle={{ color: 'hsl(var(--foreground))' }}
                         />
-                        <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
+                        <Bar
+                          dataKey="count"
+                          radius={[0, 6, 6, 0]}
+                          cursor="pointer"
+                          onClick={(data: any) => {
+                            if (data?.name) {
+                              setCollaboratorFilter(prev => prev === data.name ? null : data.name);
+                              setPage(0);
+                            }
+                          }}
+                        >
+                          {colabChartData.map((entry, idx) => (
+                            <Cell
+                              key={idx}
+                              fill={collaboratorFilter === entry.name ? 'hsl(var(--primary))' : 'hsl(var(--primary) / 0.7)'}
+                              stroke={collaboratorFilter === entry.name ? 'hsl(var(--foreground))' : 'transparent'}
+                              strokeWidth={collaboratorFilter === entry.name ? 2 : 0}
+                            />
+                          ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
