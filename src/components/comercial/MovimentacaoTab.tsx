@@ -163,9 +163,9 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <DashboardKpiCard label="Ganhos" value={`${stats.pctGanhos}%`} icon={TrendingUp} isLoading={isLoading} />
-        <DashboardKpiCard label="Perdas" value={`${stats.pctPerdas}%`} icon={TrendingDown} isLoading={isLoading} delay={80} />
-        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={Percent} isLoading={isLoading} delay={160} />
+        <DashboardKpiCard label="Ganhos (Clientes)" value={stats.totalGanhos} icon={TrendingUp} isLoading={isLoading} />
+        <DashboardKpiCard label="Perdas (Clientes)" value={stats.totalPerdas} icon={TrendingDown} isLoading={isLoading} delay={80} />
+        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={BarChart3} isLoading={isLoading} delay={160} />
         <DashboardKpiCard label="Saldo (Clientes)" value={stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes)} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
