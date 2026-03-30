@@ -127,19 +127,24 @@ export function TicketBuscaComponente() {
       ...(found ? { os_number: allOs } : {}),
     };
 
-    void supabase
-      .from('tickets')
-      .update(payload)
-      .eq('ticket_external_id', ticket)
-      .eq('network_id', networkId)
-      .then(({ error }) => {
+    void (async () => {
+      try {
+        const { error } = await supabase
+          .from('tickets')
+          .update(payload)
+          .eq('ticket_external_id', ticket)
+          .eq('network_id', networkId);
+
         if (error) throw error;
-        queryClient.invalidateQueries({ queryKey: ['tickets'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      })
-      .catch((error) => {
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['tickets'] }),
+          queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] }),
+        ]);
+      } catch (error) {
         console.error('[TicketBuscaComponente] Erro ao persistir correlação:', error);
-      });
+      }
+    })();
   }, [correlacaoData, networkId, queryClient]);
 
   // Detectar erros de VPN em qualquer busca
