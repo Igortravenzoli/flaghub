@@ -227,6 +227,7 @@ export default function FabricaDashboard() {
   const [fabKpiFilter, setFabKpiFilter] = useState<FabKpiFilter>('all');
   const [expandedPbis, setExpandedPbis] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
+  const [searchAutoSwitched, setSearchAutoSwitched] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
