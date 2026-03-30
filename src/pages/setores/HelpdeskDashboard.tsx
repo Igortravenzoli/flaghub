@@ -177,6 +177,7 @@ export default function HelpdeskDashboard() {
   const [drawerItem, setDrawerItem] = useState<any>(null);
   const [selectedConsultants, setSelectedConsultants] = useState<string[]>(loadConsultantFilter);
   const [chartTab, setChartTab] = useState('consultores');
+  const [selectedDay, setSelectedDay] = useState<string>(new Date().toISOString().slice(0, 10));
 
   const {
     allSnapshots, historico, totalSnapshotsNoPeriodo, diasComDados,
