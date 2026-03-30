@@ -168,7 +168,6 @@ export function useTicketOSCorrelation() {
 
       await updateTicketByScope(ticketExternalId, {
         os_found_in_vdesk: found,
-        has_os: found ? true : undefined,
         os_number: found ? (correlation.osEncontradas[0] ?? null) : undefined,
         vdesk_payload: correlation.data,
         last_os_event_at: now,
@@ -214,7 +213,6 @@ export function useTicketOSCorrelation() {
       await Promise.all(
         response.results.map((result) => updateTicketByScope(result.ticket, {
           os_found_in_vdesk: result.found,
-          has_os: result.found ? true : undefined,
           os_number: result.found ? (result.osEncontradas[0] ?? null) : undefined,
           vdesk_payload: result.data,
           last_os_event_at: now,
