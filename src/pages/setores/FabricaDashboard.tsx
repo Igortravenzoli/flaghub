@@ -262,6 +262,30 @@ export default function FabricaDashboard() {
     }
   }, [fab.sortedSprints, sprintFilter]);
 
+  // Auto-switch sprint when searching for a task ID that exists in a different sprint
+  useEffect(() => {
+    if (!search.trim()) {
+      if (searchAutoSwitched) setSearchAutoSwitched(null);
+      return;
+    }
+    const q = search.trim();
+    // Only auto-switch for numeric ID searches
+    const searchId = /^\d+$/.test(q) ? Number(q) : null;
+    if (!searchId) return;
+
+    // Check if item exists in current sprint filter
+    const inCurrent = sprintFilter === 'all' || fab.items.some(i => i.id === searchId && i.iteration_path === sprintFilter);
+    if (inCurrent) return;
+
+    // Find the item across ALL items
+    const match = fab.allItems.find(i => i.id === searchId);
+    if (match?.iteration_path && fab.sortedSprints.includes(match.iteration_path)) {
+      setSearchAutoSwitched(match.iteration_path);
+      setSprintFilter(match.iteration_path);
+      setPage(0);
+    }
+  }, [search, fab.allItems, fab.items, fab.sortedSprints, sprintFilter, searchAutoSwitched]);
+
   const colabChartData = useMemo(() =>
     Object.entries(fab.porColaborador)
       .sort(([, a], [, b]) => (b as number) - (a as number))
