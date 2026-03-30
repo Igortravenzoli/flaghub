@@ -917,6 +917,25 @@ export default function FabricaDashboard() {
                         className="pl-8 h-8 text-sm"
                       />
                     </div>
+                    {searchAutoSwitched && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="secondary" className="text-[10px] gap-1 animate-fade-in">
+                          <Search className="h-3 w-3" />
+                          Sprint alterada para exibir item #{search}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 text-[10px] px-1.5"
+                          onClick={() => {
+                            setSearch('');
+                            setSearchAutoSwitched(null);
+                          }}
+                        >
+                          <X className="h-3 w-3 mr-0.5" /> Limpar
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
