@@ -409,44 +409,76 @@ export default function HelpdeskDashboard() {
         <DashboardEmptyState description="Nenhum dado de helpdesk encontrado. Execute o sync via Admin > Sync Central para carregar os dados da API." />
       ) : (
         <>
-          {/* === Hero KPI Cards (main metrics) === */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-1">
-            <DashboardKpiCard
-              label="Total Registros"
-              value={filteredTotalRegistros}
-              icon={FileText}
-              isLoading={isLoading}
-              onClick={() => handleKpiClick('consultores')}
-              active={activeView === 'consultores'}
+          {/* === Day selector + Hero KPI Cards === */}
+          <div className="flex items-center gap-2 mt-1 mb-2">
+            <label className="text-xs text-muted-foreground font-medium">Dia:</label>
+            <Input
+              type="date"
+              value={selectedDay}
+              onChange={e => setSelectedDay(e.target.value)}
+              className="h-8 w-40 text-xs"
             />
-            <DashboardKpiCard
-              label="Horas Acumuladas"
-              value={filteredTotalHoras}
-              suffix="h"
-              icon={Clock}
-              isLoading={isLoading}
-              delay={80}
-              onClick={() => handleKpiClick('chamados')}
-              active={activeView === 'chamados'}
-            />
-            <DashboardKpiCard
-              label="Horas Hoje"
-              value={horasDiaTotal}
-              suffix="h"
-              icon={TrendingUp}
-              isLoading={isLoading}
-              delay={160}
-            />
-            <DashboardKpiCard
-              label="Consultores Ativos"
-              value={selectedConsultants.length || totalConsultores}
-              icon={Users}
-              isLoading={isLoading}
-              delay={240}
-              onClick={() => handleKpiClick('consultores')}
-              active={activeView === 'consultores'}
-            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setSelectedDay(new Date().toISOString().slice(0, 10))}
+            >
+              Hoje
+            </Button>
+            {selectedDay && (
+              <Badge variant="outline" className="text-[10px]">
+                {new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+              </Badge>
+            )}
           </div>
+
+          {/* Daily KPIs based on selected day */}
+          {(() => {
+            const dayData = horasTotaisPorDia.find(h => h.data === selectedDay);
+            const dayHoras = dayData?.totalHoras ?? 0;
+            const dayMinutos = dayData?.totalMinutos ?? 0;
+            return (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <DashboardKpiCard
+                  label="Total Registros"
+                  value={filteredTotalRegistros}
+                  icon={FileText}
+                  isLoading={isLoading}
+                  onClick={() => handleKpiClick('consultores')}
+                  active={activeView === 'consultores'}
+                />
+                <DashboardKpiCard
+                  label="Horas Acumuladas"
+                  value={filteredTotalHoras}
+                  suffix="h"
+                  icon={Clock}
+                  isLoading={isLoading}
+                  delay={80}
+                  onClick={() => handleKpiClick('chamados')}
+                  active={activeView === 'chamados'}
+                />
+                <DashboardKpiCard
+                  label={`Horas ${selectedDay === new Date().toISOString().slice(0, 10) ? 'Hoje' : new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
+                  value={dayHoras}
+                  suffix="h"
+                  description={dayMinutos > 0 ? `${dayMinutos} minutos` : 'Sem dados para este dia'}
+                  icon={TrendingUp}
+                  isLoading={isLoading}
+                  delay={160}
+                />
+                <DashboardKpiCard
+                  label="Consultores Ativos"
+                  value={selectedConsultants.length || totalConsultores}
+                  icon={Users}
+                  isLoading={isLoading}
+                  delay={240}
+                  onClick={() => handleKpiClick('consultores')}
+                  active={activeView === 'consultores'}
+                />
+              </div>
+            );
+          })()}
 
           {/* === Secondary KPI row === */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
