@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import KioskOverlay from '@/components/home/KioskOverlay';
 import KioskConfigDialog from '@/components/home/KioskConfigDialog';
 import { useComercialKpis } from '@/hooks/useComercialKpis';
+import { useComercialMovimentacao } from '@/hooks/useComercialMovimentacao';
 import { useHelpdeskKpis } from '@/hooks/useHelpdeskKpis';
 import { useFabricaKpis } from '@/hooks/useFabricaKpis';
 import { useQualidadeKpis } from '@/hooks/useQualidadeKpis';
@@ -46,6 +47,7 @@ export default function Home() {
 
   // Real data hooks
   const comercial = useComercialKpis();
+  const movimentacao = useComercialMovimentacao('todos');
   const helpdesk = useHelpdeskKpis();
 
   // Fábrica: use official current sprint
@@ -78,10 +80,10 @@ export default function Home() {
   const sectorCards: SectorCardData[] = [
     {
       slug: 'comercial', name: 'Comercial', icon: 'TrendingUp',
-      kpiLabel: 'Clientes Ativos / Bloqueados', kpiValue: `${comercial.stats.ativos || 0} / ${comercial.stats.bloqueados || 0}`,
-      kpiSource: 'useComercialKpis.stats',
-      isLoading: comercial.isLoading, path: '/setor/comercial',
-      hasConnection: true, connectionStatus: comercial.isError ? 'down' : 'up',
+      kpiLabel: 'Ganhos / Perdas (Clientes)', kpiValue: `${movimentacao.stats.totalGanhos} / ${movimentacao.stats.totalPerdas}`,
+      kpiSource: 'useComercialMovimentacao.stats',
+      isLoading: movimentacao.isLoading, path: '/setor/comercial',
+      hasConnection: true, connectionStatus: movimentacao.isError ? 'down' : 'up',
     },
     {
       slug: 'customer-service', name: 'Customer Service', icon: 'LayoutGrid',
