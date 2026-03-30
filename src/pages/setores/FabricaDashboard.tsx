@@ -720,6 +720,11 @@ export default function FabricaDashboard() {
             Tipo: {typeFilter} ✕
           </Badge>
         )}
+        {collaboratorFilter && (
+          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setCollaboratorFilter(null)}>
+            Colaborador: {collaboratorFilter} ✕
+          </Badge>
+        )}
       </div>
 
       {fab.isError ? (
