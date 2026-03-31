@@ -10,6 +10,8 @@ export interface CSKpiItem {
   state: string | null;
   assigned_to_display: string | null;
   priority: number | null;
+  effort: number | null;
+  tags: string | null;
   created_date: string | null;
   changed_date: string | null;
   iteration_path?: string | null;
@@ -18,6 +20,9 @@ export interface CSKpiItem {
   solucao: string | null;
   status_implantacao: string | null;
   web_url: string | null;
+  // Enriched fields (populated by secondary query)
+  product?: string | null;
+  description?: string | null;
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
