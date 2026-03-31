@@ -284,8 +284,6 @@ export default function Dashboard() {
     </div>
   );
 }
-    return { ticketsSemOS: semOS, ticketsComOSEncerrada: comOSEncerrada, ticketsComOS: comOS };
-  }, [ticketsConsolidados]);
 
   // Displayed tickets based on toggle
   const displayedTickets = showWithOS ? ticketsComOS : ticketsSemOS;
