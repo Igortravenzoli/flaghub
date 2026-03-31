@@ -344,17 +344,17 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
             return;
           }
 
-          const { error: inactivateErr } = await supabase
-            .rpc('mark_tickets_inactive' as any, { p_network_id: effectiveNetworkId });
+          const { error: deleteErr } = await supabase
+            .rpc('delete_tickets_by_network' as any, { p_network_id: effectiveNetworkId });
 
-          if (inactivateErr) {
-            console.warn('[Purge] Falha ao inativar tickets:', inactivateErr.message);
+          if (deleteErr) {
+            console.warn('[Purge] Falha ao deletar tickets:', deleteErr.message);
             toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
             setIsUploading(false);
             return;
           }
 
-          toast.info('Expurgo aplicado: tickets anteriores inativados.');
+          toast.info('Expurgo aplicado: tickets anteriores deletados.');
         } catch (err) {
           console.error('[Purge] Error:', err);
           toast.error('Erro ao limpar dados anteriores.');

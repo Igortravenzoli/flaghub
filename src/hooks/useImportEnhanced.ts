@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
-import { useCreateBatch, useUpdateBatch, useMarkTicketsInactive } from './useImportBatch';
+import { useCreateBatch, useUpdateBatch, useDeleteTicketsByNetwork } from './useImportBatch';
 // Correlação automática removida - usar API REST em ticketsOSApi.ts ao invés
 
 interface ImportResult {
@@ -110,7 +110,7 @@ export function useImportBatch() {
 
   const createBatch = useCreateBatch();
   const updateBatch = useUpdateBatch();
-  const markInactive = useMarkTicketsInactive();
+  const deleteTickets = useDeleteTicketsByNetwork();
 
   const importBatchMutation = useMutation({
     mutationFn: async ({ 
@@ -167,9 +167,9 @@ export function useImportBatch() {
         // Se clearBeforeImport, marcar todos tickets como inativos
         if (options?.clearBeforeImport) {
           setProgress(10);
-          console.log('[Import] Marcando tickets como inativos (expurgo)...');
-          const inactivated = await markInactive.mutateAsync(networkId);
-          console.log(`[Import] ${inactivated} tickets marcados como inativos`);
+          console.log('[Import] EXPURGO: Deletando todos os tickets da network...');
+          const deleted = await deleteTickets.mutateAsync(networkId);
+          console.log(`[Import] ${deleted} tickets deletados (expurgo)`);
         }
 
         setProgress(15);
