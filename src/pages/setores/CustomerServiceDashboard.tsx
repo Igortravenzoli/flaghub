@@ -514,15 +514,33 @@ export default function CustomerServiceDashboard() {
               {implProductChartData.length > 0 && (
                 <Card className="p-5">
                   <h3 className="font-semibold text-sm mb-4">Implantações por Produto</h3>
-                  <ResponsiveContainer width="100%" height={220}>
+                  <ResponsiveContainer width="100%" height={260}>
                     <PieChart>
-                      <Pie data={implProductChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${value}`} labelLine={false} fontSize={10}>
+                      <Pie
+                        data={implProductChartData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={90}
+                        paddingAngle={3}
+                        cornerRadius={4}
+                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                        labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
+                        fontSize={10}
+                        stroke="hsl(var(--background))"
+                        strokeWidth={2}
+                      >
                         {implProductChartData.map((_, idx) => (
                           <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                         ))}
                       </Pie>
-                      <RechartsTooltip />
-                      <Legend fontSize={11} />
+                      <RechartsTooltip
+                        formatter={(value: number) => [value, 'Qtd']}
+                        contentStyle={{ borderRadius: 8, fontSize: 12, border: '1px solid hsl(var(--border))' }}
+                      />
+                      <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                     </PieChart>
                   </ResponsiveContainer>
                 </Card>
