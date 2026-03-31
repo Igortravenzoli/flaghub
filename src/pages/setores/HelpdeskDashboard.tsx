@@ -167,7 +167,7 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-type ActiveView = 'consultores' | 'sistemas' | 'bandeiras' | 'clientes' | 'tipos' | 'chamados' | null;
+type ActiveView = 'consultores' | 'sistemas' | 'bandeiras' | 'clientes' | 'chamados' | null;
 
 export default function HelpdeskDashboard() {
   const filters = useDashboardFilters('hoje');
