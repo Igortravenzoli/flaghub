@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { useAuth } from './useAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -309,6 +310,7 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
   const [isUploading, setIsUploading] = useState(false);
   const [fileStatuses, setFileStatuses] = useState<UploadFileStatus[]>([]);
   const queryClient = useQueryClient();
+  const { networkId } = useAuth();
 
   const uploadFiles = useCallback(async (files: File[], mode: ImportMode = 'overwrite') => {
     if (files.length === 0) return;
@@ -321,25 +323,65 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
     setFileStatuses([...statuses]);
 
     if (mode === 'purge') {
-      const targetTable = TEMPLATE_TABLES[templateKey];
-      if (targetTable) {
+      if (templateKey === 'helpdesk_v1') {
         try {
-          const { error: delErr } = await supabase
-            .from(targetTable as any)
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000');
-          if (delErr) {
-            console.warn('[Purge] Falha ao limpar tabela:', delErr.message);
+          let effectiveNetworkId = networkId ?? null;
+
+          if (!effectiveNetworkId) {
+            const { data: resolvedNetworkId, error: resolveErr } = await supabase
+              .rpc('hub_resolve_area_network_id' as any, { p_area_key: 'tickets_os' });
+
+            if (resolveErr) {
+              console.warn('[Purge] Falha ao resolver network tickets_os:', resolveErr.message);
+            }
+
+            effectiveNetworkId = (resolvedNetworkId as number | null) ?? null;
+          }
+
+          if (!effectiveNetworkId) {
+            toast.error('Falha ao identificar a rede para expurgo. Importação cancelada.');
+            setIsUploading(false);
+            return;
+          }
+
+          const { error: inactivateErr } = await supabase
+            .rpc('mark_tickets_inactive' as any, { p_network_id: effectiveNetworkId });
+
+          if (inactivateErr) {
+            console.warn('[Purge] Falha ao inativar tickets:', inactivateErr.message);
             toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
             setIsUploading(false);
             return;
           }
-          toast.info('Dados anteriores removidos com sucesso.');
+
+          toast.info('Expurgo aplicado: tickets anteriores inativados.');
         } catch (err) {
           console.error('[Purge] Error:', err);
           toast.error('Erro ao limpar dados anteriores.');
           setIsUploading(false);
           return;
+        }
+      } else {
+        const targetTable = TEMPLATE_TABLES[templateKey];
+        if (targetTable) {
+          try {
+            const { error: delErr } = await supabase
+              .from(targetTable as any)
+              .delete()
+              .neq('id', '00000000-0000-0000-0000-000000000000');
+            if (delErr) {
+              console.warn('[Purge] Falha ao limpar tabela:', delErr.message);
+              toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
+              setIsUploading(false);
+              return;
+            }
+            toast.info('Dados anteriores removidos com sucesso.');
+          } catch (err) {
+            console.error('[Purge] Error:', err);
+            toast.error('Erro ao limpar dados anteriores.');
+            setIsUploading(false);
+            return;
+          }
         }
       }
     }
@@ -451,6 +493,8 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
 
     queryClient.invalidateQueries({ queryKey: ['customer-service'] });
     queryClient.invalidateQueries({ queryKey: ['manual_import_batches'] });
+    queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
 
     if (successCount > 0 && errorCount === 0) {
       toast.success(`${successCount} arquivo(s) importado(s) com sucesso`);
