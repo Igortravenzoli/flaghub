@@ -297,11 +297,16 @@ export function DashboardDataTable<T extends Record<string, any>>({
               <Input
                 placeholder={searchPlaceholder}
                 value={search}
-                onChange={e => { setSearch(e.target.value); setPage(0); }}
+                onChange={e => { const v = e.target.value; setSearch(v); setPage(0); onSearchChange?.(v); }}
                 className="pl-8 h-8 text-sm"
               />
             </div>
           )}
+        </div>
+      )}
+      {searchBanner && (
+        <div className="px-4 py-2 border-b border-border">
+          {searchBanner}
         </div>
       )}
 
