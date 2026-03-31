@@ -515,9 +515,9 @@ export default function HelpdeskDashboard() {
 
                 {/* Tab: Consultores */}
                 <TabsContent value="consultores">
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     {/* Bar chart - top consultores */}
-                    <Card className="lg:col-span-2">
+                    <Card>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
                           <Users className="h-4 w-4 text-primary" />
@@ -546,53 +546,6 @@ export default function HelpdeskDashboard() {
                                 barSize={18}
                               />
                             </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Pie: Ocorrências por Tipo */}
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                          <Headphones className="h-4 w-4 text-primary" />
-                          Ocorrências por Tipo
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-72 flex items-center justify-center">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={ocorrenciasPorTipo.length > 0 ? ocorrenciasPorTipo : [{ nome: 'Sem dados', quantidade: 1 }]}
-                                dataKey="quantidade"
-                                nameKey="nome"
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={45}
-                                outerRadius={85}
-                                paddingAngle={3}
-                                label={ocorrenciasPorTipo.length > 0
-                                  ? ({ nome, percent }: any) => `${nome} (${(percent * 100).toFixed(0)}%)`
-                                  : false}
-                              >
-                                {(ocorrenciasPorTipo.length > 0 ? ocorrenciasPorTipo : [{ nome: 'Sem dados', quantidade: 1 }]).map((_, i) => (
-                                  <Cell
-                                    key={i}
-                                    fill={ocorrenciasPorTipo.length > 0 ? CHART_COLORS[i % CHART_COLORS.length] : 'hsl(var(--muted))'}
-                                    stroke="hsl(var(--card))"
-                                    strokeWidth={2}
-                                  />
-                                ))}
-                              </Pie>
-                              <Tooltip content={<ChartTooltip />} />
-                              <Legend
-                                verticalAlign="bottom"
-                                iconType="circle"
-                                iconSize={8}
-                                wrapperStyle={{ fontSize: '11px' }}
-                              />
-                            </PieChart>
                           </ResponsiveContainer>
                         </div>
                       </CardContent>
