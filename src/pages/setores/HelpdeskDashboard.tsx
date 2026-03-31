@@ -387,12 +387,9 @@ export default function HelpdeskDashboard() {
         presetsLabel="Período"
         presets={[
           { value: 'hoje', label: 'Hoje' },
-          { value: '7d', label: '7d' },
-          { value: '30d', label: '30d' },
-          { value: '90d', label: '90d' },
-          { value: '6m', label: '6m' },
-          { value: '1y', label: '1a' },
-          { value: 'all', label: 'Todos' },
+          { value: 'mes_atual', label: 'Mês Atual' },
+          { value: 'mes_anterior', label: 'Mês Anterior' },
+          { value: '1y', label: 'Ano' },
         ]}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
