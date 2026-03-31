@@ -20,6 +20,7 @@ const CORE_FIELDS = [
   'Microsoft.VSTS.Common.Priority', 'Microsoft.VSTS.Scheduling.Effort',
   'System.Parent', 'System.AreaPath', 'System.IterationPath',
   'System.CreatedDate', 'System.ChangedDate',
+  'System.Description',
 ]
 
 const CORE_FIELD_SET = new Set(CORE_FIELDS.map(f => f.toLowerCase()))
