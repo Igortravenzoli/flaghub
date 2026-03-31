@@ -495,15 +495,6 @@ export default function HelpdeskDashboard() {
               onClick={() => handleKpiClick('clientes')}
               active={activeView === 'clientes'}
             />
-            <DashboardKpiCard
-              label="Tipos Ocorrência"
-              value={ocorrenciasPorTipo.length}
-              icon={Headphones}
-              isLoading={isLoading}
-              delay={240}
-              onClick={() => handleKpiClick('tipos')}
-              active={activeView === 'tipos'}
-            />
           </div>
 
           {/* === Charts Section (Tabbed) === */}
