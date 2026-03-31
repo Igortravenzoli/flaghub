@@ -366,7 +366,7 @@ export default function ComercialDashboard() {
           </TabsContent>
 
           <TabsContent value="movimentacao" className="space-y-4 mt-0">
-            <MovimentacaoTab dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
+            <MovimentacaoTab />
           </TabsContent>
 
           <TabsContent value="pesquisa" className="space-y-4 mt-0">
