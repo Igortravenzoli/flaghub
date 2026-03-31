@@ -19,7 +19,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, Upload, CheckCircle, XCircle, Loader2, HeartPulse, AlertTriangle } from 'lucide-react';
+import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, AlertTriangle } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
@@ -31,14 +31,21 @@ const integrations: Integration[] = [
   { name: 'Upload Manual', type: 'database', status: 'up', lastCheck: '', latency: '—', description: 'Implantações & Fila' },
 ];
 
+/** Strip HTML tags for plain text preview */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 const devopsColumns: DataTableColumn<CSKpiItem>[] = [
   { key: 'work_item_id', header: 'ID', className: 'font-mono text-xs w-16', render: r => r.web_url ? (
     <a href={r.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono" onClick={e => e.stopPropagation()}>{r.work_item_id}</a>
   ) : <span>{r.work_item_id || '—'}</span> },
-  { key: 'title', header: 'Título', className: 'max-w-[300px] truncate' },
+  { key: 'title', header: 'Título', className: 'max-w-[250px] truncate' },
+  { key: 'product', header: 'Produto', className: 'text-xs', render: r => r.product ? <Badge variant="outline" className="text-xs">{r.product}</Badge> : <span className="text-muted-foreground text-xs">—</span> },
   { key: 'state', header: 'Estado', render: r => <Badge variant="outline" className="text-xs">{r.state || '—'}</Badge> },
   { key: 'assigned_to_display', header: 'Responsável' },
   { key: 'priority', header: 'Prior.', render: r => r.priority != null ? <Badge className={`text-xs ${r.priority <= 1 ? 'bg-[hsl(0,84%,60%)] text-white' : r.priority <= 2 ? 'bg-[hsl(43,85%,46%)] text-[hsl(222,47%,11%)]' : 'bg-muted text-muted-foreground'}`}>P{r.priority}</Badge> : '—' },
+  { key: 'effort', header: 'Esforço', className: 'text-center w-16', render: r => r.effort != null ? <span className="text-sm font-mono">{r.effort}</span> : <span className="text-muted-foreground text-xs">0</span> },
   { key: 'query_name', header: 'Origem', className: 'text-xs text-muted-foreground max-w-[150px] truncate' },
 ];
 
@@ -52,7 +59,8 @@ const implColumns: DataTableColumn<CSKpiItem>[] = [
 ];
 
 export default function CustomerServiceDashboard() {
-  const filters = useDashboardFilters('30d');
+  // RN01 — Default to 'all' (no temporal filter)
+  const filters = useDashboardFilters('all');
   const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const { devopsItems, allItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo, sprintFilter);
   const allDevopsItems = allItems.filter(i => i.source === 'devops_queue');
@@ -152,7 +160,7 @@ export default function CustomerServiceDashboard() {
 
   const handleExportCSV = () => exportCSV({
     title: 'Fila Customer Service', area: 'Customer Service', periodLabel: filters.presetLabel,
-    columns: ['work_item_id', 'title', 'state', 'assigned_to_display', 'priority', 'query_name'],
+    columns: ['work_item_id', 'title', 'product', 'state', 'assigned_to_display', 'priority', 'effort', 'query_name'],
     rows: devopsItems as any[],
   });
 
@@ -163,10 +171,11 @@ export default function CustomerServiceDashboard() {
       { label: 'Implantações em andamento', value: implAndamento },
       { label: 'Implantações finalizadas', value: implFinalizadas },
     ],
-    columns: ['work_item_id', 'title', 'state', 'assigned_to_display', 'priority'],
+    columns: ['work_item_id', 'title', 'state', 'assigned_to_display', 'priority', 'effort'],
     rows: devopsItems as any[],
   });
 
+  // Build drawer fields with description (RN03)
   const drawerFields: DrawerField[] = drawerItem ? [
     { label: 'ID', value: drawerItem.work_item_id },
     { label: 'Título', value: drawerItem.title },
@@ -174,6 +183,9 @@ export default function CustomerServiceDashboard() {
     { label: 'Estado', value: drawerItem.state },
     { label: 'Responsável', value: drawerItem.assigned_to_display },
     { label: 'Prioridade', value: drawerItem.priority != null ? `P${drawerItem.priority}` : '—' },
+    { label: 'Esforço', value: drawerItem.effort != null ? String(drawerItem.effort) : '0' },
+    { label: 'Produto', value: drawerItem.product || '—' },
+    { label: 'Tags', value: drawerItem.tags || '—' },
     { label: 'Origem', value: drawerItem.source === 'devops_queue' ? drawerItem.query_name : 'Upload Manual' },
     { label: 'Criado em', value: drawerItem.created_date ? new Date(drawerItem.created_date).toLocaleString('pt-BR') : '—' },
     { label: 'Alterado em', value: drawerItem.changed_date ? new Date(drawerItem.changed_date).toLocaleString('pt-BR') : '—' },
@@ -182,6 +194,15 @@ export default function CustomerServiceDashboard() {
       { label: 'Solução', value: drawerItem.solucao },
       { label: 'Status Implantação', value: drawerItem.status_implantacao },
     ] : []),
+    // RN03 — Description (only for DevOps items)
+    ...(drawerItem.description ? [{
+      label: 'Descrição',
+      value: (
+        <div className="max-h-[300px] overflow-y-auto rounded-md bg-muted/30 p-3 text-xs leading-relaxed whitespace-pre-wrap break-words">
+          {stripHtml(drawerItem.description)}
+        </div>
+      ),
+    }] : []),
   ] : [];
 
   return (
@@ -197,6 +218,7 @@ export default function CustomerServiceDashboard() {
           presetLabel={filters.presetLabel}
           presetControl="chips"
           presets={[
+            { value: 'all', label: 'Todos' },
             { value: '7d', label: '7d' },
             { value: '30d', label: '30d' },
             { value: '90d', label: '90d' },

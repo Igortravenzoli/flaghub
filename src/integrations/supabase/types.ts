@@ -2640,12 +2640,14 @@ export type Database = {
           consultor_impl: string | null
           created_date: string | null
           data_referencia: string | null
+          effort: number | null
           priority: number | null
           query_name: string | null
           solucao: string | null
           source: string | null
           state: string | null
           status_implantacao: string | null
+          tags: string | null
           title: string | null
           web_url: string | null
           work_item_id: number | null
@@ -3072,6 +3074,7 @@ export type Database = {
       jsonb_merge: { Args: { current: Json; new_data: Json }; Returns: Json }
       mark_tickets_inactive: { Args: { p_network_id: number }; Returns: number }
       provision_user: { Args: { p_user_id: string }; Returns: Json }
+      purge_cs_implantacoes: { Args: never; Returns: number }
       purge_network_data: { Args: { p_network_id: number }; Returns: Json }
       purge_old_inactive_tickets: {
         Args: { p_days_threshold?: number; p_network_id: number }

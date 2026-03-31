@@ -10,6 +10,8 @@ export interface CSKpiItem {
   state: string | null;
   assigned_to_display: string | null;
   priority: number | null;
+  effort: number | null;
+  tags: string | null;
   created_date: string | null;
   changed_date: string | null;
   iteration_path?: string | null;
@@ -18,12 +20,28 @@ export interface CSKpiItem {
   solucao: string | null;
   status_implantacao: string | null;
   web_url: string | null;
+  // Enriched fields (populated by secondary query)
+  product?: string | null;
+  description?: string | null;
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
   return d >= from && d <= to;
+}
+
+/** Known product tags — same rule as fábrica */
+const KNOWN_PRODUCTS = new Set([
+  'FLEXX', 'FLEXXSALES', 'CONNECTSALES', 'FLEXXGO', 'FLEXXGPS',
+  'HEISHOP', 'PORTALBROKER', 'PORTAL BROKER', 'FLEXXLEAD', 'QUICKONE',
+  'CONNECTMERCHAN',
+]);
+
+function extractProduct(tags: string | null): string | null {
+  if (!tags) return null;
+  const products = tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
+  return products.length > 0 ? products.join(', ') : null;
 }
 
 export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
@@ -76,19 +94,24 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
     .map(i => i.work_item_id as number);
 
   const sprintMapQuery = useQuery({
-    queryKey: ['customer-service', 'sprint-map', devopsIds.slice().sort((a, b) => a - b).join(',')],
+    queryKey: ['customer-service', 'enrichment-map', devopsIds.slice().sort((a, b) => a - b).join(',')],
     queryFn: async () => {
-      if (devopsIds.length === 0) return new Map<number, string | null>();
-      const map = new Map<number, string | null>();
+      if (devopsIds.length === 0) return new Map<number, { iteration_path: string | null; description: string | null }>();
+      const map = new Map<number, { iteration_path: string | null; description: string | null }>();
       for (let i = 0; i < devopsIds.length; i += 1000) {
         const chunk = devopsIds.slice(i, i + 1000);
         const { data } = await supabase
           .from('devops_work_items')
-          .select('id, iteration_path')
+          .select('id, iteration_path, raw')
           .in('id', chunk);
 
         for (const row of (data || [])) {
-          map.set(row.id, row.iteration_path);
+          const rawObj = row.raw as Record<string, any> | null;
+          const desc = rawObj?.fields?.['System.Description'] ?? rawObj?.fields?.description ?? null;
+          map.set(row.id, {
+            iteration_path: row.iteration_path,
+            description: typeof desc === 'string' ? desc : null,
+          });
         }
       }
       return map;
@@ -96,13 +119,16 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
     staleTime: 5 * 60 * 1000,
   });
 
-  const sprintMap = sprintMapQuery.data || new Map<number, string | null>();
+  const enrichmentMap = sprintMapQuery.data || new Map<number, { iteration_path: string | null; description: string | null }>();
 
   const allItemsWithSprint = allItems.map((i) => {
     if (i.source !== 'devops_queue' || !i.work_item_id) return i;
+    const enrichment = enrichmentMap.get(i.work_item_id);
     return {
       ...i,
-      iteration_path: sprintMap.get(i.work_item_id) || null,
+      iteration_path: enrichment?.iteration_path || null,
+      product: extractProduct(i.tags),
+      description: enrichment?.description || null,
     };
   });
 
@@ -113,7 +139,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
     if (i.source !== 'devops_queue') return true;
     if (sprintFilter === 'all' || sprintFilter === '__pending__') return true;
     if (!i.work_item_id) return false;
-    return sprintMap.get(i.work_item_id) === sprintFilter;
+    return enrichmentMap.get(i.work_item_id)?.iteration_path === sprintFilter;
   });
 
   // Date filter atua como drill-down após sprint filter.

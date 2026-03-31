@@ -365,15 +365,26 @@ export function useManualUpload({ templateKey, onComplete }: UseManualUploadOpti
         const targetTable = TEMPLATE_TABLES[templateKey];
         if (targetTable) {
           try {
-            const { error: delErr } = await supabase
-              .from(targetTable as any)
-              .delete()
-              .neq('id', '00000000-0000-0000-0000-000000000000');
-            if (delErr) {
-              console.warn('[Purge] Falha ao limpar tabela:', delErr.message);
-              toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
-              setIsUploading(false);
-              return;
+            // Use dedicated SECURITY DEFINER RPCs for purge to bypass RLS restrictions
+            if (templateKey === 'cs_implantacoes_v1') {
+              const { error: rpcErr } = await supabase.rpc('purge_cs_implantacoes' as any);
+              if (rpcErr) {
+                console.warn('[Purge] Falha ao limpar implantações via RPC:', rpcErr.message);
+                toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
+                setIsUploading(false);
+                return;
+              }
+            } else {
+              const { error: delErr } = await supabase
+                .from(targetTable as any)
+                .delete()
+                .neq('id', '00000000-0000-0000-0000-000000000000');
+              if (delErr) {
+                console.warn('[Purge] Falha ao limpar tabela:', delErr.message);
+                toast.error('Falha ao limpar dados anteriores. Importação cancelada.');
+                setIsUploading(false);
+                return;
+              }
             }
             toast.info('Dados anteriores removidos com sucesso.');
           } catch (err) {
