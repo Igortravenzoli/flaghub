@@ -15,6 +15,7 @@ import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -467,21 +468,31 @@ export default function CustomerServiceDashboard() {
               <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => handleHealthClick('vermelho')} active={healthFilter === 'vermelho'} />
             </div>
 
-            <Card className="p-4 space-y-2">
-              <h3 className="font-semibold text-sm">Itens críticos da fila CS</h3>
-              {criticalItems.slice(0, 40).map((item) => (
-                <div key={`cs-red-${item.work_item_id}`} className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">#{item.work_item_id} • {item.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">{item.state || '—'} • {item.assigned_to_display || 'Sem responsável'}{item.aging?.agingTotal != null ? ` • ${item.aging.agingTotal}d aging` : ''}</p>
-                  </div>
-                  <PbiHealthBadge status="vermelho" />
-                </div>
-              ))}
-              {!pbiHealthBatch.isLoading && criticalItems.length === 0 && (
-                <p className="text-sm text-muted-foreground">Nenhum item crítico para o filtro atual.</p>
-              )}
-            </Card>
+            <Collapsible>
+              <Card className="p-4">
+                <CollapsibleTrigger className="w-full flex items-center justify-between cursor-pointer hover:bg-muted/30 rounded-md p-1 -m-1">
+                  <h3 className="font-semibold text-sm flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                    Itens críticos da fila CS
+                  </h3>
+                  <Badge variant="destructive" className="text-xs">{criticalItems.length}</Badge>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-2 mt-3">
+                  {criticalItems.slice(0, 40).map((item) => (
+                    <div key={`cs-red-${item.work_item_id}`} className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">#{item.work_item_id} • {item.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">{item.state || '—'} • {item.assigned_to_display || 'Sem responsável'}{item.aging?.agingTotal != null ? ` • ${item.aging.agingTotal}d aging` : ''}</p>
+                      </div>
+                      <PbiHealthBadge status="vermelho" />
+                    </div>
+                  ))}
+                  {!pbiHealthBatch.isLoading && criticalItems.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Nenhum item crítico para o filtro atual.</p>
+                  )}
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
 
             {!pbiHealthBatch.isLoading && filteredHealthItems.length === 0 ? (
               <DashboardEmptyState description="Nenhum item monitorado na fila CS para o filtro de saúde selecionado." />
@@ -635,29 +646,36 @@ export default function CustomerServiceDashboard() {
 
             {/* Delayed items list */}
             {alertCounts.total > 0 && (
-              <Card className="p-4 space-y-2">
-                <h3 className="font-semibold text-sm flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-destructive" />
-                  Itens com Atraso ({alertCounts.total})
-                </h3>
-                {devopsItems
-                  .filter(i => i.aging?.alertLevel && i.aging.alertLevel !== 'none')
-                  .sort((a, b) => (b.aging?.agingTotal ?? 0) - (a.aging?.agingTotal ?? 0))
-                  .slice(0, 50)
-                  .map((item) => (
-                    <div key={`alert-${item.work_item_id}`} className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">#{item.work_item_id} • {item.title}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {item.assigned_to_display || 'Sem responsável'}
-                          {item.aging?.leadTimeVdeskToDevops != null ? ` • Vdesk→Devops: ${item.aging.leadTimeVdeskToDevops}d` : ''}
-                          {item.aging?.agingTotal != null ? ` • Total: ${item.aging.agingTotal}d` : ''}
-                        </p>
-                      </div>
-                      <AgingBadge level={item.aging?.alertLevel} />
-                    </div>
-                  ))}
-              </Card>
+              <Collapsible>
+                <Card className="p-4">
+                  <CollapsibleTrigger className="w-full flex items-center justify-between cursor-pointer hover:bg-muted/30 rounded-md p-1 -m-1">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                      Itens com Atraso
+                    </h3>
+                    <Badge variant="outline" className="text-xs border-destructive text-destructive">{alertCounts.total}</Badge>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-2 mt-3">
+                    {devopsItems
+                      .filter(i => i.aging?.alertLevel && i.aging.alertLevel !== 'none')
+                      .sort((a, b) => (b.aging?.agingTotal ?? 0) - (a.aging?.agingTotal ?? 0))
+                      .slice(0, 50)
+                      .map((item) => (
+                        <div key={`alert-${item.work_item_id}`} className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">#{item.work_item_id} • {item.title}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {item.assigned_to_display || 'Sem responsável'}
+                              {item.aging?.leadTimeVdeskToDevops != null ? ` • Vdesk→Devops: ${item.aging.leadTimeVdeskToDevops}d` : ''}
+                              {item.aging?.agingTotal != null ? ` • Total: ${item.aging.agingTotal}d` : ''}
+                            </p>
+                          </div>
+                          <AgingBadge level={item.aging?.alertLevel} />
+                        </div>
+                      ))}
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
             )}
 
             {/* Filtered table by monitor KPIs */}
