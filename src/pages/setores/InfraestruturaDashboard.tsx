@@ -10,6 +10,8 @@ import { useInfraestruturaKpis, InfraItem } from '@/hooks/useInfraestruturaKpis'
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
+import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
+import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';

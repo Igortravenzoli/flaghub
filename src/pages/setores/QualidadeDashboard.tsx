@@ -13,6 +13,8 @@ import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
+import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
+import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
