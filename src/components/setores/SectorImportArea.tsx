@@ -56,6 +56,7 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
   const [showModeDialog, setShowModeDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isComercialPesquisaImport = templateKey === 'comercial_pesquisa_v1';
 
   const { uploadFiles, isUploading, fileStatuses, clearStatuses } = useManualUpload({
     templateKey,
@@ -130,6 +131,15 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
 
   return (
     <div className="space-y-4 animate-fade-in">
+      {isComercialPesquisaImport && (
+        <Card className="p-4 border-border/60 bg-muted/30">
+          <p className="text-sm font-medium text-foreground">Esta aba é exclusiva para arquivos de Pesquisa de Satisfação.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Se o arquivo for o <strong>Controle_Comercial</strong>, faça o upload na aba <strong>Movimentação</strong> pelo botão <strong>Importar XLSX</strong>.
+          </p>
+        </Card>
+      )}
+
       {/* Upload Area */}
       <Card
         className={`p-8 border-2 border-dashed transition-all duration-300 text-center cursor-pointer ${
@@ -148,10 +158,16 @@ export function SectorImportArea({ sectorName, templateKey = 'cs_implantacoes_v1
           <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
         )}
         <p className="text-sm font-medium text-foreground">
-          {isUploading ? 'Processando arquivos...' : 'Arraste arquivos aqui ou clique para selecionar'}
+          {isUploading
+            ? 'Processando arquivos...'
+            : isComercialPesquisaImport
+              ? 'Envie aqui apenas arquivos de Pesquisa de Satisfação'
+              : 'Arraste arquivos aqui ou clique para selecionar'}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          Formatos aceitos: CSV, JSON, XLSX • Seleção múltipla permitida
+          {isComercialPesquisaImport
+            ? 'Pesquisa FLAG: CSV, JSON ou XLSX • Para Controle_Comercial, use a aba Movimentação'
+            : 'Formatos aceitos: CSV, JSON, XLSX • Seleção múltipla permitida'}
         </p>
         <input
           ref={fileInputRef}
