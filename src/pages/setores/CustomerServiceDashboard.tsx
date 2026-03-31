@@ -645,29 +645,36 @@ export default function CustomerServiceDashboard() {
 
             {/* Delayed items list */}
             {alertCounts.total > 0 && (
-              <Card className="p-4 space-y-2">
-                <h3 className="font-semibold text-sm flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-destructive" />
-                  Itens com Atraso ({alertCounts.total})
-                </h3>
-                {devopsItems
-                  .filter(i => i.aging?.alertLevel && i.aging.alertLevel !== 'none')
-                  .sort((a, b) => (b.aging?.agingTotal ?? 0) - (a.aging?.agingTotal ?? 0))
-                  .slice(0, 50)
-                  .map((item) => (
-                    <div key={`alert-${item.work_item_id}`} className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">#{item.work_item_id} • {item.title}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {item.assigned_to_display || 'Sem responsável'}
-                          {item.aging?.leadTimeVdeskToDevops != null ? ` • Vdesk→Devops: ${item.aging.leadTimeVdeskToDevops}d` : ''}
-                          {item.aging?.agingTotal != null ? ` • Total: ${item.aging.agingTotal}d` : ''}
-                        </p>
-                      </div>
-                      <AgingBadge level={item.aging?.alertLevel} />
-                    </div>
-                  ))}
-              </Card>
+              <Collapsible>
+                <Card className="p-4">
+                  <CollapsibleTrigger className="w-full flex items-center justify-between cursor-pointer hover:bg-muted/30 rounded-md p-1 -m-1">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                      Itens com Atraso
+                    </h3>
+                    <Badge variant="outline" className="text-xs border-destructive text-destructive">{alertCounts.total}</Badge>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-2 mt-3">
+                    {devopsItems
+                      .filter(i => i.aging?.alertLevel && i.aging.alertLevel !== 'none')
+                      .sort((a, b) => (b.aging?.agingTotal ?? 0) - (a.aging?.agingTotal ?? 0))
+                      .slice(0, 50)
+                      .map((item) => (
+                        <div key={`alert-${item.work_item_id}`} className="flex items-center justify-between gap-2 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30" onClick={() => setDrawerItem(item)}>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">#{item.work_item_id} • {item.title}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {item.assigned_to_display || 'Sem responsável'}
+                              {item.aging?.leadTimeVdeskToDevops != null ? ` • Vdesk→Devops: ${item.aging.leadTimeVdeskToDevops}d` : ''}
+                              {item.aging?.agingTotal != null ? ` • Total: ${item.aging.agingTotal}d` : ''}
+                            </p>
+                          </div>
+                          <AgingBadge level={item.aging?.alertLevel} />
+                        </div>
+                      ))}
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
             )}
 
             {/* Filtered table by monitor KPIs */}

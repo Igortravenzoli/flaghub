@@ -32,8 +32,25 @@ export function parseCSDescription(html: string | null | undefined): CSDescripti
   const result: CSDescriptionDates = { dataAberturaVdesk: null, dataInclusaoDevops: null };
   if (!html) return result;
 
-  // Strip HTML tags for easier regex
-  const text = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
+  // Strip HTML tags and decode common HTML entities for easier regex
+  const text = html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&aacute;/gi, 'á')
+    .replace(/&eacute;/gi, 'é')
+    .replace(/&iacute;/gi, 'í')
+    .replace(/&oacute;/gi, 'ó')
+    .replace(/&uacute;/gi, 'ú')
+    .replace(/&atilde;/gi, 'ã')
+    .replace(/&otilde;/gi, 'õ')
+    .replace(/&ccedil;/gi, 'ç')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/\s+/g, ' ');
 
   // Data Abertura Vdesk
   const vdeskMatch = text.match(/Data\s+Abertura\s+Vdesk\s*[:\-–]\s*([\d/]+(?:\s+[\d:]+)?)/i);
