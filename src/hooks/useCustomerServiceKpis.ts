@@ -31,6 +31,19 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
+/** Known product tags — same rule as fábrica */
+const KNOWN_PRODUCTS = new Set([
+  'FLEXX', 'FLEXXSALES', 'CONNECTSALES', 'FLEXXGO', 'FLEXXGPS',
+  'HEISHOP', 'PORTALBROKER', 'PORTAL BROKER', 'FLEXXLEAD', 'QUICKONE',
+  'CONNECTMERCHAN',
+]);
+
+function extractProduct(tags: string | null): string | null {
+  if (!tags) return null;
+  const products = tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
+  return products.length > 0 ? products.join(', ') : null;
+}
+
 export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
   const query = useQuery({
     queryKey: ['customer-service', 'kpis'],
