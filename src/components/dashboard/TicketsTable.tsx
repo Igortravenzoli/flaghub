@@ -11,6 +11,7 @@ import { TicketConsolidado } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Eye, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { getLatestVdeskProgramador } from '@/lib/vdeskLatestStatus';
 
 interface TicketsTableProps {
   tickets: TicketConsolidado[];
@@ -102,9 +103,8 @@ export function TicketsTable({ tickets, compact = false, onViewDetails }: Ticket
               <TableCell className="max-w-[150px]">
                 <span className="truncate block text-sm">
                   {(() => {
-                    // Prefer VDesk programador over ServiceNow assigned_to (which is often a sys_id)
-                    const vdeskProgramador = tc.osMultiplas?.[tc.osMultiplas.length - 1]?.programador 
-                      || tc.osVinculada?.programador;
+                    // Prefer VDesk latest programador over ServiceNow assigned_to
+                    const vdeskProgramador = getLatestVdeskProgramador(tc.osMultiplas) || tc.osVinculada?.programador;
                     if (vdeskProgramador) return vdeskProgramador;
                     // Fallback: only show assigned_to if it looks like a name (not a sys_id hex)
                     const assignedTo = tc.ticket.assigned_to;
