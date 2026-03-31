@@ -259,6 +259,15 @@ export default function CustomerServiceDashboard() {
 
   const handleKpiClick = (filter: KpiFilter) => setKpiFilter(prev => prev === filter ? 'all' : filter);
   const handleHealthClick = (filter: HealthFilter) => setHealthFilter((prev) => prev === filter ? 'all' : filter);
+  const handleMonitorClick = (filter: MonitorFilter) => setMonitorFilter(prev => prev === filter ? 'all' : filter);
+
+  const filteredMonitorItems = useMemo(() => {
+    if (monitorFilter === 'criticos') return devopsItems.filter(i => i.aging?.alertLevel === 'critical');
+    if (monitorFilter === 'atencao') return devopsItems.filter(i => i.aging?.alertLevel === 'warning');
+    if (monitorFilter === 'backlog') return devopsItems.filter(i => i.inBacklog);
+    if (monitorFilter === 'sairam') return devopsItems.filter(i => i.leftCS);
+    return devopsItems;
+  }, [devopsItems, monitorFilter]);
 
   const handleExportCSV = () => exportCSV({
     title: 'Fila Customer Service', area: 'Customer Service', periodLabel: filters.presetLabel,
