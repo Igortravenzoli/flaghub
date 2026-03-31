@@ -192,6 +192,8 @@ export default function Dashboard() {
           value={estatisticas.totalTickets}
           icon={Ticket}
           tooltipDescription="Tickets importados (abertos no ServiceNow)"
+          onClick={() => handleOsFilterClick('all')}
+          active={osFilter === 'all'}
         />
         <DashboardKpiCard
           label="Sem OS"
@@ -199,6 +201,8 @@ export default function Dashboard() {
           icon={AlertTriangle}
           accent="bg-destructive"
           tooltipDescription="Tickets sem OS vinculada no VDESK"
+          onClick={() => handleOsFilterClick('semOS')}
+          active={osFilter === 'semOS'}
         />
         <DashboardKpiCard
           label="Com OS"
@@ -206,6 +210,8 @@ export default function Dashboard() {
           icon={CheckCircle2}
           accent="bg-[hsl(var(--chart-2))]"
           tooltipDescription="Tickets com OS encontrada no VDESK"
+          onClick={() => handleOsFilterClick('comOS')}
+          active={osFilter === 'comOS'}
         />
       </div>
 
