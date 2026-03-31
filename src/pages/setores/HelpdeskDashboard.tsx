@@ -421,8 +421,13 @@ export default function HelpdeskDashboard() {
           {/* Daily KPIs based on selected day */}
           {(() => {
             const dayData = horasTotaisPorDia.find(h => h.data === selectedDay);
-            const dayHoras = dayData?.totalHoras ?? 0;
-            const dayMinutos = dayData?.totalMinutos ?? 0;
+            // Fallback: if horasTotaisPorDia is empty/zero, sum from consultant minutes
+            const dayHoras = (dayData?.totalHoras ?? 0) > 0
+              ? dayData!.totalHoras
+              : filteredTotalHoras;
+            const dayMinutos = (dayData?.totalMinutos ?? 0) > 0
+              ? dayData!.totalMinutos
+              : filteredTotalMinutos;
             return (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <DashboardKpiCard
