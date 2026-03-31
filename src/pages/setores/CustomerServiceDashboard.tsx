@@ -23,8 +23,9 @@ import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, 
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
-type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas' | 'aprovacao_cs' | 'customer_service';
+type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas' | 'aprovacao_cs' | 'customer_service' | 'responsaveis' | 'no_backlog' | 'alertas_atraso';
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
+type MonitorFilter = 'all' | 'criticos' | 'atencao' | 'backlog' | 'sairam';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items CS' },
@@ -101,6 +102,7 @@ export default function CustomerServiceDashboard() {
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [activeTab, setActiveTab] = useState<'fila' | 'implantacoes' | 'saude' | 'monitoramento'>('fila');
+  const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>('all');
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date, (i) => i.data_referencia]),
     [allItems]
@@ -233,6 +235,8 @@ export default function CustomerServiceDashboard() {
       const s = (i.state || '').toLowerCase();
       return s.includes('customer service') || s.includes('cs');
     });
+    if (kpiFilter === 'no_backlog') return devopsItems.filter(i => i.inBacklog);
+    if (kpiFilter === 'alertas_atraso') return devopsItems.filter(i => i.aging?.alertLevel && i.aging.alertLevel !== 'none');
     return devopsItems;
   }, [devopsItems, kpiFilter]);
 
@@ -255,6 +259,15 @@ export default function CustomerServiceDashboard() {
 
   const handleKpiClick = (filter: KpiFilter) => setKpiFilter(prev => prev === filter ? 'all' : filter);
   const handleHealthClick = (filter: HealthFilter) => setHealthFilter((prev) => prev === filter ? 'all' : filter);
+  const handleMonitorClick = (filter: MonitorFilter) => setMonitorFilter(prev => prev === filter ? 'all' : filter);
+
+  const filteredMonitorItems = useMemo(() => {
+    if (monitorFilter === 'criticos') return devopsItems.filter(i => i.aging?.alertLevel === 'critical');
+    if (monitorFilter === 'atencao') return devopsItems.filter(i => i.aging?.alertLevel === 'warning');
+    if (monitorFilter === 'backlog') return devopsItems.filter(i => i.inBacklog);
+    if (monitorFilter === 'sairam') return devopsItems.filter(i => i.leftCS);
+    return devopsItems;
+  }, [devopsItems, monitorFilter]);
 
   const handleExportCSV = () => exportCSV({
     title: 'Fila Customer Service', area: 'Customer Service', periodLabel: filters.presetLabel,
@@ -380,7 +393,7 @@ export default function CustomerServiceDashboard() {
               <HeartPulse className="h-3.5 w-3.5" />
               Esteira / Saúde
             </TabsTrigger>
-            <TabsTrigger value="monitoramento" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <TabsTrigger value="monitoramento" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setMonitorFilter('all')}>
               <Target className="h-3.5 w-3.5" />
               Monitoramento
             </TabsTrigger>
@@ -392,9 +405,9 @@ export default function CustomerServiceDashboard() {
               <DashboardKpiCard label="Volume Fila" value={totalFilaCS} icon={Layers} isLoading={isLoading} onClick={() => handleKpiClick('fila')} active={kpiFilter === 'fila'} />
               <DashboardKpiCard label="Aprovação CS" value={aprovacaoCSCount} icon={Target} isLoading={isLoading} delay={60} accent="bg-[hsl(199,89%,48%)]" onClick={() => handleKpiClick('aprovacao_cs')} active={kpiFilter === 'aprovacao_cs'} />
               <DashboardKpiCard label="Customer Service" value={customerServiceCount} icon={Users} isLoading={isLoading} delay={80} accent="bg-[hsl(174,58%,40%)]" onClick={() => handleKpiClick('customer_service')} active={kpiFilter === 'customer_service'} />
-              <DashboardKpiCard label="Responsáveis" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={100} />
-              <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} delay={120} accent="bg-[hsl(262,83%,58%)]" />
-              <DashboardKpiCard label="Alertas Atraso" value={alertCounts.total} icon={AlertTriangle} isLoading={isLoading} delay={160} accent={alertCounts.critical > 0 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} />
+              <DashboardKpiCard label="Responsáveis" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={100} onClick={() => handleKpiClick('responsaveis')} active={kpiFilter === 'responsaveis'} />
+              <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} delay={120} accent="bg-[hsl(262,83%,58%)]" onClick={() => handleKpiClick('no_backlog')} active={kpiFilter === 'no_backlog'} />
+              <DashboardKpiCard label="Alertas Atraso" value={alertCounts.total} icon={AlertTriangle} isLoading={isLoading} delay={160} accent={alertCounts.critical > 0 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} onClick={() => handleKpiClick('alertas_atraso')} active={kpiFilter === 'alertas_atraso'} />
               <DashboardKpiCard label="Impl. Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); handleKpiClick('impl_andamento'); }} />
             </div>
 
@@ -566,10 +579,10 @@ export default function CustomerServiceDashboard() {
           {/* ═══ TAB: MONITORAMENTO (Release 3) ═══ */}
           <TabsContent value="monitoramento" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <DashboardKpiCard label="Alertas Críticos" value={alertCounts.critical} icon={AlertTriangle} isLoading={isLoading} accent="bg-destructive" />
-              <DashboardKpiCard label="Alertas Atenção" value={alertCounts.warning} icon={Timer} isLoading={isLoading} accent="bg-[hsl(43,85%,46%)]" />
-              <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} accent="bg-[hsl(262,83%,58%)]" />
-              <DashboardKpiCard label="Saíram do CS" value={devopsItems.filter(i => i.leftCS).length} icon={TrendingUp} isLoading={isLoading} accent="bg-[hsl(142,71%,45%)]" />
+              <DashboardKpiCard label="Alertas Críticos" value={alertCounts.critical} icon={AlertTriangle} isLoading={isLoading} accent="bg-destructive" onClick={() => handleMonitorClick('criticos')} active={monitorFilter === 'criticos'} />
+              <DashboardKpiCard label="Alertas Atenção" value={alertCounts.warning} icon={Timer} isLoading={isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleMonitorClick('atencao')} active={monitorFilter === 'atencao'} />
+              <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} accent="bg-[hsl(262,83%,58%)]" onClick={() => handleMonitorClick('backlog')} active={monitorFilter === 'backlog'} />
+              <DashboardKpiCard label="Saíram do CS" value={devopsItems.filter(i => i.leftCS).length} icon={TrendingUp} isLoading={isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleMonitorClick('sairam')} active={monitorFilter === 'sairam'} />
             </div>
 
             {/* Aging distribution chart */}
@@ -646,6 +659,18 @@ export default function CustomerServiceDashboard() {
                   ))}
               </Card>
             )}
+
+            {/* Filtered table by monitor KPIs */}
+            <DashboardDataTable
+              title={`Monitoramento${monitorFilter !== 'all' ? ` — ${monitorFilter === 'criticos' ? 'Críticos' : monitorFilter === 'atencao' ? 'Atenção' : monitorFilter === 'backlog' ? 'No Backlog' : 'Saíram do CS'}` : ''}`}
+              subtitle={`${filteredMonitorItems.length} itens`}
+              columns={devopsColumnsWithHealth}
+              data={filteredMonitorItems}
+              isLoading={isLoading}
+              getRowKey={(r) => String(r.work_item_id ?? Math.random())}
+              onRowClick={(r) => setDrawerItem(r)}
+              searchPlaceholder="Buscar item..."
+            />
           </TabsContent>
         </Tabs>
       )}
