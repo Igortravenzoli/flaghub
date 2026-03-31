@@ -131,11 +131,19 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
   const allItemsWithSprint = allItems.map((i) => {
     if (i.source !== 'devops_queue' || !i.work_item_id) return i;
     const enrichment = enrichmentMap.get(i.work_item_id);
+    const desc = enrichment?.description || null;
+    const parsed = parseCSDescription(desc);
+    const agingMetrics = computeCSAging(parsed, i.created_date, i.assigned_to_display);
     return {
       ...i,
       iteration_path: enrichment?.iteration_path || null,
       product: extractProduct(i.tags),
-      description: enrichment?.description || null,
+      description: desc,
+      dataAberturaVdesk: parsed.dataAberturaVdesk,
+      dataInclusaoDevops: parsed.dataInclusaoDevops,
+      inBacklog: isInBacklog(i.assigned_to_display),
+      leftCS: hasLeftCS(i.assigned_to_display, i.state),
+      aging: agingMetrics,
     };
   });
 
