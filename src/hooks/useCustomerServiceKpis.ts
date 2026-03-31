@@ -139,6 +139,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
     return {
       ...i,
       iteration_path: enrichment?.iteration_path || null,
+      assigned_to_unique: enrichment?.assigned_to_unique || null,
       product: extractProduct(i.tags),
       description: desc,
       dataAberturaVdesk: parsed.dataAberturaVdesk,
