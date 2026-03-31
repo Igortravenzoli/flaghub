@@ -973,6 +973,9 @@ export default function FabricaDashboard() {
                         </Button>
                       </div>
                     )}
+                    {crossSectorResult && !searchAutoSwitched && (
+                      <CrossSectorSearchBanner result={crossSectorResult} />
+                    )}
                   </div>
                 </div>
 
