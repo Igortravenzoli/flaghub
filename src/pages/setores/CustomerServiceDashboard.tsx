@@ -388,12 +388,14 @@ export default function CustomerServiceDashboard() {
 
           {/* ═══ TAB: FILA CS ═══ */}
           <TabsContent value="fila" className="space-y-4 animate-fade-in">
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
               <DashboardKpiCard label="Volume Fila" value={totalFilaCS} icon={Layers} isLoading={isLoading} onClick={() => handleKpiClick('fila')} active={kpiFilter === 'fila'} />
-              <DashboardKpiCard label="Responsáveis" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={80} />
+              <DashboardKpiCard label="Aprovação CS" value={aprovacaoCSCount} icon={Target} isLoading={isLoading} delay={60} accent="bg-[hsl(199,89%,48%)]" onClick={() => handleKpiClick('aprovacao_cs')} active={kpiFilter === 'aprovacao_cs'} />
+              <DashboardKpiCard label="Customer Service" value={customerServiceCount} icon={Users} isLoading={isLoading} delay={80} accent="bg-[hsl(174,58%,40%)]" onClick={() => handleKpiClick('customer_service')} active={kpiFilter === 'customer_service'} />
+              <DashboardKpiCard label="Responsáveis" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={100} />
               <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} delay={120} accent="bg-[hsl(262,83%,58%)]" />
               <DashboardKpiCard label="Alertas Atraso" value={alertCounts.total} icon={AlertTriangle} isLoading={isLoading} delay={160} accent={alertCounts.critical > 0 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} />
-              <DashboardKpiCard label="Implantações Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); handleKpiClick('impl_andamento'); }} />
+              <DashboardKpiCard label="Impl. Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); handleKpiClick('impl_andamento'); }} />
             </div>
 
             {respChartData.length > 0 && (
