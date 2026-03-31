@@ -166,9 +166,12 @@ export function useTicketOSCorrelation() {
       const now = new Date().toISOString();
       const found = correlation.success && correlation.osEncontradas.length > 0;
 
+      const lastProgramador = found ? (correlation.data?.[correlation.data.length - 1]?.programador || null) : undefined;
+
       await updateTicketByScope(ticketExternalId, {
         os_found_in_vdesk: found,
         os_number: found ? (correlation.osEncontradas[0] ?? null) : undefined,
+        assigned_to: lastProgramador,
         vdesk_payload: correlation.data,
         last_os_event_at: now,
         last_os_event_desc: correlation.message ?? (found ? 'OS validada no VDESK' : 'OS não encontrada no VDESK'),
