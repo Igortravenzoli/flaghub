@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
-import { useCreateBatch, useUpdateBatch, useMarkTicketsInactive } from './useImportBatch';
+import { useCreateBatch, useUpdateBatch, useDeleteTicketsByNetwork } from './useImportBatch';
 import { correlacionarTicket } from '@/services/ticketsOSApi';
 import { getValidToken } from '@/services/apiSessionToken';
 import Papa from 'papaparse';

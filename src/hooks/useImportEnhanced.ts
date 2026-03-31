@@ -110,7 +110,7 @@ export function useImportBatch() {
 
   const createBatch = useCreateBatch();
   const updateBatch = useUpdateBatch();
-  const markInactive = useMarkTicketsInactive();
+  const deleteTickets = useDeleteTicketsByNetwork();
 
   const importBatchMutation = useMutation({
     mutationFn: async ({ 
