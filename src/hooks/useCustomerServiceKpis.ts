@@ -10,6 +10,7 @@ export interface CSKpiItem {
   work_item_type: string | null;
   state: string | null;
   assigned_to_display: string | null;
+  assigned_to_unique: string | null;
   priority: number | null;
   effort: number | null;
   tags: string | null;
