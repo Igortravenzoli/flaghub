@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
-import { useCreateBatch, useUpdateBatch, useMarkTicketsInactive } from './useImportBatch';
+import { useCreateBatch, useUpdateBatch, useDeleteTicketsByNetwork } from './useImportBatch';
 // Correlação automática removida - usar API REST em ticketsOSApi.ts ao invés
 
 interface ImportResult {
