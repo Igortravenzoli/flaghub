@@ -146,7 +146,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
   const drawerFields: DrawerField[] = drawerItem ? [
     { label: 'Código', value: drawerItem.cliente_codigo },
     { label: 'Cliente', value: drawerItem.cliente_nome },
-    { label: 'Tipo', value: drawerItem.tipo === 'ganho' ? 'Ganho' : 'Perda' },
+    { label: 'Tipo', value: tipoLabel(drawerItem.tipo) },
     { label: 'Bandeira', value: drawerItem.bandeira },
     { label: 'Sistema', value: drawerItem.sistema },
     { label: 'Categoria', value: drawerItem.motivo },
