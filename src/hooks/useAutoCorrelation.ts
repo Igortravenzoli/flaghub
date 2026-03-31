@@ -180,11 +180,13 @@ export function useAutoCorrelation() {
             if (response.success && response.count > 0) {
               const allOsNumbers = response.osEncontradas.join(', ');
               const lastOsRecord = response.data?.[response.data.length - 1];
+              const lastProgramador = response.data?.[response.data.length - 1]?.programador || null;
               await supabase
                 .from('tickets')
                 .update({
                   os_found_in_vdesk: true,
                   os_number: allOsNumbers,
+                  assigned_to: lastProgramador,
                   inconsistency_code: null,
                   severity: 'info' as const,
                   vdesk_payload: response.data as any,
