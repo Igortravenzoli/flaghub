@@ -1,5 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { parseCSDescription, computeCSAging, isInBacklog, hasLeftCS, type CSAgingMetrics } from '@/lib/csDescriptionParser';
 
 export interface CSKpiItem {
   source: string | null;
@@ -23,6 +24,12 @@ export interface CSKpiItem {
   // Enriched fields (populated by secondary query)
   product?: string | null;
   description?: string | null;
+  // Release 2 — Rastreabilidade
+  dataAberturaVdesk?: Date | null;
+  dataInclusaoDevops?: Date | null;
+  inBacklog?: boolean;
+  leftCS?: boolean;
+  aging?: CSAgingMetrics | null;
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
@@ -124,11 +131,19 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
   const allItemsWithSprint = allItems.map((i) => {
     if (i.source !== 'devops_queue' || !i.work_item_id) return i;
     const enrichment = enrichmentMap.get(i.work_item_id);
+    const desc = enrichment?.description || null;
+    const parsed = parseCSDescription(desc);
+    const agingMetrics = computeCSAging(parsed, i.created_date, i.assigned_to_display);
     return {
       ...i,
       iteration_path: enrichment?.iteration_path || null,
       product: extractProduct(i.tags),
-      description: enrichment?.description || null,
+      description: desc,
+      dataAberturaVdesk: parsed.dataAberturaVdesk,
+      dataInclusaoDevops: parsed.dataInclusaoDevops,
+      inBacklog: isInBacklog(i.assigned_to_display),
+      leftCS: hasLeftCS(i.assigned_to_display, i.state),
+      aging: agingMetrics,
     };
   });
 
