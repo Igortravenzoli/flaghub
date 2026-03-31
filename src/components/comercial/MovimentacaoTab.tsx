@@ -243,7 +243,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
         open={!!drawerItem}
         onClose={() => setDrawerItem(null)}
         title={drawerItem?.cliente_nome || undefined}
-        subtitle={drawerItem?.tipo === 'ganho' ? 'Novo Cliente' : 'Perda de Cliente'}
+        subtitle={drawerItem?.tipo === 'ganho' ? 'Novo Cliente' : drawerItem?.tipo === 'risco' ? 'Cliente em Risco' : 'Perda de Cliente'}
         fields={drawerFields}
       />
 
