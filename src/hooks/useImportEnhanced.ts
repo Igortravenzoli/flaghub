@@ -171,7 +171,6 @@ export function useImportBatch() {
           const inactivated = await markInactive.mutateAsync(networkId);
           console.log(`[Import] ${inactivated} tickets marcados como inativos`);
         }
-        }
 
         setProgress(15);
 
