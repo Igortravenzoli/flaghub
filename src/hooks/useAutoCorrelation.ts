@@ -77,11 +77,15 @@ export function useAutoCorrelation() {
         const finalInconsistencyCode = hasUnmappedStatus ? 'UNKNOWN_STATUS' : null;
         const finalSeverity = hasUnmappedStatus ? ('atencao' as const) : ('info' as const);
 
+        // Último programador listado = responsável atual
+        const lastProgramador = r.data?.[r.data.length - 1]?.programador || null;
+
         return supabase
           .from('tickets')
           .update({
             os_found_in_vdesk: true,
             os_number: allOsNumbers,
+            assigned_to: lastProgramador,
             inconsistency_code: finalInconsistencyCode,
             severity: finalSeverity,
             vdesk_payload: r.data as any,
