@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback } from 'react';
 import { useTickets, useDashboardSummary, useSettings, useStatusMappings, useResolvedAreaNetwork } from './useSupabaseData';
 import { useAuth } from './useAuth';
 import type { DBTicket, InternalStatus, TicketSeverity } from '@/types/database';
+import { getLatestVdeskProgramador, getLatestVdeskStatusIndex } from '@/lib/vdeskLatestStatus';
 import type { 
   TicketConsolidado, 
   Severidade, 
@@ -52,10 +53,8 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
   // Resolve assigned_to: prefer VDesk programador over ServiceNow sys_id
   const rawAssignedTo = ticket.assigned_to || '';
   const isHexSysId = /^[0-9a-f]{32}$/i.test(rawAssignedTo);
-  const vdeskProgramador = vdeskData?.[vdeskData.length - 1]?.programador;
-  const resolvedAssignedTo = (isHexSysId || !rawAssignedTo) && vdeskProgramador
-    ? vdeskProgramador
-    : rawAssignedTo;
+  const vdeskProgramador = getLatestVdeskProgramador(vdeskData);
+  const resolvedAssignedTo = vdeskProgramador || rawAssignedTo;
 
   // Extrair dados do ticket Nestlé do raw_payload
   const ticketNestle: TicketNestle = {
@@ -89,6 +88,8 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
 
   if (hasLinkedOS(ticket)) {
     if (vdeskData && vdeskData.length > 0) {
+      const latestVdeskIndex = getLatestVdeskStatusIndex(vdeskData);
+
       // Usar dados completos do VDESK
       vdeskData.forEach((vd: any) => {
         osMultiplas.push({
@@ -111,7 +112,7 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
           retorno: vd.retorno || '',
         });
       });
-      osVinculada = osMultiplas[0];
+      osVinculada = osMultiplas[latestVdeskIndex] || osMultiplas[0];
     } else {
       // Fallback: dados básicos
       osVinculada = {

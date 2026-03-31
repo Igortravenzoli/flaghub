@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, X, AlertTriangle, Ticket, Filter } from 'lucide-react';
 import { TicketConsolidado, Severidade, StatusNormalizado } from '@/types';
 import { SeverityBadge } from '@/components/ui/severity-badge';
+import { getLatestVdeskProgramador } from '@/lib/vdeskLatestStatus';
 
 const statusLabels: Record<StatusNormalizado, string> = {
   novo: 'Novo',
@@ -153,7 +154,7 @@ export default function Tickets() {
       
       {/* Modal de Detalhes */}
       <Dialog open={!!selectedTicket} onOpenChange={() => setSelectedTicket(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[min(96vw,1100px)] max-w-[1100px] max-h-[90vh] overflow-y-auto">
           {selectedTicket && (
             <>
               <DialogHeader>
@@ -180,7 +181,7 @@ export default function Tickets() {
                 )}
                 
                 {/* Dados do Ticket */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <h4 className="font-medium mb-3">Dados do Ticket (Nestlé)</h4>
                     <dl className="space-y-2 text-sm">
@@ -219,7 +220,10 @@ export default function Tickets() {
                       <div className="flex justify-between">
                         <dt className="text-muted-foreground">Responsável:</dt>
                         <dd className="max-w-[150px] truncate">
-                          {selectedTicket.ticket.assigned_to?.split(' (')[0] || '-'}
+                          {getLatestVdeskProgramador(selectedTicket.osMultiplas)
+                            || selectedTicket.osVinculada?.programador
+                            || selectedTicket.ticket.assigned_to?.split(' (')[0]
+                            || '-'}
                         </dd>
                       </div>
                     </dl>
@@ -313,7 +317,7 @@ export default function Tickets() {
                             </dl>
                             {os.descricaoOS && (
                               <div className="mt-2">
-                                <p className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                                  <p className="text-xs text-muted-foreground bg-muted p-2 rounded break-words whitespace-pre-wrap">
                                   {os.descricaoOS}
                                 </p>
                               </div>
@@ -338,7 +342,7 @@ export default function Tickets() {
                 {/* Descrição */}
                 <div>
                   <h4 className="font-medium mb-2">Descrição</h4>
-                  <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
+                  <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg break-words whitespace-pre-wrap">
                     {selectedTicket.ticket.short_description || 'Sem descrição disponível'}
                   </p>
                 </div>
