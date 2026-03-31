@@ -158,12 +158,22 @@ export default function CustomerServiceDashboard() {
     return Object.entries(map).sort(([, a], [, b]) => b - a).map(([name, value]) => ({ name, value }));
   }, [devopsItems]);
 
-  // Charts — by solution
+  // Charts — by solution (implantacoes)
   const solucaoChartData = useMemo(() => {
     const map: Record<string, number> = {};
     for (const i of implantacoes) {
       const s = i.solucao || 'Não informado';
       map[s] = (map[s] || 0) + 1;
+    }
+    return Object.entries(map).sort(([, a], [, b]) => b - a).map(([name, value]) => ({ name, value }));
+  }, [implantacoes]);
+
+  // Implantacoes product chart (from solucao field)
+  const implProductChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const i of implantacoes) {
+      const p = i.solucao || 'Sem produto';
+      map[p] = (map[p] || 0) + 1;
     }
     return Object.entries(map).sort(([, a], [, b]) => b - a).map(([name, value]) => ({ name, value }));
   }, [implantacoes]);
