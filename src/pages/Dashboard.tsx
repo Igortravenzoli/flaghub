@@ -58,6 +58,7 @@ export default function Dashboard() {
   const [showWithOS, setShowWithOS] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [slaFilter, setSlaFilter] = useState<string | null>(null);
+  const [osFilter, setOsFilter] = useState<'all' | 'semOS' | 'comOS' | null>(null);
 
   // Classify tickets by type
   const ticketsByType = useMemo(() => {
@@ -100,7 +101,7 @@ export default function Dashboard() {
     return { ticketsSemOS: semOS, ticketsComOS: comOS };
   }, [ticketsConsolidados]);
 
-  // Displayed tickets based on toggle + type/sla filter
+  // Displayed tickets based on toggle + type/sla/os filter
   const displayedTickets = useMemo(() => {
     if (slaFilter) {
       return ticketsByType.slaBreachTickets[slaFilter] || [];
@@ -108,28 +109,43 @@ export default function Dashboard() {
     if (typeFilter) {
       return ticketsByType.ticketsByTypeMap[typeFilter] || [];
     }
+    if (osFilter === 'all') return ticketsConsolidados;
+    if (osFilter === 'semOS') return ticketsSemOS;
+    if (osFilter === 'comOS') return ticketsComOS;
     return showWithOS ? ticketsComOS : ticketsSemOS;
-  }, [showWithOS, ticketsComOS, ticketsSemOS, typeFilter, slaFilter, ticketsByType]);
+  }, [showWithOS, ticketsComOS, ticketsSemOS, typeFilter, slaFilter, ticketsByType, osFilter, ticketsConsolidados]);
 
   const activeFilterLabel = useMemo(() => {
     if (slaFilter) return `SLA Estourado — ${TYPE_LABELS[slaFilter]}`;
     if (typeFilter) return TYPE_LABELS[typeFilter];
+    if (osFilter === 'all') return 'Todos os Tickets';
+    if (osFilter === 'semOS') return 'Tickets Sem OS';
+    if (osFilter === 'comOS') return 'Tickets Com OS';
     return null;
-  }, [slaFilter, typeFilter]);
+  }, [slaFilter, typeFilter, osFilter]);
+
+  const handleOsFilterClick = (filter: 'all' | 'semOS' | 'comOS') => {
+    setTypeFilter(null);
+    setSlaFilter(null);
+    setOsFilter(prev => prev === filter ? null : filter);
+  };
 
   const handleTypeClick = (type: string) => {
     setSlaFilter(null);
+    setOsFilter(null);
     setTypeFilter(prev => prev === type ? null : type);
   };
 
   const handleSlaClick = (type: string) => {
     setTypeFilter(null);
+    setOsFilter(null);
     setSlaFilter(prev => prev === type ? null : type);
   };
 
   const clearFilters = () => {
     setTypeFilter(null);
     setSlaFilter(null);
+    setOsFilter(null);
   };
 
   const handleRefresh = async () => {
@@ -177,6 +193,8 @@ export default function Dashboard() {
           value={estatisticas.totalTickets}
           icon={Ticket}
           tooltipDescription="Tickets importados (abertos no ServiceNow)"
+          onClick={() => handleOsFilterClick('all')}
+          active={osFilter === 'all'}
         />
         <DashboardKpiCard
           label="Sem OS"
@@ -184,6 +202,8 @@ export default function Dashboard() {
           icon={AlertTriangle}
           accent="bg-destructive"
           tooltipDescription="Tickets sem OS vinculada no VDESK"
+          onClick={() => handleOsFilterClick('semOS')}
+          active={osFilter === 'semOS'}
         />
         <DashboardKpiCard
           label="Com OS"
@@ -191,6 +211,8 @@ export default function Dashboard() {
           icon={CheckCircle2}
           accent="bg-[hsl(var(--chart-2))]"
           tooltipDescription="Tickets com OS encontrada no VDESK"
+          onClick={() => handleOsFilterClick('comOS')}
+          active={osFilter === 'comOS'}
         />
       </div>
 

@@ -9,7 +9,7 @@ import { useHelpdeskKpis, ConsultorKpi, RegistroPorGrupo, TipoChamadoKpi } from 
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
-  Headphones, Clock, Users, FileText, Monitor, Flag, UserCheck,
+  Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
   Ticket, Search,
 } from 'lucide-react';
@@ -167,7 +167,7 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-type ActiveView = 'consultores' | 'sistemas' | 'bandeiras' | 'clientes' | 'tipos' | 'chamados' | null;
+type ActiveView = 'consultores' | 'sistemas' | 'bandeiras' | 'clientes' | 'chamados' | null;
 
 export default function HelpdeskDashboard() {
   const filters = useDashboardFilters('hoje');
@@ -182,7 +182,7 @@ export default function HelpdeskDashboard() {
   const {
     allSnapshots, historico, totalSnapshotsNoPeriodo, diasComDados,
     registrosPorConsultor, tipoChamadoTempoMedio, registrosPorSistema,
-    registrosPorBandeira, registrosPorCliente, ocorrenciasPorTipo,
+    registrosPorBandeira, registrosPorCliente,
     horasTotaisPorDia,
     totalRegistros, totalHoras, horasDiaTotal, totalConsultores,
     lastSync, isLoading, isError, refetch,
@@ -248,7 +248,6 @@ export default function HelpdeskDashboard() {
       case 'sistemas': return { data: registrosPorSistema, title: 'Registros por Sistema' };
       case 'bandeiras': return { data: registrosPorBandeira, title: 'Registros por Bandeira' };
       case 'clientes': return { data: registrosPorCliente, title: 'Registros por Cliente' };
-      case 'tipos': return { data: ocorrenciasPorTipo, title: 'Ocorrências por Tipo' };
       case 'chamados': return { data: tipoChamadoTempoMedio, title: 'Tipo de Chamado x Tempo Médio' };
       default: return { data: filteredConsultores, title: 'Registros por Consultor' };
     }
@@ -388,12 +387,9 @@ export default function HelpdeskDashboard() {
         presetsLabel="Período"
         presets={[
           { value: 'hoje', label: 'Hoje' },
-          { value: '7d', label: '7d' },
-          { value: '30d', label: '30d' },
-          { value: '90d', label: '90d' },
-          { value: '6m', label: '6m' },
-          { value: '1y', label: '1a' },
-          { value: 'all', label: 'Todos' },
+          { value: 'mes_atual', label: 'Mês Atual' },
+          { value: 'mes_anterior', label: 'Mês Anterior' },
+          { value: '1y', label: 'Ano' },
         ]}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
@@ -496,15 +492,6 @@ export default function HelpdeskDashboard() {
               onClick={() => handleKpiClick('clientes')}
               active={activeView === 'clientes'}
             />
-            <DashboardKpiCard
-              label="Tipos Ocorrência"
-              value={ocorrenciasPorTipo.length}
-              icon={Headphones}
-              isLoading={isLoading}
-              delay={240}
-              onClick={() => handleKpiClick('tipos')}
-              active={activeView === 'tipos'}
-            />
           </div>
 
           {/* === Charts Section (Tabbed) === */}
@@ -528,9 +515,9 @@ export default function HelpdeskDashboard() {
 
                 {/* Tab: Consultores */}
                 <TabsContent value="consultores">
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     {/* Bar chart - top consultores */}
-                    <Card className="lg:col-span-2">
+                    <Card>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
                           <Users className="h-4 w-4 text-primary" />
@@ -559,53 +546,6 @@ export default function HelpdeskDashboard() {
                                 barSize={18}
                               />
                             </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Pie: Ocorrências por Tipo */}
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                          <Headphones className="h-4 w-4 text-primary" />
-                          Ocorrências por Tipo
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-72 flex items-center justify-center">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={ocorrenciasPorTipo.length > 0 ? ocorrenciasPorTipo : [{ nome: 'Sem dados', quantidade: 1 }]}
-                                dataKey="quantidade"
-                                nameKey="nome"
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={45}
-                                outerRadius={85}
-                                paddingAngle={3}
-                                label={ocorrenciasPorTipo.length > 0
-                                  ? ({ nome, percent }: any) => `${nome} (${(percent * 100).toFixed(0)}%)`
-                                  : false}
-                              >
-                                {(ocorrenciasPorTipo.length > 0 ? ocorrenciasPorTipo : [{ nome: 'Sem dados', quantidade: 1 }]).map((_, i) => (
-                                  <Cell
-                                    key={i}
-                                    fill={ocorrenciasPorTipo.length > 0 ? CHART_COLORS[i % CHART_COLORS.length] : 'hsl(var(--muted))'}
-                                    stroke="hsl(var(--card))"
-                                    strokeWidth={2}
-                                  />
-                                ))}
-                              </Pie>
-                              <Tooltip content={<ChartTooltip />} />
-                              <Legend
-                                verticalAlign="bottom"
-                                iconType="circle"
-                                iconSize={8}
-                                wrapperStyle={{ fontSize: '11px' }}
-                              />
-                            </PieChart>
                           </ResponsiveContainer>
                         </div>
                       </CardContent>
