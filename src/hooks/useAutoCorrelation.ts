@@ -114,14 +114,20 @@ export function useAutoCorrelation() {
   const revalidateNotFoundResults = useCallback(async (
     results: BatchCorrelationResult[]
   ): Promise<BatchCorrelationResult[]> => {
-    const notFoundResults = results.filter((result) => !result.found);
+    // Só revalidar tickets que falharam por erro de processamento no batch,
+    // NÃO tickets confirmados como inexistentes no VDesk (TICKET_NOT_FOUND)
+    const retryableResults = results.filter(
+      (result) => !result.found && result.message && !result.message.includes('não encontrado')
+    );
 
-    if (notFoundResults.length === 0) {
+    if (retryableResults.length === 0) {
       return results;
     }
 
+    console.log(`[AutoCorrelation] Revalidando ${retryableResults.length} tickets (erros de batch, não TICKET_NOT_FOUND)`);
+
     const revalidatedEntries = await Promise.all(
-      notFoundResults.map(async (result) => {
+      retryableResults.map(async (result) => {
         try {
           const response = await correlacionarTicketViaProxy(result.ticket);
 
