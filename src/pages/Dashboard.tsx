@@ -124,13 +124,21 @@ export default function Dashboard() {
     return null;
   }, [slaFilter, typeFilter, osFilter]);
 
+  const handleOsFilterClick = (filter: 'all' | 'semOS' | 'comOS') => {
+    setTypeFilter(null);
+    setSlaFilter(null);
+    setOsFilter(prev => prev === filter ? null : filter);
+  };
+
   const handleTypeClick = (type: string) => {
     setSlaFilter(null);
+    setOsFilter(null);
     setTypeFilter(prev => prev === type ? null : type);
   };
 
   const handleSlaClick = (type: string) => {
     setTypeFilter(null);
+    setOsFilter(null);
     setSlaFilter(prev => prev === type ? null : type);
   };
 
