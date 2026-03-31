@@ -193,7 +193,7 @@ const PUBLISH_TARGETS: Record<string, {
         internal_status: mappedInternalStatus,
         assigned_to: typeof n.assigned_to === 'string' ? n.assigned_to.trim() || null : null,
         os_number: osNumber,
-        has_os: hasOs,
+        // has_os is a generated column — do not insert
         os_found_in_vdesk: null,
         inconsistency_code: !openedAt
           ? 'NO_OPENED_AT'
