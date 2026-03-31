@@ -239,6 +239,9 @@ export default function FabricaDashboard() {
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
 
+  const localFabItemIds = useMemo(() => fab.allItems.map(i => i.id).filter(Boolean) as number[], [fab.allItems]);
+  const { crossSectorResult } = useCrossSectorSearch(search, 'fabrica', localFabItemIds);
+
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(fab.allItems, [(i) => i.created_date, (i) => i.changed_date]),
     [fab.allItems]

@@ -53,7 +53,12 @@ export default function InfraestruturaDashboard() {
   const { sortedSprints } = useSprintFilter(allItems);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<InfraItem | null>(null);
+  const [tableSearch, setTableSearch] = useState('');
 
+  const localItemIds = useMemo(() => allItems.map(i => i.id).filter(Boolean) as number[], [allItems]);
+  const { crossSectorResult } = useCrossSectorSearch(tableSearch, 'infraestrutura', localItemIds);
+  const crossSectorBanner = crossSectorResult ? <CrossSectorSearchBanner result={crossSectorResult} /> : null;
+  const handleTableSearchChange = useCallback((s: string) => setTableSearch(s), []);
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
     [allItems]

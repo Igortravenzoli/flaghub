@@ -126,10 +126,16 @@ export default function CustomerServiceDashboard() {
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [activeTab, setActiveTab] = useState<'fila' | 'implantacoes' | 'saude' | 'monitoramento'>('fila');
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>('all');
+  const [tableSearch, setTableSearch] = useState('');
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date, (i) => i.data_referencia]),
     [allItems]
   );
+
+  const localDevopsIds = useMemo(() => devopsItems.map(i => i.work_item_id).filter(Boolean) as number[], [devopsItems]);
+  const { crossSectorResult } = useCrossSectorSearch(tableSearch, 'customer_service', localDevopsIds);
+  const crossSectorBanner = crossSectorResult ? <CrossSectorSearchBanner result={crossSectorResult} /> : null;
+  const handleTableSearchChange = useCallback((s: string) => setTableSearch(s), []);
 
   const pbiHealthIds = useMemo(
     () => devopsItems
