@@ -10,7 +10,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { useComercialMovimentacao, MovimentacaoCliente } from '@/hooks/useComercialMovimentacao';
 import { useMovimentacaoImport } from '@/hooks/useMovimentacaoImport';
-import { TrendingUp, TrendingDown, BarChart3, Upload, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart3, Upload, Loader2, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from 'recharts';
 
 function tipoLabel(tipo: string) {
