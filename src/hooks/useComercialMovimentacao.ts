@@ -54,7 +54,8 @@ export function useComercialMovimentacao(tipoFilter?: 'perda' | 'ganho' | 'todos
   const items = useMemo(() => {
     if (!dateFrom || !dateTo) return allItems;
     return allItems.filter((item) => {
-      if (!item.data_evento) return false;
+      // Items without data_evento (e.g. Risco) are always shown when a date filter is active
+      if (!item.data_evento) return true;
       const d = new Date(item.data_evento);
       return d >= dateFrom && d <= dateTo;
     });
