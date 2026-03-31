@@ -504,6 +504,8 @@ export default function CustomerServiceDashboard() {
                 getRowKey={(r) => String(r.work_item_id ?? Math.random())}
                 onRowClick={(r) => setDrawerItem(r)}
                 searchPlaceholder="Buscar item..."
+                onSearchChange={handleTableSearchChange}
+                searchBanner={crossSectorBanner}
               />
             )}
           </TabsContent>

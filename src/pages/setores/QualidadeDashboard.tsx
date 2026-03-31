@@ -352,6 +352,8 @@ export default function QualidadeDashboard() {
                 getRowKey={(r) => String(r.id ?? Math.random())}
                 onRowClick={(r) => setDrawerItem(r)}
                 searchPlaceholder="Buscar item da fila de QA..."
+                onSearchChange={handleTableSearchChange}
+                searchBanner={crossSectorBanner}
               />
             )}
           </TabsContent>

@@ -227,6 +227,8 @@ export default function InfraestruturaDashboard() {
               getRowKey={(r) => String(r.id ?? Math.random())}
               onRowClick={(r) => setDrawerItem(r)}
               searchPlaceholder="Buscar atividade..."
+              onSearchChange={handleTableSearchChange}
+              searchBanner={crossSectorBanner}
             />
           )}
           </TabsContent>
