@@ -9,6 +9,7 @@ import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { correlacionarBatchViaProxy, correlacionarTicketViaProxy } from '@/services/vdeskProxyService';
+import { getLatestVdeskStatusRecord } from '@/lib/vdeskLatestStatus';
 import { useAuth } from './useAuth';
 import { useResolvedAreaNetwork } from './useSupabaseData';
 
@@ -60,7 +61,7 @@ export function useAutoCorrelation() {
     const updatePromises = results.map(async (r) => {
       if (r.found && r.osEncontradas.length > 0) {
         const allOsNumbers = r.osEncontradas.join(', ');
-        const lastRecord = r.data?.[r.data.length - 1];
+        const lastRecord = getLatestVdeskStatusRecord(r.data);
         const lastOsEventAt = lastRecord?.dataHistorico || lastRecord?.dataRegistro || null;
         const lastOsEventDesc = lastRecord?.descricaoOS || lastRecord?.descricao || null;
 
@@ -78,7 +79,7 @@ export function useAutoCorrelation() {
         const finalSeverity = hasUnmappedStatus ? ('atencao' as const) : ('info' as const);
 
         // Último programador listado = responsável atual
-        const lastProgramador = r.data?.[r.data.length - 1]?.programador || null;
+        const lastProgramador = lastRecord?.programador || null;
 
         return supabase
           .from('tickets')
@@ -179,8 +180,8 @@ export function useAutoCorrelation() {
             const response = await correlacionarTicketViaProxy(ticketExternalId);
             if (response.success && response.count > 0) {
               const allOsNumbers = response.osEncontradas.join(', ');
-              const lastOsRecord = response.data?.[response.data.length - 1];
-              const lastProgramador = response.data?.[response.data.length - 1]?.programador || null;
+              const lastOsRecord = getLatestVdeskStatusRecord(response.data);
+              const lastProgramador = lastOsRecord?.programador || null;
               await supabase
                 .from('tickets')
                 .update({
