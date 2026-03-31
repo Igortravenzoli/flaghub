@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { correlacionarBatchViaProxy, correlacionarTicketViaProxy } from '@/services/vdeskProxyService';
+import { getLatestVdeskStatusRecord } from '@/lib/vdeskLatestStatus';
 
 interface CorrelationMetrics {
   totalTickets: number;
@@ -165,16 +166,22 @@ export function useTicketOSCorrelation() {
       const correlation = await correlacionarTicketViaProxy(ticketExternalId);
       const now = new Date().toISOString();
       const found = correlation.success && correlation.osEncontradas.length > 0;
+      const latestRecord = found ? getLatestVdeskStatusRecord(correlation.data) : null;
 
-      const lastProgramador = found ? (correlation.data?.[correlation.data.length - 1]?.programador || null) : undefined;
+      const lastProgramador = latestRecord?.programador || null;
 
       await updateTicketByScope(ticketExternalId, {
         os_found_in_vdesk: found,
         os_number: found ? (correlation.osEncontradas[0] ?? null) : undefined,
-        assigned_to: lastProgramador,
+        assigned_to: found ? lastProgramador : undefined,
         vdesk_payload: correlation.data,
-        last_os_event_at: now,
-        last_os_event_desc: correlation.message ?? (found ? 'OS validada no VDESK' : 'OS não encontrada no VDESK'),
+        last_os_event_at: found
+          ? (latestRecord?.dataHistorico || latestRecord?.dataRegistro || now)
+          : now,
+        last_os_event_desc: correlation.message
+          ?? (found
+            ? (latestRecord?.descricaoOS || latestRecord?.descricao || 'OS validada no VDESK')
+            : 'OS não encontrada no VDESK'),
         inconsistency_code: found ? null : 'OS_NOT_FOUND',
         severity: found ? 'info' : 'critico',
         updated_at: now,
@@ -214,16 +221,26 @@ export function useTicketOSCorrelation() {
       const now = new Date().toISOString();
 
       await Promise.all(
-        response.results.map((result) => updateTicketByScope(result.ticket, {
-          os_found_in_vdesk: result.found,
-          os_number: result.found ? (result.osEncontradas[0] ?? null) : undefined,
-          vdesk_payload: result.data,
-          last_os_event_at: now,
-          last_os_event_desc: result.message ?? (result.found ? 'OS validada no VDESK' : 'OS não encontrada no VDESK'),
-          inconsistency_code: result.found ? null : 'OS_NOT_FOUND',
-          severity: result.found ? 'info' : 'critico',
-          updated_at: now,
-        }))
+        response.results.map((result) => {
+          const latestRecord = result.found ? getLatestVdeskStatusRecord(result.data) : null;
+
+          return updateTicketByScope(result.ticket, {
+            os_found_in_vdesk: result.found,
+            os_number: result.found ? (result.osEncontradas[0] ?? null) : undefined,
+            assigned_to: result.found ? (latestRecord?.programador || null) : undefined,
+            vdesk_payload: result.data,
+            last_os_event_at: result.found
+              ? (latestRecord?.dataHistorico || latestRecord?.dataRegistro || now)
+              : now,
+            last_os_event_desc: result.message
+              ?? (result.found
+                ? (latestRecord?.descricaoOS || latestRecord?.descricao || 'OS validada no VDESK')
+                : 'OS não encontrada no VDESK'),
+            inconsistency_code: result.found ? null : 'OS_NOT_FOUND',
+            severity: result.found ? 'info' : 'critico',
+            updated_at: now,
+          });
+        })
       );
 
       queryClient.invalidateQueries({ queryKey: ['correlation-metrics'] });
