@@ -21,7 +21,6 @@ import { Badge } from '@/components/ui/badge';
 import { Search, X, AlertTriangle, Ticket, Filter } from 'lucide-react';
 import { TicketConsolidado, Severidade, StatusNormalizado } from '@/types';
 import { SeverityBadge } from '@/components/ui/severity-badge';
-import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 
 const statusLabels: Record<StatusNormalizado, string> = {
   novo: 'Novo',
