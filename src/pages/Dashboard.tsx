@@ -145,6 +145,7 @@ export default function Dashboard() {
   const clearFilters = () => {
     setTypeFilter(null);
     setSlaFilter(null);
+    setOsFilter(null);
   };
 
   const handleRefresh = async () => {
