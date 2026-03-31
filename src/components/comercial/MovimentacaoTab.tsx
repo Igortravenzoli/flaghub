@@ -103,15 +103,16 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
 
   // Bar chart data: perdas x ganhos grouped by month
   const chartData = useMemo(() => {
-    const monthMap = new Map<string, { label: string; ganhos: number; perdas: number; sortKey: string }>();
+    const monthMap = new Map<string, { label: string; ganhos: number; perdas: number; riscos: number; sortKey: string }>();
     for (const item of items) {
       const d = item.data_evento ? new Date(item.data_evento) : null;
       if (!d) continue;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
-      if (!monthMap.has(key)) monthMap.set(key, { label, ganhos: 0, perdas: 0, sortKey: key });
+      if (!monthMap.has(key)) monthMap.set(key, { label, ganhos: 0, perdas: 0, riscos: 0, sortKey: key });
       const entry = monthMap.get(key)!;
       if (item.tipo === 'ganho') entry.ganhos++;
+      else if (item.tipo === 'risco') entry.riscos++;
       else if (item.tipo === 'perda') entry.perdas++;
     }
     return Array.from(monthMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
