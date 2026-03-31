@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
@@ -10,6 +10,8 @@ import { useInfraestruturaKpis, InfraItem } from '@/hooks/useInfraestruturaKpis'
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
+import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
+import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -51,7 +53,12 @@ export default function InfraestruturaDashboard() {
   const { sortedSprints } = useSprintFilter(allItems);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<InfraItem | null>(null);
+  const [tableSearch, setTableSearch] = useState('');
 
+  const localItemIds = useMemo(() => allItems.map(i => i.id).filter(Boolean) as number[], [allItems]);
+  const { crossSectorResult } = useCrossSectorSearch(tableSearch, 'infraestrutura', localItemIds);
+  const crossSectorBanner = crossSectorResult ? <CrossSectorSearchBanner result={crossSectorResult} /> : null;
+  const handleTableSearchChange = useCallback((s: string) => setTableSearch(s), []);
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
     [allItems]
@@ -220,6 +227,8 @@ export default function InfraestruturaDashboard() {
               getRowKey={(r) => String(r.id ?? Math.random())}
               onRowClick={(r) => setDrawerItem(r)}
               searchPlaceholder="Buscar atividade..."
+              onSearchChange={handleTableSearchChange}
+              searchBanner={crossSectorBanner}
             />
           )}
           </TabsContent>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
@@ -13,6 +13,8 @@ import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
+import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
+import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -76,6 +78,12 @@ export default function QualidadeDashboard() {
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [tableSearch, setTableSearch] = useState('');
+
+  const localItemIds = useMemo(() => allItems.map(i => i.id).filter(Boolean) as number[], [allItems]);
+  const { crossSectorResult } = useCrossSectorSearch(tableSearch, 'qualidade', localItemIds);
+  const crossSectorBanner = crossSectorResult ? <CrossSectorSearchBanner result={crossSectorResult} /> : null;
+  const handleTableSearchChange = useCallback((s: string) => setTableSearch(s), []);
 
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
@@ -344,6 +352,8 @@ export default function QualidadeDashboard() {
                 getRowKey={(r) => String(r.id ?? Math.random())}
                 onRowClick={(r) => setDrawerItem(r)}
                 searchPlaceholder="Buscar item da fila de QA..."
+                onSearchChange={handleTableSearchChange}
+                searchBanner={crossSectorBanner}
               />
             )}
           </TabsContent>

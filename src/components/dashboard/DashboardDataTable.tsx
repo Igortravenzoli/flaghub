@@ -37,6 +37,7 @@ interface DashboardDataTableProps<T> {
   pageSizeOptions?: number[];
   searchable?: boolean;
   searchPlaceholder?: string;
+  onSearchChange?: (search: string) => void;
   onRowClick?: (row: T) => void;
   getRowKey: (row: T) => string | number;
   emptyMessage?: string;
@@ -44,6 +45,8 @@ interface DashboardDataTableProps<T> {
   columnFilters?: ColumnFilter[];
   /** Disable automatic filters for all columns when no explicit config is provided */
   disableAutoColumnFilters?: boolean;
+  /** Slot for rendering cross-sector search banner below the search bar */
+  searchBanner?: React.ReactNode;
 }
 
 function MultiSelectFilter({
@@ -139,6 +142,8 @@ export function DashboardDataTable<T extends Record<string, any>>({
   emptyMessage = 'Nenhum dado encontrado',
   columnFilters = [],
   disableAutoColumnFilters = false,
+  onSearchChange,
+  searchBanner,
 }: DashboardDataTableProps<T>) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(initialPageSize);
@@ -292,11 +297,16 @@ export function DashboardDataTable<T extends Record<string, any>>({
               <Input
                 placeholder={searchPlaceholder}
                 value={search}
-                onChange={e => { setSearch(e.target.value); setPage(0); }}
+                onChange={e => { const v = e.target.value; setSearch(v); setPage(0); onSearchChange?.(v); }}
                 className="pl-8 h-8 text-sm"
               />
             </div>
           )}
+        </div>
+      )}
+      {searchBanner && (
+        <div className="px-4 py-2 border-b border-border">
+          {searchBanner}
         </div>
       )}
 

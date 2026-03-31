@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SectorLayout } from '@/components/setores/SectorLayout';
@@ -13,6 +13,8 @@ import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
+import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
+import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -124,10 +126,16 @@ export default function CustomerServiceDashboard() {
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [activeTab, setActiveTab] = useState<'fila' | 'implantacoes' | 'saude' | 'monitoramento'>('fila');
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>('all');
+  const [tableSearch, setTableSearch] = useState('');
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date, (i) => i.data_referencia]),
     [allItems]
   );
+
+  const localDevopsIds = useMemo(() => devopsItems.map(i => i.work_item_id).filter(Boolean) as number[], [devopsItems]);
+  const { crossSectorResult } = useCrossSectorSearch(tableSearch, 'customer_service', localDevopsIds);
+  const crossSectorBanner = crossSectorResult ? <CrossSectorSearchBanner result={crossSectorResult} /> : null;
+  const handleTableSearchChange = useCallback((s: string) => setTableSearch(s), []);
 
   const pbiHealthIds = useMemo(
     () => devopsItems
@@ -496,6 +504,8 @@ export default function CustomerServiceDashboard() {
                 getRowKey={(r) => String(r.work_item_id ?? Math.random())}
                 onRowClick={(r) => setDrawerItem(r)}
                 searchPlaceholder="Buscar item..."
+                onSearchChange={handleTableSearchChange}
+                searchBanner={crossSectorBanner}
               />
             )}
           </TabsContent>
