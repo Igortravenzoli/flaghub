@@ -13,7 +13,7 @@ export interface TicketNestle {
   assignment_group: string;    // "BR_ECOMMERCE_FLAG"
   assigned_to: string;         // Responsável
   sys_updated_on: string;      // Última atualização
-  type: 'incident' | 'request';
+  type: 'incident' | 'request' | 'problem';
 }
 
 // OS VDESK (Sistema interno)
