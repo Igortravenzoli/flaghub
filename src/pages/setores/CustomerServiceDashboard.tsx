@@ -23,7 +23,7 @@ import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, 
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
-type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas';
+type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas' | 'aprovacao_cs' | 'customer_service';
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const integrations: Integration[] = [
