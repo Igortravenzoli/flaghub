@@ -137,6 +137,27 @@ export default function CustomerServiceDashboard() {
 
   const inBacklogCount = useMemo(() => devopsItems.filter(i => i.inBacklog).length, [devopsItems]);
 
+  // State-based KPI counts
+  const aprovacaoCSCount = useMemo(() => devopsItems.filter(i => {
+    const s = (i.state || '').toLowerCase();
+    return s.includes('aprovação') || s.includes('aprovacao');
+  }).length, [devopsItems]);
+
+  const customerServiceCount = useMemo(() => devopsItems.filter(i => {
+    const s = (i.state || '').toLowerCase();
+    return s.includes('customer service') || s.includes('cs');
+  }).length, [devopsItems]);
+
+  // Product chart data (Fila CS)
+  const productChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const i of devopsItems) {
+      const p = i.product || 'Sem produto';
+      map[p] = (map[p] || 0) + 1;
+    }
+    return Object.entries(map).sort(([, a], [, b]) => b - a).map(([name, value]) => ({ name, value }));
+  }, [devopsItems]);
+
   // Charts — by solution
   const solucaoChartData = useMemo(() => {
     const map: Record<string, number> = {};
