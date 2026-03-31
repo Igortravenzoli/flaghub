@@ -338,6 +338,7 @@ export function useImport() {
             severity,
             raw_payload: record as Record<string, unknown>,
             last_import_id: createdImportId,
+            is_active: true,
             updated_at: new Date().toISOString(),
           });
         }
