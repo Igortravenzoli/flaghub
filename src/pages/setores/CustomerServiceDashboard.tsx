@@ -452,10 +452,11 @@ export default function CustomerServiceDashboard() {
               <DashboardKpiCard label="Impl. Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); setImplFilter('impl_andamento'); setImplFilterValue(null); }} />
             </div>
 
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {respChartData.length > 0 && (
               <Card className="p-5 animate-fade-in">
                 <h3 className="font-semibold text-foreground mb-4 text-sm">Volume por Responsável</h3>
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height={Math.max(200, respChartData.length * 32)}>
                   <BarChart data={respChartData} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
@@ -467,11 +468,10 @@ export default function CustomerServiceDashboard() {
               </Card>
             )}
 
-            {/* Product counter chart — clickable bars */}
             {productChartData.length > 0 && (
               <Card className="p-5 animate-fade-in">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-foreground text-sm">Contador por Produto</h3>
+                  <h3 className="font-semibold text-foreground text-sm">Implantações x Produto</h3>
                   {kpiFilter === 'product' && kpiFilterValue && (
                     <Badge variant="secondary" className="text-xs cursor-pointer" onClick={() => { setKpiFilter('all'); setKpiFilterValue(null); }}>
                       {kpiFilterValue} ✕
@@ -491,6 +491,7 @@ export default function CustomerServiceDashboard() {
                 </ResponsiveContainer>
               </Card>
             )}
+            </div>
 
             {!isLoading && filteredDevops.length === 0 ? (
               <DashboardEmptyState description="Nenhum item na fila CS para o período selecionado." />
