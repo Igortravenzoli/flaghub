@@ -59,7 +59,7 @@ interface Props {
 }
 
 export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
-  const [anoFilter, setAnoFilter] = useState<string>('todos');
+  const [anoFilter, setAnoFilter] = useState<string>(String(new Date().getFullYear()));
   const [drawerItem, setDrawerItem] = useState<MovimentacaoCliente | null>(null);
   const [tipoFilter, setTipoFilter] = useState<string | null>(null);
   const { items: rawItems, allItems, stats: rawStats, isLoading, isError, refetch } = useComercialMovimentacao('todos', dateFrom, dateTo);
