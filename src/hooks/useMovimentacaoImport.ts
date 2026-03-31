@@ -97,7 +97,7 @@ function parseCurrency(val: any): number | null {
 function parseRow(raw: Record<string, any>, sheetYear: number): ParsedRow | null {
   const r = normalizeHeaders(raw);
   const tipoRaw = String(r.tipo_raw ?? '').trim().toLowerCase();
-  if (!tipoRaw || !['ganho', 'perda'].includes(tipoRaw)) return null;
+  if (!tipoRaw || !['ganho', 'perda', 'risco'].includes(tipoRaw)) return null;
 
   const clienteNome = r.cliente_nome ? String(r.cliente_nome).trim() : null;
   if (!clienteNome) return null;
@@ -105,7 +105,7 @@ function parseRow(raw: Record<string, any>, sheetYear: number): ParsedRow | null
   const dataEvento = parseDate(r.data_evento) || parseDate(r.efetivacao);
   const motivo = r.motivo ? String(r.motivo).trim() : null;
 
-  // Detect "Risco" type: Status is Perda but Categoria contains "risco"
+  // Detect "Risco" type: either explicit status or Perda with "risco" in category
   let tipo = tipoRaw;
   if (tipoRaw === 'perda' && motivo && motivo.toLowerCase().includes('risco')) {
     tipo = 'risco';
