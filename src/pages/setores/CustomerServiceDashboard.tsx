@@ -413,6 +413,22 @@ export default function CustomerServiceDashboard() {
               </Card>
             )}
 
+            {/* Product counter chart */}
+            {productChartData.length > 0 && (
+              <Card className="p-5 animate-fade-in">
+                <h3 className="font-semibold text-foreground mb-4 text-sm">Contador por Produto</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={productChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" angle={-25} textAnchor="end" height={60} />
+                    <YAxis fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                    <RechartsTooltip />
+                    <Bar dataKey="value" fill="hsl(174,58%,40%)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            )}
+
             {!isLoading && filteredDevops.length === 0 ? (
               <DashboardEmptyState description="Nenhum item na fila CS para o período selecionado." />
             ) : (
