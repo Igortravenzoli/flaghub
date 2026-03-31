@@ -65,7 +65,15 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
     state: ticket.external_status || '',
     category: rawPayload.category || '',
     assignment_group: rawPayload.assignment_group || 'BR_ECOMMERCE_FLAG',
-    assigned_to: ticket.assigned_to || '',
+    // Use VDesk programador as assigned_to when original is a ServiceNow sys_id (hex string)
+    const rawAssignedTo = ticket.assigned_to || '';
+    const isHexSysId = /^[0-9a-f]{32}$/i.test(rawAssignedTo);
+    const vdeskProgramador = vdeskData?.[vdeskData.length - 1]?.programador;
+    const resolvedAssignedTo = (isHexSysId || !rawAssignedTo) && vdeskProgramador
+      ? vdeskProgramador
+      : rawAssignedTo;
+
+    assigned_to: resolvedAssignedTo,
     sys_updated_on: ticket.updated_at 
       ? new Date(ticket.updated_at).toLocaleString('pt-BR', { 
           day: '2-digit', month: '2-digit', year: 'numeric', 
