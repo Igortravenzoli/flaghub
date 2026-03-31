@@ -235,6 +235,8 @@ export default function CustomerServiceDashboard() {
       const s = (i.state || '').toLowerCase();
       return s.includes('customer service') || s.includes('cs');
     });
+    if (kpiFilter === 'no_backlog') return devopsItems.filter(i => i.inBacklog);
+    if (kpiFilter === 'alertas_atraso') return devopsItems.filter(i => i.aging?.alertLevel && i.aging.alertLevel !== 'none');
     return devopsItems;
   }, [devopsItems, kpiFilter]);
 
