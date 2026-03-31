@@ -104,13 +104,13 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
   const sprintMapQuery = useQuery({
     queryKey: ['customer-service', 'enrichment-map', devopsIds.slice().sort((a, b) => a - b).join(',')],
     queryFn: async () => {
-      if (devopsIds.length === 0) return new Map<number, { iteration_path: string | null; description: string | null }>();
-      const map = new Map<number, { iteration_path: string | null; description: string | null }>();
+      if (devopsIds.length === 0) return new Map<number, { iteration_path: string | null; description: string | null; assigned_to_unique: string | null }>();
+      const map = new Map<number, { iteration_path: string | null; description: string | null; assigned_to_unique: string | null }>();
       for (let i = 0; i < devopsIds.length; i += 1000) {
         const chunk = devopsIds.slice(i, i + 1000);
         const { data } = await supabase
           .from('devops_work_items')
-          .select('id, iteration_path, raw')
+          .select('id, iteration_path, assigned_to_unique, raw')
           .in('id', chunk);
 
         for (const row of (data || [])) {
@@ -119,6 +119,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
           map.set(row.id, {
             iteration_path: row.iteration_path,
             description: typeof desc === 'string' ? desc : null,
+            assigned_to_unique: row.assigned_to_unique ?? null,
           });
         }
       }
