@@ -285,9 +285,6 @@ export default function Dashboard() {
   );
 }
 
-  // Displayed tickets based on toggle
-  const displayedTickets = showWithOS ? ticketsComOS : ticketsSemOS;
-
   const handleRefresh = async () => {
     setLastUpdate(new Date());
     try {
