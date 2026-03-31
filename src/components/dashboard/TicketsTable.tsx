@@ -61,7 +61,13 @@ export function TicketsTable({ tickets, compact = false, onViewDetails }: Ticket
               <div className="flex items-center gap-2">
                 {tc.ticket.number}
                 {tc.ticket.type === 'request' && (
-                  <Badge variant="outline" className="text-[10px]">REQ</Badge>
+                  <Badge variant="outline" className="text-[10px]">RITM</Badge>
+                )}
+                {tc.ticket.type === 'problem' && (
+                  <Badge variant="outline" className="text-[10px] border-orange-500/50 text-orange-600">PRB</Badge>
+                )}
+                {tc.ticket.type === 'incident' && (
+                  <Badge variant="outline" className="text-[10px] border-blue-500/50 text-blue-600">INC</Badge>
                 )}
               </div>
             </TableCell>
