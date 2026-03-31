@@ -245,6 +245,7 @@ export function useImport() {
           severity: 'critico' | 'atencao' | 'info';
           raw_payload: Record<string, unknown>;
           last_import_id: number;
+          is_active: boolean;
           updated_at: string;
         };
         const ticketsToUpsert: TicketInsert[] = [];
@@ -338,6 +339,7 @@ export function useImport() {
             severity,
             raw_payload: record as Record<string, unknown>,
             last_import_id: createdImportId,
+            is_active: true,
             updated_at: new Date().toISOString(),
           });
         }
