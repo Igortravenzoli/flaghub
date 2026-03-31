@@ -102,6 +102,7 @@ export default function CustomerServiceDashboard() {
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [activeTab, setActiveTab] = useState<'fila' | 'implantacoes' | 'saude' | 'monitoramento'>('fila');
+  const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>('all');
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date, (i) => i.data_referencia]),
     [allItems]
