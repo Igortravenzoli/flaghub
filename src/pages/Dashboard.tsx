@@ -62,32 +62,37 @@ export default function Dashboard() {
   const { correlateAllPending, isCorrelating, progress: correlationProgress } = useAutoCorrelation();
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [showWithOS, setShowWithOS] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [slaFilter, setSlaFilter] = useState<string | null>(null);
 
   // Classify tickets by type
   const ticketsByType = useMemo(() => {
     const counts = { incident: 0, problem: 0, request: 0 };
     const slaBreaches = { incident: 0, problem: 0, request: 0 };
+    const ticketsByTypeMap: Record<string, typeof ticketsConsolidados> = { incident: [], problem: [], request: [] };
+    const slaBreachTickets: Record<string, typeof ticketsConsolidados> = { incident: [], problem: [], request: [] };
     
     for (const tc of ticketsConsolidados) {
       const type = tc.ticket.type || 'incident';
       if (type in counts) {
         counts[type as keyof typeof counts]++;
+        ticketsByTypeMap[type].push(tc);
         
         const daysOpen = calcDaysOpen(tc.ticket.opened_at);
         const slaLimit = SLA_DAYS[type] || 5;
         if (daysOpen !== null && daysOpen > slaLimit) {
           slaBreaches[type as keyof typeof slaBreaches]++;
+          slaBreachTickets[type].push(tc);
         }
       }
     }
     
-    return { counts, slaBreaches };
+    return { counts, slaBreaches, ticketsByTypeMap, slaBreachTickets };
   }, [ticketsConsolidados]);
 
-  // Separate tickets: without OS vs with OS (closed)
-  const { ticketsSemOS, ticketsComOSEncerrada, ticketsComOS } = useMemo(() => {
+  // Separate tickets: without OS vs with OS
+  const { ticketsSemOS, ticketsComOS } = useMemo(() => {
     const semOS: typeof ticketsConsolidados = [];
-    const comOSEncerrada: typeof ticketsConsolidados = [];
     const comOS: typeof ticketsConsolidados = [];
     
     for (const tc of ticketsConsolidados) {
@@ -95,15 +100,190 @@ export default function Dashboard() {
         semOS.push(tc);
       } else {
         comOS.push(tc);
-        // Check if OS is "closed" but ticket is still open in ServiceNow
-        // Ticket is open (in ServiceNow) if it was imported (all imported tickets are "open")
-        // OS is closed if there's a vdesk record
-        if (tc.osVinculada && tc.severidade !== 'critical') {
-          comOSEncerrada.push(tc);
-        }
       }
     }
     
+    return { ticketsSemOS: semOS, ticketsComOS: comOS };
+  }, [ticketsConsolidados]);
+
+  // Displayed tickets based on toggle + type/sla filter
+  const displayedTickets = useMemo(() => {
+    if (slaFilter) {
+      return ticketsByType.slaBreachTickets[slaFilter] || [];
+    }
+    if (typeFilter) {
+      return ticketsByType.ticketsByTypeMap[typeFilter] || [];
+    }
+    return showWithOS ? ticketsComOS : ticketsSemOS;
+  }, [showWithOS, ticketsComOS, ticketsSemOS, typeFilter, slaFilter, ticketsByType]);
+
+  const activeFilterLabel = useMemo(() => {
+    if (slaFilter) return `SLA Estourado — ${TYPE_LABELS[slaFilter]}`;
+    if (typeFilter) return TYPE_LABELS[typeFilter];
+    return null;
+  }, [slaFilter, typeFilter]);
+
+  const handleTypeClick = (type: string) => {
+    setSlaFilter(null);
+    setTypeFilter(prev => prev === type ? null : type);
+  };
+
+  const handleSlaClick = (type: string) => {
+    setTypeFilter(null);
+    setSlaFilter(prev => prev === type ? null : type);
+  };
+
+  const clearFilters = () => {
+    setTypeFilter(null);
+    setSlaFilter(null);
+  };
+
+  const handleRefresh = async () => {
+    setLastUpdate(new Date());
+    try {
+      toast.info('Sincronizando...', { description: 'Correlacionando tickets com VDESK', icon: '🔄' });
+      const result = await correlateAllPending();
+      if (result.total === 0) {
+        toast.success('Atualizado!', { description: 'Nenhum ticket pendente', icon: '✨' });
+      } else {
+        toast.success('Correlação concluída!', { 
+          description: `${result.correlated} com OS • ${result.notFound} sem OS`, icon: '🎯' 
+        });
+      }
+    } catch (error) {
+      toast.error('Erro na correlação', { 
+        description: error instanceof Error ? error.message : 'Erro desconhecido' 
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      {/* Top bar */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <DashboardLastSyncBadge syncedAt={lastUpdate.toISOString()} status="ok" />
+        <div className="flex items-center gap-2">
+          <DashboardExport estatisticas={estatisticas} tickets={displayedTickets} />
+          <Button
+            variant="outline" size="sm" className="gap-1.5 h-8"
+            onClick={handleRefresh} disabled={isCorrelating}
+          >
+            {isCorrelating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {isCorrelating ? 'Sincronizando...' : 'Correlacionar'}
+          </Button>
+        </div>
+      </div>
+
+      <CorrelationProgress progress={correlationProgress} isCorrelating={isCorrelating} />
+
+      {/* Main KPI: Total + Sem OS + Com OS */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <DashboardKpiCard
+          label="Total Importados"
+          value={estatisticas.totalTickets}
+          icon={Ticket}
+          tooltipDescription="Tickets importados (abertos no ServiceNow)"
+        />
+        <DashboardKpiCard
+          label="Sem OS"
+          value={ticketsSemOS.length}
+          icon={AlertTriangle}
+          accent="bg-destructive"
+          tooltipDescription="Tickets sem OS vinculada no VDESK"
+        />
+        <DashboardKpiCard
+          label="Com OS"
+          value={ticketsComOS.length}
+          icon={CheckCircle2}
+          accent="bg-[hsl(var(--chart-2))]"
+          tooltipDescription="Tickets com OS encontrada no VDESK"
+        />
+      </div>
+
+      {/* INC / RITM / PRB counters with SLA alerts — clickable */}
+      <div className="grid grid-cols-3 gap-3">
+        {(['incident', 'problem', 'request'] as const).map(type => {
+          const count = ticketsByType.counts[type];
+          const breaches = ticketsByType.slaBreaches[type];
+          const sla = SLA_DAYS[type];
+          const isTypeActive = typeFilter === type;
+          const isSlaActive = slaFilter === type;
+          return (
+            <Card
+              key={type}
+              className={`relative overflow-hidden cursor-pointer transition-all hover:shadow-md ${isTypeActive ? 'ring-2 ring-primary' : ''}`}
+              onClick={() => handleTypeClick(type)}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium">{TYPE_LABELS[type]}</p>
+                    <p className="text-2xl font-bold text-foreground">{count}</p>
+                    <p className="text-[10px] text-muted-foreground">SLA: {sla} dias</p>
+                  </div>
+                  {breaches > 0 && (
+                    <button
+                      className={`flex flex-col items-center gap-1 transition-all ${isSlaActive ? 'scale-110' : 'hover:scale-105'}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSlaClick(type);
+                      }}
+                    >
+                      <div className={`flex items-center gap-1 px-2 py-1 rounded-md border ${isSlaActive ? 'bg-destructive text-destructive-foreground border-destructive' : 'bg-destructive/10 border-destructive/20'}`}>
+                        <Clock className={`h-3 w-3 ${isSlaActive ? 'text-destructive-foreground' : 'text-destructive'}`} />
+                        <span className={`text-xs font-bold ${isSlaActive ? 'text-destructive-foreground' : 'text-destructive'}`}>{breaches}</span>
+                      </div>
+                      <span className="text-[9px] text-destructive">SLA estourado</span>
+                    </button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Active filter indicator */}
+      {activeFilterLabel && (
+        <div className="flex items-center justify-between bg-primary/10 rounded-lg px-4 py-2.5 border border-primary/20">
+          <div className="flex items-center gap-2">
+            <Badge variant="default" className="text-xs">{activeFilterLabel}</Badge>
+            <span className="text-xs text-muted-foreground">{displayedTickets.length} ticket(s)</span>
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={clearFilters}>
+            <X className="h-3 w-3" /> Limpar filtro
+          </Button>
+        </div>
+      )}
+
+      {/* Toggle: Show with/without OS (hidden when type/sla filter active) */}
+      {!activeFilterLabel && (
+        <div className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <FileWarning className="h-4 w-4 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {showWithOS ? 'Tickets com OS vinculada' : 'Tickets sem OS vinculada'}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {showWithOS 
+                  ? `${ticketsComOS.length} tickets com OS encontrada no VDESK` 
+                  : `${ticketsSemOS.length} tickets aguardando vinculação de OS`}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Exibir com OS</span>
+            <Switch checked={showWithOS} onCheckedChange={setShowWithOS} />
+          </div>
+        </div>
+      )}
+
+      {/* Tickets List */}
+      <RecentTickets tickets={displayedTickets.slice(0, 50)} />
+    </div>
+  );
+}
     return { ticketsSemOS: semOS, ticketsComOSEncerrada: comOSEncerrada, ticketsComOS: comOS };
   }, [ticketsConsolidados]);
 
