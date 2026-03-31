@@ -77,12 +77,14 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
   const stats = useMemo(() => {
     const perdas = items.filter((i) => i.tipo === 'perda');
     const ganhos = items.filter((i) => i.tipo === 'ganho');
+    const riscos = items.filter((i) => i.tipo === 'risco');
     const total = items.length;
     const pctGanhos = total > 0 ? Math.round((ganhos.length / total) * 100) : 0;
     const pctPerdas = total > 0 ? Math.round((perdas.length / total) * 100) : 0;
     return {
       totalGanhos: ganhos.length,
       totalPerdas: perdas.length,
+      totalRiscos: riscos.length,
       pctGanhos,
       pctPerdas,
       saldoClientes: ganhos.length - perdas.length,
