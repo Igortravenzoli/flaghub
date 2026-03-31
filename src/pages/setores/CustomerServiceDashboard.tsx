@@ -393,7 +393,7 @@ export default function CustomerServiceDashboard() {
               <HeartPulse className="h-3.5 w-3.5" />
               Esteira / Saúde
             </TabsTrigger>
-            <TabsTrigger value="monitoramento" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <TabsTrigger value="monitoramento" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setMonitorFilter('all')}>
               <Target className="h-3.5 w-3.5" />
               Monitoramento
             </TabsTrigger>
