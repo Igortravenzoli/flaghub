@@ -393,16 +393,46 @@ serve(async (req: Request) => {
     let statusMap = new Map<string, string>()
 
     if (templateKey === 'helpdesk_v1') {
-      const [networkResp, statusResp] = await Promise.all([
-        admin.rpc('hub_resolve_area_network_id', { p_area_key: 'tickets_os' }),
+      // Resolve network_id from the batch area or from domain_network_mapping
+      // Cannot use hub_resolve_area_network_id RPC here because it relies on auth.uid()
+      // which is null when called with the service role client.
+      const batchUserId = batch.imported_by
+      const [networkByMember, networkByDomain, statusResp] = await Promise.all([
+        // Try hub_area_members first (explicit network_id on membership)
+        admin.from('hub_area_members')
+          .select('network_id')
+          .eq('user_id', batchUserId)
+          .eq('is_active', true)
+          .not('network_id', 'is', null)
+          .limit(1)
+          .maybeSingle(),
+        // Fallback: resolve from user email domain
+        (async () => {
+          const { data: authUser } = await admin.auth.admin.getUserById(batchUserId)
+          if (!authUser?.user?.email) return null
+          const domain = authUser.user.email.split('@')[1]
+          if (!domain) return null
+          const { data } = await admin.from('domain_network_mapping')
+            .select('network_id')
+            .eq('email_domain', domain)
+            .maybeSingle()
+          return data?.network_id ?? null
+        })(),
         admin.from('status_mapping').select('external_status, internal_status').eq('is_active', true),
       ])
 
-      if (networkResp.error || !networkResp.data) {
-        throw new Error(`Não foi possível resolver network_id para tickets_os: ${networkResp.error?.message ?? 'network não encontrada'}`)
+      publishNetworkId = networkByMember?.data?.network_id ?? networkByDomain ?? null
+
+      if (!publishNetworkId) {
+        // Last resort: use the first (and likely only) network
+        const { data: fallbackNet } = await admin.from('networks').select('id').limit(1).maybeSingle()
+        publishNetworkId = fallbackNet?.id ?? null
       }
 
-      publishNetworkId = Number(networkResp.data)
+      if (!publishNetworkId) {
+        throw new Error('Não foi possível resolver network_id para o batch. Verifique domain_network_mapping ou hub_area_members.')
+      }
+
       statusMap = new Map(
         (statusResp.data ?? []).map((row: any) => [String(row.external_status || '').toLowerCase(), row.internal_status])
       )
