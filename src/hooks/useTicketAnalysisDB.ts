@@ -49,6 +49,14 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
   const rawPayload = ticket.raw_payload as Record<string, string> || {};
   const vdeskData = ticket.vdesk_payload as any[] | null;
   
+  // Resolve assigned_to: prefer VDesk programador over ServiceNow sys_id
+  const rawAssignedTo = ticket.assigned_to || '';
+  const isHexSysId = /^[0-9a-f]{32}$/i.test(rawAssignedTo);
+  const vdeskProgramador = vdeskData?.[vdeskData.length - 1]?.programador;
+  const resolvedAssignedTo = (isHexSysId || !rawAssignedTo) && vdeskProgramador
+    ? vdeskProgramador
+    : rawAssignedTo;
+
   // Extrair dados do ticket Nestlé do raw_payload
   const ticketNestle: TicketNestle = {
     number: ticket.ticket_external_id,
@@ -65,14 +73,6 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
     state: ticket.external_status || '',
     category: rawPayload.category || '',
     assignment_group: rawPayload.assignment_group || 'BR_ECOMMERCE_FLAG',
-    // Use VDesk programador as assigned_to when original is a ServiceNow sys_id (hex string)
-    const rawAssignedTo = ticket.assigned_to || '';
-    const isHexSysId = /^[0-9a-f]{32}$/i.test(rawAssignedTo);
-    const vdeskProgramador = vdeskData?.[vdeskData.length - 1]?.programador;
-    const resolvedAssignedTo = (isHexSysId || !rawAssignedTo) && vdeskProgramador
-      ? vdeskProgramador
-      : rawAssignedTo;
-
     assigned_to: resolvedAssignedTo,
     sys_updated_on: ticket.updated_at 
       ? new Date(ticket.updated_at).toLocaleString('pt-BR', { 
