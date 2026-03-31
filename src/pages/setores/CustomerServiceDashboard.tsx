@@ -23,7 +23,7 @@ import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, 
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
-type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas';
+type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas' | 'aprovacao_cs' | 'customer_service';
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const integrations: Integration[] = [
@@ -137,12 +137,43 @@ export default function CustomerServiceDashboard() {
 
   const inBacklogCount = useMemo(() => devopsItems.filter(i => i.inBacklog).length, [devopsItems]);
 
-  // Charts — by solution
+  // State-based KPI counts
+  const aprovacaoCSCount = useMemo(() => devopsItems.filter(i => {
+    const s = (i.state || '').toLowerCase();
+    return s.includes('aprovação') || s.includes('aprovacao');
+  }).length, [devopsItems]);
+
+  const customerServiceCount = useMemo(() => devopsItems.filter(i => {
+    const s = (i.state || '').toLowerCase();
+    return s.includes('customer service') || s.includes('cs');
+  }).length, [devopsItems]);
+
+  // Product chart data (Fila CS)
+  const productChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const i of devopsItems) {
+      const p = i.product || 'Sem produto';
+      map[p] = (map[p] || 0) + 1;
+    }
+    return Object.entries(map).sort(([, a], [, b]) => b - a).map(([name, value]) => ({ name, value }));
+  }, [devopsItems]);
+
+  // Charts — by solution (implantacoes)
   const solucaoChartData = useMemo(() => {
     const map: Record<string, number> = {};
     for (const i of implantacoes) {
       const s = i.solucao || 'Não informado';
       map[s] = (map[s] || 0) + 1;
+    }
+    return Object.entries(map).sort(([, a], [, b]) => b - a).map(([name, value]) => ({ name, value }));
+  }, [implantacoes]);
+
+  // Implantacoes product chart (from solucao field)
+  const implProductChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const i of implantacoes) {
+      const p = i.solucao || 'Sem produto';
+      map[p] = (map[p] || 0) + 1;
     }
     return Object.entries(map).sort(([, a], [, b]) => b - a).map(([name, value]) => ({ name, value }));
   }, [implantacoes]);
@@ -193,7 +224,17 @@ export default function CustomerServiceDashboard() {
     [porResponsavel]
   );
 
-  const filteredDevops = useMemo(() => devopsItems, [devopsItems]);
+  const filteredDevops = useMemo(() => {
+    if (kpiFilter === 'aprovacao_cs') return devopsItems.filter(i => {
+      const s = (i.state || '').toLowerCase();
+      return s.includes('aprovação') || s.includes('aprovacao');
+    });
+    if (kpiFilter === 'customer_service') return devopsItems.filter(i => {
+      const s = (i.state || '').toLowerCase();
+      return s.includes('customer service') || s.includes('cs');
+    });
+    return devopsItems;
+  }, [devopsItems, kpiFilter]);
 
   const filteredImpl = useMemo(() => {
     const encerradoStatuses = ['finalizado', 'concluído', 'concluido', '8 - encerrado', 'encerrado', '11 - cancelado', 'cancelado'];
@@ -347,12 +388,14 @@ export default function CustomerServiceDashboard() {
 
           {/* ═══ TAB: FILA CS ═══ */}
           <TabsContent value="fila" className="space-y-4 animate-fade-in">
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
               <DashboardKpiCard label="Volume Fila" value={totalFilaCS} icon={Layers} isLoading={isLoading} onClick={() => handleKpiClick('fila')} active={kpiFilter === 'fila'} />
-              <DashboardKpiCard label="Responsáveis" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={80} />
+              <DashboardKpiCard label="Aprovação CS" value={aprovacaoCSCount} icon={Target} isLoading={isLoading} delay={60} accent="bg-[hsl(199,89%,48%)]" onClick={() => handleKpiClick('aprovacao_cs')} active={kpiFilter === 'aprovacao_cs'} />
+              <DashboardKpiCard label="Customer Service" value={customerServiceCount} icon={Users} isLoading={isLoading} delay={80} accent="bg-[hsl(174,58%,40%)]" onClick={() => handleKpiClick('customer_service')} active={kpiFilter === 'customer_service'} />
+              <DashboardKpiCard label="Responsáveis" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={100} />
               <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} delay={120} accent="bg-[hsl(262,83%,58%)]" />
               <DashboardKpiCard label="Alertas Atraso" value={alertCounts.total} icon={AlertTriangle} isLoading={isLoading} delay={160} accent={alertCounts.critical > 0 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} />
-              <DashboardKpiCard label="Implantações Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); handleKpiClick('impl_andamento'); }} />
+              <DashboardKpiCard label="Impl. Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); handleKpiClick('impl_andamento'); }} />
             </div>
 
             {respChartData.length > 0 && (
@@ -365,6 +408,22 @@ export default function CustomerServiceDashboard() {
                     <YAxis type="category" dataKey="resp" fontSize={11} stroke="hsl(var(--muted-foreground))" width={120} />
                     <RechartsTooltip />
                     <Bar dataKey="qtd" fill="hsl(43,85%,46%)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            )}
+
+            {/* Product counter chart */}
+            {productChartData.length > 0 && (
+              <Card className="p-5 animate-fade-in">
+                <h3 className="font-semibold text-foreground mb-4 text-sm">Contador por Produto</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={productChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" angle={-25} textAnchor="end" height={60} />
+                    <YAxis fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                    <RechartsTooltip />
+                    <Bar dataKey="value" fill="hsl(174,58%,40%)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </Card>
@@ -433,6 +492,41 @@ export default function CustomerServiceDashboard() {
               <DashboardKpiCard label="Total Implantações" value={implTotal} icon={Package} isLoading={isLoading} onClick={() => handleKpiClick('all')} active={kpiFilter === 'all'} />
               <DashboardKpiCard label="Em Andamento" value={implAndamento} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleKpiClick('impl_andamento')} active={kpiFilter === 'impl_andamento'} />
               <DashboardKpiCard label="Finalizadas" value={implFinalizadas} icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleKpiClick('impl_finalizadas')} active={kpiFilter === 'impl_finalizadas'} />
+            </div>
+
+            {/* Charts: Consultor + Produto */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {consultorChartData.length > 0 && (
+                <Card className="p-5">
+                  <h3 className="font-semibold text-sm mb-4">Implantações por Consultor</h3>
+                  <ResponsiveContainer width="100%" height={Math.max(180, consultorChartData.length * 32)}>
+                    <BarChart data={consultorChartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                      <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
+                      <RechartsTooltip />
+                      <Bar dataKey="value" fill="hsl(262,83%,58%)" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Card>
+              )}
+
+              {implProductChartData.length > 0 && (
+                <Card className="p-5">
+                  <h3 className="font-semibold text-sm mb-4">Implantações por Produto</h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={implProductChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${value}`} labelLine={false} fontSize={10}>
+                        {implProductChartData.map((_, idx) => (
+                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip />
+                      <Legend fontSize={11} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Card>
+              )}
             </div>
 
             {!isLoading && filteredImpl.length === 0 ? (
