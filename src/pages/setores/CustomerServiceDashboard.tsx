@@ -23,8 +23,9 @@ import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, 
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
-type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas' | 'aprovacao_cs' | 'customer_service';
+type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas' | 'aprovacao_cs' | 'customer_service' | 'responsaveis' | 'no_backlog' | 'alertas_atraso';
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
+type MonitorFilter = 'all' | 'criticos' | 'atencao' | 'backlog' | 'sairam';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items CS' },
