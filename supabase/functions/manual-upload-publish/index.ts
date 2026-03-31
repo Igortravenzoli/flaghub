@@ -388,7 +388,37 @@ serve(async (req: Request) => {
     }
 
     // 3. Map rows to target table format and deduplicate by conflict key (last wins)
-    let records = rows.map((r: { normalized: Record<string, any> }) => target.mapRow(r.normalized as Record<string, any>, batch_id))
+    const importedAtIso = batch.imported_at || new Date().toISOString()
+    let publishNetworkId: number | null = null
+    let statusMap = new Map<string, string>()
+
+    if (templateKey === 'helpdesk_v1') {
+      const [networkResp, statusResp] = await Promise.all([
+        admin.rpc('hub_resolve_area_network_id', { p_area_key: 'tickets_os' }),
+        admin.from('status_mapping').select('external_status, internal_status').eq('is_active', true),
+      ])
+
+      if (networkResp.error || !networkResp.data) {
+        throw new Error(`Não foi possível resolver network_id para tickets_os: ${networkResp.error?.message ?? 'network não encontrada'}`)
+      }
+
+      publishNetworkId = Number(networkResp.data)
+      statusMap = new Map(
+        (statusResp.data ?? []).map((row: any) => [String(row.external_status || '').toLowerCase(), row.internal_status])
+      )
+    }
+
+    const context: PublishContext = {
+      networkId: publishNetworkId,
+      importedAtIso,
+      statusMap,
+    }
+
+    let records = rows.map((r: { normalized: Record<string, any> }) => target.mapRow(r.normalized as Record<string, any>, batch_id, context))
+
+    if (templateKey === 'helpdesk_v1') {
+      records = records.filter((rec) => rec.network_id && rec.ticket_external_id)
+    }
 
     if (target.onConflict) {
       const conflictKeys = target.onConflict.split(',').map((k: string) => k.trim())
