@@ -22,6 +22,9 @@ const HEADER_ALIAS: Record<string, string> = {
   'categoria': 'motivo',
   'observação': 'observacao',
   'observacao': 'observacao',
+  'encerramento': 'efetivacao',
+  'motivo': 'motivo',
+  'codigo ': 'cliente_codigo',
 };
 
 interface ParsedRow {
