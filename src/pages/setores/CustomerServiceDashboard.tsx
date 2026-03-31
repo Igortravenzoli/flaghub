@@ -24,7 +24,8 @@ import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, 
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
-type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas' | 'aprovacao_cs' | 'customer_service' | 'responsaveis' | 'no_backlog' | 'alertas_atraso';
+type KpiFilter = 'all' | 'fila' | 'impl_andamento' | 'impl_finalizadas' | 'aprovacao_cs' | 'customer_service' | 'responsaveis' | 'no_backlog' | 'alertas_atraso' | 'product';
+type ImplFilter = 'all' | 'impl_andamento' | 'impl_finalizadas' | 'consultor' | 'produto';
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 type MonitorFilter = 'all' | 'criticos' | 'atencao' | 'backlog' | 'sairam';
 
@@ -45,6 +46,22 @@ function fmtDate(d: Date | null | undefined): string {
 function fmtDateStr(s: string | null | undefined): string {
   if (!s) return '—';
   return new Date(s).toLocaleDateString('pt-BR');
+}
+
+/** Check if assigned_to matches cs@flag.com.br */
+function isCustomerService(item: CSKpiItem): boolean {
+  const email = (item.assigned_to_unique || '').toLowerCase();
+  if (email === 'cs@flag.com.br') return true;
+  const display = (item.assigned_to_display || '').toLowerCase();
+  return display === 'cs' || display === 'customer service';
+}
+
+/** Check if assigned_to matches AprovacaoCS@flag.com.br */
+function isAprovacaoCS(item: CSKpiItem): boolean {
+  const email = (item.assigned_to_unique || '').toLowerCase();
+  if (email === 'aprovacaocs@flag.com.br') return true;
+  const display = (item.assigned_to_display || '').toLowerCase();
+  return display.includes('aprovacaocs') || display.includes('aprovação cs') || display.includes('aprovacao cs');
 }
 
 /** Alert badge for aging */
@@ -101,6 +118,9 @@ export default function CustomerServiceDashboard() {
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<CSKpiItem | null>(null);
   const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
+  const [kpiFilterValue, setKpiFilterValue] = useState<string | null>(null);
+  const [implFilter, setImplFilter] = useState<ImplFilter>('all');
+  const [implFilterValue, setImplFilterValue] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [activeTab, setActiveTab] = useState<'fila' | 'implantacoes' | 'saude' | 'monitoramento'>('fila');
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>('all');
@@ -140,16 +160,9 @@ export default function CustomerServiceDashboard() {
 
   const inBacklogCount = useMemo(() => devopsItems.filter(i => i.inBacklog).length, [devopsItems]);
 
-  // State-based KPI counts
-  const aprovacaoCSCount = useMemo(() => devopsItems.filter(i => {
-    const s = (i.state || '').toLowerCase();
-    return s.includes('aprovação') || s.includes('aprovacao');
-  }).length, [devopsItems]);
-
-  const customerServiceCount = useMemo(() => devopsItems.filter(i => {
-    const s = (i.state || '').toLowerCase();
-    return s.includes('customer service') || s.includes('cs');
-  }).length, [devopsItems]);
+  // Email-based KPI counts
+  const aprovacaoCSCount = useMemo(() => devopsItems.filter(i => isAprovacaoCS(i)).length, [devopsItems]);
+  const customerServiceCount = useMemo(() => devopsItems.filter(i => isCustomerService(i)).length, [devopsItems]);
 
   // Product chart data (Fila CS)
   const productChartData = useMemo(() => {
@@ -227,26 +240,26 @@ export default function CustomerServiceDashboard() {
     [porResponsavel]
   );
 
+  // Fila CS filtered list
   const filteredDevops = useMemo(() => {
-    if (kpiFilter === 'aprovacao_cs') return devopsItems.filter(i => {
-      const s = (i.state || '').toLowerCase();
-      return s.includes('aprovação') || s.includes('aprovacao');
-    });
-    if (kpiFilter === 'customer_service') return devopsItems.filter(i => {
-      const s = (i.state || '').toLowerCase();
-      return s.includes('customer service') || s.includes('cs');
-    });
+    if (kpiFilter === 'aprovacao_cs') return devopsItems.filter(i => isAprovacaoCS(i));
+    if (kpiFilter === 'customer_service') return devopsItems.filter(i => isCustomerService(i));
     if (kpiFilter === 'no_backlog') return devopsItems.filter(i => i.inBacklog);
     if (kpiFilter === 'alertas_atraso') return devopsItems.filter(i => i.aging?.alertLevel && i.aging.alertLevel !== 'none');
+    if (kpiFilter === 'product' && kpiFilterValue) return devopsItems.filter(i => (i.product || 'Sem produto') === kpiFilterValue);
     return devopsItems;
-  }, [devopsItems, kpiFilter]);
+  }, [devopsItems, kpiFilter, kpiFilterValue]);
 
+  // Implantações filtered list
   const filteredImpl = useMemo(() => {
     const encerradoStatuses = ['finalizado', 'concluído', 'concluido', '8 - encerrado', 'encerrado', '11 - cancelado', 'cancelado'];
-    if (kpiFilter === 'impl_andamento') return implantacoes.filter(i => i.status_implantacao && !encerradoStatuses.includes(i.status_implantacao.toLowerCase()));
-    if (kpiFilter === 'impl_finalizadas') return implantacoes.filter(i => i.status_implantacao && encerradoStatuses.includes(i.status_implantacao.toLowerCase()));
-    return implantacoes;
-  }, [implantacoes, kpiFilter]);
+    let base = implantacoes;
+    if (implFilter === 'impl_andamento') base = implantacoes.filter(i => i.status_implantacao && !encerradoStatuses.includes(i.status_implantacao.toLowerCase()));
+    else if (implFilter === 'impl_finalizadas') base = implantacoes.filter(i => i.status_implantacao && encerradoStatuses.includes(i.status_implantacao.toLowerCase()));
+    else if (implFilter === 'consultor' && implFilterValue) base = implantacoes.filter(i => (i.consultor_impl || 'Não atribuído') === implFilterValue);
+    else if (implFilter === 'produto' && implFilterValue) base = implantacoes.filter(i => (i.solucao || 'Sem produto') === implFilterValue);
+    return base;
+  }, [implantacoes, implFilter, implFilterValue]);
 
   const filteredHealthItems = useMemo(() => {
     if (healthFilter === 'all') return devopsItems;
@@ -258,7 +271,26 @@ export default function CustomerServiceDashboard() {
     [devopsItems, pbiHealthBatch.healthById]
   );
 
-  const handleKpiClick = (filter: KpiFilter) => setKpiFilter(prev => prev === filter ? 'all' : filter);
+  const handleKpiClick = (filter: KpiFilter, value?: string) => {
+    if (kpiFilter === filter && kpiFilterValue === (value || null)) {
+      setKpiFilter('all');
+      setKpiFilterValue(null);
+    } else {
+      setKpiFilter(filter);
+      setKpiFilterValue(value || null);
+    }
+  };
+
+  const handleImplClick = (filter: ImplFilter, value?: string) => {
+    if (implFilter === filter && implFilterValue === (value || null)) {
+      setImplFilter('all');
+      setImplFilterValue(null);
+    } else {
+      setImplFilter(filter);
+      setImplFilterValue(value || null);
+    }
+  };
+
   const handleHealthClick = (filter: HealthFilter) => setHealthFilter((prev) => prev === filter ? 'all' : filter);
   const handleMonitorClick = (filter: MonitorFilter) => setMonitorFilter(prev => prev === filter ? 'all' : filter);
 
@@ -341,7 +373,7 @@ export default function CustomerServiceDashboard() {
       <div className="flex flex-wrap items-center gap-2 bg-muted/50 rounded-lg p-1.5">
         <DashboardFilterBar
           preset={filters.preset}
-          onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); }}
+          onPresetChange={(p) => { filters.setPreset(p); setKpiFilter('all'); setKpiFilterValue(null); }}
           presetLabel={filters.presetLabel}
           presetControl="chips"
           presets={[
@@ -382,11 +414,11 @@ export default function CustomerServiceDashboard() {
       ) : (
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
           <TabsList className="mb-4 bg-muted/50 p-1">
-            <TabsTrigger value="fila" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setKpiFilter('all')}>
+            <TabsTrigger value="fila" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => { setKpiFilter('all'); setKpiFilterValue(null); }}>
               <Eye className="h-3.5 w-3.5" />
               Fila CS
             </TabsTrigger>
-            <TabsTrigger value="implantacoes" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => setKpiFilter('all')}>
+            <TabsTrigger value="implantacoes" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => { setImplFilter('all'); setImplFilterValue(null); }}>
               <Settings2 className="h-3.5 w-3.5" />
               Implantações
             </TabsTrigger>
@@ -409,7 +441,7 @@ export default function CustomerServiceDashboard() {
               <DashboardKpiCard label="Responsáveis" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={100} onClick={() => handleKpiClick('responsaveis')} active={kpiFilter === 'responsaveis'} />
               <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} delay={120} accent="bg-[hsl(262,83%,58%)]" onClick={() => handleKpiClick('no_backlog')} active={kpiFilter === 'no_backlog'} />
               <DashboardKpiCard label="Alertas Atraso" value={alertCounts.total} icon={AlertTriangle} isLoading={isLoading} delay={160} accent={alertCounts.critical > 0 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} onClick={() => handleKpiClick('alertas_atraso')} active={kpiFilter === 'alertas_atraso'} />
-              <DashboardKpiCard label="Impl. Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); handleKpiClick('impl_andamento'); }} />
+              <DashboardKpiCard label="Impl. Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); setImplFilter('impl_andamento'); setImplFilterValue(null); }} />
             </div>
 
             {respChartData.length > 0 && (
@@ -427,12 +459,21 @@ export default function CustomerServiceDashboard() {
               </Card>
             )}
 
-            {/* Product counter chart */}
+            {/* Product counter chart — clickable bars */}
             {productChartData.length > 0 && (
               <Card className="p-5 animate-fade-in">
-                <h3 className="font-semibold text-foreground mb-4 text-sm">Contador por Produto</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-foreground text-sm">Contador por Produto</h3>
+                  {kpiFilter === 'product' && kpiFilterValue && (
+                    <Badge variant="secondary" className="text-xs cursor-pointer" onClick={() => { setKpiFilter('all'); setKpiFilterValue(null); }}>
+                      {kpiFilterValue} ✕
+                    </Badge>
+                  )}
+                </div>
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={productChartData}>
+                  <BarChart data={productChartData} onClick={(e) => {
+                    if (e?.activeLabel) handleKpiClick('product', e.activeLabel);
+                  }} className="cursor-pointer">
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" angle={-25} textAnchor="end" height={60} />
                     <YAxis fontSize={11} stroke="hsl(var(--muted-foreground))" />
@@ -448,7 +489,7 @@ export default function CustomerServiceDashboard() {
             ) : (
               <DashboardDataTable
                 title="Fila Operacional CS"
-                subtitle={`${filteredDevops.length} itens${alertCounts.total > 0 ? ` • ${alertCounts.critical} críticos, ${alertCounts.warning} atenção` : ''}`}
+                subtitle={`${filteredDevops.length} itens${kpiFilter !== 'all' ? ` • filtro: ${kpiFilter}${kpiFilterValue ? ` (${kpiFilterValue})` : ''}` : ''}${alertCounts.total > 0 ? ` • ${alertCounts.critical} críticos, ${alertCounts.warning} atenção` : ''}`}
                 columns={devopsColumnsWithHealth}
                 data={filteredDevops}
                 isLoading={isLoading}
@@ -513,18 +554,27 @@ export default function CustomerServiceDashboard() {
           {/* ═══ TAB: IMPLANTAÇÕES ═══ */}
           <TabsContent value="implantacoes" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              <DashboardKpiCard label="Total Implantações" value={implTotal} icon={Package} isLoading={isLoading} onClick={() => handleKpiClick('all')} active={kpiFilter === 'all'} />
-              <DashboardKpiCard label="Em Andamento" value={implAndamento} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleKpiClick('impl_andamento')} active={kpiFilter === 'impl_andamento'} />
-              <DashboardKpiCard label="Finalizadas" value={implFinalizadas} icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleKpiClick('impl_finalizadas')} active={kpiFilter === 'impl_finalizadas'} />
+              <DashboardKpiCard label="Total Implantações" value={implTotal} icon={Package} isLoading={isLoading} onClick={() => handleImplClick('all')} active={implFilter === 'all'} />
+              <DashboardKpiCard label="Em Andamento" value={implAndamento} icon={Clock} isLoading={isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleImplClick('impl_andamento')} active={implFilter === 'impl_andamento'} />
+              <DashboardKpiCard label="Finalizadas" value={implFinalizadas} icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleImplClick('impl_finalizadas')} active={implFilter === 'impl_finalizadas'} />
             </div>
 
-            {/* Charts: Consultor + Produto */}
+            {/* Charts: Consultor + Produto — clickable */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {consultorChartData.length > 0 && (
                 <Card className="p-5">
-                  <h3 className="font-semibold text-sm mb-4">Implantações por Consultor</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-sm">Implantações por Consultor</h3>
+                    {implFilter === 'consultor' && implFilterValue && (
+                      <Badge variant="secondary" className="text-xs cursor-pointer" onClick={() => { setImplFilter('all'); setImplFilterValue(null); }}>
+                        {implFilterValue} ✕
+                      </Badge>
+                    )}
+                  </div>
                   <ResponsiveContainer width="100%" height={Math.max(180, consultorChartData.length * 32)}>
-                    <BarChart data={consultorChartData} layout="vertical">
+                    <BarChart data={consultorChartData} layout="vertical" onClick={(e) => {
+                      if (e?.activeLabel) handleImplClick('consultor', e.activeLabel);
+                    }} className="cursor-pointer">
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
                       <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
@@ -537,7 +587,14 @@ export default function CustomerServiceDashboard() {
 
               {implProductChartData.length > 0 && (
                 <Card className="p-5">
-                  <h3 className="font-semibold text-sm mb-4">Implantações por Produto</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-sm">Implantações por Produto</h3>
+                    {implFilter === 'produto' && implFilterValue && (
+                      <Badge variant="secondary" className="text-xs cursor-pointer" onClick={() => { setImplFilter('all'); setImplFilterValue(null); }}>
+                        {implFilterValue} ✕
+                      </Badge>
+                    )}
+                  </div>
                   <ResponsiveContainer width="100%" height={260}>
                     <PieChart>
                       <Pie
@@ -555,6 +612,11 @@ export default function CustomerServiceDashboard() {
                         fontSize={10}
                         stroke="hsl(var(--background))"
                         strokeWidth={2}
+                        onClick={(_, idx) => {
+                          const item = implProductChartData[idx];
+                          if (item) handleImplClick('produto', item.name);
+                        }}
+                        className="cursor-pointer"
                       >
                         {implProductChartData.map((_, idx) => (
                           <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
@@ -576,7 +638,7 @@ export default function CustomerServiceDashboard() {
             ) : (
               <DashboardDataTable
                 title="Implantações"
-                subtitle={`${filteredImpl.length} registros`}
+                subtitle={`${filteredImpl.length} registros${implFilter !== 'all' ? ` • filtro: ${implFilter}${implFilterValue ? ` (${implFilterValue})` : ''}` : ''}`}
                 columns={implColumns}
                 data={filteredImpl}
                 isLoading={isLoading}
@@ -596,7 +658,7 @@ export default function CustomerServiceDashboard() {
               <DashboardKpiCard label="Saíram do CS" value={devopsItems.filter(i => i.leftCS).length} icon={TrendingUp} isLoading={isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleMonitorClick('sairam')} active={monitorFilter === 'sairam'} />
             </div>
 
-            {/* Aging distribution chart */}
+            {/* Aging distribution + Implantações por Solução (bar chart) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card className="p-5">
                 <h3 className="font-semibold text-sm mb-4">Distribuição de Aging (dias)</h3>
@@ -614,15 +676,14 @@ export default function CustomerServiceDashboard() {
               {solucaoChartData.length > 0 && (
                 <Card className="p-5">
                   <h3 className="font-semibold text-sm mb-4">Implantações por Solução</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie data={solucaoChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${value}`} labelLine={false} fontSize={10}>
-                        {solucaoChartData.map((_, idx) => (
-                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
+                  <ResponsiveContainer width="100%" height={Math.max(220, solucaoChartData.length * 28)}>
+                    <BarChart data={solucaoChartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                      <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={120} />
                       <RechartsTooltip />
-                    </PieChart>
+                      <Bar dataKey="value" fill="hsl(174,58%,40%)" radius={[0, 4, 4, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </Card>
               )}

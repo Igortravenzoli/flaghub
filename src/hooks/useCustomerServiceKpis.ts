@@ -10,6 +10,7 @@ export interface CSKpiItem {
   work_item_type: string | null;
   state: string | null;
   assigned_to_display: string | null;
+  assigned_to_unique: string | null;
   priority: number | null;
   effort: number | null;
   tags: string | null;
@@ -103,13 +104,13 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
   const sprintMapQuery = useQuery({
     queryKey: ['customer-service', 'enrichment-map', devopsIds.slice().sort((a, b) => a - b).join(',')],
     queryFn: async () => {
-      if (devopsIds.length === 0) return new Map<number, { iteration_path: string | null; description: string | null }>();
-      const map = new Map<number, { iteration_path: string | null; description: string | null }>();
+      if (devopsIds.length === 0) return new Map<number, { iteration_path: string | null; description: string | null; assigned_to_unique: string | null }>();
+      const map = new Map<number, { iteration_path: string | null; description: string | null; assigned_to_unique: string | null }>();
       for (let i = 0; i < devopsIds.length; i += 1000) {
         const chunk = devopsIds.slice(i, i + 1000);
         const { data } = await supabase
           .from('devops_work_items')
-          .select('id, iteration_path, raw')
+          .select('id, iteration_path, assigned_to_unique, raw')
           .in('id', chunk);
 
         for (const row of (data || [])) {
@@ -118,6 +119,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
           map.set(row.id, {
             iteration_path: row.iteration_path,
             description: typeof desc === 'string' ? desc : null,
+            assigned_to_unique: row.assigned_to_unique ?? null,
           });
         }
       }
@@ -126,7 +128,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
     staleTime: 5 * 60 * 1000,
   });
 
-  const enrichmentMap = sprintMapQuery.data || new Map<number, { iteration_path: string | null; description: string | null }>();
+  const enrichmentMap = sprintMapQuery.data || new Map<number, { iteration_path: string | null; description: string | null; assigned_to_unique: string | null }>();
 
   const allItemsWithSprint = allItems.map((i) => {
     if (i.source !== 'devops_queue' || !i.work_item_id) return i;
@@ -137,6 +139,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
     return {
       ...i,
       iteration_path: enrichment?.iteration_path || null,
+      assigned_to_unique: enrichment?.assigned_to_unique || null,
       product: extractProduct(i.tags),
       description: desc,
       dataAberturaVdesk: parsed.dataAberturaVdesk,
