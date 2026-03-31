@@ -37,6 +37,7 @@ interface DashboardDataTableProps<T> {
   pageSizeOptions?: number[];
   searchable?: boolean;
   searchPlaceholder?: string;
+  onSearchChange?: (search: string) => void;
   onRowClick?: (row: T) => void;
   getRowKey: (row: T) => string | number;
   emptyMessage?: string;
@@ -44,6 +45,8 @@ interface DashboardDataTableProps<T> {
   columnFilters?: ColumnFilter[];
   /** Disable automatic filters for all columns when no explicit config is provided */
   disableAutoColumnFilters?: boolean;
+  /** Slot for rendering cross-sector search banner below the search bar */
+  searchBanner?: React.ReactNode;
 }
 
 function MultiSelectFilter({
