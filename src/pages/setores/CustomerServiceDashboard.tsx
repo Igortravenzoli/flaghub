@@ -659,6 +659,18 @@ export default function CustomerServiceDashboard() {
                   ))}
               </Card>
             )}
+
+            {/* Filtered table by monitor KPIs */}
+            <DashboardDataTable
+              title={`Monitoramento${monitorFilter !== 'all' ? ` — ${monitorFilter === 'criticos' ? 'Críticos' : monitorFilter === 'atencao' ? 'Atenção' : monitorFilter === 'backlog' ? 'No Backlog' : 'Saíram do CS'}` : ''}`}
+              subtitle={`${filteredMonitorItems.length} itens`}
+              columns={devopsColumnsWithHealth}
+              data={filteredMonitorItems}
+              isLoading={isLoading}
+              getRowKey={(r) => String(r.work_item_id ?? Math.random())}
+              onRowClick={(r) => setDrawerItem(r)}
+              searchPlaceholder="Buscar item..."
+            />
           </TabsContent>
         </Tabs>
       )}
