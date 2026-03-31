@@ -12,6 +12,8 @@ import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
+import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
+import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
