@@ -128,7 +128,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
     staleTime: 5 * 60 * 1000,
   });
 
-  const enrichmentMap = sprintMapQuery.data || new Map<number, { iteration_path: string | null; description: string | null }>();
+  const enrichmentMap = sprintMapQuery.data || new Map<number, { iteration_path: string | null; description: string | null; assigned_to_unique: string | null }>();
 
   const allItemsWithSprint = allItems.map((i) => {
     if (i.source !== 'devops_queue' || !i.work_item_id) return i;
