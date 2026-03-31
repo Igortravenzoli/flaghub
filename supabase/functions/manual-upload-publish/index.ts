@@ -109,12 +109,106 @@ function safeDate(val: any): string | null {
   return d.toISOString().slice(0, 10)
 }
 
+function parseOpenedAt(val: any): string | null {
+  if (!val || typeof val !== 'string') return null
+  const trimmed = val.trim()
+  if (!trimmed) return null
+
+  const direct = new Date(trimmed)
+  if (!isNaN(direct.getTime())) return direct.toISOString()
+
+  const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/)
+  if (brMatch) {
+    const [, dd, mm, yyyy, hh = '00', mi = '00', ss = '00'] = brMatch
+    const parsed = new Date(`${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}Z`)
+    if (!isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+
+  return null
+}
+
+function inferTicketType(ticketExternalId: string, sysClassName?: string, typeHint?: string): string {
+  const id = ticketExternalId.toUpperCase()
+  if (id.startsWith('INC')) return 'incident'
+  if (id.startsWith('RITM')) return 'request'
+  if (id.startsWith('PRB')) return 'problem'
+
+  const cls = (sysClassName || '').toLowerCase()
+  if (cls.includes('sc_req_item')) return 'request'
+  if (cls.includes('problem')) return 'problem'
+  if (cls.includes('incident')) return 'incident'
+
+  const hint = (typeHint || '').toLowerCase()
+  if (hint.includes('request')) return 'request'
+  if (hint.includes('problem')) return 'problem'
+  return 'incident'
+}
+
+function extractOsNumber(row: Record<string, any>): string | null {
+  const direct = row.os_number ?? row.os ?? row.u_os ?? row.u_ordem_servico
+  if (typeof direct === 'string' && direct.trim()) return direct.trim()
+
+  const searchSources = [row.short_description, row.description, row.u_translated_variables]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+
+  for (const source of searchSources) {
+    const match = source.match(/\bOS\s*[:#\-]?\s*(\d{4,})\b/i)
+    if (match?.[1]) return match[1]
+  }
+
+  return null
+}
+
+type PublishContext = {
+  networkId: number | null
+  importedAtIso: string
+  statusMap: Map<string, string>
+}
+
 // Maps template keys to their target table and field mapping
 const PUBLISH_TARGETS: Record<string, {
   table: string
   onConflict?: string
-  mapRow: (normalized: Record<string, any>, batchId: string) => Record<string, any>
+  mapRow: (normalized: Record<string, any>, batchId: string, context: PublishContext) => Record<string, any>
 }> = {
+  helpdesk_v1: {
+    table: 'tickets',
+    onConflict: 'network_id,ticket_external_id',
+    mapRow: (n, _batchId, context) => {
+      const ticketExternalId = String(n.number ?? n.ticket_external_id ?? '').trim().toUpperCase()
+      const openedAt = parseOpenedAt(n.opened_at ?? n.sys_created_on)
+      const externalStatus = String(n.state ?? n.external_status ?? '').trim() || null
+      const mappedInternalStatus = externalStatus
+        ? (context.statusMap.get(externalStatus.toLowerCase()) ?? null)
+        : null
+      const osNumber = extractOsNumber(n)
+      const hasOs = Boolean(osNumber)
+
+      return {
+        network_id: context.networkId,
+        ticket_external_id: ticketExternalId,
+        ticket_type: inferTicketType(ticketExternalId, n.sys_class_name, n.type),
+        opened_at: openedAt,
+        external_status: externalStatus,
+        internal_status: mappedInternalStatus,
+        assigned_to: typeof n.assigned_to === 'string' ? n.assigned_to.trim() || null : null,
+        os_number: osNumber,
+        has_os: hasOs,
+        os_found_in_vdesk: null,
+        inconsistency_code: !openedAt
+          ? 'NO_OPENED_AT'
+          : (!mappedInternalStatus ? 'UNKNOWN_STATUS' : (hasOs ? null : 'NO_OS_WITHIN_GRACE')),
+        severity: !openedAt
+          ? 'critico'
+          : (hasOs ? 'info' : (!mappedInternalStatus ? 'atencao' : 'atencao')),
+        raw_payload: n && typeof n === 'object' ? n : {},
+        vdesk_payload: null,
+        last_seen_at: context.importedAtIso,
+        is_active: true,
+        updated_at: context.importedAtIso,
+      }
+    },
+  },
   cs_implantacoes_v1: {
     table: 'cs_implantacoes_records',
     mapRow: (n, batchId) => ({
