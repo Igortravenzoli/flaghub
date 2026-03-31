@@ -196,11 +196,11 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
         </ToggleGroup>
       </div>
 
-      {/* Bar chart: Perdas x Ganhos por mês */}
+      {/* Bar chart: Perdas x Ganhos x Riscos por mês */}
       {chartData.length > 0 && !isLoading && (
         <Card className="p-4 space-y-2">
           <CardHeader className="p-0">
-            <CardTitle className="text-sm font-semibold">Perdas × Ganhos por Mês</CardTitle>
+            <CardTitle className="text-sm font-semibold">Perdas × Ganhos × Riscos por Mês</CardTitle>
             <p className="text-xs text-muted-foreground">Visão gerencial da movimentação de clientes</p>
           </CardHeader>
           <div className="h-[280px]">
@@ -215,6 +215,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="ganhos" name="Ganhos" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="riscos" name="Riscos" fill="hsl(43, 85%, 46%)" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="perdas" name="Perdas" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
