@@ -58,6 +58,7 @@ export default function Dashboard() {
   const [showWithOS, setShowWithOS] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [slaFilter, setSlaFilter] = useState<string | null>(null);
+  const [osFilter, setOsFilter] = useState<'all' | 'semOS' | 'comOS' | null>(null);
 
   // Classify tickets by type
   const ticketsByType = useMemo(() => {
