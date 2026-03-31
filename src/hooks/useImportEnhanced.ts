@@ -167,14 +167,9 @@ export function useImportBatch() {
         // Se clearBeforeImport, marcar todos tickets como inativos
         if (options?.clearBeforeImport) {
           setProgress(10);
-          console.log('[Import] Marcando tickets como inativos...');
-          try {
-            await markInactive.mutateAsync(networkId);
-            console.log('[Import] Tickets marcados como inativos');
-          } catch (markError) {
-            console.error('[Import] Erro ao marcar tickets inativos:', markError);
-            // Não bloquear importação por causa disto
-          }
+          console.log('[Import] Marcando tickets como inativos (expurgo)...');
+          const inactivated = await markInactive.mutateAsync(networkId);
+          console.log(`[Import] ${inactivated} tickets marcados como inativos`);
         }
 
         setProgress(15);

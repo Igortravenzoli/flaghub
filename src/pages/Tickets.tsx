@@ -21,7 +21,6 @@ import { Badge } from '@/components/ui/badge';
 import { Search, X, AlertTriangle, Ticket, Filter } from 'lucide-react';
 import { TicketConsolidado, Severidade, StatusNormalizado } from '@/types';
 import { SeverityBadge } from '@/components/ui/severity-badge';
-import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 
 const statusLabels: Record<StatusNormalizado, string> = {
   novo: 'Novo',
@@ -37,15 +36,10 @@ export default function Tickets() {
   const [selectedTicket, setSelectedTicket] = useState<TicketConsolidado | null>(null);
   
   const hasActiveFilters = Object.values(filtros).some(v => v !== '');
-
-  const totalTickets = ticketsFiltrados.length;
-  const criticalCount = ticketsFiltrados.filter(t => t.severidade === 'critical').length;
-  const warningCount = ticketsFiltrados.filter(t => t.severidade === 'warning').length;
-  const withOS = ticketsFiltrados.filter(t => t.osVinculada !== null).length;
   
   return (
     <div className="space-y-6 p-6">
-      {/* Header — same pattern as sector dashboards */}
+      {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <div className="p-1.5 rounded-lg bg-primary/10">
@@ -56,14 +50,6 @@ export default function Tickets() {
         <p className="text-sm text-muted-foreground ml-9">
           Consulta e análise detalhada dos tickets Nestlé
         </p>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <DashboardKpiCard label="Total Encontrados" value={totalTickets} icon={Ticket} />
-        <DashboardKpiCard label="Críticos" value={criticalCount} icon={AlertTriangle} accent="bg-destructive" />
-        <DashboardKpiCard label="Atenção" value={warningCount} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-        <DashboardKpiCard label="Com OS" value={withOS} icon={Search} accent="bg-[hsl(142,71%,45%)]" />
       </div>
 
       {/* Filtros */}
