@@ -1,5 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { parseCSDescription, computeCSAging, isInBacklog, hasLeftCS, type CSAgingMetrics } from '@/lib/csDescriptionParser';
 
 export interface CSKpiItem {
   source: string | null;
@@ -23,6 +24,12 @@ export interface CSKpiItem {
   // Enriched fields (populated by secondary query)
   product?: string | null;
   description?: string | null;
+  // Release 2 — Rastreabilidade
+  dataAberturaVdesk?: Date | null;
+  dataInclusaoDevops?: Date | null;
+  inBacklog?: boolean;
+  leftCS?: boolean;
+  aging?: CSAgingMetrics | null;
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
