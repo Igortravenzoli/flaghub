@@ -248,7 +248,6 @@ export default function HelpdeskDashboard() {
       case 'sistemas': return { data: registrosPorSistema, title: 'Registros por Sistema' };
       case 'bandeiras': return { data: registrosPorBandeira, title: 'Registros por Bandeira' };
       case 'clientes': return { data: registrosPorCliente, title: 'Registros por Cliente' };
-      case 'tipos': return { data: ocorrenciasPorTipo, title: 'Ocorrências por Tipo' };
       case 'chamados': return { data: tipoChamadoTempoMedio, title: 'Tipo de Chamado x Tempo Médio' };
       default: return { data: filteredConsultores, title: 'Registros por Consultor' };
     }
