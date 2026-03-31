@@ -42,6 +42,7 @@ const columns: DataTableColumn<MovimentacaoCliente>[] = [
     render: (r) => r.data_evento ? new Date(r.data_evento).toLocaleDateString('pt-BR') : '—',
   },
   { key: 'motivo', header: 'Categoria', className: 'max-w-[180px] truncate text-xs text-muted-foreground' },
+  { key: 'status_encerramento', header: 'Observação', className: 'max-w-[200px] truncate text-xs text-muted-foreground', render: (r: MovimentacaoCliente) => r.status_encerramento || '—' },
 ];
 
 const tableColumnFilters: ColumnFilter[] = [
@@ -151,6 +152,8 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
     { label: 'Sistema', value: drawerItem.sistema },
     { label: 'Categoria', value: drawerItem.motivo },
     { label: 'Observação', value: drawerItem.status_encerramento },
+    { label: 'Valor Mensal', value: drawerItem.valor_mensal ? `R$ ${drawerItem.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—' },
+    { label: 'Ano Referência', value: drawerItem.ano_referencia },
     { label: 'Data', value: drawerItem.data_evento ? new Date(drawerItem.data_evento).toLocaleDateString('pt-BR') : '—' },
   ] : [];
 
