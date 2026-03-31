@@ -54,9 +54,7 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
   const rawAssignedTo = ticket.assigned_to || '';
   const isHexSysId = /^[0-9a-f]{32}$/i.test(rawAssignedTo);
   const vdeskProgramador = getLatestVdeskProgramador(vdeskData);
-  const resolvedAssignedTo = (isHexSysId || !rawAssignedTo) && vdeskProgramador
-    ? vdeskProgramador
-    : rawAssignedTo;
+  const resolvedAssignedTo = vdeskProgramador || rawAssignedTo;
 
   // Extrair dados do ticket Nestlé do raw_payload
   const ticketNestle: TicketNestle = {
