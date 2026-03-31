@@ -145,18 +145,18 @@ export function useUpdateBatch() {
 }
 
 /**
- * Hook para marcar todos tickets como inativos antes de importação
+ * Hook para DELETAR todos tickets da network (expurgo real)
  */
-export function useMarkTicketsInactive() {
+export function useDeleteTicketsByNetwork() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (networkId: number) => {
       const { data, error } = await supabase
-        .rpc('mark_tickets_inactive' as any, { p_network_id: networkId });
+        .rpc('delete_tickets_by_network' as any, { p_network_id: networkId });
 
       if (error) throw error;
-      return data as number; // Retorna quantidade de tickets marcados
+      return data as number;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });

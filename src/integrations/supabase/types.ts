@@ -2865,6 +2865,10 @@ export type Database = {
       }
       cleanup_login_attempts: { Args: never; Returns: undefined }
       compute_pbi_health_all: { Args: never; Returns: undefined }
+      delete_tickets_by_network: {
+        Args: { p_network_id: number }
+        Returns: number
+      }
       get_batch_statistics: { Args: { p_batch_id: number }; Returns: Json }
       get_correlation_stats: {
         Args: { p_network_id?: number }
