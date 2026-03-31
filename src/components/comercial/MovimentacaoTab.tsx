@@ -13,13 +13,25 @@ import { useMovimentacaoImport } from '@/hooks/useMovimentacaoImport';
 import { TrendingUp, TrendingDown, BarChart3, Upload, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from 'recharts';
 
+function tipoLabel(tipo: string) {
+  if (tipo === 'ganho') return 'Ganho';
+  if (tipo === 'risco') return 'Risco';
+  return 'Perda';
+}
+
+function tipoBadgeVariant(tipo: string): 'default' | 'destructive' | 'secondary' {
+  if (tipo === 'ganho') return 'default';
+  if (tipo === 'risco') return 'secondary';
+  return 'destructive';
+}
+
 const columns: DataTableColumn<MovimentacaoCliente>[] = [
   { key: 'cliente_codigo', header: 'Código', className: 'font-mono text-xs w-16' },
   { key: 'cliente_nome', header: 'Cliente', className: 'max-w-[200px] truncate font-medium' },
   {
     key: 'tipo', header: 'Tipo', render: (r) => (
-      <Badge variant={r.tipo === 'ganho' ? 'default' : 'destructive'} className="text-xs">
-        {r.tipo === 'ganho' ? 'Ganho' : 'Perda'}
+      <Badge variant={tipoBadgeVariant(r.tipo)} className={`text-xs${r.tipo === 'risco' ? ' bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30' : ''}`}>
+        {tipoLabel(r.tipo)}
       </Badge>
     ),
   },
