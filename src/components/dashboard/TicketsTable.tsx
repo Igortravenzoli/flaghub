@@ -61,7 +61,13 @@ export function TicketsTable({ tickets, compact = false, onViewDetails }: Ticket
               <div className="flex items-center gap-2">
                 {tc.ticket.number}
                 {tc.ticket.type === 'request' && (
-                  <Badge variant="outline" className="text-[10px]">REQ</Badge>
+                  <Badge variant="outline" className="text-[10px]">RITM</Badge>
+                )}
+                {tc.ticket.type === 'problem' && (
+                  <Badge variant="outline" className="text-[10px] border-orange-500/50 text-orange-600">PRB</Badge>
+                )}
+                {tc.ticket.type === 'incident' && (
+                  <Badge variant="outline" className="text-[10px] border-blue-500/50 text-blue-600">INC</Badge>
                 )}
               </div>
             </TableCell>
@@ -95,9 +101,18 @@ export function TicketsTable({ tickets, compact = false, onViewDetails }: Ticket
             {!compact && (
               <TableCell className="max-w-[150px]">
                 <span className="truncate block text-sm">
-                  {tc.ticket.assigned_to?.split(' (')[0] || (
-                    <span className="text-muted-foreground">-</span>
-                  )}
+                  {(() => {
+                    // Prefer VDesk programador over ServiceNow assigned_to (which is often a sys_id)
+                    const vdeskProgramador = tc.osMultiplas?.[tc.osMultiplas.length - 1]?.programador 
+                      || tc.osVinculada?.programador;
+                    if (vdeskProgramador) return vdeskProgramador;
+                    // Fallback: only show assigned_to if it looks like a name (not a sys_id hex)
+                    const assignedTo = tc.ticket.assigned_to;
+                    if (assignedTo && !/^[0-9a-f]{32}$/i.test(assignedTo)) {
+                      return assignedTo.split(' (')[0];
+                    }
+                    return <span className="text-muted-foreground">-</span>;
+                  })()}
                 </span>
               </TableCell>
             )}
