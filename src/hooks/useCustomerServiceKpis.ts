@@ -139,7 +139,7 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
     if (i.source !== 'devops_queue') return true;
     if (sprintFilter === 'all' || sprintFilter === '__pending__') return true;
     if (!i.work_item_id) return false;
-    return sprintMap.get(i.work_item_id) === sprintFilter;
+    return enrichmentMap.get(i.work_item_id)?.iteration_path === sprintFilter;
   });
 
   // Date filter atua como drill-down após sprint filter.
