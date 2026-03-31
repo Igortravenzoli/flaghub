@@ -182,7 +182,7 @@ export default function HelpdeskDashboard() {
   const {
     allSnapshots, historico, totalSnapshotsNoPeriodo, diasComDados,
     registrosPorConsultor, tipoChamadoTempoMedio, registrosPorSistema,
-    registrosPorBandeira, registrosPorCliente, ocorrenciasPorTipo,
+    registrosPorBandeira, registrosPorCliente,
     horasTotaisPorDia,
     totalRegistros, totalHoras, horasDiaTotal, totalConsultores,
     lastSync, isLoading, isError, refetch,
