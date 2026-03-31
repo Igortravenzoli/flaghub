@@ -283,7 +283,7 @@ serve(async (req: Request) => {
     }
 
     const body = await req.json()
-    const { batch_id } = body
+    const { batch_id, force } = body
 
     if (!batch_id) {
       return new Response(JSON.stringify({ error: 'batch_id é obrigatório' }), {
@@ -325,7 +325,7 @@ serve(async (req: Request) => {
       })
     }
 
-    if (batch.status === 'published') {
+    if (batch.status === 'published' && !force) {
       return new Response(JSON.stringify({
         success: true,
         batch_id,
