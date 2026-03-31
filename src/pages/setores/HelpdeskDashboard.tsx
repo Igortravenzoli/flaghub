@@ -9,7 +9,7 @@ import { useHelpdeskKpis, ConsultorKpi, RegistroPorGrupo, TipoChamadoKpi } from 
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
-  Headphones, Clock, Users, FileText, Monitor, Flag, UserCheck,
+  Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
   Ticket, Search,
 } from 'lucide-react';
