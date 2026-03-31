@@ -579,10 +579,10 @@ export default function CustomerServiceDashboard() {
           {/* ═══ TAB: MONITORAMENTO (Release 3) ═══ */}
           <TabsContent value="monitoramento" className="space-y-4 animate-fade-in">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <DashboardKpiCard label="Alertas Críticos" value={alertCounts.critical} icon={AlertTriangle} isLoading={isLoading} accent="bg-destructive" />
-              <DashboardKpiCard label="Alertas Atenção" value={alertCounts.warning} icon={Timer} isLoading={isLoading} accent="bg-[hsl(43,85%,46%)]" />
-              <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} accent="bg-[hsl(262,83%,58%)]" />
-              <DashboardKpiCard label="Saíram do CS" value={devopsItems.filter(i => i.leftCS).length} icon={TrendingUp} isLoading={isLoading} accent="bg-[hsl(142,71%,45%)]" />
+              <DashboardKpiCard label="Alertas Críticos" value={alertCounts.critical} icon={AlertTriangle} isLoading={isLoading} accent="bg-destructive" onClick={() => handleMonitorClick('criticos')} active={monitorFilter === 'criticos'} />
+              <DashboardKpiCard label="Alertas Atenção" value={alertCounts.warning} icon={Timer} isLoading={isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleMonitorClick('atencao')} active={monitorFilter === 'atencao'} />
+              <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} accent="bg-[hsl(262,83%,58%)]" onClick={() => handleMonitorClick('backlog')} active={monitorFilter === 'backlog'} />
+              <DashboardKpiCard label="Saíram do CS" value={devopsItems.filter(i => i.leftCS).length} icon={TrendingUp} isLoading={isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleMonitorClick('sairam')} active={monitorFilter === 'sairam'} />
             </div>
 
             {/* Aging distribution chart */}
