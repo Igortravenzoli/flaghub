@@ -142,6 +142,8 @@ export function DashboardDataTable<T extends Record<string, any>>({
   emptyMessage = 'Nenhum dado encontrado',
   columnFilters = [],
   disableAutoColumnFilters = false,
+  onSearchChange,
+  searchBanner,
 }: DashboardDataTableProps<T>) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(initialPageSize);
