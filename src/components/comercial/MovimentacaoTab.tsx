@@ -10,16 +10,28 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { useComercialMovimentacao, MovimentacaoCliente } from '@/hooks/useComercialMovimentacao';
 import { useMovimentacaoImport } from '@/hooks/useMovimentacaoImport';
-import { TrendingUp, TrendingDown, BarChart3, Upload, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart3, Upload, Loader2, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from 'recharts';
+
+function tipoLabel(tipo: string) {
+  if (tipo === 'ganho') return 'Ganho';
+  if (tipo === 'risco') return 'Risco';
+  return 'Perda';
+}
+
+function tipoBadgeVariant(tipo: string): 'default' | 'destructive' | 'secondary' {
+  if (tipo === 'ganho') return 'default';
+  if (tipo === 'risco') return 'secondary';
+  return 'destructive';
+}
 
 const columns: DataTableColumn<MovimentacaoCliente>[] = [
   { key: 'cliente_codigo', header: 'Código', className: 'font-mono text-xs w-16' },
   { key: 'cliente_nome', header: 'Cliente', className: 'max-w-[200px] truncate font-medium' },
   {
     key: 'tipo', header: 'Tipo', render: (r) => (
-      <Badge variant={r.tipo === 'ganho' ? 'default' : 'destructive'} className="text-xs">
-        {r.tipo === 'ganho' ? 'Ganho' : 'Perda'}
+      <Badge variant={tipoBadgeVariant(r.tipo)} className={`text-xs${r.tipo === 'risco' ? ' bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30' : ''}`}>
+        {tipoLabel(r.tipo)}
       </Badge>
     ),
   },
@@ -65,12 +77,14 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
   const stats = useMemo(() => {
     const perdas = items.filter((i) => i.tipo === 'perda');
     const ganhos = items.filter((i) => i.tipo === 'ganho');
+    const riscos = items.filter((i) => i.tipo === 'risco');
     const total = items.length;
     const pctGanhos = total > 0 ? Math.round((ganhos.length / total) * 100) : 0;
     const pctPerdas = total > 0 ? Math.round((perdas.length / total) * 100) : 0;
     return {
       totalGanhos: ganhos.length,
       totalPerdas: perdas.length,
+      totalRiscos: riscos.length,
       pctGanhos,
       pctPerdas,
       saldoClientes: ganhos.length - perdas.length,
@@ -89,15 +103,16 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
 
   // Bar chart data: perdas x ganhos grouped by month
   const chartData = useMemo(() => {
-    const monthMap = new Map<string, { label: string; ganhos: number; perdas: number; sortKey: string }>();
+    const monthMap = new Map<string, { label: string; ganhos: number; perdas: number; riscos: number; sortKey: string }>();
     for (const item of items) {
       const d = item.data_evento ? new Date(item.data_evento) : null;
       if (!d) continue;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
-      if (!monthMap.has(key)) monthMap.set(key, { label, ganhos: 0, perdas: 0, sortKey: key });
+      if (!monthMap.has(key)) monthMap.set(key, { label, ganhos: 0, perdas: 0, riscos: 0, sortKey: key });
       const entry = monthMap.get(key)!;
       if (item.tipo === 'ganho') entry.ganhos++;
+      else if (item.tipo === 'risco') entry.riscos++;
       else if (item.tipo === 'perda') entry.perdas++;
     }
     return Array.from(monthMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
@@ -131,7 +146,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
   const drawerFields: DrawerField[] = drawerItem ? [
     { label: 'Código', value: drawerItem.cliente_codigo },
     { label: 'Cliente', value: drawerItem.cliente_nome },
-    { label: 'Tipo', value: drawerItem.tipo === 'ganho' ? 'Ganho' : 'Perda' },
+    { label: 'Tipo', value: tipoLabel(drawerItem.tipo) },
     { label: 'Bandeira', value: drawerItem.bandeira },
     { label: 'Sistema', value: drawerItem.sistema },
     { label: 'Categoria', value: drawerItem.motivo },
@@ -162,9 +177,10 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <DashboardKpiCard label="Ganhos (Clientes)" value={stats.totalGanhos} icon={TrendingUp} isLoading={isLoading} />
         <DashboardKpiCard label="Perdas (Clientes)" value={stats.totalPerdas} icon={TrendingDown} isLoading={isLoading} delay={80} />
+        <DashboardKpiCard label="Em Risco" value={stats.totalRiscos} icon={AlertTriangle} isLoading={isLoading} delay={120} accent="bg-amber-500" />
         <DashboardKpiCard label="Total Movimentações" value={items.length} icon={BarChart3} isLoading={isLoading} delay={160} />
         <DashboardKpiCard label="Saldo (Clientes)" value={stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes)} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
@@ -180,11 +196,11 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
         </ToggleGroup>
       </div>
 
-      {/* Bar chart: Perdas x Ganhos por mês */}
+      {/* Bar chart: Perdas x Ganhos x Riscos por mês */}
       {chartData.length > 0 && !isLoading && (
         <Card className="p-4 space-y-2">
           <CardHeader className="p-0">
-            <CardTitle className="text-sm font-semibold">Perdas × Ganhos por Mês</CardTitle>
+            <CardTitle className="text-sm font-semibold">Perdas × Ganhos × Riscos por Mês</CardTitle>
             <p className="text-xs text-muted-foreground">Visão gerencial da movimentação de clientes</p>
           </CardHeader>
           <div className="h-[280px]">
@@ -199,6 +215,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="ganhos" name="Ganhos" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="riscos" name="Riscos" fill="hsl(43, 85%, 46%)" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="perdas" name="Perdas" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -226,7 +243,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
         open={!!drawerItem}
         onClose={() => setDrawerItem(null)}
         title={drawerItem?.cliente_nome || undefined}
-        subtitle={drawerItem?.tipo === 'ganho' ? 'Novo Cliente' : 'Perda de Cliente'}
+        subtitle={drawerItem?.tipo === 'ganho' ? 'Novo Cliente' : drawerItem?.tipo === 'risco' ? 'Cliente em Risco' : 'Perda de Cliente'}
         fields={drawerFields}
       />
 

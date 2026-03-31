@@ -97,21 +97,28 @@ function parseCurrency(val: any): number | null {
 function parseRow(raw: Record<string, any>, sheetYear: number): ParsedRow | null {
   const r = normalizeHeaders(raw);
   const tipoRaw = String(r.tipo_raw ?? '').trim().toLowerCase();
-  if (!tipoRaw || (tipoRaw !== 'ganho' && tipoRaw !== 'perda')) return null;
+  if (!tipoRaw || !['ganho', 'perda'].includes(tipoRaw)) return null;
 
   const clienteNome = r.cliente_nome ? String(r.cliente_nome).trim() : null;
   if (!clienteNome) return null;
 
   const dataEvento = parseDate(r.data_evento) || parseDate(r.efetivacao);
+  const motivo = r.motivo ? String(r.motivo).trim() : null;
+
+  // Detect "Risco" type: Status is Perda but Categoria contains "risco"
+  let tipo = tipoRaw;
+  if (tipoRaw === 'perda' && motivo && motivo.toLowerCase().includes('risco')) {
+    tipo = 'risco';
+  }
 
   return {
     cliente_codigo: r.cliente_codigo != null && r.cliente_codigo !== '' ? Number(r.cliente_codigo) || null : null,
     cliente_nome: clienteNome,
-    tipo: tipoRaw,
+    tipo,
     data_evento: dataEvento,
     sistema: r.sistema ? String(r.sistema).trim() : null,
     bandeira: r.bandeira ? String(r.bandeira).trim() : null,
-    motivo: r.motivo ? String(r.motivo).trim() : null,
+    motivo,
     valor_mensal: parseCurrency(r.valor_mensal),
     status_encerramento: r.observacao ? String(r.observacao).trim() : null,
     ano_referencia: dataEvento ? new Date(dataEvento).getFullYear() : sheetYear,
