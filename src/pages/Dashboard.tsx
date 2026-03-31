@@ -101,7 +101,7 @@ export default function Dashboard() {
     return { ticketsSemOS: semOS, ticketsComOS: comOS };
   }, [ticketsConsolidados]);
 
-  // Displayed tickets based on toggle + type/sla filter
+  // Displayed tickets based on toggle + type/sla/os filter
   const displayedTickets = useMemo(() => {
     if (slaFilter) {
       return ticketsByType.slaBreachTickets[slaFilter] || [];
@@ -109,8 +109,11 @@ export default function Dashboard() {
     if (typeFilter) {
       return ticketsByType.ticketsByTypeMap[typeFilter] || [];
     }
+    if (osFilter === 'all') return ticketsConsolidados;
+    if (osFilter === 'semOS') return ticketsSemOS;
+    if (osFilter === 'comOS') return ticketsComOS;
     return showWithOS ? ticketsComOS : ticketsSemOS;
-  }, [showWithOS, ticketsComOS, ticketsSemOS, typeFilter, slaFilter, ticketsByType]);
+  }, [showWithOS, ticketsComOS, ticketsSemOS, typeFilter, slaFilter, ticketsByType, osFilter, ticketsConsolidados]);
 
   const activeFilterLabel = useMemo(() => {
     if (slaFilter) return `SLA Estourado — ${TYPE_LABELS[slaFilter]}`;
