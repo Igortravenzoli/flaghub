@@ -61,18 +61,25 @@ interface Props {
 export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
   const [anoFilter, setAnoFilter] = useState<string>('todos');
   const [drawerItem, setDrawerItem] = useState<MovimentacaoCliente | null>(null);
+  const [tipoFilter, setTipoFilter] = useState<string | null>(null);
   const { items: rawItems, allItems, stats: rawStats, isLoading, isError, refetch } = useComercialMovimentacao('todos', dateFrom, dateTo);
 
   // Filter by year
   const items = useMemo(() => {
-    if (anoFilter === 'todos') return rawItems;
-    const year = parseInt(anoFilter);
-    return rawItems.filter((i) => {
+    let filtered = rawItems;
+    if (anoFilter !== 'todos') {
+      const year = parseInt(anoFilter);
+      filtered = filtered.filter((i) => {
       if (i.ano_referencia) return i.ano_referencia === year;
       if (i.data_evento) return new Date(i.data_evento).getFullYear() === year;
       return false;
     });
-  }, [rawItems, anoFilter]);
+    }
+    if (tipoFilter) {
+      filtered = filtered.filter((i) => i.tipo === tipoFilter);
+    }
+    return filtered;
+  }, [rawItems, anoFilter, tipoFilter]);
 
   // Recalculate stats for filtered items
   const stats = useMemo(() => {
@@ -118,6 +125,10 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
     }
     return Array.from(monthMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   }, [items]);
+
+  const handleKpiClick = useCallback((tipo: string | null) => {
+    setTipoFilter((prev) => prev === tipo ? null : tipo);
+  }, []);
 
   // Import state
   const fileRef = useRef<HTMLInputElement>(null);
@@ -181,10 +192,10 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <DashboardKpiCard label="Ganhos (Clientes)" value={stats.totalGanhos} icon={TrendingUp} isLoading={isLoading} />
-        <DashboardKpiCard label="Perdas (Clientes)" value={stats.totalPerdas} icon={TrendingDown} isLoading={isLoading} delay={80} />
-        <DashboardKpiCard label="Em Risco" value={stats.totalRiscos} icon={AlertTriangle} isLoading={isLoading} delay={120} accent="bg-amber-500" />
-        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={BarChart3} isLoading={isLoading} delay={160} />
+        <DashboardKpiCard label="Ganhos (Clientes)" value={stats.totalGanhos} icon={TrendingUp} isLoading={isLoading} onClick={() => handleKpiClick('ganho')} active={tipoFilter === 'ganho'} />
+        <DashboardKpiCard label="Perdas (Clientes)" value={stats.totalPerdas} icon={TrendingDown} isLoading={isLoading} delay={80} onClick={() => handleKpiClick('perda')} active={tipoFilter === 'perda'} />
+        <DashboardKpiCard label="Em Risco" value={stats.totalRiscos} icon={AlertTriangle} isLoading={isLoading} delay={120} accent="bg-amber-500" onClick={() => handleKpiClick('risco')} active={tipoFilter === 'risco'} />
+        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={BarChart3} isLoading={isLoading} delay={160} onClick={() => handleKpiClick(null)} active={tipoFilter === null} />
         <DashboardKpiCard label="Saldo (Clientes)" value={stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes)} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
