@@ -224,7 +224,17 @@ export default function CustomerServiceDashboard() {
     [porResponsavel]
   );
 
-  const filteredDevops = useMemo(() => devopsItems, [devopsItems]);
+  const filteredDevops = useMemo(() => {
+    if (kpiFilter === 'aprovacao_cs') return devopsItems.filter(i => {
+      const s = (i.state || '').toLowerCase();
+      return s.includes('aprovação') || s.includes('aprovacao');
+    });
+    if (kpiFilter === 'customer_service') return devopsItems.filter(i => {
+      const s = (i.state || '').toLowerCase();
+      return s.includes('customer service') || s.includes('cs');
+    });
+    return devopsItems;
+  }, [devopsItems, kpiFilter]);
 
   const filteredImpl = useMemo(() => {
     const encerradoStatuses = ['finalizado', 'concluído', 'concluido', '8 - encerrado', 'encerrado', '11 - cancelado', 'cancelado'];
