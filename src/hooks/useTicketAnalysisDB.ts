@@ -72,7 +72,7 @@ function dbTicketToLegacy(ticket: DBTicket): { ticket: TicketNestle; os: OrdemSe
           hour: '2-digit', minute: '2-digit' 
         }).replace(',', '')
       : '',
-    type: (ticket.ticket_type === 'incident' ? 'incident' : 'request') as 'incident' | 'request',
+    type: (ticket.ticket_type === 'incident' ? 'incident' : ticket.ticket_type === 'problem' ? 'problem' : 'request') as 'incident' | 'request' | 'problem',
   };
 
   // Construir OS a partir do vdesk_payload (dados completos) ou fallback

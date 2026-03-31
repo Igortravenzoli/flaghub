@@ -346,6 +346,8 @@ export function useImportBatch() {
               let ticketType = 'incident';
               if (ticketExternalId.startsWith('RITM')) {
                 ticketType = 'request';
+              } else if (ticketExternalId.startsWith('PRB')) {
+                ticketType = 'problem';
               } else if (record.type) {
                 ticketType = record.type as string;
               }
