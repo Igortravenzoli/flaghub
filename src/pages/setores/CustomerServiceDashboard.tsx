@@ -494,6 +494,41 @@ export default function CustomerServiceDashboard() {
               <DashboardKpiCard label="Finalizadas" value={implFinalizadas} icon={TrendingUp} isLoading={isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleKpiClick('impl_finalizadas')} active={kpiFilter === 'impl_finalizadas'} />
             </div>
 
+            {/* Charts: Consultor + Produto */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {consultorChartData.length > 0 && (
+                <Card className="p-5">
+                  <h3 className="font-semibold text-sm mb-4">Implantações por Consultor</h3>
+                  <ResponsiveContainer width="100%" height={Math.max(180, consultorChartData.length * 32)}>
+                    <BarChart data={consultorChartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                      <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
+                      <RechartsTooltip />
+                      <Bar dataKey="value" fill="hsl(262,83%,58%)" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Card>
+              )}
+
+              {implProductChartData.length > 0 && (
+                <Card className="p-5">
+                  <h3 className="font-semibold text-sm mb-4">Implantações por Produto</h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={implProductChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${value}`} labelLine={false} fontSize={10}>
+                        {implProductChartData.map((_, idx) => (
+                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip />
+                      <Legend fontSize={11} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Card>
+              )}
+            </div>
+
             {!isLoading && filteredImpl.length === 0 ? (
               <DashboardEmptyState description="Nenhuma implantação para o período selecionado." />
             ) : (
