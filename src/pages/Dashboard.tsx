@@ -118,8 +118,11 @@ export default function Dashboard() {
   const activeFilterLabel = useMemo(() => {
     if (slaFilter) return `SLA Estourado — ${TYPE_LABELS[slaFilter]}`;
     if (typeFilter) return TYPE_LABELS[typeFilter];
+    if (osFilter === 'all') return 'Todos os Tickets';
+    if (osFilter === 'semOS') return 'Tickets Sem OS';
+    if (osFilter === 'comOS') return 'Tickets Com OS';
     return null;
-  }, [slaFilter, typeFilter]);
+  }, [slaFilter, typeFilter, osFilter]);
 
   const handleTypeClick = (type: string) => {
     setSlaFilter(null);
