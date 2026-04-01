@@ -384,20 +384,16 @@ export function useImport() {
         });
 
         // ========================================
-        // CORRELAÇÃO AUTOMÁTICA COM VDESK
+        // CORRELAÇÃO AUTOMÁTICA COM VDESK (via Edge Function Proxy)
         // ========================================
-        console.log('[Import] Iniciando correlação automática com VDESK...');
+        console.log('[Import] Iniciando correlação automática com VDESK via proxy...');
         
         try {
-          const token = await getValidToken();
-          
-          // Correlacionar tickets importados que têm número de ticket
           const ticketsToCorrelate = ticketsToUpsert
             .filter(t => t.ticket_external_id)
             .map(t => t.ticket_external_id);
 
           let correlatedCount = 0;
-          const correlationBatchSize = 5;
 
           setStatus({
             phase: 'correlating',
@@ -408,58 +404,51 @@ export function useImport() {
             message: `Correlacionando tickets com VDESK: 0/${ticketsToCorrelate.length}`,
           });
 
-          for (let i = 0; i < ticketsToCorrelate.length; i += correlationBatchSize) {
-            const batch = ticketsToCorrelate.slice(i, i + correlationBatchSize);
+          // Process in chunks of 50 to avoid edge function timeouts
+          const proxyBatchSize = 50;
+          for (let i = 0; i < ticketsToCorrelate.length; i += proxyBatchSize) {
+            const chunk = ticketsToCorrelate.slice(i, i + proxyBatchSize);
             
-            await Promise.all(batch.map(async (ticketId) => {
-              try {
-                const response = await correlacionarTicket(ticketId, token);
-                
-                if (response.success && response.count > 0) {
-                  // Juntar todas as OS encontradas separadas por vírgula
-                  const allOsNumbers = response.osEncontradas.join(', ');
-                  
-                  // NOTA: has_os é coluna gerada (computed), não atualizar diretamente
-                  const { error: updateError } = await supabase
-                    .from('tickets')
-                    .update({
-                      os_found_in_vdesk: true,
-                      os_number: allOsNumbers, // Todas as OS separadas por vírgula
-                      inconsistency_code: null,
-                      severity: 'info',
-                      updated_at: new Date().toISOString(),
-                    })
-                    .eq('ticket_external_id', ticketId)
-                    .eq('network_id', networkId);
-                  
-                  if (updateError) {
-                    console.error(`[Import] Erro ao atualizar ticket ${ticketId}:`, updateError);
+            try {
+              const batchResponse = await correlacionarBatchViaProxy(chunk);
+              
+              if (batchResponse.success && batchResponse.results) {
+                for (const result of batchResponse.results) {
+                  if (result.found && result.osEncontradas.length > 0) {
+                    const allOsNumbers = result.osEncontradas.join(', ');
+                    const { error: updateError } = await supabase
+                      .from('tickets')
+                      .update({
+                        os_found_in_vdesk: true,
+                        os_number: allOsNumbers,
+                        inconsistency_code: null,
+                        severity: 'info',
+                        updated_at: new Date().toISOString(),
+                      })
+                      .eq('ticket_external_id', result.ticket)
+                      .eq('network_id', networkId);
+                    
+                    if (!updateError) correlatedCount++;
+                    else console.error(`[Import] Erro ao atualizar ticket ${result.ticket}:`, updateError);
                   } else {
-                    correlatedCount++;
-                  }
-                } else {
-                  const { error: updateError } = await supabase
-                    .from('tickets')
-                    .update({
-                      os_found_in_vdesk: false,
-                      inconsistency_code: 'OS_NOT_FOUND',
-                      severity: 'critico',
-                      updated_at: new Date().toISOString(),
-                    })
-                    .eq('ticket_external_id', ticketId)
-                    .eq('network_id', networkId);
-                  
-                  if (updateError) {
-                    console.error(`[Import] Erro ao atualizar ticket ${ticketId}:`, updateError);
+                    await supabase
+                      .from('tickets')
+                      .update({
+                        os_found_in_vdesk: false,
+                        inconsistency_code: 'OS_NOT_FOUND',
+                        severity: 'critico',
+                        updated_at: new Date().toISOString(),
+                      })
+                      .eq('ticket_external_id', result.ticket)
+                      .eq('network_id', networkId);
                   }
                 }
-              } catch (err) {
-                console.warn(`[Import] Falha na correlação do ticket ${ticketId}:`, err);
               }
-            }));
+            } catch (chunkErr) {
+              console.warn(`[Import] Falha na correlação batch (chunk ${i}):`, chunkErr);
+            }
 
-            // Atualizar progresso da correlação
-            const processed = Math.min(i + correlationBatchSize, ticketsToCorrelate.length);
+            const processed = Math.min(i + proxyBatchSize, ticketsToCorrelate.length);
             setStatus({
               phase: 'correlating',
               fileName: file.name,
@@ -468,7 +457,6 @@ export function useImport() {
               correlatedTickets: processed,
               message: `Correlacionando tickets com VDESK: ${processed}/${ticketsToCorrelate.length}`,
             });
-
             setProgress(92 + Math.floor((processed / ticketsToCorrelate.length) * 6));
           }
 
