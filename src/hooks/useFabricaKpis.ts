@@ -535,5 +535,6 @@ export function useFabricaKpis(
     horasPorProduto,
     horasPorFabrica,
     tagsByWorkItemId,
+    allCollaborators,
   };
 }
