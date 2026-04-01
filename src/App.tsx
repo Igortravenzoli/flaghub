@@ -29,8 +29,7 @@ import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
 import FabricaDashboard from "@/pages/setores/FabricaDashboard";
 import InfraestruturaDashboard from "@/pages/setores/InfraestruturaDashboard";
 
-import AccessRequests from "@/pages/admin/AccessRequests";
-import Permissions from "@/pages/admin/Permissions";
+// AccessRequests and Permissions are now tabs inside Usuarios
 import SyncCentral from "@/pages/admin/SyncCentral";
 import IpAllowlist from "@/pages/admin/IpAllowlist";
 import ManualUploads from "@/pages/admin/ManualUploads";
