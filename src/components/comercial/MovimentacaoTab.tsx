@@ -111,16 +111,16 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
 
   // Bar chart data: perdas x ganhos grouped by month
   const chartData = useMemo(() => {
-    const monthMap = new Map<string, { label: string; ganhos: number; perdas: number; riscos: number; sortKey: string }>();
+    const monthMap = new Map<string, { label: string; ganhos: number; perdas: number; sortKey: string }>();
     for (const item of items) {
+      if (item.tipo === 'risco') continue; // Risco não é movimentação
       const d = item.data_evento ? new Date(item.data_evento) : null;
       if (!d) continue;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
-      if (!monthMap.has(key)) monthMap.set(key, { label, ganhos: 0, perdas: 0, riscos: 0, sortKey: key });
+      if (!monthMap.has(key)) monthMap.set(key, { label, ganhos: 0, perdas: 0, sortKey: key });
       const entry = monthMap.get(key)!;
       if (item.tipo === 'ganho') entry.ganhos++;
-      else if (item.tipo === 'risco') entry.riscos++;
       else if (item.tipo === 'perda') entry.perdas++;
     }
     return Array.from(monthMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
@@ -195,7 +195,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
         <DashboardKpiCard label="Ganhos (Clientes)" value={stats.totalGanhos} icon={TrendingUp} isLoading={isLoading} onClick={() => handleKpiClick('ganho')} active={tipoFilter === 'ganho'} />
         <DashboardKpiCard label="Perdas (Clientes)" value={stats.totalPerdas} icon={TrendingDown} isLoading={isLoading} delay={80} onClick={() => handleKpiClick('perda')} active={tipoFilter === 'perda'} />
         <DashboardKpiCard label="Em Risco" value={stats.totalRiscos} icon={AlertTriangle} isLoading={isLoading} delay={120} accent="bg-amber-500" onClick={() => handleKpiClick('risco')} active={tipoFilter === 'risco'} />
-        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={BarChart3} isLoading={isLoading} delay={160} onClick={() => handleKpiClick(null)} active={tipoFilter === null} />
+        <DashboardKpiCard label="Total Movimentações" value={stats.totalGanhos + stats.totalPerdas} icon={BarChart3} isLoading={isLoading} delay={160} onClick={() => handleKpiClick(null)} active={tipoFilter === null} />
         <DashboardKpiCard label="Saldo (Clientes)" value={stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes)} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
@@ -214,7 +214,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
       {chartData.length > 0 && !isLoading && (
         <Card className="p-4 space-y-2">
           <CardHeader className="p-0">
-            <CardTitle className="text-sm font-semibold">Perdas × Ganhos × Riscos por Mês</CardTitle>
+            <CardTitle className="text-sm font-semibold">Perdas × Ganhos por Mês</CardTitle>
             <p className="text-xs text-muted-foreground">Visão gerencial da movimentação de clientes</p>
           </CardHeader>
           <div className="h-[280px]">
@@ -229,7 +229,6 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="ganhos" name="Ganhos" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="riscos" name="Riscos" fill="hsl(43, 85%, 46%)" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="perdas" name="Perdas" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
