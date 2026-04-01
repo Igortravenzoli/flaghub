@@ -175,9 +175,9 @@ export default function Permissions() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 {user.memberships.length > 0 ? (
-                  <ShieldCheck className="h-4 w-4 text-green-500" />
+                  <ShieldCheck className="h-4 w-4 text-primary" />
                 ) : (
-                  <ShieldAlert className="h-4 w-4 text-amber-500" />
+                  <ShieldAlert className="h-4 w-4 text-destructive" />
                 )}
                 <span className="font-semibold text-foreground">{user.full_name}</span>
                 <Badge variant="secondary" className="text-xs">
