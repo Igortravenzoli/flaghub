@@ -799,6 +799,7 @@ export default function FabricaDashboard() {
               </div>
             </PopoverContent>
           </Popover>
+        )}
         <DashboardFilterBar
           preset={customActive ? 'custom' : 'all'}
           onPresetChange={() => { setCustomActive(false); setFabKpiFilter('all'); setPage(0); }}
