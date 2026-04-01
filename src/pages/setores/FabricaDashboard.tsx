@@ -754,6 +754,51 @@ export default function FabricaDashboard() {
             </SelectContent>
           </Select>
         )}
+        {/* Collaborator multi-select filter */}
+        {fab.allCollaborators.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Badge variant="outline" className="gap-1 text-xs cursor-pointer h-8 px-3 hover:bg-muted transition-colors">
+                <Users className="h-3.5 w-3.5" />
+                Colaboradores ({fab.allCollaborators.length - excludedCollabs.size}/{fab.allCollaborators.length})
+              </Badge>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Colaboradores contabilizados</p>
+              <ScrollArea className="max-h-[280px]">
+                <div className="space-y-1">
+                  {fab.allCollaborators.map(name => {
+                    const key = name.trim().toLowerCase();
+                    const isChecked = !excludedCollabs.has(key);
+                    return (
+                      <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setExcludedCollabs(prev => {
+                              const next = new Set(prev);
+                              if (checked) next.delete(key);
+                              else next.add(key);
+                              return next;
+                            });
+                          }}
+                        />
+                        <span className="truncate">{name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              <div className="border-t mt-2 pt-2 flex gap-1">
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setExcludedCollabs(new Set())}>
+                  Marcar todos
+                </Button>
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setExcludedCollabs(new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS))}>
+                  Padrão
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         <DashboardFilterBar
           preset={customActive ? 'custom' : 'all'}
           onPresetChange={() => { setCustomActive(false); setFabKpiFilter('all'); setPage(0); }}
