@@ -347,9 +347,15 @@ export default function FabricaDashboard() {
   };
 
   const sprintFilteredItems = useMemo(() => {
-    if (sprintFilter === 'all') return fab.items;
-    return fab.items.filter(i => i.iteration_path === sprintFilter);
-  }, [fab.items, sprintFilter]);
+    let items = sprintFilter === 'all' ? fab.items : fab.items.filter(i => i.iteration_path === sprintFilter);
+    if (excludedCollabs.size > 0) {
+      items = items.filter(i => {
+        const name = i.assigned_to_display?.trim().toLowerCase();
+        return !name || !excludedCollabs.has(name);
+      });
+    }
+    return items;
+  }, [fab.items, sprintFilter, excludedCollabs]);
 
   const sprintTotal = sprintFilteredItems.length;
   const sprintInProgress = sprintFilteredItems.filter(i => isFabricaInProgress(i.state)).length;
