@@ -33,7 +33,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
-type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aviao';
+type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aviao' | 'sem_task';
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
@@ -335,6 +335,19 @@ export default function FabricaDashboard() {
   const sprintDone = sprintFilteredItems.filter(i => isDone(i.state)).length;
   const sprintAguardandoTeste = sprintFilteredItems.filter(i => i.state === 'Aguardando Teste').length;
 
+  // PBIs sem Task vinculada (anomalia)
+  const sprintPbisSemTask = useMemo(() => {
+    const childParentIds = new Set(
+      sprintFilteredItems
+        .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
+        .map(i => i.parent_id!)
+    );
+    return sprintFilteredItems.filter(
+      i => (i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story') && i.id != null && !childParentIds.has(i.id)
+    );
+  }, [sprintFilteredItems]);
+  const sprintPbisSemTaskCount = sprintPbisSemTask.length;
+
   const sprintTransbordoItems = useMemo(() => {
     if (sprintFilter === 'all') return fab.transbordoItems;
     return fab.transbordoItems.filter(i => i.iteration_path === sprintFilter || i.sprintsOverflowed.includes(sprintFilter));
@@ -433,6 +446,17 @@ export default function FabricaDashboard() {
         const tags = fab.tagsByWorkItemId[i.id] || '';
         return AVIAO_REGEX.test(tags);
       }); break;
+      case 'sem_task': {
+        const childParentIds = new Set(
+          sprintFilteredItems
+            .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
+            .map(i => i.parent_id!)
+        );
+        items = items.filter(
+          i => (i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story') && i.id != null && !childParentIds.has(i.id)
+        );
+        break;
+      }
     }
     if (typeFilter) {
       items = items.filter(i => {
@@ -634,6 +658,7 @@ export default function FabricaDashboard() {
       case 'done': return 'Finalizados';
       case 'aguardando_teste': return 'Aguardando Teste';
       case 'aviao': return 'Avião';
+      case 'sem_task': return 'PBI sem Task';
     }
   };
 
@@ -771,11 +796,22 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-5 mt-0">
             {/* Hero KPI row */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
               <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
               <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
               <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
+              <HeroKpiCard 
+                label="PBI sem Task" 
+                value={sprintPbisSemTaskCount} 
+                icon={AlertTriangle} 
+                isLoading={fab.isLoading} 
+                delay={320} 
+                accent={sprintPbisSemTaskCount > 0 ? 'bg-destructive' : 'bg-[hsl(142,71%,45%)]'}
+                description={sprintPbisSemTaskCount > 0 ? 'Anomalia: PBIs sem task vinculada' : 'Todos PBIs possuem tasks'}
+                onClick={() => toggleFab('sem_task')} 
+                active={fabKpiFilter === 'sem_task'} 
+              />
             </div>
 
             {/* Corporate KPIs */}
