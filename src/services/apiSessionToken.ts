@@ -81,7 +81,7 @@ export function storeToken(token: string, expiresAt: string): void {
  * Limpa token do localStorage
  */
 export function clearToken(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem(STORAGE_KEY);
 }
 
 /**
