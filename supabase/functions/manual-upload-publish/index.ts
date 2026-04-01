@@ -304,7 +304,8 @@ serve(async (req: Request) => {
       })
     }
 
-    // Authorization: global admin/gestao OR hub admin OR area owner/operacional
+    // Authorization: batch owner OR global admin/gestao OR hub admin OR area owner/operacional
+    const isOwner = batch.imported_by === userId
     const batchAreaId = batch.area_id || (batch as any).manual_import_templates?.area_id || null
     const [globalOk, hubAdmin, areaOk] = await Promise.all([
       hasGlobalUploadRole(userId),
@@ -312,8 +313,8 @@ serve(async (req: Request) => {
       hasAreaUploadRole(userId, batchAreaId),
     ])
 
-    if (!globalOk && !hubAdmin && !areaOk) {
-      return new Response(JSON.stringify({ error: 'Acesso negado — requer papel de Owner ou Admin na área' }), {
+    if (!isOwner && !globalOk && !hubAdmin && !areaOk) {
+      return new Response(JSON.stringify({ error: 'Acesso negado — requer ser o autor do batch ou papel de Owner/Admin na área' }), {
         status: 403, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
       })
     }

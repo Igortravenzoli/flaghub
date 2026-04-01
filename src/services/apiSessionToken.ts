@@ -56,11 +56,11 @@ export async function validateClient(): Promise<ValidateClientResponse> {
  */
 export function getStoredToken(): StoredSessionToken | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = sessionStorage.getItem(STORAGE_KEY);
     if (!stored) return null;
     return JSON.parse(stored) as StoredSessionToken;
   } catch {
-    console.warn('[SessionToken] Erro ao ler token do localStorage');
+    console.warn('[SessionToken] Erro ao ler token do sessionStorage');
     return null;
   }
 }
@@ -74,14 +74,14 @@ export function storeToken(token: string, expiresAt: string): void {
     expiresAt,
     createdAt: new Date().toISOString(),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(storedToken));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(storedToken));
 }
 
 /**
  * Limpa token do localStorage
  */
 export function clearToken(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem(STORAGE_KEY);
 }
 
 /**
