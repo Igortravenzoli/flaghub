@@ -102,12 +102,15 @@ function AnimatedNumber({ value, suffix = '' }: { value: number | null; suffix?:
   return <span>{value}{suffix}</span>;
 }
 
-function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, delay = 0, onClick, isLoading, active }: {
+function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, delay = 0, onClick, isLoading, active, tooltipFormula, tooltipDescription }: {
   label: string; value: number | string | null; suffix?: string;
   icon: React.ComponentType<{ className?: string }>;
   description?: string; accent?: string; delay?: number;
   onClick?: () => void; isLoading?: boolean; active?: boolean;
+  tooltipFormula?: string; tooltipDescription?: string;
 }) {
+  const hasTooltip = Boolean(tooltipFormula || tooltipDescription);
+
   if (isLoading) {
     return (
       <Card className="relative overflow-hidden">
@@ -132,7 +135,22 @@ function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, de
           <div className={`p-2 rounded-xl ${accent ? accent + '/10' : 'bg-primary/10'} transition-transform duration-300 group-hover:scale-110`}>
             <Icon className={`h-4 w-4 ${accent ? accent.replace('bg-', 'text-') : 'text-primary'}`} />
           </div>
-          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
+          {hasTooltip ? (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider underline decoration-dotted cursor-help">{label}</p>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="start" className="max-w-md text-xs leading-relaxed">
+                  <p className="font-semibold mb-1">{label}</p>
+                  {tooltipFormula && <p className="mb-1"><span className="font-medium">Fórmula:</span> {tooltipFormula}</p>}
+                  {tooltipDescription && <p><span className="font-medium">Descrição:</span> {tooltipDescription}</p>}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
+          )}
         </div>
         <p className="text-3xl font-black text-foreground tracking-tight">
           {typeof value === 'number' ? value : value ?? <span className="text-sm font-normal text-muted-foreground">—</span>}
