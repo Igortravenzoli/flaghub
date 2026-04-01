@@ -327,18 +327,6 @@ export default function QualidadeDashboard() {
               <DashboardKpiCard label="Fila Atual" value={officialOverview.filaAtual} icon={Clock} isLoading={base.isLoading} delay={400} accent="bg-[hsl(43,85%,46%)]" />
             </div>
 
-            <Card className="border-primary/20 bg-primary/5">
-              <CardContent className="flex flex-col gap-2 p-4 text-sm md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="font-semibold text-foreground">Semântica oficial dos KPIs de Qualidade</p>
-                  <p className="text-muted-foreground">Os cards do topo são <strong>atemporais</strong> e consideram a fila oficial atual de QA. Ao selecionar uma sprint, a tabela é filtrada pela sprint. Ao clicar num KPI, a lista reflete o universo coerente.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">Fila atual oficial: {officialOverview.filaAtual}</Badge>
-                  <Badge variant="outline">Lista: {filteredItems.length}</Badge>
-                </div>
-              </CardContent>
-            </Card>
 
             {!isLoading && filteredItems.length === 0 ? (
               <DashboardEmptyState description={`Nenhum item de qualidade para o filtro "${filterLabel(kpiFilter)}" no período selecionado.`} />
