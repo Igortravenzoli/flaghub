@@ -2806,7 +2806,6 @@ export type Database = {
         Row: {
           auth_type: string | null
           base_url: string | null
-          config: Json | null
           created_at: string | null
           id: string | null
           is_active: boolean | null
@@ -2818,7 +2817,6 @@ export type Database = {
         Insert: {
           auth_type?: string | null
           base_url?: string | null
-          config?: never
           created_at?: string | null
           id?: string | null
           is_active?: boolean | null
@@ -2830,7 +2828,6 @@ export type Database = {
         Update: {
           auth_type?: string | null
           base_url?: string | null
-          config?: never
           created_at?: string | null
           id?: string | null
           is_active?: boolean | null
