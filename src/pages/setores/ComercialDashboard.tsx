@@ -79,7 +79,7 @@ const operationalColumns = [
 
 export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('ativo');
-  const [activeTab, setActiveTab] = useState('kpi-oficial');
+  const [activeTab, setActiveTab] = useState('visao-clientes');
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
