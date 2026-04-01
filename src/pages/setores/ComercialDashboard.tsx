@@ -196,7 +196,7 @@ export default function ComercialDashboard() {
             <TabsTrigger value="pesquisa" className="text-xs">Pesquisa Satisfação</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
+          <TabsContent value="visao-clientes" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 gap-4">
               <DashboardKpiCard
                 label="Ativos"
