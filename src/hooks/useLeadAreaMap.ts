@@ -20,7 +20,7 @@ export function useLeadAreaMap() {
     queryKey: ['pbi', 'lead-area-map'],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
-        .from('devops_lead_area_map')
+        .from('vw_devops_lead_area_map_safe')
         .select('*')
         .eq('is_active', true)
         .order('visual_priority', { ascending: true });

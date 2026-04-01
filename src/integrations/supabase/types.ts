@@ -2655,6 +2655,48 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_devops_lead_area_map_safe: {
+        Row: {
+          area_key: string | null
+          canonical_name: string | null
+          counts_as_design: boolean | null
+          counts_as_fabrica: boolean | null
+          counts_as_qualidade: boolean | null
+          id: number | null
+          is_active: boolean | null
+          lead_email: string | null
+          pipeline_role: string | null
+          squad_label: string | null
+          visual_priority: number | null
+        }
+        Insert: {
+          area_key?: string | null
+          canonical_name?: string | null
+          counts_as_design?: boolean | null
+          counts_as_fabrica?: boolean | null
+          counts_as_qualidade?: boolean | null
+          id?: number | null
+          is_active?: boolean | null
+          lead_email?: never
+          pipeline_role?: string | null
+          squad_label?: string | null
+          visual_priority?: number | null
+        }
+        Update: {
+          area_key?: string | null
+          canonical_name?: string | null
+          counts_as_design?: boolean | null
+          counts_as_fabrica?: boolean | null
+          counts_as_qualidade?: boolean | null
+          id?: number | null
+          is_active?: boolean | null
+          lead_email?: never
+          pipeline_role?: string | null
+          squad_label?: string | null
+          visual_priority?: number | null
+        }
+        Relationships: []
+      }
       vw_devops_queue_items: {
         Row: {
           area_path: string | null
