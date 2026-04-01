@@ -7,6 +7,14 @@ const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvo
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
 
+/** Collaborators excluded from Fábrica KPI counts (belong to Design sector) */
+const KPI_EXCLUDED_COLLABORATORS = new Set(['ari']);
+
+function isKpiExcludedCollaborator(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return KPI_EXCLUDED_COLLABORATORS.has(name.trim().toLowerCase());
+}
+
 function isFabricaInProgress(state: string | null | undefined): boolean {
   return FABRICA_IN_PROGRESS_STATES.has(state || '');
 }
@@ -229,8 +237,8 @@ export function useFabricaKpis(
     : nonInfraItems.filter(i => i.iteration_path === sprintFilter);
 
   // kpiItems: exclude Tasks/Bugs whose parent PBI is also in the view (count_in_kpi flag)
-  // This prevents double-counting PBIs + their child Tasks in KPI metric totals.
-  const kpiItems = items.filter(i => i.count_in_kpi !== false);
+  // AND exclude collaborators that belong to other sectors (e.g. Design)
+  const kpiItems = items.filter(i => i.count_in_kpi !== false && !isKpiExcludedCollaborator(i.assigned_to_display));
 
   const total      = kpiItems.length;
   const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length;
@@ -238,6 +246,7 @@ export function useFabricaKpis(
   const done       = kpiItems.filter(i => isDone(i.state)).length;
 
   const porColaborador = items.reduce((acc, item) => {
+    if (isKpiExcludedCollaborator(item.assigned_to_display)) return acc;
     const name = item.assigned_to_display || 'Não atribuído';
     acc[name] = (acc[name] || 0) + 1;
     return acc;
@@ -290,6 +299,7 @@ export function useFabricaKpis(
     const collabMap = collabMapQuery.data || new Map<string, string>();
     for (const tl of scopedTimeLogs) {
       const rawName = tl.user_name || 'Desconhecido';
+      if (isKpiExcludedCollaborator(rawName)) continue;
       const normalized = normalizeUserName(rawName);
       // Persistent map takes precedence over first-seen heuristic
       const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
