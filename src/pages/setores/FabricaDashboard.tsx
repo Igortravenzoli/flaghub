@@ -446,6 +446,17 @@ export default function FabricaDashboard() {
         const tags = fab.tagsByWorkItemId[i.id] || '';
         return AVIAO_REGEX.test(tags);
       }); break;
+      case 'sem_task': {
+        const childParentIds = new Set(
+          sprintFilteredItems
+            .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
+            .map(i => i.parent_id!)
+        );
+        items = items.filter(
+          i => (i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story') && i.id != null && !childParentIds.has(i.id)
+        );
+        break;
+      }
     }
     if (typeFilter) {
       items = items.filter(i => {
