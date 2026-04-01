@@ -246,6 +246,7 @@ export function useFabricaKpis(
   const done       = kpiItems.filter(i => isDone(i.state)).length;
 
   const porColaborador = items.reduce((acc, item) => {
+    if (isKpiExcludedCollaborator(item.assigned_to_display)) return acc;
     const name = item.assigned_to_display || 'Não atribuído';
     acc[name] = (acc[name] || 0) + 1;
     return acc;
