@@ -4,7 +4,7 @@ import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
-import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS } from '@/hooks/useFabricaKpis';
+import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS, getCollaboratorExclusionKeys, isCollaboratorExcluded, normalizeCollaboratorName } from '@/hooks/useFabricaKpis';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
@@ -238,6 +238,7 @@ export default function FabricaDashboard() {
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
   const [excludedCollabs, setExcludedCollabs] = useState<Set<string>>(new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS));
+  const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
   const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
   const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
   const effectiveRange = customActive && customRange ? customRange : sprintRange;
@@ -321,6 +322,28 @@ export default function FabricaDashboard() {
       .map(([name, count]) => ({ name: name.split(' ').slice(0, 2).join(' '), count })),
     [fab.porColaborador]
   );
+
+  const selectedCollaboratorsCount = useMemo(
+    () => fab.allCollaborators.filter((name) => !isCollaboratorExcluded(name, excludedCollabs)).length,
+    [fab.allCollaborators, excludedCollabs]
+  );
+
+  const setCollaboratorIncluded = useCallback((name: string, include: boolean) => {
+    const normalized = normalizeCollaboratorName(name);
+    const exclusionKeys = getCollaboratorExclusionKeys(name);
+
+    setExcludedCollabs((prev) => {
+      const next = new Set(prev);
+
+      exclusionKeys.forEach((key) => next.delete(key));
+
+      if (!include && normalized) {
+        next.add(normalized);
+      }
+
+      return next;
+    });
+  }, []);
 
   const TYPE_COLORS: Record<string, string> = {
     'PBI': 'hsl(var(--primary))',
@@ -756,31 +779,25 @@ export default function FabricaDashboard() {
         )}
         {/* Collaborator multi-select filter */}
         {fab.allCollaborators.length > 0 && (
-          <Popover>
+          <Popover open={collaboratorsOpen} onOpenChange={setCollaboratorsOpen}>
             <PopoverTrigger asChild>
-              <Badge variant="outline" className="gap-1 text-xs cursor-pointer h-8 px-3 hover:bg-muted transition-colors">
+              <Button type="button" variant="outline" size="sm" className="gap-1 h-8 px-3 text-xs">
                 <Users className="h-3.5 w-3.5" />
-                Colaboradores ({fab.allCollaborators.length - excludedCollabs.size}/{fab.allCollaborators.length})
-              </Badge>
+                Colaboradores ({selectedCollaboratorsCount}/{fab.allCollaborators.length})
+              </Button>
             </PopoverTrigger>
             <PopoverContent className="w-64 p-2" align="start">
               <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Colaboradores contabilizados</p>
               <ScrollArea className="max-h-[280px]">
                 <div className="space-y-1">
                   {fab.allCollaborators.map(name => {
-                    const key = name.trim().toLowerCase();
-                    const isChecked = !excludedCollabs.has(key);
+                    const isChecked = !isCollaboratorExcluded(name, excludedCollabs);
                     return (
                       <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
                         <Checkbox
                           checked={isChecked}
                           onCheckedChange={(checked) => {
-                            setExcludedCollabs(prev => {
-                              const next = new Set(prev);
-                              if (checked) next.delete(key);
-                              else next.add(key);
-                              return next;
-                            });
+                            setCollaboratorIncluded(name, checked === true);
                           }}
                         />
                         <span className="truncate">{name}</span>

@@ -111,15 +111,33 @@ function extractProducts(tags: string | null): string[] {
   return tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
 }
 
-/** Normalise a raw user name for dedup: strip diacritics, lowercase, collapse spaces */
-function normalizeUserName(name: string | null): string {
-  if (!name) return 'Desconhecido';
+/** Normalise collaborator names for filtering/dedup: strip diacritics, punctuation, lowercase, collapse spaces */
+export function normalizeCollaboratorName(name: string | null | undefined): string {
+  if (!name) return '';
   return name
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+export function getCollaboratorExclusionKeys(name: string | null | undefined): string[] {
+  const normalized = normalizeCollaboratorName(name);
+  if (!normalized) return [];
+
+  const parts = normalized.split(' ').filter(Boolean);
+  return [...new Set([
+    normalized,
+    parts[0],
+    parts.slice(0, 2).join(' '),
+  ].filter(Boolean))];
+}
+
+export function isCollaboratorExcluded(name: string | null | undefined, excludedCollaborators?: Set<string>): boolean {
+  if (!excludedCollaborators || excludedCollaborators.size === 0) return false;
+  return getCollaboratorExclusionKeys(name).some((key) => excludedCollaborators.has(key));
 }
 
 export function useFabricaKpis(
@@ -232,10 +250,7 @@ export function useFabricaKpis(
     ? dateScopedItems
     : nonInfraItems.filter(i => i.iteration_path === sprintFilter);
 
-  const isExcluded = (name: string | null | undefined): boolean => {
-    if (!name || !excludedCollaborators || excludedCollaborators.size === 0) return false;
-    return excludedCollaborators.has(name.trim().toLowerCase());
-  };
+  const isExcluded = (name: string | null | undefined): boolean => isCollaboratorExcluded(name, excludedCollaborators);
 
   // Unique collaborator names in the current items
   const allCollaborators: string[] = (() => {
@@ -310,7 +325,7 @@ export function useFabricaKpis(
     for (const tl of scopedTimeLogs) {
       const rawName = tl.user_name || 'Desconhecido';
       if (isExcluded(rawName)) continue;
-      const normalized = normalizeUserName(rawName);
+      const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
       // Persistent map takes precedence over first-seen heuristic
       const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
       if (canonical) {
