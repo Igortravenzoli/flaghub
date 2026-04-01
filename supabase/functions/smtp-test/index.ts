@@ -168,7 +168,7 @@ serve(async (req) => {
     console.error('SMTP test error:', err)
     return new Response(JSON.stringify({
       success: false,
-      error: err.message || String(err),
+      error: (err as Error).message || String(err),
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
