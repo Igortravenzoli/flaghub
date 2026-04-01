@@ -3,8 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useCreateBatch, useUpdateBatch, useDeleteTicketsByNetwork } from './useImportBatch';
-import { correlacionarTicket } from '@/services/ticketsOSApi';
-import { getValidToken } from '@/services/apiSessionToken';
+import { correlacionarBatchViaProxy } from '@/services/vdeskProxyService';
 import Papa from 'papaparse';
 
 interface ImportResult {
