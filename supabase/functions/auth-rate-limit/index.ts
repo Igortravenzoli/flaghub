@@ -20,7 +20,7 @@ const LOCKOUT_MS = 60 * 1000; // 60s lockout
 
 /** Best-effort audit log insert (non-blocking) */
 function auditLog(
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: any,
   action: string,
   metadata: Record<string, unknown>,
   actorUserId?: string | null,

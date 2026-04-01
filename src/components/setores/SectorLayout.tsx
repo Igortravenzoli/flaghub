@@ -190,11 +190,6 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
           </TabsContent>
         ))}
 
-        {showHelpTab && (
-          <TabsContent value="help-kpis" className="mt-4">
-            <KpiHelpTab />
-          </TabsContent>
-        )}
 
         {showImports && (
           <TabsContent value="imports" className="mt-4" forceMount={undefined}>
