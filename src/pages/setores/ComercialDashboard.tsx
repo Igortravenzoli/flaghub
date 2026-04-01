@@ -189,12 +189,11 @@ export default function ComercialDashboard() {
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-muted/50 p-1">
-            <TabsTrigger value="kpi-oficial" className="text-xs">KPI Oficial</TabsTrigger>
-            <TabsTrigger value="operacional" className="text-xs">Esteira</TabsTrigger>
+            <TabsTrigger value="visao-clientes" className="text-xs">Visão Clientes</TabsTrigger>
+            <TabsTrigger value="ganho-perda" className="text-xs">Ganho/Perda</TabsTrigger>
+            <TabsTrigger value="fechamento-comercial" className="text-xs">Fechamento Comercial</TabsTrigger>
             <TabsTrigger value="esteira-saude" className="text-xs">Esteira / Saúde</TabsTrigger>
-            <TabsTrigger value="movimentacao" className="text-xs">Movimentação</TabsTrigger>
             <TabsTrigger value="pesquisa" className="text-xs">Pesquisa Satisfação</TabsTrigger>
-            <TabsTrigger value="pipedrive" className="text-xs">PipeDrive</TabsTrigger>
           </TabsList>
 
           <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
