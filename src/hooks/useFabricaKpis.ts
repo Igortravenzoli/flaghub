@@ -127,6 +127,7 @@ export function useFabricaKpis(
   dateTo?: Date,
   sprintFilter: string = 'all',
   options?: UseFabricaKpisOptions,
+  excludedCollaborators?: Set<string>,
 ) {
   const includeTimeLogs = options?.includeTimeLogs ?? true;
   const includeWorkItemMeta = options?.includeWorkItemMeta ?? true;
