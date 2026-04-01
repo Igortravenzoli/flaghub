@@ -202,17 +202,17 @@ export default function InfraestruturaDashboard() {
 
           <TabsContent value="overview" className="space-y-4 mt-0">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            <DashboardKpiCard label="Total Atividades" value={scoped.total} icon={Server} isLoading={scoped.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
-            <DashboardKpiCard label="Pendentes" value={scoped.pendentes} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('pendentes')} active={kpiFilter === 'pendentes'} />
-            <DashboardKpiCard label="Em Andamento" value={scoped.emAndamento} icon={Wrench} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(var(--info))]" onClick={() => toggleKpi('em_andamento')} active={kpiFilter === 'em_andamento'} />
-            <DashboardKpiCard label="Concluídos" value={scoped.concluidos} icon={CheckCircle} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('concluidos')} active={kpiFilter === 'concluidos'} />
+            <DashboardKpiCard label="Total Atividades" value={scoped.total} icon={Server} isLoading={scoped.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} tooltipFormula="COUNT(itens no escopo do filtro)" tooltipDescription="Quantidade total de atividades de infraestrutura no período." />
+            <DashboardKpiCard label="Pendentes" value={scoped.pendentes} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('pendentes')} active={kpiFilter === 'pendentes'} tooltipFormula="COUNT(state IN New, To Do)" tooltipDescription="Itens aguardando início de execução." />
+            <DashboardKpiCard label="Em Andamento" value={scoped.emAndamento} icon={Wrench} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(var(--info))]" onClick={() => toggleKpi('em_andamento')} active={kpiFilter === 'em_andamento'} tooltipFormula="COUNT(state IN In Progress, Active)" tooltipDescription="Itens em execução ativa." />
+            <DashboardKpiCard label="Concluídos" value={scoped.concluidos} icon={CheckCircle} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('concluidos')} active={kpiFilter === 'concluidos'} tooltipFormula="COUNT(state IN Done, Closed, Resolved)" tooltipDescription="Itens concluídos no período selecionado." />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <DashboardKpiCard label="Melhorias Implementadas" value={scoped.melhorias} icon={Wrench} isLoading={scoped.isLoading} delay={300} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('melhorias')} active={kpiFilter === 'melhorias'} />
-            <DashboardKpiCard label="Atividades ISO 27001" value={scoped.iso27001} icon={Shield} isLoading={scoped.isLoading} delay={360} accent="bg-[hsl(280,65%,60%)]" onClick={() => toggleKpi('iso27001')} active={kpiFilter === 'iso27001'} />
-            <DashboardKpiCard label="Trocas de Sprint" value={scoped.sprintMigracoes} icon={Workflow} isLoading={scoped.isLoading} delay={420} accent="bg-[hsl(210,80%,52%)]" onClick={() => toggleKpi('migracoes')} active={kpiFilter === 'migracoes'} />
-            <DashboardKpiCard label="Transbordo" value={scoped.transbordo} icon={AlertTriangle} isLoading={scoped.isLoading} delay={480} accent="bg-[hsl(0,84%,60%)]" onClick={() => toggleKpi('transbordo')} active={kpiFilter === 'transbordo'} />
+            <DashboardKpiCard label="Melhorias Implementadas" value={scoped.melhorias} icon={Wrench} isLoading={scoped.isLoading} delay={300} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('melhorias')} active={kpiFilter === 'melhorias'} tooltipFormula="COUNT(tags ILIKE '%MELHORIA%')" tooltipDescription="Itens com tag MELHORIA no escopo filtrado." />
+            <DashboardKpiCard label="Atividades ISO 27001" value={scoped.iso27001} icon={Shield} isLoading={scoped.isLoading} delay={360} accent="bg-[hsl(280,65%,60%)]" onClick={() => toggleKpi('iso27001')} active={kpiFilter === 'iso27001'} tooltipFormula="COUNT(tags ILIKE '%ISO27001%' OR '%ISO%')" tooltipDescription="Itens com tag ISO27001 ou ISO no escopo filtrado." />
+            <DashboardKpiCard label="Trocas de Sprint" value={scoped.sprintMigracoes} icon={Workflow} isLoading={scoped.isLoading} delay={420} accent="bg-[hsl(210,80%,52%)]" onClick={() => toggleKpi('migracoes')} active={kpiFilter === 'migracoes'} tooltipFormula="SUM(sprint_migration_count)" tooltipDescription="Total de migrações detectadas no histórico de sprint." />
+            <DashboardKpiCard label="Transbordo" value={scoped.transbordo} icon={AlertTriangle} isLoading={scoped.isLoading} delay={480} accent="bg-[hsl(0,84%,60%)]" onClick={() => toggleKpi('transbordo')} active={kpiFilter === 'transbordo'} tooltipFormula="SUM(transbordo_count)" tooltipDescription="Soma do excesso real depois do primeiro compromisso." />
           </div>
 
           {!isLoading && filteredItems.length === 0 ? (

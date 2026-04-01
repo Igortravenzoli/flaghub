@@ -205,6 +205,8 @@ export default function ComercialDashboard() {
                 isLoading={isLoading}
                 active={statusFilter === 'ativo'}
                 onClick={() => handleKpiClick('ativo')}
+                tooltipFormula="COUNT(status = 'Ativo')"
+                tooltipDescription="Contagem de clientes com status ativo na base."
               />
               <DashboardKpiCard
                 label="Bloqueados"
@@ -214,6 +216,8 @@ export default function ComercialDashboard() {
                 delay={80}
                 active={statusFilter === 'bloqueado'}
                 onClick={() => handleKpiClick('bloqueado')}
+                tooltipFormula="COUNT(status = 'Bloqueado')"
+                tooltipDescription="Contagem de clientes com status bloqueado na base."
               />
             </div>
 
