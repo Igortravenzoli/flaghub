@@ -245,10 +245,12 @@ export function useFabricaKpis(
     ? nonInfraItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
     : nonInfraItems;
 
+  const effectiveSprintFilter = sprintFilter === '__pending__' ? 'all' : sprintFilter;
+
   // Sprint is the primary filter. In custom mode (all sprints), date range scopes work items.
-  const items = sprintFilter === 'all'
+  const items = effectiveSprintFilter === 'all'
     ? dateScopedItems
-    : nonInfraItems.filter(i => i.iteration_path === sprintFilter);
+    : nonInfraItems.filter(i => i.iteration_path === effectiveSprintFilter);
 
   const isExcluded = (name: string | null | undefined): boolean => isCollaboratorExcluded(name, excludedCollaborators);
 
@@ -403,7 +405,7 @@ export function useFabricaKpis(
     leadTimeSource = 'effort';
   }
 
-  const sprintSet = new Set(filteredItems.map(i => i.iteration_path).filter(Boolean) as string[]);
+  const sprintSet = new Set(nonInfraItems.map(i => i.iteration_path).filter(Boolean) as string[]);
   const sprintCount = sprintSet.size;
   const sortedSprints = [...sprintSet].sort(sprintCompare);
   const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;

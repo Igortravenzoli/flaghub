@@ -360,16 +360,7 @@ export default function FabricaDashboard() {
     setPage(0);
   };
 
-  const sprintFilteredItems = useMemo(() => {
-    let items = sprintFilter === 'all' ? fab.items : fab.items.filter(i => i.iteration_path === sprintFilter);
-    if (excludedCollabs.size > 0) {
-      items = items.filter(i => {
-        const name = i.assigned_to_display?.trim().toLowerCase();
-        return !name || !excludedCollabs.has(name);
-      });
-    }
-    return items;
-  }, [fab.items, sprintFilter, excludedCollabs]);
+  const sprintFilteredItems = useMemo(() => fab.items, [fab.items]);
 
   const sprintKpiItems = useMemo(
     () => sprintFilteredItems.filter((item) => item.count_in_kpi !== false),
