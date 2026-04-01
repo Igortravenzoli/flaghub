@@ -315,29 +315,12 @@ export default function ComercialDashboard() {
             })()}
           </TabsContent>
 
-          <TabsContent value="operacional" className="space-y-4 mt-0">
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b">
-                <h3 className="font-semibold text-sm">Fila Comercial (Operacional)</h3>
-                <p className="text-xs text-muted-foreground">Fonte operacional: query 04-Em Fila Comercial</p>
-              </div>
-              <div className="p-4">
-                {operacionalItems.length === 0 && !operational.isLoading ? (
-                  <DashboardEmptyState description="Sem itens operacionais no momento." />
-                ) : (
-                  <DashboardDataTable
-                    title="Fila Comercial"
-                    subtitle={`${operacionalItems.length} itens em acompanhamento operacional`}
-                    columns={operationalColumnsWithHealth}
-                    data={operacionalItems}
-                    isLoading={operational.isLoading}
-                    getRowKey={(row) => String(row.work_item_id ?? Math.random())}
-                    onRowClick={(row) => setDrawerOperacionalItem(row)}
-                    searchPlaceholder="Buscar item comercial..."
-                  />
-                )}
-              </div>
-            </Card>
+          <TabsContent value="ganho-perda" className="space-y-4 mt-0">
+            <MovimentacaoTab />
+          </TabsContent>
+
+          <TabsContent value="fechamento-comercial" className="space-y-4 mt-0">
+            <PipeDriveTab />
           </TabsContent>
 
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
@@ -364,16 +347,8 @@ export default function ComercialDashboard() {
             )}
           </TabsContent>
 
-          <TabsContent value="movimentacao" className="space-y-4 mt-0">
-            <MovimentacaoTab />
-          </TabsContent>
-
           <TabsContent value="pesquisa" className="space-y-4 mt-0">
             <PesquisaTab />
-          </TabsContent>
-
-          <TabsContent value="pipedrive" className="space-y-4 mt-0">
-            <PipeDriveTab />
           </TabsContent>
         </Tabs>
       )}
