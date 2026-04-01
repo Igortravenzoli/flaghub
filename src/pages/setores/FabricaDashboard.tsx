@@ -900,6 +900,8 @@ export default function FabricaDashboard() {
                 isLoading={fab.isLoading} 
                 delay={300}
                 description={fab.leadTimeSource === 'effort' ? 'Effort médio / PBI (DevOps)' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
+                tooltipFormula="Horas médias por PBI (timelog) ou Effort médio por PBI"
+                tooltipDescription="Lead time médio por PBI com base em timelog; sem timelog, usa esforço médio."
               />
               <HeroKpiCard 
                 label="Velocidade Média" 
@@ -910,6 +912,8 @@ export default function FabricaDashboard() {
                 delay={380}
                 accent="bg-[hsl(var(--info))]"
                 description={fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
+                tooltipFormula="Total Horas (ou Effort) / Nº Sprints"
+                tooltipDescription="Média de horas ou esforço entregue por sprint."
               />
               <HeroKpiCard 
                 label="Transbordo" 
@@ -920,6 +924,8 @@ export default function FabricaDashboard() {
                 accent={sprintTransbordoPct != null && sprintTransbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
                 description={sprintTransbordoCount > 0 ? `${sprintTransbordoCount} de ${sprintTransbordoTotal} itens` : 'Itens não entregues na sprint'}
                 onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('transbordo')}
+                tooltipFormula="(PBIs com mudanças relevantes de sprint / Total PBIs) × 100"
+                tooltipDescription="Transbordo real: mudanças relevantes de sprint menos o primeiro compromisso."
               />
               <HeroKpiCard 
                 label="Capacidade" 
