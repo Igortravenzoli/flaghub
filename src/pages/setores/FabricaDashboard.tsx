@@ -871,10 +871,10 @@ export default function FabricaDashboard() {
           <TabsContent value="overview" className="space-y-5 mt-0">
             {/* Hero KPI row */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
-              <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
-              <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
-              <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
+              <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} tooltipFormula="COUNT(itens KPI sem dupla contagem)" tooltipDescription="Itens KPI sem dupla contagem de PBI + task filha." />
+              <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} tooltipFormula="COUNT(state IN In Progress, Active, Em desenvolvimento, Aguardando Teste)" tooltipDescription="Itens em estado ativo de desenvolvimento." />
+              <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} tooltipFormula="COUNT(state IN To Do, New)" tooltipDescription="Itens aguardando início de desenvolvimento." />
+              <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} tooltipFormula="COUNT(state IN Done, Closed, Resolved)" tooltipDescription="Itens concluídos no período/sprint filtrado." />
               <HeroKpiCard 
                 label="PBI sem Task" 
                 value={sprintPbisSemTaskCount} 
@@ -884,7 +884,9 @@ export default function FabricaDashboard() {
                 accent={sprintPbisSemTaskCount > 0 ? 'bg-destructive' : 'bg-[hsl(142,71%,45%)]'}
                 description={sprintPbisSemTaskCount > 0 ? 'Anomalia: PBIs sem task vinculada' : 'Todos PBIs possuem tasks'}
                 onClick={() => toggleFab('sem_task')} 
-                active={fabKpiFilter === 'sem_task'} 
+                active={fabKpiFilter === 'sem_task'}
+                tooltipFormula="COUNT(PBI/Story sem Task filha vinculada)"
+                tooltipDescription="PBIs ou User Stories que não possuem pelo menos uma Task vinculada — indica anomalia de planejamento."
               />
             </div>
 
