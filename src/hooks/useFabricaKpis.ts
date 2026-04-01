@@ -252,6 +252,8 @@ export function useFabricaKpis(
 
   const isExcluded = (name: string | null | undefined): boolean => isCollaboratorExcluded(name, excludedCollaborators);
 
+  const filteredItems = items.filter((item) => !isExcluded(item.assigned_to_display));
+
   // Unique collaborator names in the current items
   const allCollaborators: string[] = (() => {
     const set = new Set<string>();
@@ -263,15 +265,14 @@ export function useFabricaKpis(
 
   // kpiItems: exclude Tasks/Bugs whose parent PBI is also in the view (count_in_kpi flag)
   // AND exclude collaborators that are unchecked in the filter
-  const kpiItems = items.filter(i => i.count_in_kpi !== false && !isExcluded(i.assigned_to_display));
+  const kpiItems = filteredItems.filter(i => i.count_in_kpi !== false);
 
   const total      = kpiItems.length;
   const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length;
   const toDo       = kpiItems.filter(i => isFabricaTodo(i.state)).length;
   const done       = kpiItems.filter(i => isDone(i.state)).length;
 
-  const porColaborador = items.reduce((acc, item) => {
-    if (isExcluded(item.assigned_to_display)) return acc;
+  const porColaborador = filteredItems.reduce((acc, item) => {
     const name = item.assigned_to_display || 'Não atribuído';
     acc[name] = (acc[name] || 0) + 1;
     return acc;
@@ -280,10 +281,11 @@ export function useFabricaKpis(
   // ── Timelog aggregations ──
   const timeLogs = timeLogsQuery.data || [];
   // Scope time logs to the work items currently in sprint (when a sprint filter is active)
-  const itemIdsInScope = new Set(items.map(i => i.id).filter((id): id is number => id != null));
-  const scopedTimeLogs = sprintFilter === 'all'
-    ? timeLogs
-    : timeLogs.filter(tl => tl.work_item_id != null && itemIdsInScope.has(tl.work_item_id));
+  const itemIdsInScope = new Set(filteredItems.map(i => i.id).filter((id): id is number => id != null));
+  const scopedTimeLogs = timeLogs.filter((tl) => {
+    if (tl.work_item_id == null || !itemIdsInScope.has(tl.work_item_id)) return false;
+    return !isExcluded(tl.user_name);
+  });
 
   const totalHoursLogged = scopedTimeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = scopedTimeLogs.length > 0;
@@ -384,7 +386,7 @@ export function useFabricaKpis(
   })();
 
   // ── Corporate KPIs ──
-  const pbis = items.filter(
+  const pbis = filteredItems.filter(
     i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
   );
   const pbisWithEffort = pbis.filter(i => i.effort != null && i.effort > 0);
@@ -401,7 +403,7 @@ export function useFabricaKpis(
     leadTimeSource = 'effort';
   }
 
-  const sprintSet = new Set(nonInfraItems.map(i => i.iteration_path).filter(Boolean) as string[]);
+  const sprintSet = new Set(filteredItems.map(i => i.iteration_path).filter(Boolean) as string[]);
   const sprintCount = sprintSet.size;
   const sortedSprints = [...sprintSet].sort(sprintCompare);
   const currentSprint = sortedSprints.length > 0 ? sortedSprints[sortedSprints.length - 1] : null;
@@ -436,7 +438,7 @@ export function useFabricaKpis(
   let transbordoTotal = 0;
   let transbordoItems: TransbordoItem[] = [];
 
-  const allPbis = items.filter(
+  const allPbis = filteredItems.filter(
     i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
   );
   transbordoTotal = allPbis.length;
