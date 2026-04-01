@@ -5,7 +5,7 @@ import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
-import { TrendingUp, TrendingDown, Target, BarChart3, FileText } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, BarChart3, FileText, ShieldCheck, Activity } from 'lucide-react';
 import { useComercialVendas, ComercialVenda } from '@/hooks/useComercialVendas';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -58,6 +58,18 @@ function CustomTooltipMensal({ active, payload }: any) {
   );
 }
 
+/** Returns a qualitative label for the deal-value performance */
+function getDealValueSentiment(mesesComDados: { percentualMeta: number; atingiuMeta: boolean }[]): {
+  label: string; description: string; icon: React.ComponentType<{ className?: string }>; accent: string;
+} {
+  if (mesesComDados.length === 0) return { label: 'Sem dados', description: 'Aguardando fechamentos', icon: Activity, accent: 'text-muted-foreground' };
+  const acima = mesesComDados.filter(m => m.atingiuMeta).length;
+  const pct = acima / mesesComDados.length;
+  if (pct >= 0.7) return { label: 'Acima da Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: TrendingUp, accent: 'text-[hsl(142,71%,45%)]' };
+  if (pct >= 0.4) return { label: 'Na Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: Activity, accent: 'text-[hsl(43,85%,46%)]' };
+  return { label: 'Abaixo da Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: TrendingDown, accent: 'text-destructive' };
+}
+
 export function PipeDriveTab() {
   const { items, stats, isLoading, isError, refetch } = useComercialVendas();
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
@@ -72,6 +84,8 @@ export function PipeDriveTab() {
   const mediaAtingimento = mesesComDados.length > 0
     ? Math.round(mesesComDados.reduce((s, m) => s + m.percentualMeta, 0) / mesesComDados.length * 10) / 10
     : 0;
+
+  const sentiment = getDealValueSentiment(mesesComDados);
 
   const drawerFields: DrawerField[] = drawerItem ? [
     { label: 'Negócio', value: drawerItem.deal_title },
@@ -123,7 +137,7 @@ export function PipeDriveTab() {
           <div className="flex items-center justify-between mb-1">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Vendas por Organização</h3>
-              <p className="text-xs text-muted-foreground">Distribuição percentual do deal value</p>
+              <p className="text-xs text-muted-foreground">Distribuição percentual</p>
             </div>
             {selectedBandeira && (
               <Badge variant="secondary" className="cursor-pointer text-xs" onClick={() => setSelectedBandeira(null)}>
@@ -148,20 +162,23 @@ export function PipeDriveTab() {
           </div>
         </Card>
 
-        {/* Summary card */}
+        {/* Summary card — abstract sentiment instead of raw value */}
         <Card className="lg:col-span-2 p-6 flex flex-col items-center justify-center text-center">
-          <p className="text-xs text-muted-foreground mb-1">Venda Total (Deal Value)</p>
-          <div className="flex items-center gap-2 mb-3">
-            <Badge className="bg-muted text-muted-foreground border-0 text-xs">
-              <TrendingDown className="h-3 w-3 mr-1" />
-              % omitido
+          <p className="text-xs text-muted-foreground mb-2">Situação Comercial (Deal Value)</p>
+          <div className={`p-3 rounded-full bg-muted/50 mb-3`}>
+            <sentiment.icon className={`h-8 w-8 ${sentiment.accent}`} />
+          </div>
+          <p className={`text-2xl font-bold tracking-tight ${sentiment.accent}`}>{sentiment.label}</p>
+          <p className="text-xs text-muted-foreground mt-2">{sentiment.description}</p>
+          <div className="flex items-center gap-2 mt-4">
+            <Badge variant="outline" className="text-[10px] gap-1">
+              <ShieldCheck className="h-3 w-3" />
+              Valores protegidos
+            </Badge>
+            <Badge variant="outline" className="text-[10px]">
+              {stats.totalDeals} negócios
             </Badge>
           </div>
-          <p className="text-4xl font-bold text-foreground tracking-tight">—</p>
-          <p className="text-xs text-muted-foreground mt-2">Valor omitido por política de confidencialidade</p>
-          <Badge variant="outline" className="mt-4 text-[10px]">
-            Fonte: Dados importados ({stats.totalDeals} negócios)
-          </Badge>
         </Card>
       </div>
 
@@ -169,7 +186,7 @@ export function PipeDriveTab() {
       {stats.vendasPorMes.length > 0 && (
         <Card className="p-4">
           <div className="mb-1">
-            <h3 className="text-sm font-semibold text-foreground">Vendas por Mês — % da Média Mensal</h3>
+            <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Média Mensal</h3>
             <p className="text-xs text-muted-foreground">Referência: média mensal = 100%</p>
           </div>
           <div className="h-[240px] mt-2">
