@@ -256,3 +256,19 @@
     100% { background-position: -200% 0; }
   }
 }
+
+/* ── Kiosk Mode Styles ── */
+@layer utilities {
+  .kiosk-flash {
+    color: hsl(43, 85%, 46%) !important;
+  }
+
+  .kiosk-pulse-border {
+    animation: kioskPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes kioskPulse {
+    0%, 100% { border-opacity: 0.5; opacity: 1; }
+    50% { border-opacity: 1; opacity: 0.85; }
+  }
+}
