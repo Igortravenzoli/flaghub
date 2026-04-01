@@ -99,14 +99,16 @@ export default function KioskOverlay({ activeSectors, currentIndex, rotateEnable
       </div>
 
       {/* ── Dashboard content ── */}
-      <div className="px-6 pt-16 pb-6">
-        {isCurated ? (
-          <KioskSectorView sectorSlug={currentSector.slug} sectorName={currentSector.name} />
-        ) : FallbackComponent ? (
-          <FallbackComponent />
-        ) : (
-          <p className="text-slate-500 text-center mt-20">Dashboard "{currentSector.name}" não encontrado</p>
-        )}
+      <div className="px-6 pt-16 pb-4 h-[calc(100vh-0px)] flex flex-col">
+        <div className="flex-1 min-h-0">
+          {isCurated ? (
+            <KioskSectorView sectorSlug={currentSector.slug} sectorName={currentSector.name} />
+          ) : FallbackComponent ? (
+            <FallbackComponent />
+          ) : (
+            <p className="text-slate-500 text-center mt-20">Dashboard "{currentSector.name}" não encontrado</p>
+          )}
+        </div>
       </div>
     </div>
   );
