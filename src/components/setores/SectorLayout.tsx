@@ -60,7 +60,6 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
   const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
   const canViewExtraTabs = isAreasLoading || hasMembership || isAdmin;
-  const showHelpTab = !!areaKey && hasAccess;
   const showImports = Boolean(templateKey) && (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
 
   const handleRequestAccess = async () => {
