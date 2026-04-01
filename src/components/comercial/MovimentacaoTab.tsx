@@ -214,7 +214,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
       {chartData.length > 0 && !isLoading && (
         <Card className="p-4 space-y-2">
           <CardHeader className="p-0">
-            <CardTitle className="text-sm font-semibold">Perdas × Ganhos × Riscos por Mês</CardTitle>
+            <CardTitle className="text-sm font-semibold">Perdas × Ganhos por Mês</CardTitle>
             <p className="text-xs text-muted-foreground">Visão gerencial da movimentação de clientes</p>
           </CardHeader>
           <div className="h-[280px]">
