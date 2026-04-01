@@ -299,6 +299,7 @@ export function useFabricaKpis(
     const collabMap = collabMapQuery.data || new Map<string, string>();
     for (const tl of scopedTimeLogs) {
       const rawName = tl.user_name || 'Desconhecido';
+      if (isKpiExcludedCollaborator(rawName)) continue;
       const normalized = normalizeUserName(rawName);
       // Persistent map takes precedence over first-seen heuristic
       const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
