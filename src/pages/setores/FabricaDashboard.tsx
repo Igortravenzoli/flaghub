@@ -658,6 +658,7 @@ export default function FabricaDashboard() {
       case 'done': return 'Finalizados';
       case 'aguardando_teste': return 'Aguardando Teste';
       case 'aviao': return 'Avião';
+      case 'sem_task': return 'PBI sem Task';
     }
   };
 
