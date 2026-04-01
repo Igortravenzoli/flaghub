@@ -232,9 +232,23 @@ export function useFabricaKpis(
     ? dateScopedItems
     : nonInfraItems.filter(i => i.iteration_path === sprintFilter);
 
+  const isExcluded = (name: string | null | undefined): boolean => {
+    if (!name || !excludedCollaborators || excludedCollaborators.size === 0) return false;
+    return excludedCollaborators.has(name.trim().toLowerCase());
+  };
+
+  // Unique collaborator names in the current items
+  const allCollaborators: string[] = (() => {
+    const set = new Set<string>();
+    for (const item of items) {
+      if (item.assigned_to_display) set.add(item.assigned_to_display);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  })();
+
   // kpiItems: exclude Tasks/Bugs whose parent PBI is also in the view (count_in_kpi flag)
-  // AND exclude collaborators that belong to other sectors (e.g. Design)
-  const kpiItems = items.filter(i => i.count_in_kpi !== false && !isKpiExcludedCollaborator(i.assigned_to_display));
+  // AND exclude collaborators that are unchecked in the filter
+  const kpiItems = items.filter(i => i.count_in_kpi !== false && !isExcluded(i.assigned_to_display));
 
   const total      = kpiItems.length;
   const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length;
@@ -242,7 +256,7 @@ export function useFabricaKpis(
   const done       = kpiItems.filter(i => isDone(i.state)).length;
 
   const porColaborador = items.reduce((acc, item) => {
-    if (isKpiExcludedCollaborator(item.assigned_to_display)) return acc;
+    if (isExcluded(item.assigned_to_display)) return acc;
     const name = item.assigned_to_display || 'Não atribuído';
     acc[name] = (acc[name] || 0) + 1;
     return acc;
