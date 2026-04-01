@@ -2,7 +2,7 @@ import { ReactNode, useState, lazy, Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, LayoutDashboard, Upload, Settings, Lock, ShieldAlert, CircleHelp } from 'lucide-react';
+import { Clock, LayoutDashboard, Upload, Settings, Lock, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
 import { useHubAreas } from '@/hooks/useHubAreas';
@@ -10,7 +10,6 @@ import { useHubIsAdmin, useAccessRequests } from '@/hooks/useHubPermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import type { Integration } from './SectorIntegrations';
-import { KpiHelpTab } from '@/components/dashboard/KpiHelpTab';
 
 // Lazy-loaded heavy tab contents to avoid loading when tab is not active
 const SectorImportArea = lazy(() => import('./SectorImportArea').then(m => ({ default: m.SectorImportArea })));
