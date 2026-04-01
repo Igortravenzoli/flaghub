@@ -7,13 +7,8 @@ const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvo
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
 
-/** Collaborators excluded from Fábrica KPI counts (belong to Design sector) */
-const KPI_EXCLUDED_COLLABORATORS = new Set(['ari']);
-
-function isKpiExcludedCollaborator(name: string | null | undefined): boolean {
-  if (!name) return false;
-  return KPI_EXCLUDED_COLLABORATORS.has(name.trim().toLowerCase());
-}
+/** Collaborators excluded by default from Fábrica KPI counts (belong to Design sector) */
+export const KPI_DEFAULT_EXCLUDED_COLLABORATORS = new Set(['ari']);
 
 function isFabricaInProgress(state: string | null | undefined): boolean {
   return FABRICA_IN_PROGRESS_STATES.has(state || '');
