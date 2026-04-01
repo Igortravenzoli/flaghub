@@ -4,7 +4,7 @@ import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
-import { useFabricaKpis, FabricaItem, TimelogAggregation } from '@/hooks/useFabricaKpis';
+import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS } from '@/hooks/useFabricaKpis';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
@@ -16,9 +16,12 @@ import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
 import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -99,12 +102,15 @@ function AnimatedNumber({ value, suffix = '' }: { value: number | null; suffix?:
   return <span>{value}{suffix}</span>;
 }
 
-function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, delay = 0, onClick, isLoading, active }: {
+function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, delay = 0, onClick, isLoading, active, tooltipFormula, tooltipDescription }: {
   label: string; value: number | string | null; suffix?: string;
   icon: React.ComponentType<{ className?: string }>;
   description?: string; accent?: string; delay?: number;
   onClick?: () => void; isLoading?: boolean; active?: boolean;
+  tooltipFormula?: string; tooltipDescription?: string;
 }) {
+  const hasTooltip = Boolean(tooltipFormula || tooltipDescription);
+
   if (isLoading) {
     return (
       <Card className="relative overflow-hidden">
@@ -129,7 +135,22 @@ function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, de
           <div className={`p-2 rounded-xl ${accent ? accent + '/10' : 'bg-primary/10'} transition-transform duration-300 group-hover:scale-110`}>
             <Icon className={`h-4 w-4 ${accent ? accent.replace('bg-', 'text-') : 'text-primary'}`} />
           </div>
-          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
+          {hasTooltip ? (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider underline decoration-dotted cursor-help">{label}</p>
+                </TooltipTrigger>
+                <TooltipContent side="top" align="start" className="max-w-md text-xs leading-relaxed">
+                  <p className="font-semibold mb-1">{label}</p>
+                  {tooltipFormula && <p className="mb-1"><span className="font-medium">Fórmula:</span> {tooltipFormula}</p>}
+                  {tooltipDescription && <p><span className="font-medium">Descrição:</span> {tooltipDescription}</p>}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
+          )}
         </div>
         <p className="text-3xl font-black text-foreground tracking-tight">
           {typeof value === 'number' ? value : value ?? <span className="text-sm font-normal text-muted-foreground">—</span>}
@@ -216,10 +237,11 @@ export default function FabricaDashboard() {
   const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
+  const [excludedCollabs, setExcludedCollabs] = useState<Set<string>>(new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS));
   const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
   const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
   const effectiveRange = customActive && customRange ? customRange : sprintRange;
-  const fab = useFabricaKpis(effectiveRange?.from, effectiveRange?.to, customActive ? 'all' : sprintFilter);
+  const fab = useFabricaKpis(effectiveRange?.from, effectiveRange?.to, customActive ? 'all' : sprintFilter, undefined, excludedCollabs);
   const operational = useDevopsOperationalQueue([
     '03-Em Fila Backlog para Priorizar',
     '05-Em Fila UX-UI',
@@ -325,9 +347,15 @@ export default function FabricaDashboard() {
   };
 
   const sprintFilteredItems = useMemo(() => {
-    if (sprintFilter === 'all') return fab.items;
-    return fab.items.filter(i => i.iteration_path === sprintFilter);
-  }, [fab.items, sprintFilter]);
+    let items = sprintFilter === 'all' ? fab.items : fab.items.filter(i => i.iteration_path === sprintFilter);
+    if (excludedCollabs.size > 0) {
+      items = items.filter(i => {
+        const name = i.assigned_to_display?.trim().toLowerCase();
+        return !name || !excludedCollabs.has(name);
+      });
+    }
+    return items;
+  }, [fab.items, sprintFilter, excludedCollabs]);
 
   const sprintTotal = sprintFilteredItems.length;
   const sprintInProgress = sprintFilteredItems.filter(i => isFabricaInProgress(i.state)).length;
@@ -726,6 +754,52 @@ export default function FabricaDashboard() {
             </SelectContent>
           </Select>
         )}
+        {/* Collaborator multi-select filter */}
+        {fab.allCollaborators.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Badge variant="outline" className="gap-1 text-xs cursor-pointer h-8 px-3 hover:bg-muted transition-colors">
+                <Users className="h-3.5 w-3.5" />
+                Colaboradores ({fab.allCollaborators.length - excludedCollabs.size}/{fab.allCollaborators.length})
+              </Badge>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Colaboradores contabilizados</p>
+              <ScrollArea className="max-h-[280px]">
+                <div className="space-y-1">
+                  {fab.allCollaborators.map(name => {
+                    const key = name.trim().toLowerCase();
+                    const isChecked = !excludedCollabs.has(key);
+                    return (
+                      <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setExcludedCollabs(prev => {
+                              const next = new Set(prev);
+                              if (checked) next.delete(key);
+                              else next.add(key);
+                              return next;
+                            });
+                          }}
+                        />
+                        <span className="truncate">{name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              <div className="border-t mt-2 pt-2 flex gap-1">
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setExcludedCollabs(new Set())}>
+                  Marcar todos
+                </Button>
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setExcludedCollabs(new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS))}>
+                  Padrão
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
         <DashboardFilterBar
           preset={customActive ? 'custom' : 'all'}
           onPresetChange={() => { setCustomActive(false); setFabKpiFilter('all'); setPage(0); }}
@@ -797,10 +871,10 @@ export default function FabricaDashboard() {
           <TabsContent value="overview" className="space-y-5 mt-0">
             {/* Hero KPI row */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
-              <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
-              <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
-              <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
+              <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} tooltipFormula="COUNT(itens KPI sem dupla contagem)" tooltipDescription="Itens KPI sem dupla contagem de PBI + task filha." />
+              <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} tooltipFormula="COUNT(state IN In Progress, Active, Em desenvolvimento, Aguardando Teste)" tooltipDescription="Itens em estado ativo de desenvolvimento." />
+              <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} tooltipFormula="COUNT(state IN To Do, New)" tooltipDescription="Itens aguardando início de desenvolvimento." />
+              <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} tooltipFormula="COUNT(state IN Done, Closed, Resolved)" tooltipDescription="Itens concluídos no período/sprint filtrado." />
               <HeroKpiCard 
                 label="PBI sem Task" 
                 value={sprintPbisSemTaskCount} 
@@ -810,7 +884,9 @@ export default function FabricaDashboard() {
                 accent={sprintPbisSemTaskCount > 0 ? 'bg-destructive' : 'bg-[hsl(142,71%,45%)]'}
                 description={sprintPbisSemTaskCount > 0 ? 'Anomalia: PBIs sem task vinculada' : 'Todos PBIs possuem tasks'}
                 onClick={() => toggleFab('sem_task')} 
-                active={fabKpiFilter === 'sem_task'} 
+                active={fabKpiFilter === 'sem_task'}
+                tooltipFormula="COUNT(PBI/Story sem Task filha vinculada)"
+                tooltipDescription="PBIs ou User Stories que não possuem pelo menos uma Task vinculada — indica anomalia de planejamento."
               />
             </div>
 
@@ -824,6 +900,8 @@ export default function FabricaDashboard() {
                 isLoading={fab.isLoading} 
                 delay={300}
                 description={fab.leadTimeSource === 'effort' ? 'Effort médio / PBI (DevOps)' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
+                tooltipFormula="Horas médias por PBI (timelog) ou Effort médio por PBI"
+                tooltipDescription="Lead time médio por PBI com base em timelog; sem timelog, usa esforço médio."
               />
               <HeroKpiCard 
                 label="Velocidade Média" 
@@ -834,6 +912,8 @@ export default function FabricaDashboard() {
                 delay={380}
                 accent="bg-[hsl(var(--info))]"
                 description={fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
+                tooltipFormula="Total Horas (ou Effort) / Nº Sprints"
+                tooltipDescription="Média de horas ou esforço entregue por sprint."
               />
               <HeroKpiCard 
                 label="Transbordo" 
@@ -844,6 +924,8 @@ export default function FabricaDashboard() {
                 accent={sprintTransbordoPct != null && sprintTransbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
                 description={sprintTransbordoCount > 0 ? `${sprintTransbordoCount} de ${sprintTransbordoTotal} itens` : 'Itens não entregues na sprint'}
                 onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('transbordo')}
+                tooltipFormula="(PBIs com mudanças relevantes de sprint / Total PBIs) × 100"
+                tooltipDescription="Transbordo real: mudanças relevantes de sprint menos o primeiro compromisso."
               />
               <HeroKpiCard 
                 label="Capacidade" 

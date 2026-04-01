@@ -308,15 +308,15 @@ export default function QualidadeDashboard() {
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-              <DashboardKpiCard label="Total QA" value={officialOverview.totalQa} icon={FileCheck} isLoading={base.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} />
-              <DashboardKpiCard label="Em Teste" value={officialOverview.emTeste} icon={TrendingUp} isLoading={base.isLoading} delay={80} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('em_teste')} active={kpiFilter === 'em_teste'} />
-              <DashboardKpiCard label="Aguardando Deploy" value={officialOverview.aguardandoDeploy} icon={BarChart3} isLoading={base.isLoading} delay={160} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('deploy')} active={kpiFilter === 'deploy'} />
-              <DashboardKpiCard label="Retorno QA" value={officialOverview.itensComRetorno} suffix={officialOverview.totalRetornos > 0 ? ` (${officialOverview.totalRetornos}x)` : ''} icon={RotateCcw} isLoading={base.isLoading} delay={240} accent="bg-[hsl(0,72%,51%)]" onClick={() => toggleKpi('com_retorno')} active={kpiFilter === 'com_retorno'} />
+              <DashboardKpiCard label="Total QA" value={officialOverview.totalQa} icon={FileCheck} isLoading={base.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} tooltipFormula="COUNT(itens QA no escopo)" tooltipDescription="Total de itens de qualidade no recorte atual." />
+              <DashboardKpiCard label="Em Teste" value={officialOverview.emTeste} icon={TrendingUp} isLoading={base.isLoading} delay={80} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('em_teste')} active={kpiFilter === 'em_teste'} tooltipFormula="COUNT(state = Em Teste)" tooltipDescription="Itens efetivamente em execução de testes no escopo filtrado." />
+              <DashboardKpiCard label="Aguardando Deploy" value={officialOverview.aguardandoDeploy} icon={BarChart3} isLoading={base.isLoading} delay={160} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('deploy')} active={kpiFilter === 'deploy'} tooltipFormula="COUNT(state = Aguardando Deploy)" tooltipDescription="Itens já testados e aguardando janela de deploy." />
+              <DashboardKpiCard label="Retorno QA" value={officialOverview.itensComRetorno} suffix={officialOverview.totalRetornos > 0 ? ` (${officialOverview.totalRetornos}x)` : ''} icon={RotateCcw} isLoading={base.isLoading} delay={240} accent="bg-[hsl(0,72%,51%)]" onClick={() => toggleKpi('com_retorno')} active={kpiFilter === 'com_retorno'} tooltipFormula="COUNT(itens com qa_retorno_count > 0)" tooltipDescription="Itens que retornaram para nova rodada de testes após a primeira entrada." />
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div>
-                      <DashboardKpiCard label="Aviões testados" value={officialOverview.avioesTestados} icon={Plane} isLoading={base.isLoading} delay={320} accent="bg-[hsl(210,80%,52%)]" onClick={() => toggleKpi('aviao')} active={kpiFilter === 'aviao'} />
+                      <DashboardKpiCard label="Aviões testados" value={officialOverview.avioesTestados} icon={Plane} isLoading={base.isLoading} delay={320} accent="bg-[hsl(210,80%,52%)]" onClick={() => toggleKpi('aviao')} active={kpiFilter === 'aviao'} tooltipFormula="COUNT(tags ILIKE '%AVIAO%' AND state IN Testing, Done, Closed, Resolved)" tooltipDescription="Itens com tag AVIAO que já passaram por etapa de teste." />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="text-xs max-w-[240px]">
@@ -324,7 +324,7 @@ export default function QualidadeDashboard() {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <DashboardKpiCard label="Fila Atual" value={officialOverview.filaAtual} icon={Clock} isLoading={base.isLoading} delay={400} accent="bg-[hsl(43,85%,46%)]" />
+              <DashboardKpiCard label="Fila Atual" value={officialOverview.filaAtual} icon={Clock} isLoading={base.isLoading} delay={400} accent="bg-[hsl(43,85%,46%)]" tooltipFormula="COUNT(state IN Em Teste, Aguardando Deploy)" tooltipDescription="Fila atual oficial da Qualidade, incluindo itens herdados de sprints passadas." />
             </div>
 
 

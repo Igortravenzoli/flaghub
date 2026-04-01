@@ -437,6 +437,8 @@ export default function HelpdeskDashboard() {
                   isLoading={isLoading}
                   onClick={() => handleKpiClick('consultores')}
                   active={activeView === 'consultores'}
+                  tooltipFormula="SUM(acumulado dos snapshots no período)"
+                  tooltipDescription="Soma do acumulado dos registros de helpdesk no período selecionado."
                 />
                 <DashboardKpiCard
                   label="Horas Acumuladas"
@@ -447,6 +449,8 @@ export default function HelpdeskDashboard() {
                   delay={80}
                   onClick={() => handleKpiClick('chamados')}
                   active={activeView === 'chamados'}
+                  tooltipFormula="SUM(totalMinutos) / 60"
+                  tooltipDescription="Total de horas registradas no período selecionado."
                 />
                 <DashboardKpiCard
                   label={`Horas ${selectedDay === new Date().toISOString().slice(0, 10) ? 'Hoje' : new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
@@ -455,6 +459,8 @@ export default function HelpdeskDashboard() {
                   icon={TrendingUp}
                   isLoading={isLoading}
                   delay={160}
+                  tooltipFormula="SUM(time_minutes do dia) / 60"
+                  tooltipDescription="Horas registradas no dia selecionado."
                 />
                 <DashboardKpiCard
                   label="Consultores Ativos"
@@ -464,6 +470,8 @@ export default function HelpdeskDashboard() {
                   delay={240}
                   onClick={() => handleKpiClick('consultores')}
                   active={activeView === 'consultores'}
+                  tooltipFormula="COUNT(DISTINCT consultor)"
+                  tooltipDescription="Consolidado por nome do consultor no período."
                 />
               </div>
             );
