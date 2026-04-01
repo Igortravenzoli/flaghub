@@ -352,15 +352,6 @@ export default function FabricaDashboard() {
     'Story': 'hsl(280, 65%, 60%)',
   };
 
-  const typeDistribution = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const item of sprintFilteredItems) {
-      const t = typeLabels[item.work_item_type || ''] || item.work_item_type || 'Outro';
-      map[t] = (map[t] || 0) + 1;
-    }
-    return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, [sprintFilteredItems]);
-
   const getTypeColor = (typeName: string, idx: number) =>
     TYPE_COLORS[typeName] || CHART_COLORS[idx % CHART_COLORS.length];
 
@@ -380,10 +371,24 @@ export default function FabricaDashboard() {
     return items;
   }, [fab.items, sprintFilter, excludedCollabs]);
 
-  const sprintTotal = sprintFilteredItems.length;
-  const sprintInProgress = sprintFilteredItems.filter(i => isFabricaInProgress(i.state)).length;
-  const sprintToDo = sprintFilteredItems.filter(i => isFabricaTodo(i.state)).length;
-  const sprintDone = sprintFilteredItems.filter(i => isDone(i.state)).length;
+  const sprintKpiItems = useMemo(
+    () => sprintFilteredItems.filter((item) => item.count_in_kpi !== false),
+    [sprintFilteredItems]
+  );
+
+  const typeDistribution = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of sprintFilteredItems) {
+      const t = typeLabels[item.work_item_type || ''] || item.work_item_type || 'Outro';
+      map[t] = (map[t] || 0) + 1;
+    }
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [sprintFilteredItems]);
+
+  const sprintTotal = sprintKpiItems.length;
+  const sprintInProgress = sprintKpiItems.filter(i => isFabricaInProgress(i.state)).length;
+  const sprintToDo = sprintKpiItems.filter(i => isFabricaTodo(i.state)).length;
+  const sprintDone = sprintKpiItems.filter(i => isDone(i.state)).length;
   const sprintAguardandoTeste = sprintFilteredItems.filter(i => i.state === 'Aguardando Teste').length;
 
   // PBIs sem Task vinculada (anomalia)
@@ -435,6 +440,7 @@ export default function FabricaDashboard() {
   );
 
   const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
+  const collaboratorAwareHealthOverview = pbiHealthBatch.overview;
 
   const bottlenecks = usePbiBottlenecks({
     sprintCode: selectedSprintCode,
@@ -1351,12 +1357,12 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Gargalos ═══════ */}
           <TabsContent value="gargalos" className="space-y-4 mt-0">
-            {bottlenecks.overview && (
+            {collaboratorAwareHealthOverview && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <HeroKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
-                <HeroKpiCard label="Saudável" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                <HeroKpiCard label="Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                <HeroKpiCard label="Crítica" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+                <HeroKpiCard label="Total monitorados" value={collaboratorAwareHealthOverview.total} icon={ListTodo} />
+                <HeroKpiCard label="Saudável" value={collaboratorAwareHealthOverview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                <HeroKpiCard label="Atenção" value={collaboratorAwareHealthOverview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                <HeroKpiCard label="Crítica" value={collaboratorAwareHealthOverview.vermelho} icon={AlertTriangle} accent="bg-destructive" />
               </div>
             )}
             <Card className="overflow-hidden">
