@@ -2,7 +2,7 @@ import { ReactNode, useState, lazy, Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Clock, LayoutDashboard, Upload, Settings, Lock, ShieldAlert } from 'lucide-react';
+import { Clock, LayoutDashboard, Upload, Settings, Lock, ShieldAlert, CircleHelp } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetricMetadataProvider } from '@/contexts/MetricMetadataContext';
 import { useHubAreas } from '@/hooks/useHubAreas';
@@ -10,6 +10,7 @@ import { useHubIsAdmin, useAccessRequests } from '@/hooks/useHubPermissions';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import type { Integration } from './SectorIntegrations';
+import { KpiHelpTab } from '@/components/dashboard/KpiHelpTab';
 
 // Lazy-loaded heavy tab contents to avoid loading when tab is not active
 const SectorImportArea = lazy(() => import('./SectorImportArea').then(m => ({ default: m.SectorImportArea })));
@@ -60,6 +61,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const canImport = areaKey ? (isAreaOwner || isOperacional(areaKey) || isAdmin) : isAdmin;
   const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
   const canViewExtraTabs = isAreasLoading || hasMembership || isAdmin;
+  const showHelpTab = !!areaKey && hasAccess;
   const showImports = Boolean(templateKey) && (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
 
   const handleRequestAccess = async () => {
@@ -166,6 +168,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
               {tab.label}
             </TabsTrigger>
           ))}
+          {showHelpTab && (
+            <TabsTrigger value="help-kpis" className="gap-1">
+              <CircleHelp className="h-3.5 w-3.5" />
+              Ajuda
+            </TabsTrigger>
+          )}
           {showImports && (
             <TabsTrigger value="imports" className="gap-1">
               <Upload className="h-3.5 w-3.5" />
@@ -189,6 +197,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
             {tab.content}
           </TabsContent>
         ))}
+
+        {showHelpTab && (
+          <TabsContent value="help-kpis" className="mt-4">
+            <KpiHelpTab />
+          </TabsContent>
+        )}
 
         {showImports && (
           <TabsContent value="imports" className="mt-4" forceMount={undefined}>

@@ -9,8 +9,16 @@ type MetricRow = {
   notes: string | null;
 };
 
+export type MetricInfo = {
+  key?: string;
+  name: string;
+  formula?: string;
+  description?: string;
+};
+
 type MetricMetadataValue = {
   getMetricInfo: (metricName: string, metricKey?: string) => { formula?: string; description?: string } | null;
+  listMetrics: () => MetricInfo[];
 };
 
 const MetricMetadataContext = createContext<MetricMetadataValue | null>(null);
@@ -59,6 +67,16 @@ export function MetricMetadataProvider({ areaKey, children }: { areaKey?: string
           formula: row.formula_description || undefined,
           description: row.notes || undefined,
         };
+      },
+      listMetrics: () => {
+        return (query.data || [])
+          .map((row) => ({
+            key: row.metric_key || undefined,
+            name: row.metric_name || row.metric_key || 'Métrica sem nome',
+            formula: row.formula_description || undefined,
+            description: row.notes || undefined,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
       },
     };
   }, [query.data]);
