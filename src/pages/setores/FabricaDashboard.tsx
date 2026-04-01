@@ -812,6 +812,7 @@ export default function FabricaDashboard() {
                 onClick={() => toggleFab('sem_task')} 
                 active={fabKpiFilter === 'sem_task'} 
               />
+            </div>
 
             {/* Corporate KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
