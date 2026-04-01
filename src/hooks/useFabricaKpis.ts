@@ -517,7 +517,8 @@ export function useFabricaKpis(
     : 0;
 
   return {
-    items,
+    items: filteredItems,
+    allSprintItems: items,
     allItems: nonInfraItems,
     total,
     inProgress,
