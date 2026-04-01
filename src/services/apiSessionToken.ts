@@ -74,7 +74,7 @@ export function storeToken(token: string, expiresAt: string): void {
     expiresAt,
     createdAt: new Date().toISOString(),
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(storedToken));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(storedToken));
 }
 
 /**
