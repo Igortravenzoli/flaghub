@@ -16,10 +16,8 @@ import {
   Factory,
   Server,
   ShieldCheck,
-  Shield,
   Globe,
   RefreshCw,
-  UserCheck,
   LayoutGrid,
   ScrollText,
   Lock,
@@ -57,9 +55,7 @@ const sectorItems: NavItem[] = [
 ];
 
 const adminItems: NavItem[] = [
-  { label: 'Usuários', path: '/usuarios', icon: Users, adminOnly: true },
-  { label: 'Solicitações', path: '/admin/requests', icon: UserCheck, adminOnly: true },
-  { label: 'Permissões', path: '/admin/permissions', icon: Shield, adminOnly: true },
+  { label: 'Usuários & Permissões', path: '/usuarios', icon: Users, adminOnly: true },
   { label: 'Central de Sync', path: '/admin/sync', icon: RefreshCw, adminOnly: true },
   { label: 'Uploads Manuais', path: '/admin/uploads', icon: Upload, adminOnly: true },
   { label: 'Email & Webhooks', path: '/admin/email-config', icon: Mail, adminOnly: true },

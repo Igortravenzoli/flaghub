@@ -29,8 +29,7 @@ import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
 import FabricaDashboard from "@/pages/setores/FabricaDashboard";
 import InfraestruturaDashboard from "@/pages/setores/InfraestruturaDashboard";
 
-import AccessRequests from "@/pages/admin/AccessRequests";
-import Permissions from "@/pages/admin/Permissions";
+// AccessRequests and Permissions are now tabs inside Usuarios
 import SyncCentral from "@/pages/admin/SyncCentral";
 import IpAllowlist from "@/pages/admin/IpAllowlist";
 import ManualUploads from "@/pages/admin/ManualUploads";
@@ -99,8 +98,7 @@ const App = () => (
                 <Route path="/setor/infraestrutura" element={<InfraestruturaDashboard />} />
                 
                 {/* Admin pages */}
-                <Route path="/admin/requests" element={<ProtectedRoute requiredRoles={["admin"]}><AccessRequests /></ProtectedRoute>} />
-                <Route path="/admin/permissions" element={<ProtectedRoute requiredRoles={["admin"]}><Permissions /></ProtectedRoute>} />
+                {/* AccessRequests & Permissions merged into /usuarios */}
                 <Route path="/admin/sync" element={<ProtectedRoute requiredRoles={["admin"]}><SyncCentral /></ProtectedRoute>} />
                 <Route path="/admin/ip-allowlist" element={<ProtectedRoute requiredRoles={["admin"]}><IpAllowlist /></ProtectedRoute>} />
                 <Route path="/admin/uploads" element={<ProtectedRoute requiredRoles={["admin"]}><ManualUploads /></ProtectedRoute>} />
