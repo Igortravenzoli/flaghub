@@ -354,12 +354,12 @@ export default function FabricaDashboard() {
 
   const typeDistribution = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const item of fab.items) {
+    for (const item of sprintFilteredItems) {
       const t = typeLabels[item.work_item_type || ''] || item.work_item_type || 'Outro';
       map[t] = (map[t] || 0) + 1;
     }
     return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, [fab.items]);
+  }, [sprintFilteredItems]);
 
   const getTypeColor = (typeName: string, idx: number) =>
     TYPE_COLORS[typeName] || CHART_COLORS[idx % CHART_COLORS.length];
@@ -410,6 +410,11 @@ export default function FabricaDashboard() {
   ).length;
   const sprintTransbordoPct = sprintTransbordoTotal > 0
     ? Math.round((sprintTransbordoCount / sprintTransbordoTotal) * 100)
+    : 0;
+  const sprintRealOverflowItemCount = sprintTransbordoItems.filter((item) => item.realOverflowCount > 0).length;
+  const sprintRealOverflowCount = sprintTransbordoItems.reduce((sum, item) => sum + item.realOverflowCount, 0);
+  const sprintRealOverflowPct = sprintTransbordoTotal > 0
+    ? Math.round((sprintRealOverflowItemCount / sprintTransbordoTotal) * 100)
     : 0;
 
   const sprintAviaoCount = useMemo(() => {
@@ -1282,9 +1287,9 @@ export default function FabricaDashboard() {
               items={sprintTransbordoItems}
               transbordoPct={sprintTransbordoPct}
               transbordoCount={sprintTransbordoCount}
-              realOverflowItemCount={fab.realOverflowItemCount}
-              realOverflowCount={fab.realOverflowCount}
-              realOverflowPct={fab.realOverflowPct}
+              realOverflowItemCount={sprintRealOverflowItemCount}
+              realOverflowCount={sprintRealOverflowCount}
+              realOverflowPct={sprintRealOverflowPct}
               transbordoTotal={sprintTransbordoTotal}
               currentSprint={sprintFilter !== 'all' ? sprintFilter : fab.currentSprint}
               selectedSprint={sprintFilter}
