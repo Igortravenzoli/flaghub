@@ -796,7 +796,7 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-5 mt-0">
             {/* Hero KPI row */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} />
               <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
               <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
