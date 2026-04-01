@@ -335,6 +335,19 @@ export default function FabricaDashboard() {
   const sprintDone = sprintFilteredItems.filter(i => isDone(i.state)).length;
   const sprintAguardandoTeste = sprintFilteredItems.filter(i => i.state === 'Aguardando Teste').length;
 
+  // PBIs sem Task vinculada (anomalia)
+  const sprintPbisSemTask = useMemo(() => {
+    const childParentIds = new Set(
+      sprintFilteredItems
+        .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
+        .map(i => i.parent_id!)
+    );
+    return sprintFilteredItems.filter(
+      i => (i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story') && i.id != null && !childParentIds.has(i.id)
+    );
+  }, [sprintFilteredItems]);
+  const sprintPbisSemTaskCount = sprintPbisSemTask.length;
+
   const sprintTransbordoItems = useMemo(() => {
     if (sprintFilter === 'all') return fab.transbordoItems;
     return fab.transbordoItems.filter(i => i.iteration_path === sprintFilter || i.sprintsOverflowed.includes(sprintFilter));
