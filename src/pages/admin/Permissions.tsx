@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Users, Trash2, Plus, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Users, Trash2, Plus, ShieldCheck, ShieldAlert, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AreaMember {
@@ -41,9 +42,19 @@ interface UserGrouped {
 
 export default function Permissions() {
   const queryClient = useQueryClient();
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [addDialogUser, setAddDialogUser] = useState<UserGrouped | null>(null);
   const [selectedAreaId, setSelectedAreaId] = useState<string>('');
   const [selectedRole, setSelectedRole] = useState<string>('leitura');
+
+  const toggleUser = (userId: string) => {
+    setExpandedUsers(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
 
   const { data: members = [] } = useQuery({
     queryKey: ['admin_area_members'],
@@ -119,7 +130,6 @@ export default function Permissions() {
 
   const getAreaName = (areaId: string) => areas.find(a => a.id === areaId)?.name ?? areaId;
 
-  // Group members by user
   const usersGrouped: UserGrouped[] = (() => {
     const map = new Map<string, AreaMember[]>();
     for (const m of members) {
@@ -127,10 +137,7 @@ export default function Permissions() {
       list.push(m);
       map.set(m.user_id, list);
     }
-
-    // Also include users with profiles but NO memberships
     const allUserIds = new Set([...map.keys(), ...profiles.map(p => p.user_id)]);
-
     return Array.from(allUserIds).map(userId => {
       const memberships = map.get(userId) || [];
       const memberAreaIds = new Set(memberships.map(m => m.area_id));
@@ -143,7 +150,6 @@ export default function Permissions() {
         missingAreas,
       };
     }).sort((a, b) => {
-      // Users with memberships first, then alphabetically
       if (a.memberships.length && !b.memberships.length) return -1;
       if (!a.memberships.length && b.memberships.length) return 1;
       return a.full_name.localeCompare(b.full_name);
@@ -165,113 +171,138 @@ export default function Permissions() {
         <Users className="h-6 w-6 text-primary" />
         <div>
           <h1 className="text-2xl font-bold text-foreground">Gestão de Permissões</h1>
-          <p className="text-sm text-muted-foreground">Visualização unificada: 1 usuário → N acessos por área</p>
+          <p className="text-sm text-muted-foreground">Clique no usuário para expandir e gerenciar acessos</p>
         </div>
       </div>
 
-      <div className="space-y-4">
-        {usersGrouped.map((user) => (
-          <Card key={user.user_id} className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                {user.memberships.length > 0 ? (
-                  <ShieldCheck className="h-4 w-4 text-primary" />
-                ) : (
-                  <ShieldAlert className="h-4 w-4 text-destructive" />
-                )}
-                <span className="font-semibold text-foreground">{user.full_name}</span>
-                <Badge variant="secondary" className="text-xs">
-                  {user.memberships.length} área{user.memberships.length !== 1 ? 's' : ''}
-                </Badge>
-              </div>
+      <div className="space-y-2">
+        {usersGrouped.map((user) => {
+          const isOpen = expandedUsers.has(user.user_id);
 
-              {user.missingAreas.length > 0 && (
-                <Dialog open={addDialogUser?.user_id === user.user_id} onOpenChange={(open) => {
-                  if (open) setAddDialogUser(user);
-                  else { setAddDialogUser(null); setSelectedAreaId(''); setSelectedRole('leitura'); }
-                }}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline" className="gap-1">
-                      <Plus className="h-3 w-3" /> Conceder Acesso
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Conceder acesso para {user.full_name}</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 pt-2">
-                      <div>
-                        <label className="text-sm font-medium text-foreground mb-1 block">Área</label>
-                        <Select value={selectedAreaId} onValueChange={setSelectedAreaId}>
-                          <SelectTrigger><SelectValue placeholder="Selecione a área" /></SelectTrigger>
-                          <SelectContent>
-                            {user.missingAreas.map(a => (
-                              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-foreground mb-1 block">Papel</label>
-                        <Select value={selectedRole} onValueChange={setSelectedRole}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="leitura">Leitura</SelectItem>
-                            <SelectItem value="operacional">Operacional</SelectItem>
-                            <SelectItem value="owner">Owner</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button onClick={handleAddAccess} disabled={!selectedAreaId || addMember.isPending} className="w-full">
-                        Conceder Acesso
-                      </Button>
+          return (
+            <Collapsible key={user.user_id} open={isOpen} onOpenChange={() => toggleUser(user.user_id)}>
+              <Card className="overflow-hidden">
+                <CollapsibleTrigger asChild>
+                  <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors text-left">
+                    <div className="flex items-center gap-2">
+                      <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                      {user.memberships.length > 0 ? (
+                        <ShieldCheck className="h-4 w-4 text-primary" />
+                      ) : (
+                        <ShieldAlert className="h-4 w-4 text-destructive" />
+                      )}
+                      <span className="font-medium text-foreground">{user.full_name}</span>
                     </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </div>
+                    <div className="flex items-center gap-2">
+                      {user.memberships.length > 0 ? (
+                        <div className="flex gap-1 flex-wrap justify-end">
+                          {user.memberships.map(m => (
+                            <Badge key={m.id} variant="outline" className="text-xs">
+                              {getAreaName(m.area_id)}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">Sem acesso</Badge>
+                      )}
+                    </div>
+                  </button>
+                </CollapsibleTrigger>
 
-            {user.memberships.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Área</TableHead>
-                    <TableHead>Papel</TableHead>
-                    <TableHead>Confidencial</TableHead>
-                    <TableHead className="w-12">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {user.memberships.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell><Badge variant="outline">{getAreaName(m.area_id)}</Badge></TableCell>
-                      <TableCell>
-                        <Select value={m.area_role} onValueChange={(v) => updateMember.mutate({ id: m.id, updates: { area_role: v } })}>
-                          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="leitura">Leitura</SelectItem>
-                            <SelectItem value="operacional">Operacional</SelectItem>
-                            <SelectItem value="owner">Owner</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Switch checked={m.can_view_confidential} onCheckedChange={(v) => updateMember.mutate({ id: m.id, updates: { can_view_confidential: v } })} />
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeMember.mutate(m.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <p className="text-sm text-muted-foreground italic pl-6">Nenhum acesso atribuído — clique em "Conceder Acesso" para adicionar.</p>
-            )}
-          </Card>
-        ))}
+                <CollapsibleContent>
+                  <div className="border-t px-4 py-3 space-y-3">
+                    {user.memberships.length > 0 && (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Área</TableHead>
+                            <TableHead>Papel</TableHead>
+                            <TableHead>Confidencial</TableHead>
+                            <TableHead className="w-12">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {user.memberships.map((m) => (
+                            <TableRow key={m.id}>
+                              <TableCell><Badge variant="outline">{getAreaName(m.area_id)}</Badge></TableCell>
+                              <TableCell>
+                                <Select value={m.area_role} onValueChange={(v) => updateMember.mutate({ id: m.id, updates: { area_role: v } })}>
+                                  <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="leitura">Leitura</SelectItem>
+                                    <SelectItem value="operacional">Operacional</SelectItem>
+                                    <SelectItem value="owner">Owner</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <Switch checked={m.can_view_confidential} onCheckedChange={(v) => updateMember.mutate({ id: m.id, updates: { can_view_confidential: v } })} />
+                              </TableCell>
+                              <TableCell>
+                                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeMember.mutate(m.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+
+                    {user.memberships.length === 0 && (
+                      <p className="text-sm text-muted-foreground italic">Nenhum acesso atribuído.</p>
+                    )}
+
+                    {user.missingAreas.length > 0 && (
+                      <Dialog open={addDialogUser?.user_id === user.user_id} onOpenChange={(open) => {
+                        if (open) setAddDialogUser(user);
+                        else { setAddDialogUser(null); setSelectedAreaId(''); setSelectedRole('leitura'); }
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" className="gap-1">
+                            <Plus className="h-3 w-3" /> Conceder Acesso
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Conceder acesso para {user.full_name}</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4 pt-2">
+                            <div>
+                              <label className="text-sm font-medium text-foreground mb-1 block">Área</label>
+                              <Select value={selectedAreaId} onValueChange={setSelectedAreaId}>
+                                <SelectTrigger><SelectValue placeholder="Selecione a área" /></SelectTrigger>
+                                <SelectContent>
+                                  {user.missingAreas.map(a => (
+                                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium text-foreground mb-1 block">Papel</label>
+                              <Select value={selectedRole} onValueChange={setSelectedRole}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="leitura">Leitura</SelectItem>
+                                  <SelectItem value="operacional">Operacional</SelectItem>
+                                  <SelectItem value="owner">Owner</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button onClick={handleAddAccess} disabled={!selectedAreaId || addMember.isPending} className="w-full">
+                              Conceder Acesso
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          );
+        })}
 
         {usersGrouped.length === 0 && (
           <Card className="p-8 text-center text-muted-foreground">Nenhum usuário encontrado</Card>
