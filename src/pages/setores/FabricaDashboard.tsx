@@ -801,7 +801,17 @@ export default function FabricaDashboard() {
               <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} />
               <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} />
               <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} />
-            </div>
+              <HeroKpiCard 
+                label="PBI sem Task" 
+                value={sprintPbisSemTaskCount} 
+                icon={AlertTriangle} 
+                isLoading={fab.isLoading} 
+                delay={320} 
+                accent={sprintPbisSemTaskCount > 0 ? 'bg-destructive' : 'bg-[hsl(142,71%,45%)]'}
+                description={sprintPbisSemTaskCount > 0 ? 'Anomalia: PBIs sem task vinculada' : 'Todos PBIs possuem tasks'}
+                onClick={() => toggleFab('sem_task')} 
+                active={fabKpiFilter === 'sem_task'} 
+              />
 
             {/* Corporate KPIs */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
