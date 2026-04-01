@@ -79,7 +79,7 @@ const operationalColumns = [
 
 export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('ativo');
-  const [activeTab, setActiveTab] = useState('kpi-oficial');
+  const [activeTab, setActiveTab] = useState('visao-clientes');
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
@@ -189,15 +189,14 @@ export default function ComercialDashboard() {
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-muted/50 p-1">
-            <TabsTrigger value="kpi-oficial" className="text-xs">KPI Oficial</TabsTrigger>
-            <TabsTrigger value="operacional" className="text-xs">Esteira</TabsTrigger>
+            <TabsTrigger value="visao-clientes" className="text-xs">Visão Clientes</TabsTrigger>
+            <TabsTrigger value="ganho-perda" className="text-xs">Ganho/Perda</TabsTrigger>
+            <TabsTrigger value="fechamento-comercial" className="text-xs">Fechamento Comercial</TabsTrigger>
             <TabsTrigger value="esteira-saude" className="text-xs">Esteira / Saúde</TabsTrigger>
-            <TabsTrigger value="movimentacao" className="text-xs">Movimentação</TabsTrigger>
             <TabsTrigger value="pesquisa" className="text-xs">Pesquisa Satisfação</TabsTrigger>
-            <TabsTrigger value="pipedrive" className="text-xs">PipeDrive</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="kpi-oficial" className="space-y-4 mt-0">
+          <TabsContent value="visao-clientes" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 gap-4">
               <DashboardKpiCard
                 label="Ativos"
@@ -316,29 +315,12 @@ export default function ComercialDashboard() {
             })()}
           </TabsContent>
 
-          <TabsContent value="operacional" className="space-y-4 mt-0">
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b">
-                <h3 className="font-semibold text-sm">Fila Comercial (Operacional)</h3>
-                <p className="text-xs text-muted-foreground">Fonte operacional: query 04-Em Fila Comercial</p>
-              </div>
-              <div className="p-4">
-                {operacionalItems.length === 0 && !operational.isLoading ? (
-                  <DashboardEmptyState description="Sem itens operacionais no momento." />
-                ) : (
-                  <DashboardDataTable
-                    title="Fila Comercial"
-                    subtitle={`${operacionalItems.length} itens em acompanhamento operacional`}
-                    columns={operationalColumnsWithHealth}
-                    data={operacionalItems}
-                    isLoading={operational.isLoading}
-                    getRowKey={(row) => String(row.work_item_id ?? Math.random())}
-                    onRowClick={(row) => setDrawerOperacionalItem(row)}
-                    searchPlaceholder="Buscar item comercial..."
-                  />
-                )}
-              </div>
-            </Card>
+          <TabsContent value="ganho-perda" className="space-y-4 mt-0">
+            <MovimentacaoTab />
+          </TabsContent>
+
+          <TabsContent value="fechamento-comercial" className="space-y-4 mt-0">
+            <PipeDriveTab />
           </TabsContent>
 
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
@@ -365,16 +347,8 @@ export default function ComercialDashboard() {
             )}
           </TabsContent>
 
-          <TabsContent value="movimentacao" className="space-y-4 mt-0">
-            <MovimentacaoTab />
-          </TabsContent>
-
           <TabsContent value="pesquisa" className="space-y-4 mt-0">
             <PesquisaTab />
-          </TabsContent>
-
-          <TabsContent value="pipedrive" className="space-y-4 mt-0">
-            <PipeDriveTab />
           </TabsContent>
         </Tabs>
       )}
