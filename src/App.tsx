@@ -98,8 +98,7 @@ const App = () => (
                 <Route path="/setor/infraestrutura" element={<InfraestruturaDashboard />} />
                 
                 {/* Admin pages */}
-                <Route path="/admin/requests" element={<ProtectedRoute requiredRoles={["admin"]}><AccessRequests /></ProtectedRoute>} />
-                <Route path="/admin/permissions" element={<ProtectedRoute requiredRoles={["admin"]}><Permissions /></ProtectedRoute>} />
+                {/* AccessRequests & Permissions merged into /usuarios */}
                 <Route path="/admin/sync" element={<ProtectedRoute requiredRoles={["admin"]}><SyncCentral /></ProtectedRoute>} />
                 <Route path="/admin/ip-allowlist" element={<ProtectedRoute requiredRoles={["admin"]}><IpAllowlist /></ProtectedRoute>} />
                 <Route path="/admin/uploads" element={<ProtectedRoute requiredRoles={["admin"]}><ManualUploads /></ProtectedRoute>} />
