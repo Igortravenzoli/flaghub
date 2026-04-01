@@ -166,12 +166,6 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
               {tab.label}
             </TabsTrigger>
           ))}
-          {showHelpTab && (
-            <TabsTrigger value="help-kpis" className="gap-1">
-              <CircleHelp className="h-3.5 w-3.5" />
-              Ajuda
-            </TabsTrigger>
-          )}
           {showImports && (
             <TabsTrigger value="imports" className="gap-1">
               <Upload className="h-3.5 w-3.5" />
