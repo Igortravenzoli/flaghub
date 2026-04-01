@@ -195,7 +195,7 @@ export function MovimentacaoTab({ dateFrom, dateTo }: Props) {
         <DashboardKpiCard label="Ganhos (Clientes)" value={stats.totalGanhos} icon={TrendingUp} isLoading={isLoading} onClick={() => handleKpiClick('ganho')} active={tipoFilter === 'ganho'} />
         <DashboardKpiCard label="Perdas (Clientes)" value={stats.totalPerdas} icon={TrendingDown} isLoading={isLoading} delay={80} onClick={() => handleKpiClick('perda')} active={tipoFilter === 'perda'} />
         <DashboardKpiCard label="Em Risco" value={stats.totalRiscos} icon={AlertTriangle} isLoading={isLoading} delay={120} accent="bg-amber-500" onClick={() => handleKpiClick('risco')} active={tipoFilter === 'risco'} />
-        <DashboardKpiCard label="Total Movimentações" value={items.length} icon={BarChart3} isLoading={isLoading} delay={160} onClick={() => handleKpiClick(null)} active={tipoFilter === null} />
+        <DashboardKpiCard label="Total Movimentações" value={stats.totalGanhos + stats.totalPerdas} icon={BarChart3} isLoading={isLoading} delay={160} onClick={() => handleKpiClick(null)} active={tipoFilter === null} />
         <DashboardKpiCard label="Saldo (Clientes)" value={stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes)} icon={BarChart3} isLoading={isLoading} delay={240} />
       </div>
 
