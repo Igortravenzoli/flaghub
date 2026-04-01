@@ -1,0 +1,2 @@
+INSERT INTO comercial_vendas (deal_title, organization, observation, deal_value, closed_date, period_month)
+VALUES ('Broker DSO - Integrações validação de crédito', 'Nestlé', NULL, 46621.20, '2026-03-30 12:26:00+00', '2026-03-01');
