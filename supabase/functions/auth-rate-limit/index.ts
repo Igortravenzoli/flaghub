@@ -11,11 +11,33 @@ const corsHeaders = {
  *
  * Tracks failed attempts per email in the `login_attempts` DB table.
  * Persists across cold starts and shared across all edge function instances.
+ * Logs login events and suspicious activity to hub_audit_logs.
  */
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 5 * 60 * 1000; // 5 min window
 const LOCKOUT_MS = 60 * 1000; // 60s lockout
+
+/** Best-effort audit log insert (non-blocking) */
+function auditLog(
+  adminClient: ReturnType<typeof createClient>,
+  action: string,
+  metadata: Record<string, unknown>,
+  actorUserId?: string | null,
+) {
+  adminClient
+    .from("hub_audit_logs")
+    .insert({
+      action,
+      actor_user_id: actorUserId ?? null,
+      entity_type: "auth",
+      entity_id: metadata.email as string ?? null,
+      metadata,
+    })
+    .then(({ error }) => {
+      if (error) console.warn("[audit] insert failed:", error.message);
+    });
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -37,6 +59,9 @@ Deno.serve(async (req) => {
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   // Anon client for auth (signInWithPassword)
   const anonClient = createClient(supabaseUrl, supabaseAnonKey);
+
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") || "unknown";
 
   let email: string;
   let password: string;
@@ -70,6 +95,16 @@ Deno.serve(async (req) => {
     const lockedUntil = new Date(record.locked_until);
     if (now < lockedUntil) {
       const retryAfter = Math.ceil((lockedUntil.getTime() - now.getTime()) / 1000);
+
+      // Suspicious: repeated requests while locked
+      auditLog(adminClient, "login_blocked_repeat", {
+        email,
+        ip: clientIp,
+        reason: "request_while_locked",
+        locked_until: record.locked_until,
+        attempt_count: record.attempt_count,
+      });
+
       return new Response(
         JSON.stringify({
           error: "rate_limited",
@@ -120,6 +155,15 @@ Deno.serve(async (req) => {
           locked_until: lockedUntil,
         }, { onConflict: "email" });
 
+      // SUSPICIOUS: account locked due to brute force
+      auditLog(adminClient, "login_lockout", {
+        email,
+        ip: clientIp,
+        reason: "max_attempts_reached",
+        attempt_count: newCount,
+        locked_until: lockedUntil,
+      });
+
       return new Response(
         JSON.stringify({
           error: "rate_limited",
@@ -149,6 +193,14 @@ Deno.serve(async (req) => {
 
     const remaining = MAX_ATTEMPTS - newCount;
 
+    // Log failed attempt
+    auditLog(adminClient, "login_failed", {
+      email,
+      ip: clientIp,
+      attempt_count: newCount,
+      remaining_attempts: remaining,
+    });
+
     return new Response(
       JSON.stringify({
         error: "invalid_credentials",
@@ -164,6 +216,12 @@ Deno.serve(async (req) => {
 
   // Success — clear attempts
   await adminClient.from("login_attempts").delete().eq("email", email);
+
+  // Log successful login
+  auditLog(adminClient, "login_success", {
+    email,
+    ip: clientIp,
+  }, data.user?.id);
 
   // Return ONLY the tokens needed for setSession
   return new Response(
