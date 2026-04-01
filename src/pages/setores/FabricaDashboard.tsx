@@ -237,10 +237,11 @@ export default function FabricaDashboard() {
   const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
+  const [excludedCollabs, setExcludedCollabs] = useState<Set<string>>(new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS));
   const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
   const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
   const effectiveRange = customActive && customRange ? customRange : sprintRange;
-  const fab = useFabricaKpis(effectiveRange?.from, effectiveRange?.to, customActive ? 'all' : sprintFilter);
+  const fab = useFabricaKpis(effectiveRange?.from, effectiveRange?.to, customActive ? 'all' : sprintFilter, undefined, excludedCollabs);
   const operational = useDevopsOperationalQueue([
     '03-Em Fila Backlog para Priorizar',
     '05-Em Fila UX-UI',
