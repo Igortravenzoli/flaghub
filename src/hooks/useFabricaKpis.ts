@@ -237,8 +237,8 @@ export function useFabricaKpis(
     : nonInfraItems.filter(i => i.iteration_path === sprintFilter);
 
   // kpiItems: exclude Tasks/Bugs whose parent PBI is also in the view (count_in_kpi flag)
-  // This prevents double-counting PBIs + their child Tasks in KPI metric totals.
-  const kpiItems = items.filter(i => i.count_in_kpi !== false);
+  // AND exclude collaborators that belong to other sectors (e.g. Design)
+  const kpiItems = items.filter(i => i.count_in_kpi !== false && !isKpiExcludedCollaborator(i.assigned_to_display));
 
   const total      = kpiItems.length;
   const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length;
