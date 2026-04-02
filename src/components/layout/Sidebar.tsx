@@ -126,21 +126,45 @@ export function Sidebar() {
     }
 
     return (
-      <Link
-        key={item.path}
-        to={item.path}
-        className={cn(
-          "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm",
-          active
-            ? "bg-flag-gold text-flag-navy font-semibold shadow-lg shadow-flag-gold/20"
-            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          collapsed && "justify-center px-2"
+      <div key={item.path}>
+        <Link
+          to={item.path}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 text-sm",
+            active
+              ? "bg-flag-gold text-flag-navy font-semibold shadow-lg shadow-flag-gold/20"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            collapsed && "justify-center px-2"
+          )}
+          title={collapsed ? item.label : undefined}
+        >
+          <Icon className="h-4 w-4 flex-shrink-0" />
+          {!collapsed && <span className="font-medium">{item.label}</span>}
+        </Link>
+        {!collapsed && item.children && item.children.length > 0 && (
+          <div className="ml-6 mt-0.5 space-y-0.5">
+            {item.children.map(child => {
+              const ChildIcon = child.icon;
+              const childActive = isActive(child.path);
+              return (
+                <Link
+                  key={child.path}
+                  to={child.path}
+                  className={cn(
+                    "flex items-center gap-2 px-2 py-1.5 rounded-md transition-all text-xs",
+                    childActive
+                      ? "bg-flag-gold/80 text-flag-navy font-semibold"
+                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  )}
+                >
+                  <ChildIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>{child.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         )}
-        title={collapsed ? item.label : undefined}
-      >
-        <Icon className="h-4 w-4 flex-shrink-0" />
-        {!collapsed && <span className="font-medium">{item.label}</span>}
-      </Link>
+      </div>
     );
   };
 
