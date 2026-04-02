@@ -675,6 +675,7 @@ export default function QualidadeDashboard() {
                   <SelectValue placeholder="Retornos mín." />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="0">Todos</SelectItem>
                   <SelectItem value="1">1+ retorno</SelectItem>
                   <SelectItem value="2">2+ retornos</SelectItem>
                   <SelectItem value="3">3+ retornos</SelectItem>
