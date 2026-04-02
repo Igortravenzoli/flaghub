@@ -203,12 +203,25 @@ export default function QualidadeDashboard() {
     for (const item of allItems) {
       if (item.assigned_to_display) nameSet.add(item.assigned_to_display);
     }
-    // Also include done items collaborators for Retrabalho tab
     for (const item of allDoneItems) {
       if (item.assigned_to_display) nameSet.add(item.assigned_to_display);
     }
     return [...nameSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [allItems, allDoneItems]);
+
+  // Separate list for rework tab: people who returned tasks from QA
+  const reworkReturners = useMemo(() => {
+    const nameSet = new Set<string>();
+    for (const item of allDoneItems) {
+      if (item.returned_by) {
+        for (const name of item.returned_by.split(',')) {
+          const trimmed = name.trim();
+          if (trimmed) nameSet.add(trimmed);
+        }
+      }
+    }
+    return [...nameSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [allDoneItems]);
 
   const isCollabSelected = useCallback((name: string): boolean => {
     if (collabMode === 'all') return true;
