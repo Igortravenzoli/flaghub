@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { TableHead } from '@/components/ui/table';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -57,5 +58,3 @@ export function useTableSort<T>(defaultKey: string, defaultDir: SortDir = 'desc'
 
   return { sortKey, sortDir, onSort, sortFn };
 }
-
-import { useState } from 'react';
