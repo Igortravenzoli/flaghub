@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
-import { LayoutGrid, TrendingUp, AlertTriangle } from 'lucide-react';
+import { LayoutGrid, TrendingUp, AlertTriangle, ArrowUpDown } from 'lucide-react';
 import type { FabricaItem } from '@/hooks/useFabricaKpis';
 
 interface SprintBoardTabProps {
@@ -44,6 +44,7 @@ const CHART_COLORS: Record<string, string> = {
 };
 
 type TypeFilter = 'all' | 'pbi_story' | 'task' | 'bug';
+type SortBy = 'sprint-desc' | 'sprint-asc' | 'total-desc' | 'total-asc';
 
 function extractSprintLabel(path: string): string {
   return path.split('\\').pop() || path;
@@ -52,6 +53,7 @@ function extractSprintLabel(path: string): string {
 export function SprintBoardTab({ allItems, sortedSprints, isLoading }: SprintBoardTabProps) {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('pbi_story');
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+  const [sortBy, setSortBy] = useState<SortBy>('sprint-desc');
 
   // Filter items by type
   const filteredItems = useMemo(() => {
@@ -89,12 +91,33 @@ export function SprintBoardTab({ allItems, sortedSprints, isLoading }: SprintBoa
     return map;
   }, [filteredItems]);
 
-  // Sort sprints
+  // Sort sprints based on sortBy
   const displaySprints = useMemo(() => {
     const sprints = sortedSprints.filter(sp => pivot.has(sp));
     const noSprint = pivot.has('(Sem Sprint)') ? ['(Sem Sprint)'] : [];
-    return [...sprints, ...noSprint];
-  }, [sortedSprints, pivot]);
+    const baseSprints = [...sprints, ...noSprint];
+
+    const getTotal = (sp: string) => {
+      const m = pivot.get(sp);
+      if (!m) return 0;
+      let t = 0;
+      for (const c of m.values()) t += c;
+      return t;
+    };
+
+    switch (sortBy) {
+      case 'sprint-asc':
+        return baseSprints;
+      case 'sprint-desc':
+        return [...baseSprints].reverse();
+      case 'total-desc':
+        return [...baseSprints].sort((a, b) => getTotal(b) - getTotal(a));
+      case 'total-asc':
+        return [...baseSprints].sort((a, b) => getTotal(a) - getTotal(b));
+      default:
+        return baseSprints;
+    }
+  }, [sortedSprints, pivot, sortBy]);
 
   // Totals row
   const totalsByState = useMemo(() => {
@@ -185,6 +208,18 @@ export function SprintBoardTab({ allItems, sortedSprints, isLoading }: SprintBoa
             <SelectItem value="pbi_story">PBI / Story</SelectItem>
             <SelectItem value="task">Task</SelectItem>
             <SelectItem value="bug">Bug</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <ArrowUpDown className="h-3 w-3 mr-1" />
+            <SelectValue placeholder="Ordenar" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="sprint-desc">Sprint ↓ (recente)</SelectItem>
+            <SelectItem value="sprint-asc">Sprint ↑ (antiga)</SelectItem>
+            <SelectItem value="total-desc">Total ↓ (maior)</SelectItem>
+            <SelectItem value="total-asc">Total ↑ (menor)</SelectItem>
           </SelectContent>
         </Select>
         <div className="flex gap-1 ml-auto">
