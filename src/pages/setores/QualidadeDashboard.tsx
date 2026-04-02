@@ -424,6 +424,44 @@ export default function QualidadeDashboard() {
             </SelectContent>
           </Select>
         )}
+        {/* Collaborator multi-select filter */}
+        {allCollaborators.length > 0 && (
+          <Popover open={collaboratorsOpen} onOpenChange={setCollaboratorsOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="gap-1 h-8 px-3 text-xs">
+                <Users className="h-3.5 w-3.5" />
+                Colaboradores ({selectedCollabCount}/{allCollaborators.length})
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Colaboradores contabilizados</p>
+              <ScrollArea className="h-[280px]">
+                <div className="space-y-1">
+                  {allCollaborators.map(name => {
+                    const checked = isCollabSelected(name);
+                    return (
+                      <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => toggleCollab(name, v === true)}
+                        />
+                        <span className="truncate">{name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              <div className="border-t mt-2 pt-2 flex gap-1">
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setCollabMode('all')}>
+                  Todos
+                </Button>
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setCollabMode('default')}>
+                  Padrão (4 devs)
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
         <DashboardFilterBar
           preset={customActive ? 'custom' : 'all'}
           onPresetChange={() => { setCustomActive(false); setKpiFilter('all'); }}
