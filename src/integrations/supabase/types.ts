@@ -1890,19 +1890,26 @@ export type Database = {
           current_stage: string | null
           deploy_days: number
           design_days: number
+          dias_sem_atualizacao: number | null
           fabrica_days: number
           first_committed_sprint: string | null
+          foi_despriorizada: boolean
           has_design_stage: boolean
           last_committed_sprint: string | null
           lead_owner_at_commitment: string | null
+          motivo_transbordo: string | null
           overflow_by_stage: Json | null
           overflow_count: number
           overflow_stage: string | null
           qa_return_count: number
           qualidade_days: number
+          retornou_para_backlog: boolean
           sector: string | null
           sprint_migration_count: number
+          tempo_retrabalho_dias: number | null
           total_lead_time_days: number | null
+          transbordou_sprint: boolean
+          ultimo_motivo_retorno: string | null
           updated_at: string
           work_item_id: number
         }
@@ -1912,19 +1919,26 @@ export type Database = {
           current_stage?: string | null
           deploy_days?: number
           design_days?: number
+          dias_sem_atualizacao?: number | null
           fabrica_days?: number
           first_committed_sprint?: string | null
+          foi_despriorizada?: boolean
           has_design_stage?: boolean
           last_committed_sprint?: string | null
           lead_owner_at_commitment?: string | null
+          motivo_transbordo?: string | null
           overflow_by_stage?: Json | null
           overflow_count?: number
           overflow_stage?: string | null
           qa_return_count?: number
           qualidade_days?: number
+          retornou_para_backlog?: boolean
           sector?: string | null
           sprint_migration_count?: number
+          tempo_retrabalho_dias?: number | null
           total_lead_time_days?: number | null
+          transbordou_sprint?: boolean
+          ultimo_motivo_retorno?: string | null
           updated_at?: string
           work_item_id: number
         }
@@ -1934,19 +1948,26 @@ export type Database = {
           current_stage?: string | null
           deploy_days?: number
           design_days?: number
+          dias_sem_atualizacao?: number | null
           fabrica_days?: number
           first_committed_sprint?: string | null
+          foi_despriorizada?: boolean
           has_design_stage?: boolean
           last_committed_sprint?: string | null
           lead_owner_at_commitment?: string | null
+          motivo_transbordo?: string | null
           overflow_by_stage?: Json | null
           overflow_count?: number
           overflow_stage?: string | null
           qa_return_count?: number
           qualidade_days?: number
+          retornou_para_backlog?: boolean
           sector?: string | null
           sprint_migration_count?: number
+          tempo_retrabalho_dias?: number | null
           total_lead_time_days?: number | null
+          transbordou_sprint?: boolean
+          ultimo_motivo_retorno?: string | null
           updated_at?: string
           work_item_id?: number
         }
@@ -3159,6 +3180,56 @@ export type Database = {
           vermelho_count: number
         }[]
       }
+      rpc_gerencial_fabrica_summary: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sector?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          avg_lead_time_days: number
+          despriorizado_count: number
+          done_count: number
+          gargalo_avg_days: number
+          gargalo_principal: string
+          in_progress_count: number
+          itens_atencao: number
+          itens_criticos: number
+          itens_saudaveis: number
+          max_lead_time_days: number
+          qa_return_total: number
+          retorno_backlog_count: number
+          sprint_code: string
+          total_itens: number
+          transbordo_count: number
+        }[]
+      }
+      rpc_gerencial_qa_summary: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          aprovadas: number
+          avg_qualidade_days: number
+          itens_atencao: number
+          itens_criticos: number
+          itens_saudaveis: number
+          max_qualidade_days: number
+          reprovadas: number
+          retornadas: number
+          retrabalho_alto: number
+          retrabalho_baixo: number
+          retrabalho_critico: number
+          sprint_code: string
+          taxa_aprovacao: number
+          taxa_retrabalho: number
+          testadas: number
+          total_itens: number
+        }[]
+      }
       rpc_pbi_bottleneck_summary: {
         Args: {
           p_date_end?: string
@@ -3189,6 +3260,22 @@ export type Database = {
           total_count: number
           verde_count: number
           vermelho_count: number
+        }[]
+      }
+      rpc_qa_desempenho_responsavel: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          avg_qualidade_days: number
+          itens_criticos: number
+          reprovacoes: number
+          responsavel: string
+          retornos_gerados: number
+          tasks_testadas: number
+          taxa_aprovacao: number
         }[]
       }
     }

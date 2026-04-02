@@ -28,6 +28,8 @@ import ComercialDashboard from "@/pages/setores/ComercialDashboard";
 import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
 import FabricaDashboard from "@/pages/setores/FabricaDashboard";
 import InfraestruturaDashboard from "@/pages/setores/InfraestruturaDashboard";
+import GerencialFabricaDashboard from "@/pages/setores/GerencialFabricaDashboard";
+import GerencialQaDashboard from "@/pages/setores/GerencialQaDashboard";
 
 // AccessRequests and Permissions are now tabs inside Usuarios
 import SyncCentral from "@/pages/admin/SyncCentral";
@@ -96,6 +98,8 @@ const App = () => (
                 <Route path="/setor/customer-service" element={<CustomerServiceDashboard />} />
                 <Route path="/setor/fabrica" element={<FabricaDashboard />} />
                 <Route path="/setor/infraestrutura" element={<InfraestruturaDashboard />} />
+                <Route path="/setor/fabrica/gerencial" element={<GerencialFabricaDashboard />} />
+                <Route path="/setor/qualidade/gerencial" element={<GerencialQaDashboard />} />
                 
                 {/* Admin pages */}
                 {/* AccessRequests & Permissions merged into /usuarios */}
