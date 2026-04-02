@@ -28,6 +28,8 @@ import ComercialDashboard from "@/pages/setores/ComercialDashboard";
 import CustomerServiceDashboard from "@/pages/setores/CustomerServiceDashboard";
 import FabricaDashboard from "@/pages/setores/FabricaDashboard";
 import InfraestruturaDashboard from "@/pages/setores/InfraestruturaDashboard";
+import GerencialFabricaDashboard from "@/pages/setores/GerencialFabricaDashboard";
+import GerencialQaDashboard from "@/pages/setores/GerencialQaDashboard";
 
 // AccessRequests and Permissions are now tabs inside Usuarios
 import SyncCentral from "@/pages/admin/SyncCentral";
