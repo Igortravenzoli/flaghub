@@ -380,16 +380,29 @@ export default function QualidadeDashboard() {
   ] : [];
 
   // KPIs: when sprint is selected, show scoped data; when 'all', show base (atemporal)
-  const activeKpiSource = sprintFilter === 'all' ? base : scoped;
-  const officialOverview = {
-    totalQa: activeKpiSource.total,
-    emTeste: activeKpiSource.emTeste,
-    aguardandoDeploy: activeKpiSource.aguardandoDeploy,
-    itensComRetorno: activeKpiSource.itensComRetorno,
-    totalRetornos: activeKpiSource.totalRetornos,
-    avioesTestados: activeKpiSource.avioesTestados,
-    filaAtual: activeKpiSource.filaAtual,
-  };
+  // Recompute KPI overview from collaborator-filtered items
+  const officialOverview = useMemo(() => {
+    const items = kpiSourceItems;
+    const emTeste = items.filter(i => QUALITY_TESTING_STATES.has(i.state || '')).length;
+    const aguardandoDeploy = items.filter(i => QUALITY_DEPLOY_STATES.has(i.state || '')).length;
+    const itensComRetorno = items.filter(i => (i.qa_retorno_count ?? 0) > 0).length;
+    const totalRetornos = items.reduce((sum, i) => sum + (i.qa_retorno_count ?? 0), 0);
+    const avioesTestados = items.filter(i => {
+      const hasAviaoTag = (i.tags || '').toUpperCase().includes('AVIAO');
+      const testedState = QUALITY_TEST_STATES.has(i.state || '');
+      return hasAviaoTag && testedState;
+    }).length;
+    const filaAtual = items.filter(i => QUALITY_TEST_STATES.has(i.state || '')).length;
+    return {
+      totalQa: items.length,
+      emTeste,
+      aguardandoDeploy,
+      itensComRetorno,
+      totalRetornos,
+      avioesTestados,
+      filaAtual,
+    };
+  }, [kpiSourceItems]);
 
   return (
     <SectorLayout title="Qualidade" subtitle="Gestão à Vista — QA" lastUpdate="" integrations={integrations} areaKey="qualidade" syncFunctions={[{ name: 'devops-sync-qualidade', label: 'Sincronizar Fila Atual da Qualidade' }]}>
