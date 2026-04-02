@@ -454,7 +454,7 @@ export default function QualidadeDashboard() {
                       </p>
                     </div>
                     <div className="p-4 space-y-2 max-h-[500px] overflow-auto">
-                      {sorted.length > 0 ? sorted.slice(0, 100).map(item => (
+                      {sorted.length > 0 ? sorted.map(item => (
                         <div
                           key={`rework-${item.id}`}
                           className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2.5 cursor-pointer hover:bg-muted/30 transition-colors"
