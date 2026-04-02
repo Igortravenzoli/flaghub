@@ -31,7 +31,7 @@ import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dat
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
-  TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow
+  TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow, LayoutGrid
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
