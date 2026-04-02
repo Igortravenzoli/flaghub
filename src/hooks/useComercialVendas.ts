@@ -54,19 +54,18 @@ export function useComercialVendas() {
       }))
       .sort((a, b) => b.percentual - a.percentual);
 
-    // Group by period_month -> % of meta (use average deal as proxy since no explicit meta)
+    // Group by period_month -> % of meta (fixed monthly target)
+    const META_MENSAL = 110_000; // Meta mensal fixa de vendas (R$ 110K)
     const mesMap = new Map<string, number>();
     for (const item of items) {
       const pm = item.period_month?.slice(0, 7) || 'unknown';
       mesMap.set(pm, (mesMap.get(pm) ?? 0) + (item.deal_value ?? 0));
     }
-    const mesValues = [...mesMap.values()];
-    const avgMes = mesValues.length > 0 ? mesValues.reduce((s, v) => s + v, 0) / mesValues.length : 1;
 
     const vendasPorMes = [...mesMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([mes, val]) => {
-        const pct = avgMes > 0 ? Math.round((val / avgMes) * 1000) / 10 : 0;
+        const pct = META_MENSAL > 0 ? Math.round((val / META_MENSAL) * 1000) / 10 : 0;
         return {
           mes: formatMonth(mes),
           percentualMeta: pct,

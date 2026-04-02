@@ -65,9 +65,9 @@ function getDealValueSentiment(mesesComDados: { percentualMeta: number; atingiuM
   if (mesesComDados.length === 0) return { label: 'Sem dados', description: 'Aguardando fechamentos', icon: Activity, accent: 'text-muted-foreground' };
   const acima = mesesComDados.filter(m => m.atingiuMeta).length;
   const pct = acima / mesesComDados.length;
-  if (pct >= 0.7) return { label: 'Acima da Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: TrendingUp, accent: 'text-[hsl(142,71%,45%)]' };
-  if (pct >= 0.4) return { label: 'Na Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: Activity, accent: 'text-[hsl(43,85%,46%)]' };
-  return { label: 'Abaixo da Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: TrendingDown, accent: 'text-destructive' };
+  if (pct >= 0.7) return { label: 'Acima da Média', description: `${acima}/${mesesComDados.length} meses acima da meta mensal`, icon: TrendingUp, accent: 'text-[hsl(142,71%,45%)]' };
+  if (pct >= 0.4) return { label: 'Na Média', description: `${acima}/${mesesComDados.length} meses acima da meta mensal`, icon: Activity, accent: 'text-[hsl(43,85%,46%)]' };
+  return { label: 'Abaixo da Média', description: `${acima}/${mesesComDados.length} meses acima da meta mensal`, icon: TrendingDown, accent: 'text-destructive' };
 }
 
 export function PipeDriveTab() {
@@ -186,8 +186,8 @@ export function PipeDriveTab() {
       {stats.vendasPorMes.length > 0 && (
         <Card className="p-4">
           <div className="mb-1">
-            <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Média Mensal</h3>
-            <p className="text-xs text-muted-foreground">Referência: média mensal = 100%</p>
+            <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Meta Mensal</h3>
+            <p className="text-xs text-muted-foreground">Referência: meta mensal = R$ 110K (100%)</p>
           </div>
           <div className="h-[240px] mt-2">
             <ResponsiveContainer width="100%" height="100%">
@@ -196,7 +196,7 @@ export function PipeDriveTab() {
                 <XAxis dataKey="mes" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
                 <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
                 <Tooltip content={<CustomTooltipMensal />} />
-                <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Média 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
+                <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
                 <Bar dataKey="percentualMeta" radius={[4, 4, 0, 0]} maxBarSize={60}>
                   {stats.vendasPorMes.map((entry, i) => {
                     // Graduated green based on relative performance
