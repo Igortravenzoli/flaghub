@@ -96,8 +96,11 @@ export default function QualidadeDashboard() {
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
-  const [collabMode, setCollabMode] = useState<'default' | 'all' | 'custom'>('default');
+  const [collabMode, setCollabMode] = useState<'default' | 'all' | 'custom'>('all');
   const [customSelectedCollabs, setCustomSelectedCollabs] = useState<Set<string>>(new Set());
+  // Retrabalho tab has its own collaborator filter (default = 4 devs)
+  const [reworkCollabMode, setReworkCollabMode] = useState<'default' | 'all' | 'custom'>('default');
+  const [reworkCustomCollabs, setReworkCustomCollabs] = useState<Set<string>>(new Set());
   // "base" = atemporal/macro, sem filtro de sprint — para os KPIs do topo
   const base = useQualidadeKpis(undefined, undefined, 'all');
   const { allItems, lastSync, isLoading, isError } = base;
@@ -300,6 +303,41 @@ export default function QualidadeDashboard() {
     const raw = sprintFilter === 'all' ? base.enrichedItems : scoped.items;
     return filterByCollab(raw);
   }, [sprintFilter, base.enrichedItems, scoped.items, filterByCollab]);
+
+  // Rework tab collaborator filter
+  const isReworkCollabSelected = useCallback((name: string): boolean => {
+    if (reworkCollabMode === 'all') return true;
+    if (reworkCollabMode === 'default') return isQaDefaultCollab(name);
+    return reworkCustomCollabs.has(name);
+  }, [reworkCollabMode, reworkCustomCollabs]);
+
+  const reworkSelectedCount = useMemo(
+    () => allCollaborators.filter(isReworkCollabSelected).length,
+    [allCollaborators, isReworkCollabSelected]
+  );
+
+  const toggleReworkCollab = useCallback((name: string, checked: boolean) => {
+    setReworkCollabMode('custom');
+    setReworkCustomCollabs(prev => {
+      let next: Set<string>;
+      if (reworkCollabMode !== 'custom') {
+        next = new Set(allCollaborators.filter(isReworkCollabSelected));
+      } else {
+        next = new Set(prev);
+      }
+      if (checked) next.add(name); else next.delete(name);
+      return next;
+    });
+  }, [reworkCollabMode, allCollaborators, isReworkCollabSelected]);
+
+  const filterReworkByCollab = useCallback((items: QualidadeItem[]): QualidadeItem[] => {
+    if (reworkCollabMode === 'all') return items;
+    return items.filter(i => {
+      const name = i.assigned_to_display;
+      if (!name) return false;
+      return isReworkCollabSelected(name);
+    });
+  }, [reworkCollabMode, isReworkCollabSelected]);
 
   const filteredItems = useMemo(() => {
     const source = kpiSourceItems;
@@ -538,11 +576,55 @@ export default function QualidadeDashboard() {
 
           {/* ═══════ TAB: Retrabalho ═══════ */}
           <TabsContent value="retrabalho" className="space-y-4 mt-0">
+            {/* Rework-specific collaborator filter */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" className="gap-1 h-8 px-3 text-xs">
+                    <Users className="h-3.5 w-3.5" />
+                    Responsável ({reworkSelectedCount}/{allCollaborators.length})
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="start">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Filtrar por quem encerrou</p>
+                  <ScrollArea className="h-[280px]">
+                    <div className="space-y-1">
+                      {allCollaborators.map(name => {
+                        const checked = isReworkCollabSelected(name);
+                        return (
+                          <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => toggleReworkCollab(name, v === true)}
+                            />
+                            <span className="truncate">{name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                  <div className="border-t mt-2 pt-2 flex gap-1">
+                    <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setReworkCollabMode('all')}>
+                      Todos
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setReworkCollabMode('default')}>
+                      Padrão (4 devs)
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              {reworkCollabMode !== 'all' && (
+                <Badge variant="secondary" className="text-xs gap-1 cursor-pointer" onClick={() => setReworkCollabMode('all')}>
+                  Filtro: {reworkCollabMode === 'default' ? 'Padrão (4 devs)' : `${reworkSelectedCount} selecionados`} ✕
+                </Badge>
+              )}
+            </div>
+
             {(() => {
-              // Filter done items by the active date range + collaborator filter
+              // Filter done items by the active date range + rework-specific collaborator filter
               const rangeFrom = effectiveRange.from;
               const rangeTo = effectiveRange.to;
-              const doneItems = filterByCollab(allDoneItems).filter(i => {
+              const doneItems = filterReworkByCollab(allDoneItems).filter(i => {
                 const cd = i.changed_date ? new Date(i.changed_date) : null;
                 if (!cd) return false;
                 return cd >= rangeFrom && cd <= rangeTo;
