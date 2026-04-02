@@ -539,10 +539,10 @@ export default function QualidadeDashboard() {
           {/* ═══════ TAB: Retrabalho ═══════ */}
           <TabsContent value="retrabalho" className="space-y-4 mt-0">
             {(() => {
-              // Filter done items by the active date range
+              // Filter done items by the active date range + collaborator filter
               const rangeFrom = effectiveRange.from;
               const rangeTo = effectiveRange.to;
-              const doneItems = allDoneItems.filter(i => {
+              const doneItems = filterByCollab(allDoneItems).filter(i => {
                 const cd = i.changed_date ? new Date(i.changed_date) : null;
                 if (!cd) return false;
                 return cd >= rangeFrom && cd <= rangeTo;
