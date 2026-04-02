@@ -347,6 +347,80 @@ export default function QualidadeDashboard() {
             )}
           </TabsContent>
 
+          {/* ═══════ TAB: Retrabalho ═══════ */}
+          <TabsContent value="retrabalho" className="space-y-4 mt-0">
+            {(() => {
+              const doneStates = new Set(['Done', 'Closed', 'Resolved']);
+              const doneItems = base.enrichedItems.filter(i => doneStates.has(i.state || ''));
+              const doneWithRework = doneItems.filter(i => (i.qa_retorno_count ?? 0) > 0);
+              const totalDone = doneItems.length;
+              const totalReworkItems = doneWithRework.length;
+              const totalReworkCycles = doneWithRework.reduce((sum, i) => sum + (i.qa_retorno_count ?? 0), 0);
+              const reworkRate = totalDone > 0 ? Math.round((totalReworkItems / totalDone) * 100) : 0;
+              const avgCycles = totalReworkItems > 0 ? Math.round((totalReworkCycles / totalReworkItems) * 10) / 10 : 0;
+              const sorted = [...doneWithRework].sort((a, b) => (b.qa_retorno_count ?? 0) - (a.qa_retorno_count ?? 0));
+
+              return (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    <DashboardKpiCard label="Done (Total)" value={totalDone} icon={FileCheck} isLoading={base.isLoading} />
+                    <DashboardKpiCard label="Com Retrabalho" value={totalReworkItems} icon={RotateCcw} accent="bg-[hsl(0,72%,51%)]" isLoading={base.isLoading} delay={80} />
+                    <DashboardKpiCard label="Total Ciclos" value={totalReworkCycles} suffix="x" icon={RotateCcw} accent="bg-[hsl(43,85%,46%)]" isLoading={base.isLoading} delay={160} />
+                    <DashboardKpiCard label="Taxa Retrabalho" value={`${reworkRate}%`} icon={AlertTriangle} accent={reworkRate > 20 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} isLoading={base.isLoading} delay={240} />
+                    <DashboardKpiCard label="Média Ciclos" value={avgCycles} suffix="x" icon={TrendingUp} isLoading={base.isLoading} delay={320} />
+                  </div>
+
+                  {reworkRate > 20 && (
+                    <Card className="border-l-4 border-l-destructive p-3">
+                      <p className="text-sm text-destructive font-semibold flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        Alerta: {reworkRate}% dos itens Done passaram por retrabalho — indica gargalo no processo Dev→Teste
+                      </p>
+                    </Card>
+                  )}
+
+                  <Card className="overflow-hidden">
+                    <div className="p-4 border-b border-border">
+                      <h3 className="font-semibold text-sm">Itens Done com Retrabalho (Dev → Teste → Dev)</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PBIs que retornaram ao desenvolvimento após testes antes de serem entregues. Cada ciclo indica uma passagem adicional por "Em Teste".
+                      </p>
+                    </div>
+                    <div className="p-4 space-y-2 max-h-[500px] overflow-auto">
+                      {sorted.length > 0 ? sorted.slice(0, 100).map(item => (
+                        <div
+                          key={`rework-${item.id}`}
+                          className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2.5 cursor-pointer hover:bg-muted/30 transition-colors"
+                          onClick={() => setDrawerItem(item)}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-[10px] flex-shrink-0">{item.work_item_type || '—'}</Badge>
+                              <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">
+                              {item.assigned_to_display || 'Sem responsável'}
+                              {item.iteration_path ? ` • ${item.iteration_path.split('\\').pop()}` : ''}
+                            </p>
+                          </div>
+                          <Badge variant="destructive" className="text-xs font-mono flex-shrink-0">
+                            {item.qa_retorno_count}x retornos
+                          </Badge>
+                        </div>
+                      )) : (
+                        <div className="text-center py-8">
+                          <RotateCcw className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground">Nenhum item Done com retrabalho encontrado.</p>
+                          <p className="text-xs text-muted-foreground/60 mt-1">Itens Done sem retorno ao desenvolvimento — processo saudável.</p>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                </>
+              );
+            })()}
+          </TabsContent>
+
           {/* ═══════ TAB: Esteira / Saúde ═══════ */}
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
