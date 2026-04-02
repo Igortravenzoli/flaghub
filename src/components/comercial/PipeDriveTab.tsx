@@ -199,11 +199,12 @@ export function PipeDriveTab() {
                 <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Média 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
                 <Bar dataKey="percentualMeta" radius={[4, 4, 0, 0]} maxBarSize={60}>
                   {stats.vendasPorMes.map((entry, i) => {
-                    if (!entry.atingiuMeta) return <Cell key={i} fill="hsl(var(--destructive))" />;
-                    // Graduated green: higher % above average = more saturated/darker green
-                    const intensity = Math.min(1, (entry.percentualMeta - 100) / 60); // 0..1 scale
-                    const lightness = 50 - intensity * 15; // 50% → 35% (darker = stronger)
-                    const saturation = 55 + intensity * 20; // 55% → 75%
+                    // Graduated green based on relative performance
+                    // Only use red for extremely low values (< 50%)
+                    if (entry.percentualMeta < 50) return <Cell key={i} fill="hsl(var(--destructive))" />;
+                    const intensity = Math.min(1, Math.max(0, (entry.percentualMeta - 50) / 100)); // 0..1 scale from 50% to 150%
+                    const lightness = 55 - intensity * 20; // 55% → 35% (darker = stronger)
+                    const saturation = 45 + intensity * 30; // 45% → 75%
                     return <Cell key={i} fill={`hsl(142, ${saturation}%, ${lightness}%)`} />;
                   })}
                 </Bar>
