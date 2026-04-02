@@ -791,7 +791,7 @@ export default function FabricaDashboard() {
             </PopoverTrigger>
             <PopoverContent className="w-64 p-2" align="start">
               <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Colaboradores contabilizados</p>
-              <ScrollArea className="max-h-[280px]">
+              <ScrollArea className="h-[280px]">
                 <div className="space-y-1">
                   {fab.allCollaborators.map(name => {
                     const isChecked = !isCollaboratorExcluded(name, excludedCollabs);
@@ -1473,7 +1473,7 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Sprint Board ═══════ */}
           <TabsContent value="sprint-board" className="space-y-4 mt-0">
             <SprintBoardTab
-              allItems={fab.allItems}
+              allItems={sprintFilteredItems}
               sortedSprints={fab.sortedSprints}
               isLoading={fab.isLoading}
             />
