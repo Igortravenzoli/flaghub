@@ -702,12 +702,21 @@ export default function QualidadeDashboard() {
                             </div>
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                               {item.assigned_to_display || 'Sem responsável'}
+                              {item.closed_by && item.closed_by !== item.assigned_to_display ? ` • Encerrado por: ${item.closed_by}` : ''}
                               {item.iteration_path ? ` • ${item.iteration_path.split('\\').pop()}` : ''}
                             </p>
                           </div>
-                          <Badge variant="destructive" className="text-xs font-mono flex-shrink-0">
-                            {item.qa_retorno_count}x retornos
-                          </Badge>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {item.closed_by && (
+                              <Badge variant="outline" className="text-[10px] gap-1">
+                                <Users className="h-3 w-3" />
+                                {item.closed_by.split(' ').slice(0, 2).join(' ')}
+                              </Badge>
+                            )}
+                            <Badge variant="destructive" className="text-xs font-mono">
+                              {item.qa_retorno_count}x retornos
+                            </Badge>
+                          </div>
                         </div>
                       )) : (
                         <div className="text-center py-8">
