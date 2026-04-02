@@ -118,7 +118,7 @@ export default function QualidadeDashboard() {
         while (true) {
           const { data } = await supabase
             .from('devops_work_items')
-            .select('id, title, work_item_type, state, assigned_to_display, priority, iteration_path, created_date, changed_date, web_url, tags')
+            .select('id, title, work_item_type, state, assigned_to_display, priority, iteration_path, created_date, changed_date, web_url, tags, state_history')
             .eq('state', st)
             .range(from, from + PAGE - 1);
           if (!data || data.length === 0) break;
@@ -145,6 +145,24 @@ export default function QualidadeDashboard() {
         }
       }
 
+      // 3) Extract who closed each item from state_history
+      const closedByMap = new Map<number, string>();
+      const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+      for (const w of allDoneItems) {
+        if (w.state_history && Array.isArray(w.state_history)) {
+          // Find the last revision that transitioned to a Done state
+          for (let ri = w.state_history.length - 1; ri >= 0; ri--) {
+            const rev = w.state_history[ri] as any;
+            const newState = rev?.newValue || rev?.state;
+            if (newState && DONE_STATES.has(newState)) {
+              const who = rev?.revisedBy?.displayName || rev?.changedBy || rev?.revisedBy?.uniqueName || null;
+              if (who) closedByMap.set(w.id, who);
+              break;
+            }
+          }
+        }
+      }
+
       return allDoneItems.map((w: any): QualidadeItem => ({
         id: w.id,
         title: w.title,
@@ -158,6 +176,7 @@ export default function QualidadeDashboard() {
         iteration_path: w.iteration_path,
         web_url: w.web_url,
         qa_retorno_count: retornoMap.get(w.id) ?? 0,
+        closed_by: closedByMap.get(w.id) || w.assigned_to_display || null,
       }));
     },
     staleTime: 5 * 60 * 1000,
@@ -683,12 +702,21 @@ export default function QualidadeDashboard() {
                             </div>
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                               {item.assigned_to_display || 'Sem responsável'}
+                              {item.closed_by && item.closed_by !== item.assigned_to_display ? ` • Encerrado por: ${item.closed_by}` : ''}
                               {item.iteration_path ? ` • ${item.iteration_path.split('\\').pop()}` : ''}
                             </p>
                           </div>
-                          <Badge variant="destructive" className="text-xs font-mono flex-shrink-0">
-                            {item.qa_retorno_count}x retornos
-                          </Badge>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {item.closed_by && (
+                              <Badge variant="outline" className="text-[10px] gap-1">
+                                <Users className="h-3 w-3" />
+                                {item.closed_by.split(' ').slice(0, 2).join(' ')}
+                              </Badge>
+                            )}
+                            <Badge variant="destructive" className="text-xs font-mono">
+                              {item.qa_retorno_count}x retornos
+                            </Badge>
+                          </div>
                         </div>
                       )) : (
                         <div className="text-center py-8">
