@@ -10,6 +10,7 @@ import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
+import { SprintBoardTab } from '@/components/fabrica/SprintBoardTab';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
