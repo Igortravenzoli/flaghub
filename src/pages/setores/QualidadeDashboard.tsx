@@ -180,7 +180,7 @@ export default function QualidadeDashboard() {
         iteration_path: w.iteration_path,
         web_url: w.web_url,
         qa_retorno_count: retornoMap.get(w.id) ?? 0,
-        closed_by: closedByMap.get(w.id) || w.assigned_to_display || null,
+        returned_by: (returnedByMap.get(w.id) || []).join(', ') || null,
       }));
     },
     staleTime: 5 * 60 * 1000,
