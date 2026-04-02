@@ -65,9 +65,9 @@ function getDealValueSentiment(mesesComDados: { percentualMeta: number; atingiuM
   if (mesesComDados.length === 0) return { label: 'Sem dados', description: 'Aguardando fechamentos', icon: Activity, accent: 'text-muted-foreground' };
   const acima = mesesComDados.filter(m => m.atingiuMeta).length;
   const pct = acima / mesesComDados.length;
-  if (pct >= 0.7) return { label: 'Acima da Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: TrendingUp, accent: 'text-[hsl(142,71%,45%)]' };
-  if (pct >= 0.4) return { label: 'Na Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: Activity, accent: 'text-[hsl(43,85%,46%)]' };
-  return { label: 'Abaixo da Média', description: `${acima}/${mesesComDados.length} meses acima da média mensal`, icon: TrendingDown, accent: 'text-destructive' };
+  if (pct >= 0.7) return { label: 'Acima da Média', description: `${acima}/${mesesComDados.length} meses acima da meta mensal`, icon: TrendingUp, accent: 'text-[hsl(142,71%,45%)]' };
+  if (pct >= 0.4) return { label: 'Na Média', description: `${acima}/${mesesComDados.length} meses acima da meta mensal`, icon: Activity, accent: 'text-[hsl(43,85%,46%)]' };
+  return { label: 'Abaixo da Média', description: `${acima}/${mesesComDados.length} meses acima da meta mensal`, icon: TrendingDown, accent: 'text-destructive' };
 }
 
 export function PipeDriveTab() {
