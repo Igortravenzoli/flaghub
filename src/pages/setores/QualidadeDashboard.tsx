@@ -96,8 +96,11 @@ export default function QualidadeDashboard() {
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
-  const [collabMode, setCollabMode] = useState<'default' | 'all' | 'custom'>('default');
+  const [collabMode, setCollabMode] = useState<'default' | 'all' | 'custom'>('all');
   const [customSelectedCollabs, setCustomSelectedCollabs] = useState<Set<string>>(new Set());
+  // Retrabalho tab has its own collaborator filter (default = 4 devs)
+  const [reworkCollabMode, setReworkCollabMode] = useState<'default' | 'all' | 'custom'>('default');
+  const [reworkCustomCollabs, setReworkCustomCollabs] = useState<Set<string>>(new Set());
   // "base" = atemporal/macro, sem filtro de sprint — para os KPIs do topo
   const base = useQualidadeKpis(undefined, undefined, 'all');
   const { allItems, lastSync, isLoading, isError } = base;
