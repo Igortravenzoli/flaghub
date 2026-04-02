@@ -295,11 +295,11 @@ export default function QualidadeDashboard() {
 
   // KPIs macro são atemporais → ao clicar, filtrar a partir de base (enrichedItems)
   // Quando sprint está selecionado, filtrar scoped.items
+  // Apply collaborator filter to the source items
   const kpiSourceItems = useMemo(() => {
-    // Se o KPI clicado é atemporal (card macro), mostrar de base
-    // Se sprint está selecionado, mostrar scoped
-    return sprintFilter === 'all' ? base.enrichedItems : scoped.items;
-  }, [sprintFilter, base.enrichedItems, scoped.items]);
+    const raw = sprintFilter === 'all' ? base.enrichedItems : scoped.items;
+    return filterByCollab(raw);
+  }, [sprintFilter, base.enrichedItems, scoped.items, filterByCollab]);
 
   const filteredItems = useMemo(() => {
     const source = kpiSourceItems;
