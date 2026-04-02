@@ -300,6 +300,7 @@ export default function QualidadeDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-muted/50 p-1">
             <TabsTrigger value="overview" className="gap-1.5 text-xs"><FileCheck className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
+            <TabsTrigger value="retrabalho" className="gap-1.5 text-xs"><RotateCcw className="h-3.5 w-3.5" />Retrabalho</TabsTrigger>
             <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
             <TabsTrigger value="gargalos" className="gap-1.5 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Gargalos</TabsTrigger>
             <TabsTrigger value="por-feature" className="gap-1.5 text-xs"><Workflow className="h-3.5 w-3.5" />Por Feature</TabsTrigger>

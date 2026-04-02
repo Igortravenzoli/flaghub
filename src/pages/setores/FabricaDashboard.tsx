@@ -1428,6 +1428,15 @@ export default function FabricaDashboard() {
             </Card>
           </TabsContent>
 
+          {/* ═══════ TAB: Sprint Board ═══════ */}
+          <TabsContent value="sprint-board" className="space-y-4 mt-0">
+            <SprintBoardTab
+              allItems={fab.allItems}
+              sortedSprints={fab.sortedSprints}
+              isLoading={fab.isLoading}
+            />
+          </TabsContent>
+
           {/* ═══════ TAB: Backlog Priorizar ═══════ */}
           <TabsContent value="backlog-priorizar" className="space-y-4 mt-0">
             <Card className="overflow-hidden animate-fade-in">
