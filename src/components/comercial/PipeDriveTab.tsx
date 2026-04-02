@@ -196,7 +196,7 @@ export function PipeDriveTab() {
                 <XAxis dataKey="mes" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
                 <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
                 <Tooltip content={<CustomTooltipMensal />} />
-                <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Média 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
+                <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
                 <Bar dataKey="percentualMeta" radius={[4, 4, 0, 0]} maxBarSize={60}>
                   {stats.vendasPorMes.map((entry, i) => {
                     // Graduated green based on relative performance
