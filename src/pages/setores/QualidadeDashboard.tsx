@@ -411,7 +411,14 @@ export default function QualidadeDashboard() {
           {/* ═══════ TAB: Retrabalho ═══════ */}
           <TabsContent value="retrabalho" className="space-y-4 mt-0">
             {(() => {
-              const doneItems = doneReworkItems;
+              // Filter done items by the active date range
+              const rangeFrom = effectiveRange.from;
+              const rangeTo = effectiveRange.to;
+              const doneItems = allDoneItems.filter(i => {
+                const cd = i.changed_date ? new Date(i.changed_date) : null;
+                if (!cd) return false;
+                return cd >= rangeFrom && cd <= rangeTo;
+              });
               const doneWithRework = doneItems.filter(i => (i.qa_retorno_count ?? 0) > 0);
               const totalDone = doneItems.length;
               const totalReworkItems = doneWithRework.length;
