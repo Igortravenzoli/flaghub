@@ -463,7 +463,13 @@ export default function QualidadeDashboard() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="text-[10px] flex-shrink-0">{item.work_item_type || '—'}</Badge>
-                              <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
+                              {item.web_url ? (
+                                <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium truncate text-primary hover:underline" onClick={e => e.stopPropagation()}>
+                                  #{item.id} • {item.title}
+                                </a>
+                              ) : (
+                                <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
+                              )}
                             </div>
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                               {item.assigned_to_display || 'Sem responsável'}
