@@ -709,15 +709,14 @@ export default function QualidadeDashboard() {
                             </div>
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                               {item.assigned_to_display || 'Sem responsável'}
-                              {item.closed_by && item.closed_by !== item.assigned_to_display ? ` • Encerrado por: ${item.closed_by}` : ''}
                               {item.iteration_path ? ` • ${item.iteration_path.split('\\').pop()}` : ''}
                             </p>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            {item.closed_by && (
-                              <Badge variant="outline" className="text-[10px] gap-1">
-                                <Users className="h-3 w-3" />
-                                {item.closed_by.split(' ').slice(0, 2).join(' ')}
+                            {item.returned_by && (
+                              <Badge variant="outline" className="text-[10px] gap-1 border-amber-400 text-amber-700 dark:text-amber-400">
+                                <RotateCcw className="h-3 w-3" />
+                                {item.returned_by.split(',').map(n => n.trim().split(' ').slice(0, 2).join(' ')).join(', ')}
                               </Badge>
                             )}
                             <Badge variant="destructive" className="text-xs font-mono">
