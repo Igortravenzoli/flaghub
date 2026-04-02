@@ -356,9 +356,12 @@ export default function QualidadeDashboard() {
   const filterReworkByCollab = useCallback((items: QualidadeItem[]): QualidadeItem[] => {
     if (reworkCollabMode === 'all') return items;
     return items.filter(i => {
-      const name = i.assigned_to_display;
-      if (!name) return false;
-      return isReworkCollabSelected(name);
+      // Filter by who from QA returned the task (returned_by), not assigned_to
+      const returnedBy = i.returned_by;
+      if (!returnedBy) return false;
+      // returned_by may contain multiple names comma-separated
+      const names = returnedBy.split(',').map(n => n.trim());
+      return names.some(name => isReworkCollabSelected(name));
     });
   }, [reworkCollabMode, isReworkCollabSelected]);
 
