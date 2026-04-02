@@ -145,6 +145,24 @@ export default function QualidadeDashboard() {
         }
       }
 
+      // 3) Extract who closed each item from state_history
+      const closedByMap = new Map<number, string>();
+      const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+      for (const w of allDoneItems) {
+        if (w.state_history && Array.isArray(w.state_history)) {
+          // Find the last revision that transitioned to a Done state
+          for (let ri = w.state_history.length - 1; ri >= 0; ri--) {
+            const rev = w.state_history[ri] as any;
+            const newState = rev?.newValue || rev?.state;
+            if (newState && DONE_STATES.has(newState)) {
+              const who = rev?.revisedBy?.displayName || rev?.changedBy || rev?.revisedBy?.uniqueName || null;
+              if (who) closedByMap.set(w.id, who);
+              break;
+            }
+          }
+        }
+      }
+
       return allDoneItems.map((w: any): QualidadeItem => ({
         id: w.id,
         title: w.title,
@@ -158,6 +176,7 @@ export default function QualidadeDashboard() {
         iteration_path: w.iteration_path,
         web_url: w.web_url,
         qa_retorno_count: retornoMap.get(w.id) ?? 0,
+        closed_by: closedByMap.get(w.id) || w.assigned_to_display || null,
       }));
     },
     staleTime: 5 * 60 * 1000,
