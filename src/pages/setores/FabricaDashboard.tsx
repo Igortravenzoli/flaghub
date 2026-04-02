@@ -879,6 +879,9 @@ export default function FabricaDashboard() {
             <TabsTrigger value="por-feature" className="gap-1.5 text-xs">
               <Workflow className="h-3.5 w-3.5" />Por Feature
             </TabsTrigger>
+            <TabsTrigger value="sprint-board" className="gap-1.5 text-xs">
+              <LayoutGrid className="h-3.5 w-3.5" />Sprint Board
+            </TabsTrigger>
             <TabsTrigger value="backlog-priorizar" className="gap-1.5 text-xs">
               <ListTodo className="h-3.5 w-3.5" />Backlog Priorizar
             </TabsTrigger>
