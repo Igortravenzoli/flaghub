@@ -621,14 +621,14 @@ export default function QualidadeDashboard() {
                 <PopoverTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="gap-1 h-8 px-3 text-xs">
                     <Users className="h-3.5 w-3.5" />
-                    Responsável ({reworkSelectedCount}/{allCollaborators.length})
+                    Retornado por ({reworkSelectedCount}/{reworkReturners.length})
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-64 p-2" align="start">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Filtrar por quem encerrou</p>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Filtrar por quem retornou do Teste</p>
                   <ScrollArea className="h-[280px]">
                     <div className="space-y-1">
-                      {allCollaborators.map(name => {
+                      {reworkReturners.map(name => {
                         const checked = isReworkCollabSelected(name);
                         return (
                           <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
