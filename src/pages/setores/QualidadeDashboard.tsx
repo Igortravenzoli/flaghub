@@ -118,7 +118,7 @@ export default function QualidadeDashboard() {
         while (true) {
           const { data } = await supabase
             .from('devops_work_items')
-            .select('id, title, work_item_type, state, assigned_to_display, priority, iteration_path, created_date, changed_date, web_url, tags')
+            .select('id, title, work_item_type, state, assigned_to_display, priority, iteration_path, created_date, changed_date, web_url, tags, state_history')
             .eq('state', st)
             .range(from, from + PAGE - 1);
           if (!data || data.length === 0) break;
