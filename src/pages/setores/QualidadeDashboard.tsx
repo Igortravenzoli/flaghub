@@ -77,50 +77,64 @@ export default function QualidadeDashboard() {
   const base = useQualidadeKpis(undefined, undefined, 'all');
   const { allItems, lastSync, isLoading, isError } = base;
 
-  // Fetch Done items with rework from pbi_lifecycle_summary
+  // Fetch ALL Done items + their qa_return_count from lifecycle summary
   const reworkQuery = useQuery({
-    queryKey: ['qualidade', 'rework-done'],
+    queryKey: ['qualidade', 'rework-done-all'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('pbi_lifecycle_summary')
-        .select('work_item_id, qa_return_count, sector, current_stage')
-        .gt('qa_return_count', 0);
-      if (error) throw error;
-      const ids = (data || []).map((r: any) => r.work_item_id as number);
-      if (ids.length === 0) return [];
-      // Fetch work item details
-      const chunks: any[] = [];
-      for (let i = 0; i < ids.length; i += 500) {
-        const chunk = ids.slice(i, i + 500);
-        const { data: wiData } = await supabase
-          .from('devops_work_items')
-          .select('id, title, work_item_type, state, assigned_to_display, priority, iteration_path, created_date, changed_date, web_url, tags')
-          .in('id', chunk);
-        if (wiData) chunks.push(...wiData);
+      const doneStates = ['Done', 'Closed', 'Resolved'];
+      // 1) Fetch all done work items (paginated)
+      const allDoneItems: any[] = [];
+      for (const st of doneStates) {
+        let from = 0;
+        const PAGE = 1000;
+        while (true) {
+          const { data } = await supabase
+            .from('devops_work_items')
+            .select('id, title, work_item_type, state, assigned_to_display, priority, iteration_path, created_date, changed_date, web_url, tags')
+            .eq('state', st)
+            .range(from, from + PAGE - 1);
+          if (!data || data.length === 0) break;
+          allDoneItems.push(...data);
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
       }
-      const wiMap = new Map(chunks.map((w: any) => [w.id, w]));
-      const reworkMap = new Map((data || []).map((r: any) => [r.work_item_id, r.qa_return_count]));
-      const doneStates = new Set(['Done', 'Closed', 'Resolved']);
-      return chunks
-        .filter((w: any) => doneStates.has(w.state || ''))
-        .map((w: any): QualidadeItem => ({
-          id: w.id,
-          title: w.title,
-          work_item_type: w.work_item_type,
-          state: w.state,
-          assigned_to_display: w.assigned_to_display,
-          priority: w.priority,
-          tags: w.tags,
-          created_date: w.created_date,
-          changed_date: w.changed_date,
-          iteration_path: w.iteration_path,
-          web_url: w.web_url,
-          qa_retorno_count: (reworkMap.get(w.id) as number) || 0,
-        }));
+      if (allDoneItems.length === 0) return [];
+
+      // 2) Fetch qa_return_count for those IDs from lifecycle summary
+      const ids = allDoneItems.map(w => w.id);
+      const retornoMap = new Map<number, number>();
+      for (let i = 0; i < ids.length; i += 1000) {
+        const chunk = ids.slice(i, i + 1000);
+        const { data: lcData } = await (supabase as any)
+          .from('pbi_lifecycle_summary')
+          .select('work_item_id, qa_return_count')
+          .in('work_item_id', chunk);
+        for (const row of (lcData || [])) {
+          if (row.qa_return_count > 0) {
+            retornoMap.set(row.work_item_id, row.qa_return_count);
+          }
+        }
+      }
+
+      return allDoneItems.map((w: any): QualidadeItem => ({
+        id: w.id,
+        title: w.title,
+        work_item_type: w.work_item_type,
+        state: w.state,
+        assigned_to_display: w.assigned_to_display,
+        priority: w.priority,
+        tags: w.tags,
+        created_date: w.created_date,
+        changed_date: w.changed_date,
+        iteration_path: w.iteration_path,
+        web_url: w.web_url,
+        qa_retorno_count: retornoMap.get(w.id) ?? 0,
+      }));
     },
     staleTime: 5 * 60 * 1000,
   });
-  const doneReworkItems = reworkQuery.data || [];
+  const allDoneItems = reworkQuery.data || [];
   const { sortedSprints } = useSprintFilter(allItems);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
@@ -397,7 +411,14 @@ export default function QualidadeDashboard() {
           {/* ═══════ TAB: Retrabalho ═══════ */}
           <TabsContent value="retrabalho" className="space-y-4 mt-0">
             {(() => {
-              const doneItems = doneReworkItems;
+              // Filter done items by the active date range
+              const rangeFrom = effectiveRange.from;
+              const rangeTo = effectiveRange.to;
+              const doneItems = allDoneItems.filter(i => {
+                const cd = i.changed_date ? new Date(i.changed_date) : null;
+                if (!cd) return false;
+                return cd >= rangeFrom && cd <= rangeTo;
+              });
               const doneWithRework = doneItems.filter(i => (i.qa_retorno_count ?? 0) > 0);
               const totalDone = doneItems.length;
               const totalReworkItems = doneWithRework.length;
@@ -433,7 +454,7 @@ export default function QualidadeDashboard() {
                       </p>
                     </div>
                     <div className="p-4 space-y-2 max-h-[500px] overflow-auto">
-                      {sorted.length > 0 ? sorted.slice(0, 100).map(item => (
+                      {sorted.length > 0 ? sorted.map(item => (
                         <div
                           key={`rework-${item.id}`}
                           className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2.5 cursor-pointer hover:bg-muted/30 transition-colors"
