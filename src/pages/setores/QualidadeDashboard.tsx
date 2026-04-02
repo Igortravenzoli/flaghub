@@ -107,12 +107,27 @@ export default function QualidadeDashboard() {
   const base = useQualidadeKpis(undefined, undefined, 'all');
   const { allItems, lastSync, isLoading, isError } = base;
 
-  // Fetch ALL Done items + their qa_return_count from lifecycle summary
+  // ── States classification for rework detection ──
+  // QA states: states that represent "in testing"
+  const QA_ORIGIN_STATES = useMemo(() => new Set([
+    'Em Teste', 'In Test', 'Testing', 'em teste',
+  ]), []);
+  // DEV destination states: states that represent "returned to development"
+  const DEV_DEST_STATES = useMemo(() => new Set([
+    'Em desenvolvimento', 'Em Desenvolvimento', 'In Progress', 'In Development',
+    'To Do', 'New', 'Committed', 'Prioritized', 'Active', 'Approved',
+    'em desenvolvimento', 'in progress',
+  ]), []);
+  // Done/closed states
+  const DONE_STATES = useMemo(() => new Set([
+    'Done', 'Closed', 'Resolved', 'done', 'closed', 'resolved',
+  ]), []);
+
+  // Fetch ALL Done items + compute rework from state_history directly
   const reworkQuery = useQuery({
-    queryKey: ['qualidade', 'rework-done-all'],
+    queryKey: ['qualidade', 'rework-done-v3'],
     queryFn: async () => {
       const doneStates = ['Done', 'Closed', 'Resolved'];
-      // 1) Fetch all done work items (paginated)
       const allDoneItems: any[] = [];
       for (const st of doneStates) {
         let from = 0;
@@ -131,59 +146,58 @@ export default function QualidadeDashboard() {
       }
       if (allDoneItems.length === 0) return [];
 
-      // 2) Fetch qa_return_count for those IDs from lifecycle summary
-      const ids = allDoneItems.map(w => w.id);
-      const retornoMap = new Map<number, number>();
-      for (let i = 0; i < ids.length; i += 1000) {
-        const chunk = ids.slice(i, i + 1000);
-        const { data: lcData } = await (supabase as any)
-          .from('pbi_lifecycle_summary')
-          .select('work_item_id, qa_return_count')
-          .in('work_item_id', chunk);
-        for (const row of (lcData || [])) {
-          if (row.qa_return_count > 0) {
-            retornoMap.set(row.work_item_id, row.qa_return_count);
-          }
-        }
-      }
+      // QA origin state set (case-insensitive matching via normalized)
+      const qaOriginNorm = new Set(['em teste', 'in test', 'testing']);
+      // Dev destination state set
+      const devDestNorm = new Set([
+        'em desenvolvimento', 'in progress', 'in development',
+        'to do', 'new', 'committed', 'prioritized', 'active', 'approved',
+      ]);
 
-      // 3) Extract who from QA returned each item to dev (Em Teste → dev state)
-      const returnedByMap = new Map<number, string[]>();
-      const QA_STATES = new Set(['Em Teste']);
-      const DEV_STATES = new Set(['Em desenvolvimento', 'In Progress', 'To Do', 'New', 'Committed', 'Prioritized']);
-      for (const w of allDoneItems) {
+      return allDoneItems.map((w: any): QualidadeItem => {
+        let totalRetornoQa = 0;
+        let ultimoResponsavel: string | null = null;
+        let ultimoRetornoEm: string | null = null;
+        let ultimoEstadoDestino: string | null = null;
+
         if (w.state_history && Array.isArray(w.state_history)) {
-          const returners: string[] = [];
-          for (let ri = 1; ri < w.state_history.length; ri++) {
-            const prev = w.state_history[ri - 1] as any;
-            const curr = w.state_history[ri] as any;
-            const prevState = prev?.newValue;
-            const currNewState = curr?.newValue;
-            // Transition: was in "Em Teste" → moved to a dev state
-            if (prevState && QA_STATES.has(prevState) && currNewState && DEV_STATES.has(currNewState)) {
-              const who = typeof curr?.revisedBy === 'string' ? curr.revisedBy : (curr?.revisedBy?.displayName || curr?.revisedBy?.uniqueName || null);
-              if (who && !returners.includes(who)) returners.push(who);
+          for (const entry of w.state_history) {
+            const oldVal = (entry?.oldValue || '').toLowerCase().trim();
+            const newVal = (entry?.newValue || '').toLowerCase().trim();
+            // Detect: leaving a QA state and going to a DEV state
+            if (qaOriginNorm.has(oldVal) && devDestNorm.has(newVal)) {
+              totalRetornoQa++;
+              // revisedBy is the person who performed this transition (QA person returning)
+              const who = typeof entry?.revisedBy === 'string'
+                ? entry.revisedBy
+                : (entry?.revisedBy?.displayName || entry?.revisedBy?.uniqueName || null);
+              if (who) ultimoResponsavel = who;
+              if (entry?.revisedDate) ultimoRetornoEm = entry.revisedDate;
+              // Store the original-case newValue
+              ultimoEstadoDestino = entry?.newValue || null;
             }
           }
-          if (returners.length > 0) returnedByMap.set(w.id, returners);
         }
-      }
 
-      return allDoneItems.map((w: any): QualidadeItem => ({
-        id: w.id,
-        title: w.title,
-        work_item_type: w.work_item_type,
-        state: w.state,
-        assigned_to_display: w.assigned_to_display,
-        priority: w.priority,
-        tags: w.tags,
-        created_date: w.created_date,
-        changed_date: w.changed_date,
-        iteration_path: w.iteration_path,
-        web_url: w.web_url,
-        qa_retorno_count: retornoMap.get(w.id) ?? 0,
-        returned_by: (returnedByMap.get(w.id) || []).join(', ') || null,
-      }));
+        return {
+          id: w.id,
+          title: w.title,
+          work_item_type: w.work_item_type,
+          state: w.state,
+          assigned_to_display: w.assigned_to_display,
+          priority: w.priority,
+          tags: w.tags,
+          created_date: w.created_date,
+          changed_date: w.changed_date,
+          iteration_path: w.iteration_path,
+          web_url: w.web_url,
+          qa_retorno_count: totalRetornoQa,
+          returned_by: ultimoResponsavel,
+          ultimo_responsavel_retorno_qa: ultimoResponsavel,
+          ultimo_retorno_qa_em: ultimoRetornoEm,
+          ultimo_estado_destino_retorno: ultimoEstadoDestino,
+        };
+      });
     },
     staleTime: 5 * 60 * 1000,
   });
