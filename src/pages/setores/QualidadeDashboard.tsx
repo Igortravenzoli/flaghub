@@ -225,15 +225,12 @@ export default function QualidadeDashboard() {
     return [...nameSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [allItems, allDoneItems]);
 
-  // Separate list for rework tab: people who returned tasks from QA
+  // Separate list for rework tab: LAST person who returned each task from QA → Dev
   const reworkReturners = useMemo(() => {
     const nameSet = new Set<string>();
     for (const item of allDoneItems) {
-      if (item.returned_by) {
-        for (const name of item.returned_by.split(',')) {
-          const trimmed = name.trim();
-          if (trimmed) nameSet.add(trimmed);
-        }
+      if (item.ultimo_responsavel_retorno_qa) {
+        nameSet.add(item.ultimo_responsavel_retorno_qa);
       }
     }
     return [...nameSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
