@@ -17,6 +17,13 @@ export interface QualidadeItem {
   web_url: string | null;
   qa_retorno_count?: number;
   returned_by?: string | null;
+  closed_by?: string | null;
+  /** Last person who returned from QA to dev */
+  ultimo_responsavel_retorno_qa?: string | null;
+  /** Date of last QA return */
+  ultimo_retorno_qa_em?: string | null;
+  /** Destination state of last QA return */
+  ultimo_estado_destino_retorno?: string | null;
   is_current_queue?: boolean;
   is_waiting_deploy?: boolean;
   has_sprint_code?: boolean;
