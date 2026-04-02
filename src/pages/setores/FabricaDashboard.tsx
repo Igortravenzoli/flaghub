@@ -1360,6 +1360,18 @@ export default function FabricaDashboard() {
                 <HeroKpiCard label="Crítica" value={collaboratorAwareHealthOverview.vermelho} icon={AlertTriangle} accent="bg-destructive" />
               </div>
             )}
+
+            <Card className="p-3 border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20">
+              <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                <AlertTriangle className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                <p>
+                  <span className="font-semibold text-foreground">O que é esta análise?</span>{' '}
+                  O painel de gargalos mostra quanto tempo os itens permanecem em cada etapa da esteira (Backlog → Design → Fábrica → Qualidade → Deploy).
+                  Valores altos de <strong>Média</strong> indicam lentidão no processo; <strong>Atraso</strong> alto aponta itens que ultrapassaram os limites aceitáveis (ex: Fábrica &gt;14d = atenção, &gt;21d = crítico).
+                </p>
+              </div>
+            </Card>
+
             <Card className="overflow-hidden">
               <div className="p-4 border-b border-border flex items-center justify-between">
                 <div>
@@ -1368,24 +1380,54 @@ export default function FabricaDashboard() {
                 </div>
                 <Badge variant="outline">{bottlenecks.bottlenecks.length} etapas</Badge>
               </div>
-              <div className="p-4 space-y-2">
-                {bottlenecks.bottlenecks.map((row) => (
-                  <div key={`bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
-                    <span className="font-medium text-foreground">{row.stage_label}</span>
-                    <span className="text-muted-foreground">Média: {row.avg_days_in_stage}d</span>
-                    <span className="text-muted-foreground">Máx: {row.max_days_in_stage}d</span>
-                    <span className="text-muted-foreground">Em etapa: {row.count_in_stage}</span>
-                    <span className="text-muted-foreground">Atraso: {row.count_overtime}</span>
-                  </div>
-                ))}
-                {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
-                  <div className="text-center py-8">
-                    <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Sem dados de gargalo para o filtro atual.</p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">Os dados são populados após a sincronização de esteira (pbi_stage_events).</p>
-                  </div>
-                )}
-              </div>
+              <TooltipProvider>
+                <div className="p-4 space-y-2">
+                  {bottlenecks.bottlenecks.map((row) => (
+                    <div key={`bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
+                      <span className="font-medium text-foreground">{row.stage_label}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Média: {row.avg_days_in_stage}d</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[240px]">
+                          <p className="text-xs">Tempo médio (dias) que os itens permanecem nesta etapa. Valores altos indicam lentidão no processo.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Máx: {row.max_days_in_stage}d</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[240px]">
+                          <p className="text-xs">Maior tempo (dias) que um item ficou nesta etapa. Outliers indicam itens travados.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Em etapa: {row.count_in_stage}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[240px]">
+                          <p className="text-xs">Quantidade de itens atualmente nesta etapa. Volume alto pode indicar gargalo de capacidade.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Atraso: {row.count_overtime}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[240px]">
+                          <p className="text-xs">Itens que ultrapassaram o limite de dias aceitável para esta etapa (ex: Fábrica &gt;14d = atenção, &gt;21d = crítico).</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  ))}
+                  {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
+                    <div className="text-center py-8">
+                      <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Sem dados de gargalo para o filtro atual.</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">Os dados são populados após a sincronização de esteira (pbi_stage_events).</p>
+                    </div>
+                  )}
+                </div>
+              </TooltipProvider>
             </Card>
           </TabsContent>
 
