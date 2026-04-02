@@ -3,10 +3,11 @@ import { SectorLayout } from '@/components/setores/SectorLayout';
 import { useGerencialFabrica, type GerencialFabricaRow } from '@/hooks/useGerencialFabrica';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MultiSprintFilter } from '@/components/gerencial/MultiSprintFilter';
+import { SortableTableHead, useTableSort } from '@/components/gerencial/SortableTableHead';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   LineChart, Line, Legend, Tooltip as RTooltip, Cell,
@@ -48,40 +49,47 @@ function KpiCard({ label, value, icon: Icon, tooltip, variant = 'default' }: {
 const HEALTH_COLORS = { verde: '#10b981', amarelo: '#eab308', vermelho: '#ef4444' };
 
 export default function GerencialFabricaDashboard() {
-  const [selectedSprint, setSelectedSprint] = useState<string>('all');
-  const { data: rows, isLoading } = useGerencialFabrica(
-    selectedSprint !== 'all' ? selectedSprint : undefined
-  );
+  const [selectedSprints, setSelectedSprints] = useState<string[]>([]);
+  const { data: rows, isLoading } = useGerencialFabrica();
 
   const sprints = useMemo(() => (rows || []).map(r => r.sprint_code).filter(Boolean), [rows]);
 
-  // Aggregate KPIs across all visible sprints
+  const filteredRows = useMemo(() => {
+    if (!rows?.length) return [];
+    if (selectedSprints.length === 0) return rows;
+    return rows.filter(r => selectedSprints.includes(r.sprint_code));
+  }, [rows, selectedSprints]);
+
+  const { sortKey, sortDir, onSort, sortFn } = useTableSort<GerencialFabricaRow>('sprint_code', 'desc');
+
+  const sortedRows = useMemo(() => [...filteredRows].sort(sortFn), [filteredRows, sortFn]);
+
+  // Aggregate KPIs
   const agg = useMemo(() => {
-    if (!rows?.length) return null;
-    const target = selectedSprint !== 'all' ? rows.filter(r => r.sprint_code === selectedSprint) : rows;
-    const total = target.reduce((s, r) => s + r.total_itens, 0);
-    const done = target.reduce((s, r) => s + r.done_count, 0);
-    const transbordo = target.reduce((s, r) => s + r.transbordo_count, 0);
-    const despriorizado = target.reduce((s, r) => s + r.despriorizado_count, 0);
-    const qaReturns = target.reduce((s, r) => s + r.qa_return_total, 0);
-    const criticos = target.reduce((s, r) => s + r.itens_criticos, 0);
-    const atencao = target.reduce((s, r) => s + r.itens_atencao, 0);
-    const saudaveis = target.reduce((s, r) => s + r.itens_saudaveis, 0);
-    const avgLead = target.length > 0
-      ? Math.round((target.reduce((s, r) => s + (r.avg_lead_time_days || 0), 0) / target.length) * 10) / 10
+    if (!filteredRows.length) return null;
+    const total = filteredRows.reduce((s, r) => s + r.total_itens, 0);
+    const done = filteredRows.reduce((s, r) => s + r.done_count, 0);
+    const transbordo = filteredRows.reduce((s, r) => s + r.transbordo_count, 0);
+    const despriorizado = filteredRows.reduce((s, r) => s + r.despriorizado_count, 0);
+    const qaReturns = filteredRows.reduce((s, r) => s + r.qa_return_total, 0);
+    const criticos = filteredRows.reduce((s, r) => s + r.itens_criticos, 0);
+    const atencao = filteredRows.reduce((s, r) => s + r.itens_atencao, 0);
+    const saudaveis = filteredRows.reduce((s, r) => s + r.itens_saudaveis, 0);
+    const avgLead = filteredRows.length > 0
+      ? Math.round((filteredRows.reduce((s, r) => s + (r.avg_lead_time_days || 0), 0) / filteredRows.length) * 10) / 10
       : 0;
-    const gargalo = target[0]?.gargalo_principal || '—';
+    const gargalo = filteredRows[0]?.gargalo_principal || '—';
     return { total, done, transbordo, despriorizado, qaReturns, criticos, atencao, saudaveis, avgLead, gargalo };
-  }, [rows, selectedSprint]);
+  }, [filteredRows]);
 
   // Chart data: transbordo evolution by sprint
   const transbordoEvolution = useMemo(() =>
-    (rows || []).slice().reverse().map(r => ({
+    [...filteredRows].reverse().map(r => ({
       sprint: r.sprint_code?.split('\\').pop() || r.sprint_code,
       transbordos: r.transbordo_count,
       retornos_qa: r.qa_return_total,
     })),
-    [rows]
+    [filteredRows]
   );
 
   // Health donut
@@ -94,20 +102,6 @@ export default function GerencialFabricaDashboard() {
     ].filter(d => d.value > 0);
   }, [agg]);
 
-  // Stage bottleneck bars (from first row when single sprint selected)
-  const bottleneckData = useMemo(() => {
-    if (!rows?.length) return [];
-    const target = selectedSprint !== 'all' ? rows.find(r => r.sprint_code === selectedSprint) : rows[0];
-    if (!target) return [];
-    return [
-      { stage: 'Backlog', days: 0 },
-      { stage: 'Design', days: 0 },
-      { stage: 'Fábrica', days: target.gargalo_principal === 'fabrica' ? (target.gargalo_avg_days || 0) : 0 },
-      { stage: 'Qualidade', days: target.gargalo_principal === 'qualidade' ? (target.gargalo_avg_days || 0) : 0 },
-      { stage: 'Deploy', days: target.gargalo_principal === 'deploy' ? (target.gargalo_avg_days || 0) : 0 },
-    ];
-  }, [rows, selectedSprint]);
-
   return (
     <SectorLayout
       title="Gerencial Fábrica"
@@ -117,17 +111,11 @@ export default function GerencialFabricaDashboard() {
       <div className="space-y-6">
         {/* Filters */}
         <div className="flex items-center gap-3 flex-wrap">
-          <Select value={selectedSprint} onValueChange={setSelectedSprint}>
-            <SelectTrigger className="w-[260px]">
-              <SelectValue placeholder="Todas as Sprints" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as Sprints</SelectItem>
-              {sprints.map(s => (
-                <SelectItem key={s} value={s}>{s?.split('\\').pop() || s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSprintFilter
+            sprints={sprints}
+            selected={selectedSprints}
+            onChange={setSelectedSprints}
+          />
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Info className="h-3.5 w-3.5" />
             Dados calculados automaticamente a partir do ciclo de vida dos PBIs
@@ -146,16 +134,16 @@ export default function GerencialFabricaDashboard() {
             <KpiCard label="Concluídos" value={agg.done} icon={ShieldCheck}
               tooltip="Itens que alcançaram o estado Done" variant="success" />
             <KpiCard label="Transbordos" value={agg.transbordo} icon={TrendingDown}
-              tooltip="Itens que migraram para sprint seguinte sem conclusão. Indica falha de planejamento ou capacidade."
+              tooltip="Itens que migraram para sprint seguinte sem conclusão."
               variant={agg.transbordo > 5 ? 'danger' : agg.transbordo > 0 ? 'warning' : 'default'} />
             <KpiCard label="Despriorizados" value={agg.despriorizado} icon={AlertTriangle}
               tooltip="Itens planejados e removidos da sprint antes da conclusão."
               variant={agg.despriorizado > 3 ? 'warning' : 'default'} />
             <KpiCard label="Retornos QA" value={agg.qaReturns} icon={Zap}
-              tooltip="Total de retornos de QA (reprovações em teste). Indica retrabalho no pipeline."
+              tooltip="Total de retornos de QA (reprovações em teste)."
               variant={agg.qaReturns > 5 ? 'danger' : agg.qaReturns > 0 ? 'warning' : 'default'} />
             <KpiCard label="Lead Time Médio" value={`${agg.avgLead}d`} icon={Clock}
-              tooltip="Tempo médio (dias) do backlog até Done. Menor = mais ágil." />
+              tooltip="Tempo médio (dias) do backlog até Done." />
           </div>
         ) : null}
 
@@ -169,7 +157,7 @@ export default function GerencialFabricaDashboard() {
                 <Tooltip>
                   <TooltipTrigger><Info className="h-3.5 w-3.5 text-muted-foreground" /></TooltipTrigger>
                   <TooltipContent className="max-w-xs text-sm">
-                    Saudável: dentro da sprint, sem bloqueios. Atenção: 1 retorno QA ou migração de sprint. Crítico: 2+ retornos, transbordo ou atraso &gt;7 dias.
+                    Saudável: dentro da sprint, sem bloqueios. Atenção: 1 retorno QA ou migração. Crítico: 2+ retornos, transbordo ou atraso &gt;7 dias.
                   </TooltipContent>
                 </Tooltip>
               </CardTitle>
@@ -180,9 +168,7 @@ export default function GerencialFabricaDashboard() {
                   <PieChart>
                     <Pie data={healthDonut} dataKey="value" nameKey="name" cx="50%" cy="50%"
                       innerRadius={50} outerRadius={85} paddingAngle={3}>
-                      {healthDonut.map((entry, i) => (
-                        <Cell key={i} fill={entry.fill} />
-                      ))}
+                      {healthDonut.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                     </Pie>
                     <RTooltip />
                     <Legend />
@@ -202,7 +188,7 @@ export default function GerencialFabricaDashboard() {
                 <Tooltip>
                   <TooltipTrigger><Info className="h-3.5 w-3.5 text-muted-foreground" /></TooltipTrigger>
                   <TooltipContent className="max-w-xs text-sm">
-                    Tendência de transbordos (itens não concluídos na sprint) e retornos QA ao longo das sprints. Tendência de alta indica problemas sistêmicos.
+                    Tendência de transbordos e retornos QA ao longo das sprints.
                   </TooltipContent>
                 </Tooltip>
               </CardTitle>
@@ -240,19 +226,19 @@ export default function GerencialFabricaDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Sprint</TableHead>
-                      <TableHead className="text-center">Total</TableHead>
-                      <TableHead className="text-center">Done</TableHead>
-                      <TableHead className="text-center">Em Progresso</TableHead>
-                      <TableHead className="text-center">Transbordos</TableHead>
-                      <TableHead className="text-center">Retornos QA</TableHead>
-                      <TableHead className="text-center">Lead Time</TableHead>
+                      <SortableTableHead label="Sprint" sortKey="sprint_code" currentSort={sortKey} currentDir={sortDir} onSort={onSort} />
+                      <SortableTableHead label="Total" sortKey="total_itens" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                      <SortableTableHead label="Done" sortKey="done_count" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                      <SortableTableHead label="Em Progresso" sortKey="in_progress_count" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                      <SortableTableHead label="Transbordos" sortKey="transbordo_count" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                      <SortableTableHead label="Retornos QA" sortKey="qa_return_total" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                      <SortableTableHead label="Lead Time" sortKey="avg_lead_time_days" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
                       <TableHead className="text-center">Gargalo</TableHead>
                       <TableHead className="text-center">Saúde</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(rows || []).map((r) => (
+                    {sortedRows.map((r) => (
                       <TableRow key={r.sprint_code}>
                         <TableCell className="font-medium text-xs">
                           {r.sprint_code?.split('\\').pop() || r.sprint_code}
@@ -292,7 +278,7 @@ export default function GerencialFabricaDashboard() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {(!rows || rows.length === 0) && (
+                    {sortedRows.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                           Sem dados disponíveis

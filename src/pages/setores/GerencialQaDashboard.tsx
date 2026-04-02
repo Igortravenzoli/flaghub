@@ -3,11 +3,12 @@ import { SectorLayout } from '@/components/setores/SectorLayout';
 import { useGerencialQa, useQaDesempenho, type GerencialQaRow } from '@/hooks/useGerencialQa';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MultiSprintFilter } from '@/components/gerencial/MultiSprintFilter';
+import { SortableTableHead, useTableSort } from '@/components/gerencial/SortableTableHead';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   LineChart, Line, Legend, Tooltip as RTooltip, Cell,
@@ -49,59 +50,63 @@ function KpiCard({ label, value, icon: Icon, tooltip, variant = 'default' }: {
 const HEALTH_COLORS = { verde: '#10b981', amarelo: '#eab308', vermelho: '#ef4444' };
 
 export default function GerencialQaDashboard() {
-  const [selectedSprint, setSelectedSprint] = useState<string>('all');
-  const sprintParam = selectedSprint !== 'all' ? selectedSprint : undefined;
+  const [selectedSprints, setSelectedSprints] = useState<string[]>([]);
 
-  const { data: qaRows, isLoading: qaLoading } = useGerencialQa(sprintParam);
-  const { data: desempenho, isLoading: desLoading } = useQaDesempenho(sprintParam);
+  const { data: qaRows, isLoading: qaLoading } = useGerencialQa();
+  const { data: desempenho, isLoading: desLoading } = useQaDesempenho();
 
   const sprints = useMemo(() => (qaRows || []).map(r => r.sprint_code).filter(Boolean), [qaRows]);
 
+  const filteredRows = useMemo(() => {
+    if (!qaRows?.length) return [];
+    if (selectedSprints.length === 0) return qaRows;
+    return qaRows.filter(r => selectedSprints.includes(r.sprint_code));
+  }, [qaRows, selectedSprints]);
+
+  const { sortKey, sortDir, onSort, sortFn } = useTableSort<GerencialQaRow>('sprint_code', 'desc');
+  const sortedRows = useMemo(() => [...filteredRows].sort(sortFn), [filteredRows, sortFn]);
+
   const agg = useMemo(() => {
-    if (!qaRows?.length) return null;
-    const target = selectedSprint !== 'all' ? qaRows.filter(r => r.sprint_code === selectedSprint) : qaRows;
-    const testadas = target.reduce((s, r) => s + r.testadas, 0);
-    const aprovadas = target.reduce((s, r) => s + r.aprovadas, 0);
-    const reprovadas = target.reduce((s, r) => s + r.reprovadas, 0);
-    const retornadas = target.reduce((s, r) => s + r.retornadas, 0);
-    const total = target.reduce((s, r) => s + r.total_itens, 0);
+    if (!filteredRows.length) return null;
+    const testadas = filteredRows.reduce((s, r) => s + r.testadas, 0);
+    const aprovadas = filteredRows.reduce((s, r) => s + r.aprovadas, 0);
+    const reprovadas = filteredRows.reduce((s, r) => s + r.reprovadas, 0);
+    const retornadas = filteredRows.reduce((s, r) => s + r.retornadas, 0);
+    const total = filteredRows.reduce((s, r) => s + r.total_itens, 0);
     const taxaAprovacao = testadas > 0 ? Math.round((aprovadas / testadas) * 1000) / 10 : 0;
     const taxaRetrabalho = total > 0 ? Math.round((reprovadas / total) * 1000) / 10 : 0;
-    const avgDays = target.length > 0
-      ? Math.round((target.reduce((s, r) => s + (r.avg_qualidade_days || 0), 0) / target.length) * 10) / 10
+    const avgDays = filteredRows.length > 0
+      ? Math.round((filteredRows.reduce((s, r) => s + (r.avg_qualidade_days || 0), 0) / filteredRows.length) * 10) / 10
       : 0;
-    const criticos = target.reduce((s, r) => s + r.retrabalho_critico, 0);
-    const saudaveis = target.reduce((s, r) => s + r.itens_saudaveis, 0);
-    const atencao = target.reduce((s, r) => s + r.itens_atencao, 0);
-    const itensCriticos = target.reduce((s, r) => s + r.itens_criticos, 0);
+    const criticos = filteredRows.reduce((s, r) => s + r.retrabalho_critico, 0);
+    const saudaveis = filteredRows.reduce((s, r) => s + r.itens_saudaveis, 0);
+    const atencao = filteredRows.reduce((s, r) => s + r.itens_atencao, 0);
+    const itensCriticos = filteredRows.reduce((s, r) => s + r.itens_criticos, 0);
     return { testadas, aprovadas, reprovadas, retornadas, total, taxaAprovacao, taxaRetrabalho, avgDays, criticos, saudaveis, atencao, itensCriticos };
-  }, [qaRows, selectedSprint]);
+  }, [filteredRows]);
 
-  // Evolution chart data
   const evolutionData = useMemo(() =>
-    (qaRows || []).slice().reverse().map(r => ({
+    [...filteredRows].reverse().map(r => ({
       sprint: r.sprint_code?.split('\\').pop() || r.sprint_code,
       aprovadas: r.aprovadas,
       reprovadas: r.reprovadas,
       retornadas: r.retornadas,
       taxa_aprovacao: r.taxa_aprovacao,
     })),
-    [qaRows]
+    [filteredRows]
   );
 
-  // Rework trend
   const reworkTrend = useMemo(() =>
-    (qaRows || []).slice().reverse().map(r => ({
+    [...filteredRows].reverse().map(r => ({
       sprint: r.sprint_code?.split('\\').pop() || r.sprint_code,
       baixo: r.retrabalho_baixo,
       alto: r.retrabalho_alto,
       critico: r.retrabalho_critico,
       taxa: r.taxa_retrabalho,
     })),
-    [qaRows]
+    [filteredRows]
   );
 
-  // Health donut
   const healthDonut = useMemo(() => {
     if (!agg) return [];
     return [
@@ -122,17 +127,11 @@ export default function GerencialQaDashboard() {
       <div className="space-y-6">
         {/* Filters */}
         <div className="flex items-center gap-3 flex-wrap">
-          <Select value={selectedSprint} onValueChange={setSelectedSprint}>
-            <SelectTrigger className="w-[260px]">
-              <SelectValue placeholder="Todas as Sprints" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as Sprints</SelectItem>
-              {sprints.map(s => (
-                <SelectItem key={s} value={s}>{s?.split('\\').pop() || s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSprintFilter
+            sprints={sprints}
+            selected={selectedSprints}
+            onChange={setSelectedSprints}
+          />
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Info className="h-3.5 w-3.5" />
             Métricas derivadas do ciclo de vida e retornos QA
@@ -147,20 +146,20 @@ export default function GerencialQaDashboard() {
         ) : agg ? (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
             <KpiCard label="Testadas" value={agg.testadas} icon={ShieldCheck}
-              tooltip="Total de itens que passaram pela etapa de QA (qualidade_days > 0 ou etapa atual = qualidade/done)" />
+              tooltip="Total de itens que passaram pela etapa de QA" />
             <KpiCard label="Aprovadas" value={agg.aprovadas} icon={CheckCircle2}
-              tooltip="Itens concluídos (Done) sem nenhum retorno QA — aprovados de primeira" variant="success" />
+              tooltip="Itens concluídos (Done) sem retorno QA" variant="success" />
             <KpiCard label="Reprovadas" value={agg.reprovadas} icon={XCircle}
-              tooltip="Itens com pelo menos 1 retorno QA (falha em teste)"
+              tooltip="Itens com pelo menos 1 retorno QA"
               variant={agg.reprovadas > 5 ? 'danger' : agg.reprovadas > 0 ? 'warning' : 'default'} />
             <KpiCard label="Taxa Aprovação" value={`${agg.taxaAprovacao}%`} icon={TrendingUp}
-              tooltip="Percentual de itens aprovados de primeira sobre o total testado"
+              tooltip="Percentual de itens aprovados de primeira"
               variant={agg.taxaAprovacao >= 80 ? 'success' : agg.taxaAprovacao >= 60 ? 'warning' : 'danger'} />
             <KpiCard label="Retrabalho Crítico" value={agg.criticos} icon={AlertTriangle}
-              tooltip="Itens com 3+ retornos QA — indicam problemas graves de especificação ou qualidade de código"
+              tooltip="Itens com 3+ retornos QA"
               variant={agg.criticos > 0 ? 'danger' : 'default'} />
             <KpiCard label="Tempo Médio QA" value={`${agg.avgDays}d`} icon={Clock}
-              tooltip="Tempo médio (dias) que os itens permanecem na etapa de qualidade/teste" />
+              tooltip="Tempo médio (dias) na etapa de qualidade" />
           </div>
         ) : null}
 
@@ -175,7 +174,6 @@ export default function GerencialQaDashboard() {
           {/* Evolução Sprint a Sprint */}
           <TabsContent value="evolucao" className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Stacked bars */}
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">Resultado por Sprint</CardTitle>
@@ -198,7 +196,6 @@ export default function GerencialQaDashboard() {
                 </CardContent>
               </Card>
 
-              {/* Health donut */}
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">Saúde dos Itens</CardTitle>
@@ -220,7 +217,7 @@ export default function GerencialQaDashboard() {
               </Card>
             </div>
 
-            {/* Sprint comparison table */}
+            {/* Sprint comparison table with sorting */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Comparativo por Sprint</CardTitle>
@@ -230,19 +227,19 @@ export default function GerencialQaDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Sprint</TableHead>
-                        <TableHead className="text-center">Testadas</TableHead>
-                        <TableHead className="text-center">Aprovadas</TableHead>
-                        <TableHead className="text-center">Reprovadas</TableHead>
-                        <TableHead className="text-center">Retornadas</TableHead>
-                        <TableHead className="text-center">% Aprovação</TableHead>
-                        <TableHead className="text-center">% Retrabalho</TableHead>
-                        <TableHead className="text-center">Tempo Médio</TableHead>
+                        <SortableTableHead label="Sprint" sortKey="sprint_code" currentSort={sortKey} currentDir={sortDir} onSort={onSort} />
+                        <SortableTableHead label="Testadas" sortKey="testadas" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                        <SortableTableHead label="Aprovadas" sortKey="aprovadas" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                        <SortableTableHead label="Reprovadas" sortKey="reprovadas" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                        <SortableTableHead label="Retornadas" sortKey="retornadas" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                        <SortableTableHead label="% Aprovação" sortKey="taxa_aprovacao" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                        <SortableTableHead label="% Retrabalho" sortKey="taxa_retrabalho" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
+                        <SortableTableHead label="Tempo Médio" sortKey="avg_qualidade_days" currentSort={sortKey} currentDir={sortDir} onSort={onSort} className="text-center" />
                         <TableHead className="text-center">Saúde</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(qaRows || []).map((r) => (
+                      {sortedRows.map((r) => (
                         <TableRow key={r.sprint_code}>
                           <TableCell className="font-medium text-xs">
                             {r.sprint_code?.split('\\').pop() || r.sprint_code}
@@ -284,7 +281,7 @@ export default function GerencialQaDashboard() {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {(!qaRows || qaRows.length === 0) && (
+                      {sortedRows.length === 0 && (
                         <TableRow>
                           <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                             Sem dados disponíveis
@@ -308,7 +305,7 @@ export default function GerencialQaDashboard() {
                     <Tooltip>
                       <TooltipTrigger><Info className="h-3.5 w-3.5 text-muted-foreground" /></TooltipTrigger>
                       <TooltipContent className="max-w-xs text-sm">
-                        Baixo: 1 retorno QA. Alto: 2 retornos. Crítico: 3+ retornos. Tendência de alta indica problemas de especificação ou qualidade.
+                        Baixo: 1 retorno QA. Alto: 2 retornos. Crítico: 3+ retornos.
                       </TooltipContent>
                     </Tooltip>
                   </CardTitle>
