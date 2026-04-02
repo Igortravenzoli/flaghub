@@ -1473,7 +1473,7 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Sprint Board ═══════ */}
           <TabsContent value="sprint-board" className="space-y-4 mt-0">
             <SprintBoardTab
-              allItems={fab.allItems}
+              allItems={sprintFilteredItems}
               sortedSprints={fab.sortedSprints}
               isLoading={fab.isLoading}
             />
