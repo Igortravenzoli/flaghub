@@ -115,7 +115,7 @@ export default function QualidadeDashboard() {
           changed_date: w.changed_date,
           iteration_path: w.iteration_path,
           web_url: w.web_url,
-          qa_retorno_count: reworkMap.get(w.id) || 0,
+          qa_retorno_count: (reworkMap.get(w.id) as number) || 0,
         }));
     },
     staleTime: 5 * 60 * 1000,
