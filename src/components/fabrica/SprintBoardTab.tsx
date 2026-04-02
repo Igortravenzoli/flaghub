@@ -210,6 +210,18 @@ export function SprintBoardTab({ allItems, sortedSprints, isLoading }: SprintBoa
             <SelectItem value="bug">Bug</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs">
+            <ArrowUpDown className="h-3 w-3 mr-1" />
+            <SelectValue placeholder="Ordenar" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="sprint-desc">Sprint ↓ (recente)</SelectItem>
+            <SelectItem value="sprint-asc">Sprint ↑ (antiga)</SelectItem>
+            <SelectItem value="total-desc">Total ↓ (maior)</SelectItem>
+            <SelectItem value="total-asc">Total ↑ (menor)</SelectItem>
+          </SelectContent>
+        </Select>
         <div className="flex gap-1 ml-auto">
           <Badge
             variant={viewMode === 'table' ? 'default' : 'outline'}
