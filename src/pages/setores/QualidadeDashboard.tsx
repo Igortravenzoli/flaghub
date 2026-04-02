@@ -18,16 +18,38 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
 import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo } from 'lucide-react';
+import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo, Users } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
 type QaKpiFilter = 'all' | 'em_teste' | 'deploy' | 'com_retorno' | 'aviao';
+
+/** Default QA collaborator patterns — only these are pre-selected */
+const QA_DEFAULT_COLLAB_PATTERNS = [
+  'carlos r',
+  'rodrigues',
+  'mauricio',
+  'thiago',
+  'thales',
+];
+
+function normalizeQaName(name: string): string {
+  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function isQaDefaultCollab(name: string): boolean {
+  const n = normalizeQaName(name);
+  return QA_DEFAULT_COLLAB_PATTERNS.some(p => n.includes(p));
+}
 type QaHealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const integrations: Integration[] = [
@@ -73,6 +95,9 @@ export default function QualidadeDashboard() {
   const [sprintFilter, setSprintFilter] = useState<string>('all');
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
+  const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
+  const [collabMode, setCollabMode] = useState<'default' | 'all' | 'custom'>('default');
+  const [customSelectedCollabs, setCustomSelectedCollabs] = useState<Set<string>>(new Set());
   // "base" = atemporal/macro, sem filtro de sprint — para os KPIs do topo
   const base = useQualidadeKpis(undefined, undefined, 'all');
   const { allItems, lastSync, isLoading, isError } = base;
@@ -146,6 +171,58 @@ export default function QualidadeDashboard() {
   const crossSectorBanner = crossSectorResult ? <CrossSectorSearchBanner result={crossSectorResult} /> : null;
   const handleTableSearchChange = useCallback((s: string) => setTableSearch(s), []);
 
+  // ── Collaborator filter logic ──
+  const allCollaborators = useMemo(() => {
+    const nameSet = new Set<string>();
+    for (const item of allItems) {
+      if (item.assigned_to_display) nameSet.add(item.assigned_to_display);
+    }
+    // Also include done items collaborators for Retrabalho tab
+    for (const item of allDoneItems) {
+      if (item.assigned_to_display) nameSet.add(item.assigned_to_display);
+    }
+    return [...nameSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [allItems, allDoneItems]);
+
+  const isCollabSelected = useCallback((name: string): boolean => {
+    if (collabMode === 'all') return true;
+    if (collabMode === 'default') return isQaDefaultCollab(name);
+    return customSelectedCollabs.has(name);
+  }, [collabMode, customSelectedCollabs]);
+
+  const selectedCollabCount = useMemo(
+    () => allCollaborators.filter(isCollabSelected).length,
+    [allCollaborators, isCollabSelected]
+  );
+
+  const toggleCollab = useCallback((name: string, checked: boolean) => {
+    setCollabMode('custom');
+    setCustomSelectedCollabs(prev => {
+      // If switching from default/all to custom, seed with current selection
+      let next: Set<string>;
+      if (collabMode !== 'custom') {
+        next = new Set(allCollaborators.filter(isCollabSelected));
+      } else {
+        next = new Set(prev);
+      }
+      if (checked) {
+        next.add(name);
+      } else {
+        next.delete(name);
+      }
+      return next;
+    });
+  }, [collabMode, allCollaborators, isCollabSelected]);
+
+  const filterByCollab = useCallback((items: QualidadeItem[]): QualidadeItem[] => {
+    if (collabMode === 'all') return items;
+    return items.filter(i => {
+      const name = i.assigned_to_display;
+      if (!name) return false;
+      return isCollabSelected(name);
+    });
+  }, [collabMode, isCollabSelected]);
+
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
     [allItems]
@@ -218,11 +295,11 @@ export default function QualidadeDashboard() {
 
   // KPIs macro são atemporais → ao clicar, filtrar a partir de base (enrichedItems)
   // Quando sprint está selecionado, filtrar scoped.items
+  // Apply collaborator filter to the source items
   const kpiSourceItems = useMemo(() => {
-    // Se o KPI clicado é atemporal (card macro), mostrar de base
-    // Se sprint está selecionado, mostrar scoped
-    return sprintFilter === 'all' ? base.enrichedItems : scoped.items;
-  }, [sprintFilter, base.enrichedItems, scoped.items]);
+    const raw = sprintFilter === 'all' ? base.enrichedItems : scoped.items;
+    return filterByCollab(raw);
+  }, [sprintFilter, base.enrichedItems, scoped.items, filterByCollab]);
 
   const filteredItems = useMemo(() => {
     const source = kpiSourceItems;
@@ -303,16 +380,29 @@ export default function QualidadeDashboard() {
   ] : [];
 
   // KPIs: when sprint is selected, show scoped data; when 'all', show base (atemporal)
-  const activeKpiSource = sprintFilter === 'all' ? base : scoped;
-  const officialOverview = {
-    totalQa: activeKpiSource.total,
-    emTeste: activeKpiSource.emTeste,
-    aguardandoDeploy: activeKpiSource.aguardandoDeploy,
-    itensComRetorno: activeKpiSource.itensComRetorno,
-    totalRetornos: activeKpiSource.totalRetornos,
-    avioesTestados: activeKpiSource.avioesTestados,
-    filaAtual: activeKpiSource.filaAtual,
-  };
+  // Recompute KPI overview from collaborator-filtered items
+  const officialOverview = useMemo(() => {
+    const items = kpiSourceItems;
+    const emTeste = items.filter(i => QUALITY_TESTING_STATES.has(i.state || '')).length;
+    const aguardandoDeploy = items.filter(i => QUALITY_DEPLOY_STATES.has(i.state || '')).length;
+    const itensComRetorno = items.filter(i => (i.qa_retorno_count ?? 0) > 0).length;
+    const totalRetornos = items.reduce((sum, i) => sum + (i.qa_retorno_count ?? 0), 0);
+    const avioesTestados = items.filter(i => {
+      const hasAviaoTag = (i.tags || '').toUpperCase().includes('AVIAO');
+      const testedState = QUALITY_TEST_STATES.has(i.state || '');
+      return hasAviaoTag && testedState;
+    }).length;
+    const filaAtual = items.filter(i => QUALITY_TEST_STATES.has(i.state || '')).length;
+    return {
+      totalQa: items.length,
+      emTeste,
+      aguardandoDeploy,
+      itensComRetorno,
+      totalRetornos,
+      avioesTestados,
+      filaAtual,
+    };
+  }, [kpiSourceItems]);
 
   return (
     <SectorLayout title="Qualidade" subtitle="Gestão à Vista — QA" lastUpdate="" integrations={integrations} areaKey="qualidade" syncFunctions={[{ name: 'devops-sync-qualidade', label: 'Sincronizar Fila Atual da Qualidade' }]}>
@@ -333,6 +423,44 @@ export default function QualidadeDashboard() {
               ))}
             </SelectContent>
           </Select>
+        )}
+        {/* Collaborator multi-select filter */}
+        {allCollaborators.length > 0 && (
+          <Popover open={collaboratorsOpen} onOpenChange={setCollaboratorsOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="gap-1 h-8 px-3 text-xs">
+                <Users className="h-3.5 w-3.5" />
+                Colaboradores ({selectedCollabCount}/{allCollaborators.length})
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Colaboradores contabilizados</p>
+              <ScrollArea className="h-[280px]">
+                <div className="space-y-1">
+                  {allCollaborators.map(name => {
+                    const checked = isCollabSelected(name);
+                    return (
+                      <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => toggleCollab(name, v === true)}
+                        />
+                        <span className="truncate">{name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              <div className="border-t mt-2 pt-2 flex gap-1">
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setCollabMode('all')}>
+                  Todos
+                </Button>
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setCollabMode('default')}>
+                  Padrão (4 devs)
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
         <DashboardFilterBar
           preset={customActive ? 'custom' : 'all'}
@@ -411,10 +539,10 @@ export default function QualidadeDashboard() {
           {/* ═══════ TAB: Retrabalho ═══════ */}
           <TabsContent value="retrabalho" className="space-y-4 mt-0">
             {(() => {
-              // Filter done items by the active date range
+              // Filter done items by the active date range + collaborator filter
               const rangeFrom = effectiveRange.from;
               const rangeTo = effectiveRange.to;
-              const doneItems = allDoneItems.filter(i => {
+              const doneItems = filterByCollab(allDoneItems).filter(i => {
                 const cd = i.changed_date ? new Date(i.changed_date) : null;
                 if (!cd) return false;
                 return cd >= rangeFrom && cd <= rangeTo;
