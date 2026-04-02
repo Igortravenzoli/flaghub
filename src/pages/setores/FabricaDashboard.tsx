@@ -10,6 +10,7 @@ import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
+import { SprintBoardTab } from '@/components/fabrica/SprintBoardTab';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
@@ -30,7 +31,7 @@ import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dat
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
   Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
-  TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow
+  TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow, LayoutGrid
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
@@ -878,6 +879,9 @@ export default function FabricaDashboard() {
             <TabsTrigger value="por-feature" className="gap-1.5 text-xs">
               <Workflow className="h-3.5 w-3.5" />Por Feature
             </TabsTrigger>
+            <TabsTrigger value="sprint-board" className="gap-1.5 text-xs">
+              <LayoutGrid className="h-3.5 w-3.5" />Sprint Board
+            </TabsTrigger>
             <TabsTrigger value="backlog-priorizar" className="gap-1.5 text-xs">
               <ListTodo className="h-3.5 w-3.5" />Backlog Priorizar
             </TabsTrigger>
@@ -1422,6 +1426,15 @@ export default function FabricaDashboard() {
                 )}
               </div>
             </Card>
+          </TabsContent>
+
+          {/* ═══════ TAB: Sprint Board ═══════ */}
+          <TabsContent value="sprint-board" className="space-y-4 mt-0">
+            <SprintBoardTab
+              allItems={fab.allItems}
+              sortedSprints={fab.sortedSprints}
+              isLoading={fab.isLoading}
+            />
           </TabsContent>
 
           {/* ═══════ TAB: Backlog Priorizar ═══════ */}
