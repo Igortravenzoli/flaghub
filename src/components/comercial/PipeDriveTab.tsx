@@ -186,8 +186,8 @@ export function PipeDriveTab() {
       {stats.vendasPorMes.length > 0 && (
         <Card className="p-4">
           <div className="mb-1">
-            <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Média Mensal</h3>
-            <p className="text-xs text-muted-foreground">Referência: média mensal = 100%</p>
+            <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Meta Mensal</h3>
+            <p className="text-xs text-muted-foreground">Referência: meta mensal = R$ 110K (100%)</p>
           </div>
           <div className="h-[240px] mt-2">
             <ResponsiveContainer width="100%" height="100%">
