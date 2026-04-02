@@ -145,21 +145,25 @@ export default function QualidadeDashboard() {
         }
       }
 
-      // 3) Extract who closed each item from state_history
-      const closedByMap = new Map<number, string>();
-      const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+      // 3) Extract who from QA returned each item to dev (Em Teste → dev state)
+      const returnedByMap = new Map<number, string[]>();
+      const QA_STATES = new Set(['Em Teste']);
+      const DEV_STATES = new Set(['Em desenvolvimento', 'In Progress', 'To Do', 'New', 'Committed', 'Prioritized']);
       for (const w of allDoneItems) {
         if (w.state_history && Array.isArray(w.state_history)) {
-          // Find the last revision that transitioned to a Done state
-          for (let ri = w.state_history.length - 1; ri >= 0; ri--) {
-            const rev = w.state_history[ri] as any;
-            const newState = rev?.newValue || rev?.state;
-            if (newState && DONE_STATES.has(newState)) {
-              const who = rev?.revisedBy?.displayName || rev?.changedBy || rev?.revisedBy?.uniqueName || null;
-              if (who) closedByMap.set(w.id, who);
-              break;
+          const returners: string[] = [];
+          for (let ri = 1; ri < w.state_history.length; ri++) {
+            const prev = w.state_history[ri - 1] as any;
+            const curr = w.state_history[ri] as any;
+            const prevState = prev?.newValue;
+            const currNewState = curr?.newValue;
+            // Transition: was in "Em Teste" → moved to a dev state
+            if (prevState && QA_STATES.has(prevState) && currNewState && DEV_STATES.has(currNewState)) {
+              const who = typeof curr?.revisedBy === 'string' ? curr.revisedBy : (curr?.revisedBy?.displayName || curr?.revisedBy?.uniqueName || null);
+              if (who && !returners.includes(who)) returners.push(who);
             }
           }
+          if (returners.length > 0) returnedByMap.set(w.id, returners);
         }
       }
 
@@ -176,7 +180,7 @@ export default function QualidadeDashboard() {
         iteration_path: w.iteration_path,
         web_url: w.web_url,
         qa_retorno_count: retornoMap.get(w.id) ?? 0,
-        closed_by: closedByMap.get(w.id) || w.assigned_to_display || null,
+        returned_by: (returnedByMap.get(w.id) || []).join(', ') || null,
       }));
     },
     staleTime: 5 * 60 * 1000,
@@ -199,12 +203,25 @@ export default function QualidadeDashboard() {
     for (const item of allItems) {
       if (item.assigned_to_display) nameSet.add(item.assigned_to_display);
     }
-    // Also include done items collaborators for Retrabalho tab
     for (const item of allDoneItems) {
       if (item.assigned_to_display) nameSet.add(item.assigned_to_display);
     }
     return [...nameSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [allItems, allDoneItems]);
+
+  // Separate list for rework tab: people who returned tasks from QA
+  const reworkReturners = useMemo(() => {
+    const nameSet = new Set<string>();
+    for (const item of allDoneItems) {
+      if (item.returned_by) {
+        for (const name of item.returned_by.split(',')) {
+          const trimmed = name.trim();
+          if (trimmed) nameSet.add(trimmed);
+        }
+      }
+    }
+    return [...nameSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [allDoneItems]);
 
   const isCollabSelected = useCallback((name: string): boolean => {
     if (collabMode === 'all') return true;
@@ -331,8 +348,8 @@ export default function QualidadeDashboard() {
   }, [reworkCollabMode, reworkCustomCollabs]);
 
   const reworkSelectedCount = useMemo(
-    () => allCollaborators.filter(isReworkCollabSelected).length,
-    [allCollaborators, isReworkCollabSelected]
+    () => reworkReturners.filter(isReworkCollabSelected).length,
+    [reworkReturners, isReworkCollabSelected]
   );
 
   const toggleReworkCollab = useCallback((name: string, checked: boolean) => {
@@ -340,21 +357,24 @@ export default function QualidadeDashboard() {
     setReworkCustomCollabs(prev => {
       let next: Set<string>;
       if (reworkCollabMode !== 'custom') {
-        next = new Set(allCollaborators.filter(isReworkCollabSelected));
+        next = new Set(reworkReturners.filter(isReworkCollabSelected));
       } else {
         next = new Set(prev);
       }
       if (checked) next.add(name); else next.delete(name);
       return next;
     });
-  }, [reworkCollabMode, allCollaborators, isReworkCollabSelected]);
+  }, [reworkCollabMode, reworkReturners, isReworkCollabSelected]);
 
   const filterReworkByCollab = useCallback((items: QualidadeItem[]): QualidadeItem[] => {
     if (reworkCollabMode === 'all') return items;
     return items.filter(i => {
-      const name = i.assigned_to_display;
-      if (!name) return false;
-      return isReworkCollabSelected(name);
+      // Filter by who from QA returned the task (returned_by), not assigned_to
+      const returnedBy = i.returned_by;
+      if (!returnedBy) return false;
+      // returned_by may contain multiple names comma-separated
+      const names = returnedBy.split(',').map(n => n.trim());
+      return names.some(name => isReworkCollabSelected(name));
     });
   }, [reworkCollabMode, isReworkCollabSelected]);
 
@@ -601,14 +621,14 @@ export default function QualidadeDashboard() {
                 <PopoverTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="gap-1 h-8 px-3 text-xs">
                     <Users className="h-3.5 w-3.5" />
-                    Responsável ({reworkSelectedCount}/{allCollaborators.length})
+                    Retornado por ({reworkSelectedCount}/{reworkReturners.length})
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-64 p-2" align="start">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Filtrar por quem encerrou</p>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Filtrar por quem retornou do Teste</p>
                   <ScrollArea className="h-[280px]">
                     <div className="space-y-1">
-                      {allCollaborators.map(name => {
+                      {reworkReturners.map(name => {
                         const checked = isReworkCollabSelected(name);
                         return (
                           <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
@@ -702,15 +722,14 @@ export default function QualidadeDashboard() {
                             </div>
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                               {item.assigned_to_display || 'Sem responsável'}
-                              {item.closed_by && item.closed_by !== item.assigned_to_display ? ` • Encerrado por: ${item.closed_by}` : ''}
                               {item.iteration_path ? ` • ${item.iteration_path.split('\\').pop()}` : ''}
                             </p>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            {item.closed_by && (
-                              <Badge variant="outline" className="text-[10px] gap-1">
-                                <Users className="h-3 w-3" />
-                                {item.closed_by.split(' ').slice(0, 2).join(' ')}
+                            {item.returned_by && (
+                              <Badge variant="outline" className="text-[10px] gap-1 border-amber-400 text-amber-700 dark:text-amber-400">
+                                <RotateCcw className="h-3 w-3" />
+                                {item.returned_by.split(',').map(n => n.trim().split(' ').slice(0, 2).join(' ')).join(', ')}
                               </Badge>
                             )}
                             <Badge variant="destructive" className="text-xs font-mono">

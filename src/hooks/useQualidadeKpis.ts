@@ -16,7 +16,7 @@ export interface QualidadeItem {
   sprint_code?: string | null;
   web_url: string | null;
   qa_retorno_count?: number;
-  closed_by?: string | null;
+  returned_by?: string | null;
   is_current_queue?: boolean;
   is_waiting_deploy?: boolean;
   has_sprint_code?: boolean;
