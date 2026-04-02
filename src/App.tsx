@@ -98,6 +98,8 @@ const App = () => (
                 <Route path="/setor/customer-service" element={<CustomerServiceDashboard />} />
                 <Route path="/setor/fabrica" element={<FabricaDashboard />} />
                 <Route path="/setor/infraestrutura" element={<InfraestruturaDashboard />} />
+                <Route path="/setor/fabrica/gerencial" element={<GerencialFabricaDashboard />} />
+                <Route path="/setor/qualidade/gerencial" element={<GerencialQaDashboard />} />
                 
                 {/* Admin pages */}
                 {/* AccessRequests & Permissions merged into /usuarios */}

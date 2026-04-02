@@ -115,9 +115,9 @@ export default function GerencialQaDashboard() {
 
   return (
     <SectorLayout
-      sectorKey="qualidade"
-      sectorName="Gerencial QA"
-      sectorDescription="Visão executiva de qualidade, retrabalho e eficiência de testes"
+      title="Gerencial QA"
+      subtitle="Visão executiva de qualidade, retrabalho e eficiência de testes"
+      areaKey="qualidade"
     >
       <div className="space-y-6">
         {/* Filters */}

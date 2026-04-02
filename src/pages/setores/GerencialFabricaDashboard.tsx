@@ -110,9 +110,9 @@ export default function GerencialFabricaDashboard() {
 
   return (
     <SectorLayout
-      sectorKey="fabrica"
-      sectorName="Gerencial Fábrica"
-      sectorDescription="Visão executiva de saúde, gargalos e risco do pipeline de desenvolvimento"
+      title="Gerencial Fábrica"
+      subtitle="Visão executiva de saúde, gargalos e risco do pipeline de desenvolvimento"
+      areaKey="fabrica"
     >
       <div className="space-y-6">
         {/* Filters */}
