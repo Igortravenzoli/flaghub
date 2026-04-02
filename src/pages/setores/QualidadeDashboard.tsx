@@ -397,8 +397,7 @@ export default function QualidadeDashboard() {
           {/* ═══════ TAB: Retrabalho ═══════ */}
           <TabsContent value="retrabalho" className="space-y-4 mt-0">
             {(() => {
-              const doneStates = new Set(['Done', 'Closed', 'Resolved']);
-              const doneItems = base.enrichedItems.filter(i => doneStates.has(i.state || ''));
+              const doneItems = doneReworkItems;
               const doneWithRework = doneItems.filter(i => (i.qa_retorno_count ?? 0) > 0);
               const totalDone = doneItems.length;
               const totalReworkItems = doneWithRework.length;
