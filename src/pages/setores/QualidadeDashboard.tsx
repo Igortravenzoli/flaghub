@@ -304,6 +304,41 @@ export default function QualidadeDashboard() {
     return filterByCollab(raw);
   }, [sprintFilter, base.enrichedItems, scoped.items, filterByCollab]);
 
+  // Rework tab collaborator filter
+  const isReworkCollabSelected = useCallback((name: string): boolean => {
+    if (reworkCollabMode === 'all') return true;
+    if (reworkCollabMode === 'default') return isQaDefaultCollab(name);
+    return reworkCustomCollabs.has(name);
+  }, [reworkCollabMode, reworkCustomCollabs]);
+
+  const reworkSelectedCount = useMemo(
+    () => allCollaborators.filter(isReworkCollabSelected).length,
+    [allCollaborators, isReworkCollabSelected]
+  );
+
+  const toggleReworkCollab = useCallback((name: string, checked: boolean) => {
+    setReworkCollabMode('custom');
+    setReworkCustomCollabs(prev => {
+      let next: Set<string>;
+      if (reworkCollabMode !== 'custom') {
+        next = new Set(allCollaborators.filter(isReworkCollabSelected));
+      } else {
+        next = new Set(prev);
+      }
+      if (checked) next.add(name); else next.delete(name);
+      return next;
+    });
+  }, [reworkCollabMode, allCollaborators, isReworkCollabSelected]);
+
+  const filterReworkByCollab = useCallback((items: QualidadeItem[]): QualidadeItem[] => {
+    if (reworkCollabMode === 'all') return items;
+    return items.filter(i => {
+      const name = i.assigned_to_display;
+      if (!name) return false;
+      return isReworkCollabSelected(name);
+    });
+  }, [reworkCollabMode, isReworkCollabSelected]);
+
   const filteredItems = useMemo(() => {
     const source = kpiSourceItems;
     switch (kpiFilter) {
