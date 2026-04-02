@@ -171,6 +171,58 @@ export default function QualidadeDashboard() {
   const crossSectorBanner = crossSectorResult ? <CrossSectorSearchBanner result={crossSectorResult} /> : null;
   const handleTableSearchChange = useCallback((s: string) => setTableSearch(s), []);
 
+  // ── Collaborator filter logic ──
+  const allCollaborators = useMemo(() => {
+    const nameSet = new Set<string>();
+    for (const item of allItems) {
+      if (item.assigned_to_display) nameSet.add(item.assigned_to_display);
+    }
+    // Also include done items collaborators for Retrabalho tab
+    for (const item of allDoneItems) {
+      if (item.assigned_to_display) nameSet.add(item.assigned_to_display);
+    }
+    return [...nameSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [allItems, allDoneItems]);
+
+  const isCollabSelected = useCallback((name: string): boolean => {
+    if (collabMode === 'all') return true;
+    if (collabMode === 'default') return isQaDefaultCollab(name);
+    return customSelectedCollabs.has(name);
+  }, [collabMode, customSelectedCollabs]);
+
+  const selectedCollabCount = useMemo(
+    () => allCollaborators.filter(isCollabSelected).length,
+    [allCollaborators, isCollabSelected]
+  );
+
+  const toggleCollab = useCallback((name: string, checked: boolean) => {
+    setCollabMode('custom');
+    setCustomSelectedCollabs(prev => {
+      // If switching from default/all to custom, seed with current selection
+      let next: Set<string>;
+      if (collabMode !== 'custom') {
+        next = new Set(allCollaborators.filter(isCollabSelected));
+      } else {
+        next = new Set(prev);
+      }
+      if (checked) {
+        next.add(name);
+      } else {
+        next.delete(name);
+      }
+      return next;
+    });
+  }, [collabMode, allCollaborators, isCollabSelected]);
+
+  const filterByCollab = useCallback((items: QualidadeItem[]): QualidadeItem[] => {
+    if (collabMode === 'all') return items;
+    return items.filter(i => {
+      const name = i.assigned_to_display;
+      if (!name) return false;
+      return isCollabSelected(name);
+    });
+  }, [collabMode, isCollabSelected]);
+
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(allItems, [(i) => i.created_date, (i) => i.changed_date]),
     [allItems]
