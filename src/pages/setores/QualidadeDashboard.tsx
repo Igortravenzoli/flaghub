@@ -145,21 +145,25 @@ export default function QualidadeDashboard() {
         }
       }
 
-      // 3) Extract who closed each item from state_history
-      const closedByMap = new Map<number, string>();
-      const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+      // 3) Extract who from QA returned each item to dev (Em Teste → dev state)
+      const returnedByMap = new Map<number, string[]>();
+      const QA_STATES = new Set(['Em Teste']);
+      const DEV_STATES = new Set(['Em desenvolvimento', 'In Progress', 'To Do', 'New', 'Committed', 'Prioritized']);
       for (const w of allDoneItems) {
         if (w.state_history && Array.isArray(w.state_history)) {
-          // Find the last revision that transitioned to a Done state
-          for (let ri = w.state_history.length - 1; ri >= 0; ri--) {
-            const rev = w.state_history[ri] as any;
-            const newState = rev?.newValue || rev?.state;
-            if (newState && DONE_STATES.has(newState)) {
-              const who = rev?.revisedBy?.displayName || rev?.changedBy || rev?.revisedBy?.uniqueName || null;
-              if (who) closedByMap.set(w.id, who);
-              break;
+          const returners: string[] = [];
+          for (let ri = 1; ri < w.state_history.length; ri++) {
+            const prev = w.state_history[ri - 1] as any;
+            const curr = w.state_history[ri] as any;
+            const prevState = prev?.newValue;
+            const currNewState = curr?.newValue;
+            // Transition: was in "Em Teste" → moved to a dev state
+            if (prevState && QA_STATES.has(prevState) && currNewState && DEV_STATES.has(currNewState)) {
+              const who = typeof curr?.revisedBy === 'string' ? curr.revisedBy : (curr?.revisedBy?.displayName || curr?.revisedBy?.uniqueName || null);
+              if (who && !returners.includes(who)) returners.push(who);
             }
           }
+          if (returners.length > 0) returnedByMap.set(w.id, returners);
         }
       }
 
