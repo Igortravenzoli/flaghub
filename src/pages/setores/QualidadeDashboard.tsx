@@ -348,8 +348,8 @@ export default function QualidadeDashboard() {
   }, [reworkCollabMode, reworkCustomCollabs]);
 
   const reworkSelectedCount = useMemo(
-    () => allCollaborators.filter(isReworkCollabSelected).length,
-    [allCollaborators, isReworkCollabSelected]
+    () => reworkReturners.filter(isReworkCollabSelected).length,
+    [reworkReturners, isReworkCollabSelected]
   );
 
   const toggleReworkCollab = useCallback((name: string, checked: boolean) => {
@@ -357,14 +357,14 @@ export default function QualidadeDashboard() {
     setReworkCustomCollabs(prev => {
       let next: Set<string>;
       if (reworkCollabMode !== 'custom') {
-        next = new Set(allCollaborators.filter(isReworkCollabSelected));
+        next = new Set(reworkReturners.filter(isReworkCollabSelected));
       } else {
         next = new Set(prev);
       }
       if (checked) next.add(name); else next.delete(name);
       return next;
     });
-  }, [reworkCollabMode, allCollaborators, isReworkCollabSelected]);
+  }, [reworkCollabMode, reworkReturners, isReworkCollabSelected]);
 
   const filterReworkByCollab = useCallback((items: QualidadeItem[]): QualidadeItem[] => {
     if (reworkCollabMode === 'all') return items;
