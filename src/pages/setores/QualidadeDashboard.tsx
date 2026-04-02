@@ -627,18 +627,19 @@ export default function QualidadeDashboard() {
 
           {/* ═══════ TAB: Retrabalho ═══════ */}
           <TabsContent value="retrabalho" className="space-y-4 mt-0">
-            {/* Rework-specific collaborator filter */}
+            {/* Rework filters row */}
             <div className="flex items-center gap-3 flex-wrap">
+              {/* Collaborator filter */}
               <Popover>
                 <PopoverTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="gap-1 h-8 px-3 text-xs">
                     <Users className="h-3.5 w-3.5" />
-                    Retornado por ({reworkSelectedCount}/{reworkReturners.length})
+                    Último retorno por ({reworkSelectedCount}/{reworkReturners.length})
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-2" align="start">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Filtrar por quem retornou do Teste</p>
-                  <ScrollArea className="h-[280px]">
+                <PopoverContent className="w-72 p-2" align="start">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Último responsável pelo retorno QA→Dev</p>
+                  <ScrollArea className="h-[300px]">
                     <div className="space-y-1">
                       {reworkReturners.map(name => {
                         const checked = isReworkCollabSelected(name);
@@ -652,6 +653,9 @@ export default function QualidadeDashboard() {
                           </label>
                         );
                       })}
+                      {reworkReturners.length === 0 && (
+                        <p className="text-xs text-muted-foreground px-2 py-4 text-center">Nenhum retorno QA encontrado no histórico.</p>
+                      )}
                     </div>
                   </ScrollArea>
                   <div className="border-t mt-2 pt-2 flex gap-1">
@@ -659,43 +663,99 @@ export default function QualidadeDashboard() {
                       Todos
                     </Button>
                     <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setReworkCollabMode('default')}>
-                      Padrão (4 devs)
+                      Padrão QA
                     </Button>
                   </div>
                 </PopoverContent>
               </Popover>
+
+              {/* Min return count filter */}
+              <Select value={String(reworkMinCount)} onValueChange={(v) => setReworkMinCount(Number(v))}>
+                <SelectTrigger className="w-[160px] h-8 text-xs">
+                  <SelectValue placeholder="Retornos mín." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1+ retorno</SelectItem>
+                  <SelectItem value="2">2+ retornos</SelectItem>
+                  <SelectItem value="3">3+ retornos</SelectItem>
+                </SelectContent>
+              </Select>
+
               {reworkCollabMode !== 'all' && (
                 <Badge variant="secondary" className="text-xs gap-1 cursor-pointer" onClick={() => setReworkCollabMode('all')}>
-                  Filtro: {reworkCollabMode === 'default' ? 'Padrão (4 devs)' : `${reworkSelectedCount} selecionados`} ✕
+                  Filtro: {reworkCollabMode === 'default' ? 'Padrão QA' : `${reworkSelectedCount} selecionados`} ✕
                 </Badge>
               )}
             </div>
 
             {(() => {
-              // Filter done items by the active date range + rework-specific collaborator filter
+              // All done items with rework (historical, not limited by date for the main view)
+              const allWithRework = allDoneItems.filter(i => (i.qa_retorno_count ?? 0) >= reworkMinCount);
+              // Apply collaborator filter
+              const collabFiltered = filterReworkByCollab(allWithRework);
+              // Optionally apply date range for date-scoped KPIs
               const rangeFrom = effectiveRange.from;
               const rangeTo = effectiveRange.to;
-              const doneItems = filterReworkByCollab(allDoneItems).filter(i => {
+              const dateFiltered = collabFiltered.filter(i => {
                 const cd = i.changed_date ? new Date(i.changed_date) : null;
-                if (!cd) return false;
-                return cd >= rangeFrom && cd <= rangeTo;
+                return cd && cd >= rangeFrom && cd <= rangeTo;
               });
-              const doneWithRework = doneItems.filter(i => (i.qa_retorno_count ?? 0) > 0);
-              const totalDone = doneItems.length;
-              const totalReworkItems = doneWithRework.length;
-              const totalReworkCycles = doneWithRework.reduce((sum, i) => sum + (i.qa_retorno_count ?? 0), 0);
-              const reworkRate = totalDone > 0 ? Math.round((totalReworkItems / totalDone) * 100) : 0;
+
+              const totalDoneInRange = filterReworkByCollab(allDoneItems).filter(i => {
+                const cd = i.changed_date ? new Date(i.changed_date) : null;
+                return cd && cd >= rangeFrom && cd <= rangeTo;
+              }).length;
+              const totalReworkItems = dateFiltered.length;
+              const totalReworkCycles = dateFiltered.reduce((sum, i) => sum + (i.qa_retorno_count ?? 0), 0);
+              const reworkRate = totalDoneInRange > 0 ? Math.round((totalReworkItems / totalDoneInRange) * 100) : 0;
               const avgCycles = totalReworkItems > 0 ? Math.round((totalReworkCycles / totalReworkItems) * 10) / 10 : 0;
-              const sorted = [...doneWithRework].sort((a, b) => (b.qa_retorno_count ?? 0) - (a.qa_retorno_count ?? 0));
+              const sorted = [...dateFiltered].sort((a, b) => (b.qa_retorno_count ?? 0) - (a.qa_retorno_count ?? 0));
+
+              // Chart: ranking of returners (top 15)
+              const returnerCountMap = new Map<string, number>();
+              for (const item of dateFiltered) {
+                const who = item.ultimo_responsavel_retorno_qa;
+                if (who) returnerCountMap.set(who, (returnerCountMap.get(who) || 0) + 1);
+              }
+              const rankingData = [...returnerCountMap.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 15)
+                .map(([name, count]) => ({
+                  name: name.split(' ').slice(0, 2).join(' '),
+                  fullName: name,
+                  tasks: count,
+                }));
+
+              // Chart: distribution by return count
+              const distMap = new Map<number, number>();
+              for (const item of dateFiltered) {
+                const c = item.qa_retorno_count ?? 0;
+                distMap.set(c, (distMap.get(c) || 0) + 1);
+              }
+              const distributionData = [...distMap.entries()]
+                .sort((a, b) => a[0] - b[0])
+                .map(([count, qty]) => ({
+                  retornos: `${count}x`,
+                  quantidade: qty,
+                }));
+
+              const CHART_COLORS = [
+                'hsl(var(--primary))',
+                'hsl(0, 72%, 51%)',
+                'hsl(43, 85%, 46%)',
+                'hsl(199, 89%, 48%)',
+                'hsl(142, 71%, 45%)',
+                'hsl(280, 67%, 50%)',
+              ];
 
               return (
                 <>
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                    <DashboardKpiCard label="Done (Total)" value={totalDone} icon={FileCheck} isLoading={base.isLoading} />
-                    <DashboardKpiCard label="Com Retrabalho" value={totalReworkItems} icon={RotateCcw} accent="bg-[hsl(0,72%,51%)]" isLoading={base.isLoading} delay={80} />
-                    <DashboardKpiCard label="Total Ciclos" value={totalReworkCycles} suffix="x" icon={RotateCcw} accent="bg-[hsl(43,85%,46%)]" isLoading={base.isLoading} delay={160} />
-                    <DashboardKpiCard label="Taxa Retrabalho" value={`${reworkRate}%`} icon={AlertTriangle} accent={reworkRate > 20 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} isLoading={base.isLoading} delay={240} />
-                    <DashboardKpiCard label="Média Ciclos" value={avgCycles} suffix="x" icon={TrendingUp} isLoading={base.isLoading} delay={320} />
+                    <DashboardKpiCard label="Done (Período)" value={totalDoneInRange} icon={FileCheck} isLoading={reworkQuery.isLoading} />
+                    <DashboardKpiCard label={`Com ${reworkMinCount}+ Retorno(s)`} value={totalReworkItems} icon={RotateCcw} accent="bg-destructive" isLoading={reworkQuery.isLoading} delay={80} />
+                    <DashboardKpiCard label="Total Ciclos" value={totalReworkCycles} suffix="x" icon={RotateCcw} accent="bg-[hsl(43,85%,46%)]" isLoading={reworkQuery.isLoading} delay={160} />
+                    <DashboardKpiCard label="Taxa Retrabalho" value={`${reworkRate}%`} icon={AlertTriangle} accent={reworkRate > 20 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} isLoading={reworkQuery.isLoading} delay={240} />
+                    <DashboardKpiCard label="Média Ciclos" value={avgCycles} suffix="x" icon={TrendingUp} isLoading={reworkQuery.isLoading} delay={320} />
                   </div>
 
                   {reworkRate > 20 && (
@@ -707,11 +767,70 @@ export default function QualidadeDashboard() {
                     </Card>
                   )}
 
+                  {/* Charts row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Ranking: tasks retornadas por colaborador */}
+                    <Card className="p-4">
+                      <h3 className="font-semibold text-sm mb-3">Ranking — Último retorno QA→Dev por colaborador</h3>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Colaboradores de teste que realizaram o último retorno ao desenvolvimento em cada task encerrada.
+                      </p>
+                      {rankingData.length > 0 ? (
+                        <ChartContainer config={{ tasks: { label: 'Tasks', color: 'hsl(var(--primary))' } }} className="h-[260px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={rankingData} layout="vertical" margin={{ left: 10, right: 16, top: 4, bottom: 4 }}>
+                              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                              <XAxis type="number" allowDecimals={false} className="text-xs" />
+                              <YAxis dataKey="name" type="category" width={110} className="text-xs" tick={{ fontSize: 11 }} />
+                              <ChartTooltip content={<ChartTooltipContent />} />
+                              <Bar dataKey="tasks" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                                {rankingData.map((_, idx) => (
+                                  <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </ChartContainer>
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center py-8">Sem dados para o período.</p>
+                      )}
+                    </Card>
+
+                    {/* Distribution by return count */}
+                    <Card className="p-4">
+                      <h3 className="font-semibold text-sm mb-3">Distribuição por Quantidade de Retornos QA</h3>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Quantas tasks tiveram 1x, 2x, 3x+ retornos ao desenvolvimento.
+                      </p>
+                      {distributionData.length > 0 ? (
+                        <ChartContainer config={{ quantidade: { label: 'Tasks', color: 'hsl(var(--primary))' } }} className="h-[260px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={distributionData} margin={{ left: 0, right: 16, top: 4, bottom: 4 }}>
+                              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                              <XAxis dataKey="retornos" className="text-xs" />
+                              <YAxis allowDecimals={false} className="text-xs" />
+                              <ChartTooltip content={<ChartTooltipContent />} />
+                              <Bar dataKey="quantidade" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                {distributionData.map((_, idx) => (
+                                  <Cell key={idx} fill={CHART_COLORS[Math.min(idx, CHART_COLORS.length - 1)]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </ChartContainer>
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center py-8">Sem dados para o período.</p>
+                      )}
+                    </Card>
+                  </div>
+
+                  {/* List of tasks with rework */}
                   <Card className="overflow-hidden">
                     <div className="p-4 border-b border-border">
-                      <h3 className="font-semibold text-sm">Itens Done com Retrabalho (Dev → Teste → Dev)</h3>
+                      <h3 className="font-semibold text-sm">Tasks Encerradas com Retrabalho ({reworkMinCount}+ retornos QA→Dev)</h3>
                       <p className="text-xs text-muted-foreground mt-1">
-                        PBIs que retornaram ao desenvolvimento após testes antes de serem entregues. Cada ciclo indica uma passagem adicional por "Em Teste".
+                        Histórico de tasks que saíram de "Em Teste" e voltaram para desenvolvimento antes de serem entregues.
+                        O responsável exibido é quem realizou a <strong>última</strong> devolução ao desenvolvimento.
                       </p>
                     </div>
                     <div className="p-4 space-y-2 max-h-[500px] overflow-auto">
@@ -735,25 +854,31 @@ export default function QualidadeDashboard() {
                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                               {item.assigned_to_display || 'Sem responsável'}
                               {item.iteration_path ? ` • ${item.iteration_path.split('\\').pop()}` : ''}
+                              {item.ultimo_retorno_qa_em ? ` • Último retorno: ${new Date(item.ultimo_retorno_qa_em).toLocaleDateString('pt-BR')}` : ''}
                             </p>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            {item.returned_by && (
-                              <Badge variant="outline" className="text-[10px] gap-1 border-amber-400 text-amber-700 dark:text-amber-400">
+                            {item.ultimo_responsavel_retorno_qa && (
+                              <Badge variant="outline" className="text-[10px] gap-1 border-amber-500/50 text-amber-700 dark:text-amber-400">
                                 <RotateCcw className="h-3 w-3" />
-                                {item.returned_by.split(',').map(n => n.trim().split(' ').slice(0, 2).join(' ')).join(', ')}
+                                {item.ultimo_responsavel_retorno_qa.split(' ').slice(0, 2).join(' ')}
+                              </Badge>
+                            )}
+                            {item.ultimo_estado_destino_retorno && (
+                              <Badge variant="outline" className="text-[10px]">
+                                → {item.ultimo_estado_destino_retorno}
                               </Badge>
                             )}
                             <Badge variant="destructive" className="text-xs font-mono">
-                              {item.qa_retorno_count}x retornos
+                              {item.qa_retorno_count}x
                             </Badge>
                           </div>
                         </div>
                       )) : (
                         <div className="text-center py-8">
                           <RotateCcw className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                          <p className="text-sm text-muted-foreground">Nenhum item Done com retrabalho encontrado.</p>
-                          <p className="text-xs text-muted-foreground/60 mt-1">Itens Done sem retorno ao desenvolvimento — processo saudável.</p>
+                          <p className="text-sm text-muted-foreground">Nenhum item Done com retrabalho encontrado para os filtros atuais.</p>
+                          <p className="text-xs text-muted-foreground/60 mt-1">Processo saudável — ou ajuste o filtro de retornos mínimos e período.</p>
                         </div>
                       )}
                     </div>
