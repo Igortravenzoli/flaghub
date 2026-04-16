@@ -66,6 +66,10 @@ function UsersTab() {
         const r = await updateUserNetwork(editingUser.user_id, formData.network_id);
         if (!r.success) { toast.error(`Erro: ${r.error}`); return; }
       }
+      if (formData.mfa_exempt !== editingUser.mfa_exempt) {
+        const r = await updateMfaExempt(editingUser.user_id, formData.mfa_exempt);
+        if (!r.success) { toast.error(`Erro: ${r.error}`); return; }
+      }
       toast.success('Usuário atualizado');
       setDialogOpen(false);
     } catch { toast.error('Erro ao salvar'); } finally { setIsSaving(false); }
