@@ -2139,18 +2139,21 @@ export type Database = {
         Row: {
           created_at: string
           full_name: string | null
+          mfa_exempt: boolean
           network_id: number | null
           user_id: string
         }
         Insert: {
           created_at?: string
           full_name?: string | null
+          mfa_exempt?: boolean
           network_id?: number | null
           user_id: string
         }
         Update: {
           created_at?: string
           full_name?: string | null
+          mfa_exempt?: boolean
           network_id?: number | null
           user_id?: string
         }
