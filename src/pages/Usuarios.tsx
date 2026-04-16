@@ -143,6 +143,13 @@ function UsersTab() {
             <div className="space-y-2"><Label>Rede</Label>
               <Select value={formData.network_id?.toString() || ''} onValueChange={v => setFormData(p => ({ ...p, network_id: v ? parseInt(v) : null }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{networks.map(n => <SelectItem key={n.id} value={n.id.toString()}>{n.name}</SelectItem>)}</SelectContent></Select>
             </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Isentar MFA</Label>
+                <p className="text-xs text-muted-foreground">Desativa a exigência de autenticação em dois fatores para este usuário (uso para testes).</p>
+              </div>
+              <Switch checked={formData.mfa_exempt} onCheckedChange={v => setFormData(p => ({ ...p, mfa_exempt: v }))} />
+            </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSaving}>Cancelar</Button><Button onClick={handleSave} disabled={isSaving}>{isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</> : 'Salvar'}</Button></DialogFooter>
         </DialogContent>
