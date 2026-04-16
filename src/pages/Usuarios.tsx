@@ -35,18 +35,18 @@ const roleColors: Record<AppRole, string> = {
 // ─── Users Tab ──────────────────────────────────────────────────────────────
 
 function UsersTab() {
-  const { users, networks, isLoading, error, refetch, updateUserRole, updateUserNetwork, updateUserName, deleteUser } = useUsers();
+  const { users, networks, isLoading, error, refetch, updateUserRole, updateUserNetwork, updateUserName, deleteUser, updateMfaExempt } = useUsers();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserWithProfile | null>(null);
-  const [formData, setFormData] = useState<{ full_name: string; role: AppRole | ''; network_id: number | null }>({ full_name: '', role: '', network_id: null });
+  const [formData, setFormData] = useState<{ full_name: string; role: AppRole | ''; network_id: number | null; mfa_exempt: boolean }>({ full_name: '', role: '', network_id: null, mfa_exempt: false });
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleOpenEdit = (user: UserWithProfile) => {
     setEditingUser(user);
-    setFormData({ full_name: user.full_name || '', role: user.role || '', network_id: user.network_id });
+    setFormData({ full_name: user.full_name || '', role: user.role || '', network_id: user.network_id, mfa_exempt: user.mfa_exempt });
     setDialogOpen(true);
   };
 
@@ -64,6 +64,10 @@ function UsersTab() {
       }
       if (formData.network_id !== editingUser.network_id) {
         const r = await updateUserNetwork(editingUser.user_id, formData.network_id);
+        if (!r.success) { toast.error(`Erro: ${r.error}`); return; }
+      }
+      if (formData.mfa_exempt !== editingUser.mfa_exempt) {
+        const r = await updateMfaExempt(editingUser.user_id, formData.mfa_exempt);
         if (!r.success) { toast.error(`Erro: ${r.error}`); return; }
       }
       toast.success('Usuário atualizado');
@@ -101,13 +105,18 @@ function UsersTab() {
             <div className="text-center py-12 text-muted-foreground">Nenhum usuário cadastrado.</div>
           ) : (
             <Table>
-              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Papel</TableHead><TableHead>Rede</TableHead><TableHead>Primeiro Acesso</TableHead><TableHead className="w-[80px]">Ações</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Papel</TableHead><TableHead>Rede</TableHead><TableHead>MFA</TableHead><TableHead>Primeiro Acesso</TableHead><TableHead className="w-[80px]">Ações</TableHead></TableRow></TableHeader>
               <TableBody>
                 {users.map(user => (
                   <TableRow key={user.user_id}>
                     <TableCell><span className="font-medium">{user.full_name || <span className="text-muted-foreground italic">Sem nome</span>}</span></TableCell>
                     <TableCell>{user.role ? <Badge className={roleColors[user.role]}>{roleLabels[user.role]}</Badge> : <Badge variant="outline" className="text-warning border-warning">Não atribuído</Badge>}</TableCell>
                     <TableCell>{user.network_name || <span className="text-warning">Não atribuída</span>}</TableCell>
+                    <TableCell>
+                      {user.mfa_exempt
+                        ? <Badge variant="outline" className="text-warning border-warning gap-1"><ShieldAlert className="h-3 w-3" />Isento</Badge>
+                        : <Badge variant="outline" className="text-primary border-primary gap-1"><ShieldCheck className="h-3 w-3" />Ativo</Badge>}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{formatDate(user.created_at)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
@@ -133,6 +142,13 @@ function UsersTab() {
             </div>
             <div className="space-y-2"><Label>Rede</Label>
               <Select value={formData.network_id?.toString() || ''} onValueChange={v => setFormData(p => ({ ...p, network_id: v ? parseInt(v) : null }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{networks.map(n => <SelectItem key={n.id} value={n.id.toString()}>{n.name}</SelectItem>)}</SelectContent></Select>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Isentar MFA</Label>
+                <p className="text-xs text-muted-foreground">Desativa a exigência de autenticação em dois fatores para este usuário (uso para testes).</p>
+              </div>
+              <Switch checked={formData.mfa_exempt} onCheckedChange={v => setFormData(p => ({ ...p, mfa_exempt: v }))} />
             </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSaving}>Cancelar</Button><Button onClick={handleSave} disabled={isSaving}>{isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</> : 'Salvar'}</Button></DialogFooter>

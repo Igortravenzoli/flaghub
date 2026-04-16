@@ -10,6 +10,7 @@ export interface UserWithProfile {
   network_name: string | null;
   role: AppRole | null;
   created_at: string;
+  mfa_exempt: boolean;
 }
 
 export interface Network {
@@ -37,6 +38,7 @@ export function useUsers() {
           full_name,
           network_id,
           created_at,
+          mfa_exempt,
           networks (
             id,
             name
@@ -61,12 +63,13 @@ export function useUsers() {
       // Como não temos acesso direto, vamos usar os dados disponíveis
       const usersData: UserWithProfile[] = (profiles || []).map(p => ({
         user_id: p.user_id,
-        email: '', // Será preenchido se disponível
+        email: '',
         full_name: p.full_name,
         network_id: p.network_id,
         network_name: (p.networks as Network | null)?.name || null,
         role: rolesMap.get(p.user_id) as AppRole || null,
         created_at: p.created_at,
+        mfa_exempt: (p as any).mfa_exempt ?? false,
       }));
 
       setUsers(usersData);
@@ -223,6 +226,29 @@ export function useUsers() {
     }
   };
 
+  const updateMfaExempt = async (userId: string, mfaExempt: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ mfa_exempt: mfaExempt } as any)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      setUsers(prev => prev.map(u =>
+        u.user_id === userId ? { ...u, mfa_exempt: mfaExempt } : u
+      ));
+
+      return { success: true };
+    } catch (err) {
+      console.error('Error updating mfa_exempt:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Erro ao atualizar isenção MFA'
+      };
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     fetchNetworks();
@@ -238,5 +264,6 @@ export function useUsers() {
     updateUserNetwork,
     updateUserName,
     deleteUser,
+    updateMfaExempt,
   };
 }
