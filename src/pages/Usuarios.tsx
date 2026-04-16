@@ -35,12 +35,12 @@ const roleColors: Record<AppRole, string> = {
 // ─── Users Tab ──────────────────────────────────────────────────────────────
 
 function UsersTab() {
-  const { users, networks, isLoading, error, refetch, updateUserRole, updateUserNetwork, updateUserName, deleteUser } = useUsers();
+  const { users, networks, isLoading, error, refetch, updateUserRole, updateUserNetwork, updateUserName, deleteUser, updateMfaExempt } = useUsers();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithProfile | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserWithProfile | null>(null);
-  const [formData, setFormData] = useState<{ full_name: string; role: AppRole | ''; network_id: number | null }>({ full_name: '', role: '', network_id: null });
+  const [formData, setFormData] = useState<{ full_name: string; role: AppRole | ''; network_id: number | null; mfa_exempt: boolean }>({ full_name: '', role: '', network_id: null, mfa_exempt: false });
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
