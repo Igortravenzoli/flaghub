@@ -226,6 +226,29 @@ export function useUsers() {
     }
   };
 
+  const updateMfaExempt = async (userId: string, mfaExempt: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ mfa_exempt: mfaExempt } as any)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      setUsers(prev => prev.map(u =>
+        u.user_id === userId ? { ...u, mfa_exempt: mfaExempt } : u
+      ));
+
+      return { success: true };
+    } catch (err) {
+      console.error('Error updating mfa_exempt:', err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Erro ao atualizar isenção MFA'
+      };
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     fetchNetworks();
@@ -241,5 +264,6 @@ export function useUsers() {
     updateUserNetwork,
     updateUserName,
     deleteUser,
+    updateMfaExempt,
   };
 }
