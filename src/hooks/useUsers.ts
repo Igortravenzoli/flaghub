@@ -70,7 +70,7 @@ export function useUsers() {
         role: rolesMap.get(p.user_id) as AppRole || null,
         created_at: p.created_at,
         mfa_exempt: (p as any).mfa_exempt ?? false,
-      }));
+      } as UserWithProfile));
 
       setUsers(usersData);
     } catch (err) {
@@ -230,7 +230,7 @@ export function useUsers() {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ mfa_exempt: mfaExempt } as any)
+        .update({ mfa_exempt: mfaExempt })
         .eq('user_id', userId);
 
       if (error) throw error;
