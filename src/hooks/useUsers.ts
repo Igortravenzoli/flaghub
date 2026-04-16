@@ -38,6 +38,7 @@ export function useUsers() {
           full_name,
           network_id,
           created_at,
+          mfa_exempt,
           networks (
             id,
             name
