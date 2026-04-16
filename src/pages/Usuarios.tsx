@@ -46,7 +46,7 @@ function UsersTab() {
 
   const handleOpenEdit = (user: UserWithProfile) => {
     setEditingUser(user);
-    setFormData({ full_name: user.full_name || '', role: user.role || '', network_id: user.network_id });
+    setFormData({ full_name: user.full_name || '', role: user.role || '', network_id: user.network_id, mfa_exempt: user.mfa_exempt });
     setDialogOpen(true);
   };
 
