@@ -128,10 +128,29 @@ function measurePerformance(name: string, startMark: string, endMark: string) {
   }
 }
 
-async function checkElevatedMfaRequirement(roleCode: string | null, userEmail?: string | null): Promise<boolean> {
+async function checkLocalMfaRequirement(session: Session | null, userEmail?: string | null): Promise<boolean> {
   // Monitor user is exempt from MFA
   if (isMonitorUser(userEmail)) return false;
-  if (!hasElevated(roleCode)) return false;
+  if (!session?.user) return false;
+
+  // SSO users (azure, google, etc.) are exempt from MFA
+  const provider = session.user.app_metadata?.provider;
+  if (provider && provider !== 'email') return false;
+
+  // Check if user has mfa_exempt flag
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('mfa_exempt')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+    if (profile?.mfa_exempt) {
+      console.log("[Auth] User is MFA exempt");
+      return false;
+    }
+  } catch (e) {
+    console.warn("[Auth] Failed to check mfa_exempt:", e);
+  }
 
   const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   const mfaRequired = Boolean(
@@ -141,10 +160,11 @@ async function checkElevatedMfaRequirement(roleCode: string | null, userEmail?: 
     )
   );
 
-  console.log("[Auth] Elevated role MFA check:", {
+  console.log("[Auth] Local user MFA check:", {
     currentLevel: aalData?.currentLevel,
     nextLevel: aalData?.nextLevel,
     mfaRequired,
+    provider,
   });
 
   return mfaRequired;
