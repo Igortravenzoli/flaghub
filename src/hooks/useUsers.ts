@@ -10,6 +10,7 @@ export interface UserWithProfile {
   network_name: string | null;
   role: AppRole | null;
   created_at: string;
+  mfa_exempt: boolean;
 }
 
 export interface Network {
