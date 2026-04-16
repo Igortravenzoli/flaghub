@@ -63,12 +63,13 @@ export function useUsers() {
       // Como não temos acesso direto, vamos usar os dados disponíveis
       const usersData: UserWithProfile[] = (profiles || []).map(p => ({
         user_id: p.user_id,
-        email: '', // Será preenchido se disponível
+        email: '',
         full_name: p.full_name,
         network_id: p.network_id,
         network_name: (p.networks as Network | null)?.name || null,
         role: rolesMap.get(p.user_id) as AppRole || null,
         created_at: p.created_at,
+        mfa_exempt: (p as any).mfa_exempt ?? false,
       }));
 
       setUsers(usersData);
