@@ -105,13 +105,18 @@ function UsersTab() {
             <div className="text-center py-12 text-muted-foreground">Nenhum usuário cadastrado.</div>
           ) : (
             <Table>
-              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Papel</TableHead><TableHead>Rede</TableHead><TableHead>Primeiro Acesso</TableHead><TableHead className="w-[80px]">Ações</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Papel</TableHead><TableHead>Rede</TableHead><TableHead>MFA</TableHead><TableHead>Primeiro Acesso</TableHead><TableHead className="w-[80px]">Ações</TableHead></TableRow></TableHeader>
               <TableBody>
                 {users.map(user => (
                   <TableRow key={user.user_id}>
                     <TableCell><span className="font-medium">{user.full_name || <span className="text-muted-foreground italic">Sem nome</span>}</span></TableCell>
                     <TableCell>{user.role ? <Badge className={roleColors[user.role]}>{roleLabels[user.role]}</Badge> : <Badge variant="outline" className="text-warning border-warning">Não atribuído</Badge>}</TableCell>
                     <TableCell>{user.network_name || <span className="text-warning">Não atribuída</span>}</TableCell>
+                    <TableCell>
+                      {user.mfa_exempt
+                        ? <Badge variant="outline" className="text-warning border-warning gap-1"><ShieldAlert className="h-3 w-3" />Isento</Badge>
+                        : <Badge variant="outline" className="text-primary border-primary gap-1"><ShieldCheck className="h-3 w-3" />Ativo</Badge>}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{formatDate(user.created_at)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
