@@ -18,30 +18,51 @@ docs/security/
 
 ---
 
-## Resumo Consolidado de Vulnerabilidades
+## Estado dos Controles de Segurança
 
-| ID | Severidade | Descrição | Relatório | Status |
-|----|:----------:|-----------|:---------:|:------:|
-| CRÍTICO-1 | 🔴 | MFA bypass via `mfa_exempt` self-update | #3 | 🔧 Migration criada |
+> **Auditoria realizada em 21/04/2026 diretamente no código-fonte.** Nenhuma correção foi aplicada em produção até esta data. Os relatórios #1 e #2 marcaram incorretamente alguns controles como "resolvidos" — o estado real foi verificado manualmente.
+
+### Controles já implementados (não requerem ação)
+
+| Controle | Evidência |
+|----------|-----------|
+| ✅ RLS habilitada em 100% das tabelas | `relrowsecurity=true` confirmado |
+| ✅ Azure AD SSO ativo | `AuthContext.tsx:606` — `signInWithOAuth({provider:"azure"})` |
+| ✅ Rate limiting com persistência em banco | Tabela `login_attempts`; Edge Function `auth-rate-limit` |
+| ✅ MFA com TOTP para auth local | `MfaEnroll.tsx`, `MfaVerify.tsx`, `ProtectedRoute` |
+| ✅ Views KPI com `security_invoker=on` | Migration `20260312145739` |
+| ✅ `search_path` fixado em SECURITY DEFINER | 100% das funções — confirmado Relatório #2 |
+| ✅ `service_role` nunca no frontend | `grep -R SERVICE_ROLE src/` → 0 resultados |
+
+### Vulnerabilidades abertas (nenhuma corrigida em produção)
+
+| ID | Severidade | Descrição | Fonte | Status |
+|----|:----------:|-----------|:-----:|:------:|
+| CRÍTICO-1 | 🔴 | MFA bypass via `mfa_exempt` self-update | #3 | 🔧 Migration pronta, aguarda deploy |
 | CRÍTICO-2 | 🔴 | CORS wildcard em todas as Edge Functions | #3 | ⏳ Pendente |
-| CRÍTICO-3 | 🔴 | Unapproved user lê 20+ tabelas (LGPD) | #3 | 🔧 Migration criada |
-| CRÍTICO-4 | 🔴 | Auto-aprovação via INSERT status='approved' | #3 | 🔧 Migration criada |
-| CRIT-01 | 🔴 | RPC `delete_tickets_by_network` sem auth | #2 | ⏳ Pendente |
-| CRIT-02 | 🔴 | RPC `purge_cs_implantacoes` sem auth | #2 | ⏳ Pendente |
-| CRIT-03 | 🔴 | RPC `purge_old_inactive_tickets` sem auth | #2 | ⏳ Pendente |
-| VULN-01 | 🔴 | Anon key + URL hardcoded no client.ts | #1 | ⏳ Pendente |
-| ALTO-1 | 🟠 | Rate limiting em memória (volátil) | #3 | ⏳ Pendente |
-| ALTO-01 | 🟠 | Views sem `security_invoker=true` | #2 | ⏳ Pendente |
-| ALTO-02 | 🟠 | 52 funções executáveis por `anon` | #2 | ⏳ Pendente |
-| ALTO-03 | 🟠 | INSERT `import_events` com role `public` | #2 | ⏳ Pendente |
-| ALTO-2 | 🟠 | HTTP fallback VDESK proxy | #3 | ⏳ Pendente |
-| ALTO-3 | 🟠 | Security headers ausentes | #3 | ⏳ Pendente |
-| VULN-02 | 🟠 | Security headers ausentes (deployment) | #1 | ⏳ Pendente |
-| VULN-03 | 🟠 | IP spoofing no rate limit (X-Forwarded-For) | #1 | ⏳ Pendente |
-| VULN-04 | 🟠 | Senha transmitida ao Edge Function | #1 | ⏳ Pendente |
-| VULN-05 | 🟡 | 37 políticas `USING (true)` sem filtro área | #1 | 🔧 Migration criada |
-| VULN-06 | 🟡 | Policy INSERT `public` em import_events | #1 | ⏳ Pendente |
-| VULN-07 | 🟡 | Open redirect pós-login sem validação | #1 | ⏳ Pendente |
+| CRÍTICO-3 | 🔴 | Unapproved user lê 20+ tabelas com PII LGPD | #3 | 🔧 Migration pronta, aguarda deploy |
+| CRÍTICO-4 | 🔴 | Auto-aprovação via INSERT status='approved' | #3 | 🔧 Migration pronta, aguarda deploy |
+| CRIT-01 | 🔴 | RPC `delete_tickets_by_network` sem is_admin() | #2 | ⏳ Pendente |
+| CRIT-02 | 🔴 | RPC `purge_cs_implantacoes` sem is_admin() | #2 | ⏳ Pendente |
+| CRIT-03 | 🔴 | RPC `purge_old_inactive_tickets` sem is_admin() | #2 | ⏳ Pendente |
+| ALTO-1 | 🟠 | Signup não desabilitado server-side | #3 | ⏳ Pendente |
+| ALTO-2 | 🟠 | 52 funções executáveis por `anon` | #2 | ⏳ Pendente |
+| ALTO-3 | 🟠 | Senha transmitida ao Edge Function auth-rate-limit | #1 | ⏳ Pendente |
+| ALTO-4 | 🟠 | Security headers ausentes no deployment | #1/#3 | ⏳ Pendente |
+| ALTO-5 | 🟠 | MFA ausente para usuários Azure SSO | #3 | ⏳ Decisão arquitetural |
+| MÉDIO-1 | 🟡 | Anon key hardcoded em `client.ts` | #1 | ⏳ Pendente |
+| MÉDIO-2 | 🟡 | Open redirect pós-login sem validação | #1 | ⏳ Pendente |
+| MÉDIO-3 | 🟡 | Policy INSERT `public` em `import_events` | #1/#2 | ⏳ Pendente |
+| INFO-1 | 🟢 | Auth settings expostos publicamente | #3 | ✔️ Aceitar — comportamento Supabase |
+| INFO-2 | 🟢 | `console.log` com dados de auth em produção | #1 | ⏳ Pendente |
+
+### Itens removidos da lista (confirmados como não-vulnerabilidades)
+
+| Item (afirmado em relatório anterior) | Realidade verificada |
+|--------------------------------------|---------------------|
+| ~~Rate limiting em memória (volátil)~~ | **Já usa banco de dados** — tabela `login_attempts` com `locked_until` |
+| ~~Views sem security_invoker~~ | **Já implementado** — migration `20260312145739` aplica `security_invoker=on` nas views KPI |
+| ~~Signup desabilitado (✅ Resolvido)~~ | **NÃO está desabilitado** — `signUp()` existe em `AuthContext.tsx:575` |
 
 ---
 

@@ -4,143 +4,248 @@
 
 | Campo | Valor |
 |-------|-------|
-| **Versão** | 1.0 |
+| **Versão** | 1.1 — revisado com estado real do código |
 | **Data** | 21/04/2026 |
-| **Baseado em** | Pentest Reports #1, #2 e #3 (série 2026-04-21) |
+| **Baseado em** | Pentest Reports #1, #2 e #3 + auditoria direta do código-fonte |
 | **Responsável** | Equipe DevOps FLAG INTELLIWAN |
-| **Status** | 🔴 Em execução — Fase 1 iniciada |
+| **Status** | 🔴 Nenhuma correção aplicada em produção ainda |
+
+> ⚠️ **Nota crítica de revisão:** A versão anterior deste plano continha imprecisões herdadas dos relatórios de pentest produzidos por LLMs. Algumas vulnerabilidades foram removidas por já estarem implementadas; outras foram adicionadas por não estarem implementadas conforme afirmado. Este documento reflete o **estado verificado diretamente no código-fonte** em 21/04/2026.
+
+---
+
+## Estado Real — O Que Já Existe vs O Que Falta
+
+### ✅ Controles já implementados (não requerem ação)
+
+| Controle | Evidência no código |
+|----------|---------------------|
+| RLS habilitada em 100% das tabelas | `relrowsecurity = true` em todas as tabelas públicas |
+| Azure AD SSO | `AuthContext.tsx:606` — `signInWithOAuth({provider:"azure"})` |
+| Rate limiting persistente em banco | Tabela `login_attempts` com `locked_until`; Edge Function `auth-rate-limit` ativa |
+| MFA com TOTP (auth local) | `MfaEnroll.tsx`, `MfaVerify.tsx`; `ProtectedRoute` verifica `mfaRequired` |
+| Views KPI com `security_invoker=on` | Migration `20260312145739` — `vw_devops_queue_items`, `vw_comercial_*`, `vw_helpdesk_kpis`, etc. |
+| `search_path` fixado em SECURITY DEFINER | 100% das funções verificadas no Relatório #2 |
+| `service_role` nunca no frontend | `grep -R SERVICE_ROLE src/` → 0 resultados |
+
+### 🔴 Vulnerabilidades pendentes (nenhuma foi corrigida)
+
+| ID | Severidade | Descrição | Arquivo/Local |
+|----|:----------:|-----------|--------------|
+| CRÍTICO-1 | 🔴 | MFA bypass via `mfa_exempt` self-update | `profiles` — 2 policies UPDATE coexistem |
+| CRÍTICO-2 | 🔴 | CORS wildcard em todas as Edge Functions | `supabase/functions/*/index.ts` |
+| CRÍTICO-3 | 🔴 | Unapproved user lê 20+ tabelas com PII | 37 políticas `USING (true)` |
+| CRÍTICO-4 | 🔴 | Auto-aprovação via INSERT status='approved' | `hub_access_requests` policy |
+| CRIT-01 | 🔴 | RPC `delete_tickets_by_network` sem auth | Migration `20260331141914` |
+| CRIT-02 | 🔴 | RPC `purge_cs_implantacoes` sem auth | Migration `20260331192213` |
+| CRIT-03 | 🔴 | RPC `purge_old_inactive_tickets` sem auth | Migration `20260129000000` |
+| ALTO-1 | 🟠 | Signup não desabilitado server-side | `AuthContext.tsx:575`; config.toml sem `disable_signup` |
+| ALTO-2 | 🟠 | 52 funções executáveis por `anon` | `pg_proc` — `has_function_privilege('anon',...)` |
+| ALTO-3 | 🟠 | Senha transmitida ao Edge Function | `Login.tsx` envia `password` no corpo da requisição |
+| ALTO-4 | 🟠 | Security headers ausentes | `netlify.toml`, `vercel.json` |
+| ALTO-5 | 🟠 | MFA ausente para usuários Azure SSO | `AuthContext.tsx:136` — SSO users retornam `false` no check de MFA |
+| MÉDIO-1 | 🟡 | Anon key hardcoded no código-fonte | `src/integrations/supabase/client.ts:5` |
+| MÉDIO-2 | 🟡 | Open redirect pós-login sem validação | `Login.tsx` — `navigate(from)` sem sanitização |
+| MÉDIO-3 | 🟡 | Policy INSERT `public` em `import_events` | Migration original — `roles={public}` |
+| MÉDIO-4 | 🟡 | Policy `import_events` INSERT com role `public` | `pg_policies` — role deveria ser `authenticated` |
+| INFO-1 | 🟢 | Auth settings expostos publicamente | Comportamento padrão Supabase — aceitar como risco |
+| INFO-2 | 🟢 | `console.log` com dados de auth em produção | `AuthContext.tsx` — múltiplos pontos |
 
 ---
 
 ## Princípios Guia
 
-> **"Corrija o banco de dados, não o frontend."** — Toda proteção de acesso deve existir na camada RLS/triggers do Supabase. O frontend protege a UX, nunca os dados.
+> **"Corrija o banco de dados, nunca apenas o frontend."** — Toda proteção de acesso deve existir em RLS/triggers. O frontend protege UX, não dados.
 
-> **"Sem `USING (true)` para autenticados."** — Toda tabela com dados de negócio deve verificar autorização real (aprovação, área, role), não apenas autenticação.
+> **"Nenhuma policy `USING (true)` para tabelas de negócio."** — Qualquer tabela com dados de negócio deve verificar aprovação real, não apenas autenticação.
 
-> **"Nenhuma PR que toque em auth, RLS ou Edge Functions passa sem revisão de segurança."** — Definido como gate obrigatório no processo de desenvolvimento.
+> **"Teste os 3 perfis: anônimo, autenticado-não-aprovado, aprovado."** — Toda feature nova deve ser testada nesses 3 contextos antes de ir a produção.
+
+> **"Não quebre o que funciona."** — As fases são ordenadas por impacto zero → baixo → médio. Cada item tem testes de regressão obrigatórios.
 
 ---
 
 ## Visão Geral das Fases
 
 ```
-FASE 1 — Crítico (Hoje, 21/04/2026)
-  └── 4 vulnerabilidades críticas → 1 migration + CORS fix
-  └── Estimativa: 3h
-  └── Impacto aplicação: zero (apenas banco + edge functions)
+FASE 1 — Crítico imediato (Hoje, 21/04/2026)       Impacto na app: ZERO
+  ├── Migration 20260421180000 (RLS aprovação + INSERT fix + trigger mfa_exempt)
+  ├── Desabilitar signup server-side
+  └── CORS restrito nas Edge Functions
 
-FASE 2 — Alto (Próximos 7 dias)
-  └── 7 vulnerabilidades altas → migrations SQL + refactor login
-  └── Estimativa: 1 dia de trabalho
-  └── Impacto aplicação: baixo (auth flow, nenhuma UI quebra)
+FASE 2 — Alto (Próximos 7 dias)                    Impacto na app: BAIXO
+  ├── Auth guards em 3 RPCs destrutivas
+  ├── REVOKE EXECUTE de anon em 52 funções
+  ├── Redesenho do fluxo de login (senha não vai ao Edge Function)
+  └── Security headers no deployment
 
-FASE 3 — Médio (Próximos 30 dias)
-  └── 5 vulnerabilidades médias → configurações + pequenos ajustes
-  └── Estimativa: meio dia
-  └── Impacto aplicação: nenhum
+FASE 3 — Médio (Próximos 30 dias)                  Impacto na app: NENHUM
+  ├── Anon key → variável de ambiente
+  ├── Open redirect fix
+  ├── Policy import_events: public → authenticated
+  ├── console.log condicional ao ambiente
+  └── MFA para SSO users (decisão de arquitetura necessária)
 
 FASE 4 — Framework Contínuo (Permanente)
-  └── Testes de integridade de segurança em CI/CD
-  └── Checklist de PR obrigatório
-  └── Revisão mensal de RLS
+  ├── Testes de integridade SQL automatizados
+  ├── Checklist de PR obrigatório
+  ├── Templates de código seguro
+  └── Auditoria mensal de RLS
 ```
 
 ---
 
-## FASE 1 — Vulnerabilidades Críticas (Hoje)
+## FASE 1 — Vulnerabilidades Críticas (Hoje, impacto zero na aplicação)
 
 ### 1.1 — Migration de segurança principal
 
-**Arquivo já criado:** `supabase/migrations/20260421180000_security_approved_users_rls.sql`
+**Arquivo criado:** `supabase/migrations/20260421180000_security_approved_users_rls.sql`
 
-**O que resolve:**
-- ✅ CRÍTICO-1: Trigger `protect_mfa_exempt_trigger` bloqueia self-update de `mfa_exempt`
-- ✅ CRÍTICO-3: Função `hub_is_approved()` + 37 políticas `USING (true)` substituídas
-- ✅ CRÍTICO-4: INSERT `hub_access_requests` restrito a `status = 'pending'`
+**O que resolve:** CRÍTICO-1 (trigger mfa_exempt) + CRÍTICO-3 (37 políticas → hub_is_approved) + CRÍTICO-4 (INSERT status=pending)
+
+**Impacto na aplicação:**
+- Usuários **aprovados** (`hub_area_members.is_active=true`): sem mudança — continuam vendo tudo normalmente
+- Usuários **admin**: sem mudança — `hub_is_admin()` retorna true em `hub_is_approved()`
+- Usuários **não aprovados**: passam a receber arrays vazios nas tabelas de negócio (comportamento correto — já eram redirecionados pelo frontend)
+- Campo `mfa_exempt`: admins continuam conseguindo alterar; não-admins recebem erro 42501 se tentarem
 
 **Como aplicar:**
 ```bash
-# Opção A — Via Supabase CLI (recomendado)
+# Via Supabase CLI
 supabase db push --linked
 
-# Opção B — Via Supabase Dashboard
-# Settings → SQL Editor → colar conteúdo da migration → Run
+# OU via Supabase Dashboard → SQL Editor → colar e executar
 ```
 
-**Testes de verificação após aplicar:**
+**Testes obrigatórios antes de considerar concluído:**
 
 ```bash
-# T1: Usuário não aprovado NÃO deve acessar vdesk_clients
-curl "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/vdesk_clients" \
-  -H "apikey: $ANON_KEY" \
-  -H "Authorization: Bearer $JWT_UNAPPROVED"
-# ESPERADO: HTTP 200 com array vazio [] (RLS filtra)
+# Variáveis necessárias para os testes:
+# JWT_APPROVED   = token de usuário com hub_area_members.is_active=true
+# JWT_UNAPPROVED = token de usuário SEM hub_area_members
+# JWT_ADMIN      = token de usuário com is_admin()=true
+# JWT_REGULAR    = token de qualquer usuário autenticado não-admin
 
-# T2: Usuário aprovado DEVE acessar vdesk_clients
-curl "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/vdesk_clients" \
-  -H "apikey: $ANON_KEY" \
-  -H "Authorization: Bearer $JWT_APPROVED"
-# ESPERADO: HTTP 200 com registros
+ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+BASE="https://nxmgppfyltwsqryfxkbm.supabase.co"
 
-# T3: INSERT hub_access_requests com status='approved' DEVE falhar
-curl -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/hub_access_requests" \
-  -H "apikey: $ANON_KEY" \
-  -H "Authorization: Bearer $JWT_UNAPPROVED" \
+# T1: usuário NÃO aprovado não acessa vdesk_clients
+curl -s "$BASE/rest/v1/vdesk_clients" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT_UNAPPROVED" | jq 'length'
+# ESPERADO: 0
+
+# T2: usuário APROVADO acessa vdesk_clients
+curl -s "$BASE/rest/v1/vdesk_clients" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT_APPROVED" | jq 'length'
+# ESPERADO: > 0
+
+# T3: usuário NÃO aprovado não acessa comercial_pesquisa_satisfacao
+curl -s "$BASE/rest/v1/comercial_pesquisa_satisfacao" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT_UNAPPROVED" | jq 'length'
+# ESPERADO: 0
+
+# T4: INSERT hub_access_requests com status='approved' DEVE ser rejeitado
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$BASE/rest/v1/hub_access_requests" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT_UNAPPROVED" \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"<uuid>","area_id":"<uuid>","status":"approved"}'
-# ESPERADO: HTTP 403 ou 42501
+  -d "{\"user_id\":\"$(echo $JWT_UNAPPROVED | jq -R 'split(".")[1] | @base64d | fromjson | .sub' -r)\",\"area_id\":\"00000000-0000-0000-0000-000000000001\",\"status\":\"approved\"}"
+# ESPERADO: 403 ou 422
 
-# T4: INSERT hub_access_requests com status='pending' DEVE funcionar
-curl -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/hub_access_requests" \
-  -H "apikey: $ANON_KEY" \
-  -H "Authorization: Bearer $JWT_UNAPPROVED" \
+# T5: INSERT hub_access_requests com status='pending' DEVE funcionar
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$BASE/rest/v1/hub_access_requests" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT_UNAPPROVED" \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"<uuid>","area_id":"<uuid>","status":"pending"}'
-# ESPERADO: HTTP 201
+  -d "{\"user_id\":\"$(echo $JWT_UNAPPROVED | jq -R 'split(".")[1] | @base64d | fromjson | .sub' -r)\",\"area_id\":\"00000000-0000-0000-0000-000000000001\",\"status\":\"pending\"}"
+# ESPERADO: 201
 
-# T5: Self-update de mfa_exempt por não-admin DEVE falhar
-curl -X PATCH "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/profiles?user_id=eq.<uuid>" \
-  -H "apikey: $ANON_KEY" \
-  -H "Authorization: Bearer $JWT_REGULAR" \
+# T6: não-admin NÃO pode atualizar mfa_exempt para true
+curl -s -o /dev/null -w "%{http_code}" \
+  -X PATCH "$BASE/rest/v1/profiles?user_id=eq.<uuid-do-usuario>" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT_REGULAR" \
   -H "Content-Type: application/json" \
   -d '{"mfa_exempt":true}'
-# ESPERADO: HTTP 500 com erro 42501 (RAISE EXCEPTION do trigger)
+# ESPERADO: 500 (trigger raise exception) ou 403
 
-# T6: Admin PODE atualizar mfa_exempt
-curl -X PATCH "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/profiles?user_id=eq.<uuid>" \
-  -H "apikey: $ANON_KEY" \
-  -H "Authorization: Bearer $JWT_ADMIN" \
+# T7: admin PODE atualizar mfa_exempt
+curl -s -o /dev/null -w "%{http_code}" \
+  -X PATCH "$BASE/rest/v1/profiles?user_id=eq.<uuid-do-usuario>" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT_ADMIN" \
   -H "Content-Type: application/json" \
   -d '{"mfa_exempt":true}'
-# ESPERADO: HTTP 204
+# ESPERADO: 204
+
+# T8: regressão — dashboard do usuário aprovado carrega normalmente
+# (teste manual: logar com usuário aprovado → verificar se dados carregam)
 ```
-
-**Recurso da aplicação afetado e como testar:**
-| Recurso | Teste manual |
-|---------|-------------|
-| Dashboard (aprovado) | Logar com usuário aprovado → dashboard carrega normalmente |
-| Tela /pending-approval | Logar com usuário não aprovado → redireciona para /pending-approval |
-| Admin: toggle mfa_exempt | Admin edita usuário → campo salva. Não-admin edita perfil → outros campos salvam, mfa_exempt ignorado |
-| Solicitação de acesso | Usuário não aprovado envia request → aparece na fila admin com status 'pending' |
 
 ---
 
-### 1.2 — Corrigir CORS nas Edge Functions
+### 1.2 — Desabilitar signup server-side
 
-**Vulnerabilidade:** CRÍTICO-2 — todas as 7 Edge Functions retornam `Access-Control-Allow-Origin: *`
+**Vulnerabilidade:** ALTO-1 — a função `signUp()` existe em `AuthContext.tsx:575` e pode ser chamada programaticamente. O login UI não expõe o formulário de signup, mas qualquer pessoa com a anon key pode:
+```bash
+curl -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/auth/v1/signup" \
+  -H "apikey: $ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"atacante@dominio.com","password":"Senha@123"}'
+```
 
-**Impacto de não corrigir:** qualquer site pode fazer requisições autenticadas às Edge Functions usando o token do usuário (CSRF via CORS).
+**Correção A — Supabase Dashboard (imediata, sem código):**
+```
+Supabase Dashboard → Authentication → Providers → Email
+→ Desabilitar "Enable Email Signups"
+→ Salvar
+```
 
-**Criar arquivo compartilhado de CORS:**
+**Correção B — Edge Function guard (defesa em profundidade):**
+```typescript
+// supabase/functions/auth-rate-limit/index.ts
+// Antes de processar qualquer signup, rejeitar:
+if (body.action === 'signup') {
+  return new Response(JSON.stringify({ error: 'Signup is disabled' }), {
+    status: 403,
+    headers: corsHeaders(req),
+  });
+}
+```
+
+**Correção C — Remover signUp do AuthContext (limpeza de código):**
+```typescript
+// src/contexts/AuthContext.tsx — remover ou deixar apenas para uso futuro planejado:
+// const signUp = ... // REMOVIDO — signup não é suportado nesta versão
+```
+
+**Testes:**
+```bash
+# T9: tentativa de signup direto na API deve ser rejeitada
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/auth/v1/signup" \
+  -H "apikey: $ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"teste@externo.com","password":"Senha@123"}'
+# ESPERADO: 422 ou 403 (após desabilitar no dashboard)
+
+# T10: login Azure AD normal continua funcionando
+# (teste manual: clicar em "Entrar com Microsoft" → autenticação funciona)
+```
+
+---
+
+### 1.3 — CORS restrito nas Edge Functions
+
+**Vulnerabilidade:** CRÍTICO-2 — `Access-Control-Allow-Origin: *` em todas as funções.
+
+**Criar arquivo compartilhado:**
 
 ```typescript
 // supabase/functions/_shared/cors.ts
 const ALLOWED_ORIGINS = [
-  'https://flaghub.flag.com.br',          // produção
-  'https://flaghub-staging.netlify.app',   // staging
-  'http://localhost:5173',                  // dev local
-  'http://localhost:4173',                  // preview local
+  'https://flaghub.flag.com.br',
+  'https://flaghub-staging.netlify.app',
+  'http://localhost:5173',
+  'http://localhost:4173',
 ];
 
 export function corsHeaders(req: Request): Record<string, string> {
@@ -156,56 +261,50 @@ export function corsHeaders(req: Request): Record<string, string> {
 }
 ```
 
-**Substituir em cada Edge Function:**
+**Substituir em cada Edge Function — padrão atual para corrigir:**
 ```typescript
-// Antes (em cada função):
-headers: { 'Access-Control-Allow-Origin': '*', ... }
+// Localizar em cada função:
+{ 'Access-Control-Allow-Origin': '*' }
 
-// Depois:
+// Substituir por:
 import { corsHeaders } from '../_shared/cors.ts';
 // ...
-if (req.method === 'OPTIONS') {
-  return new Response('ok', { headers: corsHeaders(req) });
-}
-// nas respostas:
-return new Response(JSON.stringify(data), {
-  headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
-});
+corsHeaders(req)
 ```
 
-**Edge Functions a atualizar:** (verificar todas em `supabase/functions/`)
-- `auth-rate-limit`
-- `flag-ai-gateway`
-- `vdesk-proxy`
-- `smtp-test`
-- `webhook-test`
-- demais funções encontradas
+**Funções a atualizar** (verificar todas em `supabase/functions/`):
+`auth-rate-limit`, `flag-ai-gateway`, `vdesk-proxy` (consultar-vdesk), `devops-sync-all`, `smtp-test`, `webhook-test` e demais.
 
-**Testes de verificação:**
+**⚠️ Atenção:** Adicionar a URL de produção correta do FlagHub em `ALLOWED_ORIGINS` antes de deployar.
+
+**Testes:**
 ```bash
-# T7: Origem permitida → deve retornar o header com a origem
-curl -I -X OPTIONS "https://nxmgppfyltwsqryfxkbm.supabase.co/functions/v1/auth-rate-limit" \
-  -H "Origin: https://flaghub.flag.com.br"
+# T11: origem permitida retorna o header exato (não wildcard)
+curl -sI -X OPTIONS "$BASE/functions/v1/auth-rate-limit" \
+  -H "Origin: https://flaghub.flag.com.br" | grep -i "access-control-allow-origin"
 # ESPERADO: Access-Control-Allow-Origin: https://flaghub.flag.com.br
 
-# T8: Origem não permitida → deve retornar a origem padrão (produção), não a requisitada
-curl -I -X OPTIONS "https://nxmgppfyltwsqryfxkbm.supabase.co/functions/v1/auth-rate-limit" \
-  -H "Origin: https://site-malicioso.com"
-# ESPERADO: Access-Control-Allow-Origin: https://flaghub.flag.com.br (não o site malicioso)
+# T12: origem não permitida retorna a origem padrão (não a requisitada)
+curl -sI -X OPTIONS "$BASE/functions/v1/auth-rate-limit" \
+  -H "Origin: https://site-malicioso.com" | grep -i "access-control-allow-origin"
+# ESPERADO: Access-Control-Allow-Origin: https://flaghub.flag.com.br
+
+# T13: regressão — app em produção ainda consegue chamar as Edge Functions
+# (teste manual: login e qualquer fluxo que use Edge Functions)
 ```
 
 ---
 
-## FASE 2 — Vulnerabilidades Altas (7 dias)
+## FASE 2 — Vulnerabilidades Altas (Próximos 7 dias, baixo impacto)
 
-### 2.1 — RPCs destrutivas sem autorização (CRIT-01, 02, 03 do Relatório #2)
+### 2.1 — Auth guards nas RPCs destrutivas (CRIT-01, 02, 03)
 
 **Criar migration:** `supabase/migrations/20260428000001_harden_destructive_rpcs.sql`
 
 ```sql
--- CRIT-01: delete_tickets_by_network
+-- CRIT-01: delete_tickets_by_network — qualquer autenticado pode deletar tickets de qualquer rede
 CREATE OR REPLACE FUNCTION public.delete_tickets_by_network(p_network_id bigint)
-RETURNS void
+RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
 AS $$
@@ -214,107 +313,86 @@ BEGIN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
   DELETE FROM public.tickets WHERE network_id = p_network_id;
+  RETURN (SELECT count(*) FROM public.tickets WHERE network_id = p_network_id);
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.delete_tickets_by_network(bigint) FROM anon, authenticated;
 GRANT  EXECUTE ON FUNCTION public.delete_tickets_by_network(bigint) TO service_role;
 
--- CRIT-02: purge_cs_implantacoes
+-- CRIT-02: purge_cs_implantacoes — qualquer autenticado pode purgar todos os registros
 CREATE OR REPLACE FUNCTION public.purge_cs_implantacoes()
-RETURNS void
+RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
 AS $$
+DECLARE v_count integer;
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
+  SELECT count(*) INTO v_count FROM public.cs_implantacoes_records;
   DELETE FROM public.cs_implantacoes_records;
+  RETURN v_count;
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.purge_cs_implantacoes() FROM anon, authenticated;
 GRANT  EXECUTE ON FUNCTION public.purge_cs_implantacoes() TO service_role;
 
--- CRIT-03: purge_old_inactive_tickets
+-- CRIT-03: purge_old_inactive_tickets — qualquer autenticado pode purgar tickets de qualquer rede
 CREATE OR REPLACE FUNCTION public.purge_old_inactive_tickets(
   p_network_id integer,
-  p_days_threshold integer
+  p_days_threshold integer DEFAULT 7
 )
-RETURNS void
+RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
 AS $$
+DECLARE v_count integer;
 BEGIN
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
+  SELECT count(*) INTO v_count FROM public.tickets
+    WHERE network_id = p_network_id AND is_active = false
+      AND updated_at < now() - (p_days_threshold || ' days')::interval;
   DELETE FROM public.tickets
-  WHERE network_id = p_network_id
-    AND updated_at < now() - (p_days_threshold || ' days')::interval;
+    WHERE network_id = p_network_id AND is_active = false
+      AND updated_at < now() - (p_days_threshold || ' days')::interval;
+  RETURN v_count;
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.purge_old_inactive_tickets(integer, integer) FROM anon, authenticated;
 GRANT  EXECUTE ON FUNCTION public.purge_old_inactive_tickets(integer, integer) TO service_role;
 ```
 
-**Testes de verificação:**
+**Testes:**
 ```bash
-# T9: anon tenta chamar RPC destrutiva → DEVE falhar
-curl -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/rpc/delete_tickets_by_network" \
-  -H "apikey: $ANON_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"p_network_id": 1}'
-# ESPERADO: HTTP 403 ou 404
+# T14: usuário autenticado (não admin) não pode chamar RPC destrutiva
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$BASE/rest/v1/rpc/delete_tickets_by_network" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT_REGULAR" \
+  -H "Content-Type: application/json" -d '{"p_network_id":1}'
+# ESPERADO: 403
 
-# T10: usuário autenticado (não admin) tenta chamar → DEVE falhar
-curl -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/rpc/delete_tickets_by_network" \
+# T15: anon não consegue nem chamar (function not found ou 403)
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$BASE/rest/v1/rpc/delete_tickets_by_network" \
   -H "apikey: $ANON_KEY" \
-  -H "Authorization: Bearer $JWT_REGULAR" \
-  -H "Content-Type: application/json" \
-  -d '{"p_network_id": 1}'
-# ESPERADO: HTTP 403 com mensagem 'forbidden'
+  -H "Content-Type: application/json" -d '{"p_network_id":1}'
+# ESPERADO: 403 ou 404
+
+# T16: regressão — funcionalidade de admin que usa essas RPCs continua funcionando
+# (se algum painel admin usa essas RPCs via service_role, verificar que ainda funciona)
 ```
 
 ---
 
-### 2.2 — Views sem `security_invoker=true` (ALTO-01)
+### 2.2 — REVOKE EXECUTE em funções desnecessárias para `anon`
 
-**Criar migration:** `supabase/migrations/20260428000002_harden_views_security_invoker.sql`
-
-```sql
--- Forçar views a respeitarem a RLS do usuário chamador
--- Em vez de executar com privilégios do owner (postgres)
-ALTER VIEW public.v_dashboard_summary          SET (security_invoker = true);
-ALTER VIEW public.vw_customer_service_kpis     SET (security_invoker = true);
-ALTER VIEW public.vw_devops_lead_area_map_safe SET (security_invoker = true);
-ALTER VIEW public.vw_hub_integrations_safe     SET (security_invoker = true);
--- Adicionar demais views identificadas no Relatório #2
-```
-
-**Testes de verificação:**
-```bash
-# T11: usuário sem área 'devops' não deve ver dados da view de devops
-# Testar via Supabase client com JWT de usuário de outra área
-```
-
-**⚠️ Atenção — possível quebra:** Após ativar `security_invoker`, a view passa a executar RLS com o contexto do usuário. Se alguma view depender de dados que o usuário logado não teria acesso direto (ex.: join com tabela admin), os dados desaparecerão. **Testar cada view no staging antes de produção.**
+**Criar migration:** `supabase/migrations/20260428000002_revoke_anon_execute.sql`
 
 ```sql
--- Verificar quais views funcionam com security_invoker antes de aplicar em massa:
-SET ROLE 'authenticated';
-SET request.jwt.claims TO '{"sub": "<user_uuid>", "role": "authenticated"}';
-SELECT * FROM public.v_dashboard_summary LIMIT 1;
-RESET ROLE;
-```
-
----
-
-### 2.3 — REVOKE EXECUTE em funções acessíveis por `anon` (ALTO-02)
-
-**Criar migration:** `supabase/migrations/20260428000003_revoke_anon_function_execute.sql`
-
-```sql
--- Gerar a lista completa executando no SQL Editor:
+-- Gerar a lista completa executando no SQL Editor ANTES de criar a migration:
 SELECT 'REVOKE EXECUTE ON FUNCTION public.'
        || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ') FROM anon;'
 FROM pg_proc p
@@ -322,166 +400,93 @@ JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public'
   AND has_function_privilege('anon', p.oid, 'EXECUTE')
   AND p.proname NOT IN (
-    -- whitelist: funções que realmente precisam ser públicas (pré-auth)
+    -- Whitelist: funções que realmente precisam ser acessíveis pré-autenticação
     'hub_check_my_ip',
     'hub_is_ip_allowed',
     'hub_request_ip'
   );
 
--- Também revogar hub_audit_log de anon (permite poluir logs):
+-- Aplicar o resultado como migration.
+-- Garantir também:
 REVOKE EXECUTE ON FUNCTION public.hub_audit_log(text, text, uuid, jsonb) FROM anon;
-
--- Revogar hub_is_admin de anon (defense in depth):
 REVOKE EXECUTE ON FUNCTION public.hub_is_admin() FROM anon;
 ```
 
-**Testes de verificação:**
-```bash
-# T12: anon não deve conseguir chamar is_admin
-curl -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/rpc/is_admin" \
-  -H "apikey: $ANON_KEY"
-# ESPERADO: HTTP 404 ou 403
+**⚠️ Processo obrigatório antes de aplicar:**
+1. Rodar a query de geração de REVOKEs no staging
+2. Verificar a whitelist — funções que o app chama sem autenticação prévia devem estar nela
+3. Testar o app completo no staging com os REVOKEs aplicados
+4. Só então aplicar em produção
 
-# T13: hub_check_my_ip DEVE continuar funcionando para anon (whitelist)
-curl -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/rpc/hub_check_my_ip" \
-  -H "apikey: $ANON_KEY"
-# ESPERADO: HTTP 200
+**Testes:**
+```bash
+# T17: is_admin não executável por anon
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$BASE/rest/v1/rpc/is_admin" -H "apikey: $ANON_KEY"
+# ESPERADO: 403 ou 404
+
+# T18: hub_check_my_ip ainda funciona para anon (whitelist)
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$BASE/rest/v1/rpc/hub_check_my_ip" -H "apikey: $ANON_KEY"
+# ESPERADO: 200
+
+# T19: regressão — fluxo de login completo funciona
+# (login via Azure AD → MFA se necessário → dashboard → operações normais)
 ```
 
 ---
 
-### 2.4 — Corrigir policy `public` em import_events (ALTO-03 / VULN-06)
-
-**Criar migration:** `supabase/migrations/20260428000004_fix_import_events_policy.sql`
-
-```sql
--- Corrigir role 'public' → 'authenticated' em import_events e imports
-ALTER POLICY "Admin/Gestao can create import events" ON public.import_events
-  TO authenticated;
-
--- Verificar e corrigir import_batches se tiver o mesmo problema:
--- SELECT policyname, roles FROM pg_policies WHERE tablename IN ('imports','import_batches','import_events');
-```
-
-**Testes de verificação:**
-```bash
-# T14: anon não deve conseguir inserir import_events
-curl -X POST "https://nxmgppfyltwsqryfxkbm.supabase.co/rest/v1/import_events" \
-  -H "apikey: $ANON_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"import_id":"<uuid>","type":"test"}'
-# ESPERADO: HTTP 401 ou HTTP 403
-```
-
----
-
-### 2.5 — Redesenhar fluxo de login para não transmitir senha (VULN-04)
+### 2.3 — Redesenho do fluxo de login (senha não vai ao Edge Function)
 
 **Arquivo:** `src/pages/Login.tsx`
 
-**Problema:** a senha é enviada ao Edge Function `auth-rate-limit` antes de chegar ao Supabase Auth.
+**Problema:** a senha é enviada ao Edge Function `auth-rate-limit` antes da autenticação, ficando exposta nos logs do Supabase Edge.
 
-**Refactor:**
 ```typescript
-// Antes — senha exposta no Edge Function:
-const response = await fetch('/functions/v1/auth-rate-limit', {
-  body: JSON.stringify({ email, password }) // ← senha vai ao Edge Function
+// ANTES — senha no payload do Edge Function:
+const response = await fetch(`${supabaseUrl}/functions/v1/auth-rate-limit`, {
+  method: 'POST',
+  body: JSON.stringify({ email, password }),  // ← senha exposta nos logs
 });
 
-// Depois — rate limit separado da autenticação:
-// Passo 1: checar rate limit apenas com email (sem senha)
-const limitCheck = await fetch('/functions/v1/auth-rate-limit', {
+// DEPOIS — dois passos independentes:
+// Passo 1: verificar rate limit com apenas o email
+const limitCheck = await fetch(`${supabaseUrl}/functions/v1/auth-rate-limit`, {
   method: 'POST',
-  body: JSON.stringify({ email, action: 'check' })
+  headers: { 'Content-Type': 'application/json', 'apikey': supabaseAnonKey },
+  body: JSON.stringify({ email, action: 'check' }),
 });
-if (!limitCheck.ok) throw new Error('Rate limit exceeded');
+if (limitCheck.status === 429) {
+  throw new Error('Muitas tentativas. Aguarde antes de tentar novamente.');
+}
 
 // Passo 2: autenticar diretamente no Supabase (senha nunca sai do cliente)
-const { error } = await supabase.auth.signInWithPassword({ email, password });
+const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+// Passo 3: registrar tentativa (sucesso ou falha) sem senha
+await fetch(`${supabaseUrl}/functions/v1/auth-rate-limit`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'apikey': supabaseAnonKey },
+  body: JSON.stringify({ email, action: 'record', success: !error }),
+});
 ```
+
+**Atualizar Edge Function `auth-rate-limit`** para aceitar os novos campos `action: 'check' | 'record'` e `success: boolean`.
 
 **Testes:**
 - Login com credenciais corretas → autenticação normal
-- Login com credenciais erradas 5x → bloqueio por email (rate limit funciona)
-- Verificar nos logs do Edge Function que nenhum payload contém campo `password`
+- Login com credenciais erradas 5x em 5min → HTTP 429
+- Verificar logs do Supabase Edge: nenhum payload deve conter campo `password`
+- Rate limiting continua funcionando (tabela `login_attempts` acumulando)
 
 ---
 
-### 2.6 — Corrigir open redirect pós-login (VULN-07)
+### 2.4 — Security headers no deployment
 
-**Arquivo:** `src/pages/Login.tsx`
-
-```typescript
-// Antes:
-const from = (location.state as { from?: string })?.from || '/home';
-navigate(from, { replace: true });
-
-// Depois:
-const raw = (location.state as { from?: string })?.from;
-const from = typeof raw === 'string'
-  && raw.startsWith('/')
-  && !raw.startsWith('//')
-  && !raw.includes(':')
-  ? raw
-  : '/home';
-navigate(from, { replace: true });
-```
-
-**Testes:**
-- Login normal → redireciona para /home ou rota anterior válida
-- URL com `from=//evil.com` → redireciona para /home (não para o domínio externo)
-- URL com `from=javascript:alert(1)` → redireciona para /home
-
----
-
-### 2.7 — Migrar rate limiting para banco de dados (ALTO-1)
-
-**Problema:** o `Map()` em memória do Deno isolate é descartado em cada restart. Um atacante pode reiniciar o contador simplesmente esperando um restart da Edge Function (cold start).
-
-**Criar tabela de rate limiting:**
-```sql
--- supabase/migrations/20260428000005_persistent_rate_limiting.sql
-CREATE TABLE IF NOT EXISTS public.rate_limit_attempts (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  identifier text NOT NULL,           -- email ou IP
-  action text NOT NULL DEFAULT 'login',
-  attempted_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX rate_limit_idx ON public.rate_limit_attempts (identifier, action, attempted_at);
-
--- Limpar registros antigos automaticamente (> 24h)
-CREATE OR REPLACE FUNCTION public.cleanup_rate_limit_attempts()
-RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
-  DELETE FROM public.rate_limit_attempts WHERE attempted_at < now() - interval '24 hours';
-$$;
-```
-
-**Atualizar Edge Function `auth-rate-limit`:**
-```typescript
-// Substituir Map() em memória por consulta ao banco:
-const { count } = await supabaseAdmin
-  .from('rate_limit_attempts')
-  .select('id', { count: 'exact', head: true })
-  .eq('identifier', email)
-  .gte('attempted_at', new Date(Date.now() - 60_000).toISOString()); // último minuto
-
-if ((count ?? 0) >= 5) {
-  return new Response(JSON.stringify({ error: 'Too many attempts' }), { status: 429 });
-}
-
-// Registrar tentativa:
-await supabaseAdmin.from('rate_limit_attempts').insert({ identifier: email });
-```
-
----
-
-### 2.8 — Security headers no deployment (VULN-02 / ALTO-3)
-
-**Criar/atualizar `vercel.json` ou `netlify.toml`:**
+**Arquivo:** `netlify.toml` ou `vercel.json`
 
 ```toml
-# netlify.toml
+# netlify.toml — adicionar antes de [[redirects]]:
 [[headers]]
   for = "/*"
   [headers.values]
@@ -496,297 +501,268 @@ await supabaseAdmin.from('rate_limit_attempts').insert({ identifier: email });
 
 **Testes:**
 ```bash
-curl -I https://flaghub.flag.com.br
-# Verificar presença de todos os headers acima na resposta
+curl -sI https://flaghub.flag.com.br | grep -iE "x-frame|x-content|strict-transport|content-security"
+# ESPERADO: todos os headers presentes
 ```
 
 ---
 
-## FASE 3 — Vulnerabilidades Médias (30 dias)
+## FASE 3 — Vulnerabilidades Médias (Próximos 30 dias)
 
-### 3.1 — Mover anon key para variável de ambiente (VULN-01 / MED-01)
+### 3.1 — Anon key em variável de ambiente
+
+**Arquivo:** `src/integrations/supabase/client.ts`
 
 ```typescript
-// src/integrations/supabase/client.ts
-// Antes:
-const SUPABASE_URL = "https://hardcoded...";
-const SUPABASE_PUBLISHABLE_KEY = "eyJ...hardcoded";
+// ANTES:
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...hardcoded";
 
-// Depois:
+// DEPOIS:
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 ```
 
-```bash
-# .env.example (commitado — sem valores reais):
-VITE_SUPABASE_URL=https://SEU_PROJETO.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
+Após mover: **rotacionar a anon key** no Supabase Dashboard → Settings → API → Rotate anon key.
 
-# .env.local (gitignored — valores reais):
-VITE_SUPABASE_URL=https://nxmgppfyltwsqryfxkbm.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
-```
+Criar `.env.example` (commitado, sem valores reais) e `.env.local` (gitignored, valores reais).
 
-Após mover para env vars: **rotacionar a anon key** no painel Supabase → Settings → API → Rotate anon key.
+### 3.2 — Open redirect pós-login
 
-### 3.2 — Rate limiting por X-Real-IP (VULN-03)
-
-Substituir `x-forwarded-for` por header não-forjável do runtime Supabase:
-```typescript
-// Deno/Supabase Edge Runtime expõe o IP real via:
-const clientIp = req.headers.get('x-real-ip')   // preferencial
-  ?? req.headers.get('cf-connecting-ip')          // Cloudflare
-  ?? 'unknown';
-```
-
-### 3.3 — Remover console.log com dados de auth em produção
+**Arquivo:** `src/pages/Login.tsx`
 
 ```typescript
-// src/contexts/AuthContext.tsx e outros arquivos
-// Condicionar ao ambiente:
+// ANTES:
+const from = (location.state as { from?: string })?.from || '/home';
+navigate(from, { replace: true });
+
+// DEPOIS — sanitizar antes de navegar:
+const raw = (location.state as { from?: string })?.from;
+const from = typeof raw === 'string'
+  && raw.startsWith('/')
+  && !raw.startsWith('//')
+  && !raw.includes(':')
+  ? raw
+  : '/home';
+navigate(from, { replace: true });
+```
+
+### 3.3 — Policy `import_events` com role `public`
+
+**Migration:** `supabase/migrations/20260428000003_fix_import_events_policy.sql`
+
+```sql
+ALTER POLICY "Admin/Gestao can create import events"
+  ON public.import_events
+  TO authenticated;
+```
+
+### 3.4 — Remover/condicionar `console.log` com dados de auth
+
+```typescript
+// src/contexts/AuthContext.tsx e outros — substituir:
+console.log("[Auth] ...", dadoSensivel);
+
+// Por:
 if (import.meta.env.DEV) {
-  console.log("[Auth] User data:", userData);
+  console.log("[Auth] ...", dadoSensivel);
 }
-// OU usar logger condicional centralizado:
-// src/lib/logger.ts → só loga se import.meta.env.DEV
 ```
+
+### 3.5 — MFA para usuários Azure SSO (decisão de arquitetura)
+
+**Situação atual:** `AuthContext.tsx:136-138` — SSO users retornam `false` no check de MFA por design.
+
+```typescript
+// AuthContext.tsx:136
+if (session.user.app_metadata?.provider === 'azure') {
+  return false; // Azure AD gerencia autenticação, sem TOTP adicional
+}
+```
+
+**Opções:**
+- **Manter:** Confiar no MFA do Azure AD tenant (recomendado se Azure AD tem MFA obrigatório configurado no tenant)
+- **Adicionar camada extra:** Exigir TOTP do Supabase mesmo para SSO users (implica UX mais pesada)
+
+**Ação necessária:** Verificar se o tenant Azure AD tem MFA obrigatório configurado para todos os usuários. Se sim, o comportamento atual é seguro e justificado. Documentar a decisão.
 
 ---
 
 ## FASE 4 — Framework de Segurança Contínua
 
-### 4.1 — Checklist de PR Obrigatório para Features de Segurança
+### 4.1 — Testes de integridade de segurança (SQL automatizados)
 
-Criar arquivo `.github/pull_request_template.md` (ou equivalente):
-
-```markdown
-## Checklist de Segurança
-
-Marque N/A se não aplicável. PRs que tocam em auth, RLS ou Edge Functions
-exigem que todos os itens aplicáveis sejam marcados.
-
-### Banco de Dados / RLS
-- [ ] Nenhuma política nova usa `USING (true)` sem `hub_is_approved()` ou restrição equivalente
-- [ ] Novas tabelas com dados de negócio têm RLS habilitada (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`)
-- [ ] Políticas SELECT filtram por área/aprovação — não apenas `TO authenticated`
-- [ ] Novas funções `SECURITY DEFINER` têm `SET search_path = public`
-- [ ] Funções destrutivas (DELETE, TRUNCATE) têm guard `IF NOT is_admin() THEN RAISE`
-- [ ] Novas funções não são executáveis por `anon` sem necessidade explícita
-- [ ] Colunas sensíveis novas (ex.: flags de segurança) têm trigger de proteção
-
-### Edge Functions
-- [ ] CORS usa `corsHeaders()` de `_shared/cors.ts` (não `'*'`)
-- [ ] Autenticação verificada no início da função (`Authorization: Bearer`)
-- [ ] Nenhum segredo hardcoded (usar `Deno.env.get()`)
-- [ ] Senha ou dados sensíveis não aparecem no payload recebido
-
-### Frontend
-- [ ] Nenhum dado sensível em `console.log` (ou condicional a `import.meta.env.DEV`)
-- [ ] Redirects validados como rotas internas (não podem iniciar com `//` ou conter `:`)
-- [ ] Novas rotas protegidas passam pelo `ProtectedRoute` com verificação de `pendingApproval`
-- [ ] `window.open` usa `rel="noopener noreferrer"`
-
-### Geral
-- [ ] Nenhuma chave ou segredo hardcoded (usar env vars)
-- [ ] Campos de formulário têm validação server-side além da client-side
-- [ ] Feature testada com os 3 perfis: anônimo, autenticado-não-aprovado, aprovado
-```
-
----
-
-### 4.2 — Testes de Integridade de Segurança (Automatizados)
-
-Criar arquivo `supabase/tests/security/rls_integrity.sql` para execução periódica ou em CI:
+**Criar:** `supabase/tests/security/rls_integrity.sql`
 
 ```sql
--- =============================================================
--- TESTES DE INTEGRIDADE DE SEGURANÇA — RLS FlagHub
--- Executar após cada migration que toque em RLS
--- Falha = presença de USING (true) em tabelas de negócio
--- =============================================================
+-- Executar após toda migration que toque em RLS.
+-- Cada bloco levanta EXCEPTION se detectar regressão.
 
--- TESTE 1: Nenhuma tabela de negócio deve ter USING (true) para authenticated
+-- TESTE 1: nenhuma tabela de negócio com USING (true) irrestrito
 DO $$
-DECLARE
-  v_count integer;
-  v_tables text;
+DECLARE v_count int; v_tables text;
 BEGIN
-  -- Tabelas de negócio que NÃO devem ter USING (true):
-  WITH business_tables AS (
-    SELECT tablename FROM pg_policies
-    WHERE schemaname = 'public'
-      AND roles::text LIKE '%authenticated%'
-      AND qual = 'true'  -- USING (true)
-      AND tablename IN (
-        'vdesk_clients', 'comercial_pesquisa_satisfacao', 'comercial_movimentacao_clientes',
-        'comercial_vendas', 'devops_work_items', 'devops_query_items_current',
-        'devops_time_logs', 'hub_raw_ingestions', 'hub_integrations',
-        'hub_integration_endpoints', 'helpdesk_dashboard_snapshots',
-        'sector_health', 'alert_channels', 'alert_rules', 'alert_deliveries',
-        'hub_audit_logs', 'manual_import_templates', 'devops_queries',
-        'hub_sync_jobs', 'hub_sync_runs', 'devops_collaborator_map'
-      )
-  )
   SELECT count(*), string_agg(tablename, ', ')
   INTO v_count, v_tables
-  FROM business_tables;
-
+  FROM pg_policies
+  WHERE schemaname = 'public'
+    AND roles::text LIKE '%authenticated%'
+    AND qual = 'true'
+    AND tablename IN (
+      'vdesk_clients','comercial_pesquisa_satisfacao','comercial_movimentacao_clientes',
+      'comercial_vendas','devops_work_items','devops_query_items_current',
+      'devops_time_logs','hub_raw_ingestions','hub_integrations','hub_integration_endpoints',
+      'helpdesk_dashboard_snapshots','sector_health','alert_channels','alert_rules',
+      'alert_deliveries','hub_audit_logs','manual_import_templates','devops_queries',
+      'hub_sync_jobs','hub_sync_runs','devops_collaborator_map','hub_area_inheritance'
+    );
   IF v_count > 0 THEN
-    RAISE EXCEPTION 'SECURITY FAIL: % tabelas com USING (true) sem filtro de aprovação: %',
-      v_count, v_tables;
+    RAISE EXCEPTION 'SECURITY FAIL T1: tabelas com USING (true) irrestrito: %', v_tables;
   END IF;
-
-  RAISE NOTICE 'PASS: nenhuma tabela de negócio com USING (true) irrestrito';
-END;
-$$;
+  RAISE NOTICE 'PASS T1: nenhuma tabela de negócio com USING (true)';
+END $$;
 
 -- TESTE 2: hub_is_approved() deve existir
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public' AND p.proname = 'hub_is_approved'
-  ) THEN
-    RAISE EXCEPTION 'SECURITY FAIL: função hub_is_approved() não encontrada';
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname='public' AND p.proname='hub_is_approved') THEN
+    RAISE EXCEPTION 'SECURITY FAIL T2: hub_is_approved() não existe';
   END IF;
-  RAISE NOTICE 'PASS: hub_is_approved() existe';
-END;
-$$;
+  RAISE NOTICE 'PASS T2: hub_is_approved() existe';
+END $$;
 
--- TESTE 3: hub_access_requests não deve permitir status != 'pending' no INSERT
+-- TESTE 3: trigger de proteção de mfa_exempt deve existir
 DO $$
-DECLARE
-  v_policy_def text;
 BEGIN
-  SELECT qual INTO v_policy_def
-  FROM pg_policies
-  WHERE schemaname = 'public'
-    AND tablename = 'hub_access_requests'
-    AND cmd = 'INSERT'
-    AND policyname = 'hub_requests_insert_own';
-
-  IF v_policy_def IS NULL THEN
-    RAISE EXCEPTION 'SECURITY FAIL: política hub_requests_insert_own não encontrada';
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relname='profiles'
+      AND t.tgname='protect_mfa_exempt_trigger') THEN
+    RAISE EXCEPTION 'SECURITY FAIL T3: trigger protect_mfa_exempt_trigger não existe em profiles';
   END IF;
+  RAISE NOTICE 'PASS T3: trigger protect_mfa_exempt_trigger existe';
+END $$;
 
-  IF v_policy_def NOT LIKE '%pending%' THEN
-    RAISE WARNING 'SECURITY WARN: política INSERT de hub_access_requests pode não restringir status=pending';
-  END IF;
-
-  RAISE NOTICE 'PASS: política INSERT de hub_access_requests verificada';
-END;
-$$;
-
--- TESTE 4: Funções destrutivas NÃO devem ser executáveis por anon
+-- TESTE 4: RPCs destrutivas não devem ser executáveis por authenticated
 DO $$
-DECLARE
-  v_fn text;
-  v_found boolean := false;
+DECLARE v_fn text; v_found bool := false;
 BEGIN
   FOR v_fn IN
-    SELECT p.proname
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public'
-      AND p.proname IN (
-        'delete_tickets_by_network',
-        'purge_cs_implantacoes',
-        'purge_old_inactive_tickets'
-      )
-      AND has_function_privilege('anon', p.oid, 'EXECUTE')
+    SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname='public'
+      AND p.proname IN ('delete_tickets_by_network','purge_cs_implantacoes','purge_old_inactive_tickets')
+      AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
   LOOP
-    RAISE WARNING 'SECURITY FAIL: função destrutiva "%" executável por anon', v_fn;
+    RAISE WARNING 'SECURITY FAIL T4: RPC destrutiva "%" executável por authenticated', v_fn;
     v_found := true;
   END LOOP;
+  IF NOT v_found THEN RAISE NOTICE 'PASS T4: RPCs destrutivas restritas'; END IF;
+END $$;
 
-  IF NOT v_found THEN
-    RAISE NOTICE 'PASS: nenhuma função destrutiva executável por anon';
-  END IF;
-END;
-$$;
-
--- TESTE 5: Trigger de proteção de mfa_exempt deve existir
+-- TESTE 5: RLS habilitada em 100% das tabelas
 DO $$
+DECLARE v_count int; v_tables text;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_trigger t
-    JOIN pg_class c ON c.oid = t.tgrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public'
-      AND c.relname = 'profiles'
-      AND t.tgname = 'protect_mfa_exempt_trigger'
-  ) THEN
-    RAISE EXCEPTION 'SECURITY FAIL: trigger protect_mfa_exempt_trigger não encontrado em profiles';
-  END IF;
-  RAISE NOTICE 'PASS: trigger protect_mfa_exempt_trigger existe';
-END;
-$$;
-
--- TESTE 6: RLS habilitada em 100% das tabelas públicas
-DO $$
-DECLARE
-  v_count integer;
-  v_tables text;
-BEGIN
-  SELECT count(*), string_agg(tablename, ', ')
+  SELECT count(*), string_agg(t.tablename, ', ')
   INTO v_count, v_tables
   FROM pg_tables t
-  LEFT JOIN pg_class c ON c.relname = t.tablename
-  LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE t.schemaname = 'public'
-    AND n.nspname = 'public'
-    AND c.relrowsecurity = false
-    AND c.relkind = 'r';  -- apenas tabelas reais, não views
-
+  JOIN pg_class c ON c.relname=t.tablename
+  JOIN pg_namespace n ON n.oid=c.relnamespace AND n.nspname='public'
+  WHERE t.schemaname='public' AND c.relrowsecurity=false AND c.relkind='r';
   IF v_count > 0 THEN
-    RAISE WARNING 'SECURITY WARN: % tabelas sem RLS: %', v_count, v_tables;
+    RAISE WARNING 'SECURITY WARN T5: tabelas sem RLS: %', v_tables;
   ELSE
-    RAISE NOTICE 'PASS: RLS habilitada em 100%% das tabelas públicas';
+    RAISE NOTICE 'PASS T5: RLS em 100%% das tabelas';
   END IF;
-END;
-$$;
+END $$;
+
+-- TESTE 6: hub_access_requests INSERT deve restringir status=pending
+DO $$
+DECLARE v_with_check text;
+BEGIN
+  SELECT with_check INTO v_with_check FROM pg_policies
+  WHERE schemaname='public' AND tablename='hub_access_requests'
+    AND cmd='INSERT' AND policyname='hub_requests_insert_own';
+  IF v_with_check IS NULL THEN
+    RAISE EXCEPTION 'SECURITY FAIL T6: política hub_requests_insert_own não encontrada';
+  END IF;
+  IF v_with_check NOT LIKE '%pending%' THEN
+    RAISE WARNING 'SECURITY WARN T6: INSERT hub_access_requests pode não restringir status=pending. WITH CHECK: %', v_with_check;
+  ELSE
+    RAISE NOTICE 'PASS T6: INSERT hub_access_requests restringe status=pending';
+  END IF;
+END $$;
 ```
 
 ---
 
-### 4.3 — Regras de Segurança para Novas Features
+### 4.2 — Checklist de PR obrigatório
 
-#### Regra 1 — Toda nova tabela de negócio
+Criar `.github/pull_request_template.md`:
 
-```sql
--- Template mínimo para qualquer nova tabela:
-CREATE TABLE public.nova_tabela (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  -- ... colunas ...
-  created_at timestamptz DEFAULT now()
-);
+```markdown
+## Checklist de Segurança
 
--- OBRIGATÓRIO: habilitar RLS
-ALTER TABLE public.nova_tabela ENABLE ROW LEVEL SECURITY;
+> Marque N/A se não aplicável. PRs que tocam em auth, RLS, Edge Functions
+> ou qualquer tabela de dados de negócio exigem os itens aplicáveis marcados.
 
--- OBRIGATÓRIO: SELECT requer aprovação
-CREATE POLICY "nova_tabela_select" ON public.nova_tabela
-  FOR SELECT TO authenticated
-  USING (public.hub_is_approved());  -- NÃO usar USING (true)
+### Banco de dados / RLS
+- [ ] Nenhuma política nova usa `USING (true)` em tabela de negócio sem `hub_is_approved()`
+- [ ] Novas tabelas têm RLS habilitada (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`)
+- [ ] Novas funções `SECURITY DEFINER` têm `SET search_path = public`
+- [ ] Funções destrutivas têm `IF NOT is_admin() THEN RAISE` antes de qualquer operação
+- [ ] Novas funções não são executáveis por `anon` sem necessidade explícita e documentada
+- [ ] Colunas sensíveis novas têm trigger de proteção ou são admin-only por RLS
 
--- OPCIONAL: Se a tabela for por área:
-CREATE POLICY "nova_tabela_select_area" ON public.nova_tabela
-  FOR SELECT TO authenticated
-  USING (public.hub_user_has_area(area_id));
+### Edge Functions
+- [ ] CORS usa `corsHeaders()` de `_shared/cors.ts` — nunca `'*'` direto
+- [ ] Autenticação verificada no início (`Authorization: Bearer ...`)
+- [ ] Nenhum segredo hardcoded — usar `Deno.env.get()`
+- [ ] Senha ou dados de autenticação não aparecem no corpo da requisição recebida
+
+### Frontend
+- [ ] `console.log` com dados sensíveis está dentro de `if (import.meta.env.DEV)`
+- [ ] Redirects validados: devem iniciar com `/`, não com `//` e não conter `:`
+- [ ] Novas rotas protegidas passam por `ProtectedRoute` (inclui check de `pendingApproval`)
+- [ ] `window.open` usa `rel="noopener noreferrer"`
+
+### Testes dos 3 perfis (obrigatório para qualquer feature de dados)
+- [ ] Testado com usuário **anônimo** → sem acesso a dados
+- [ ] Testado com usuário **autenticado não aprovado** → sem acesso a dados de negócio
+- [ ] Testado com usuário **aprovado** → acesso normal funcionando
 ```
 
-#### Regra 2 — Toda nova função SECURITY DEFINER
+---
 
+### 4.3 — Templates de código seguro para novas features
+
+#### Nova tabela de dados de negócio
 ```sql
--- Template mínimo:
+CREATE TABLE public.nome_tabela (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at timestamptz DEFAULT now()
+  -- ... colunas de negócio
+);
+
+ALTER TABLE public.nome_tabela ENABLE ROW LEVEL SECURITY;
+
+-- OBRIGATÓRIO: SELECT requer aprovação real
+CREATE POLICY "nome_tabela_select" ON public.nome_tabela
+  FOR SELECT TO authenticated
+  USING (public.hub_is_approved());
+  -- Se por área: USING (public.hub_user_has_area(area_id))
+  -- NUNCA: USING (true)
+```
+
+#### Nova função SECURITY DEFINER
+```sql
 CREATE OR REPLACE FUNCTION public.nova_funcao(params...)
 RETURNS tipo
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = public  -- OBRIGATÓRIO: fixar search_path
+SECURITY DEFINER SET search_path = public  -- OBRIGATÓRIO
 AS $$
 BEGIN
-  -- Se destrutiva, verificar admin:
+  -- Se a função modifica dados sensíveis:
   IF NOT public.is_admin() THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
   END IF;
@@ -794,41 +770,37 @@ BEGIN
 END;
 $$;
 
--- OBRIGATÓRIO: Revogar acesso de anon (exceto se necessário pré-auth)
+-- OBRIGATÓRIO: revogar anon (exceto se necessário pré-auth)
 REVOKE EXECUTE ON FUNCTION public.nova_funcao(params...) FROM anon;
 ```
 
-#### Regra 3 — Toda nova Edge Function
-
+#### Nova Edge Function
 ```typescript
-// Template mínimo:
 import { corsHeaders } from '../_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-Deno.serve(async (req) => {
-  // 1. CORS preflight
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders(req) });
   }
 
-  // 2. Verificar autenticação
+  // Verificar autenticação
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     });
   }
 
-  // 3. Criar cliente com o JWT do usuário (não service_role)
+  // Cliente com JWT do usuário — RLS aplicada automaticamente
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
   );
 
-  // 4. Lógica da função
-  // ...
+  // lógica...
 
   return new Response(JSON.stringify(result), {
     headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
@@ -838,152 +810,84 @@ Deno.serve(async (req) => {
 
 ---
 
-### 4.4 — Revisão Mensal de RLS
-
-Executar no Supabase SQL Editor no início de cada mês:
+### 4.4 — Auditoria mensal de RLS (rodar no SQL Editor)
 
 ```sql
--- Auditoria mensal de segurança
--- Copiar resultado e anexar ao relatório do mês
-
--- 1. Tabelas com USING (true) — não deve crescer
-SELECT tablename, policyname, cmd, roles
+-- Verificar se nenhuma nova USING (true) foi adicionada em tabelas de negócio
+SELECT tablename, policyname, cmd, roles, qual
 FROM pg_policies
 WHERE schemaname = 'public'
   AND qual = 'true'
   AND roles::text LIKE '%authenticated%'
 ORDER BY tablename;
+-- Resultado esperado: apenas tabelas de config pública, NENHUMA tabela de dados de negócio
 
--- 2. Funções executáveis por anon — não deve crescer
+-- Verificar funções executáveis por anon (não deve crescer)
 SELECT p.proname, pg_get_function_identity_arguments(p.oid) AS args
-FROM pg_proc p
-JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public'
-  AND has_function_privilege('anon', p.oid, 'EXECUTE')
+FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname='public' AND has_function_privilege('anon', p.oid, 'EXECUTE')
 ORDER BY p.proname;
 
--- 3. Tabelas sem RLS — deve ser sempre 0
+-- Verificar tabelas sem RLS (deve ser sempre 0)
 SELECT tablename FROM pg_tables t
-JOIN pg_class c ON c.relname = t.tablename
-JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
-WHERE t.schemaname = 'public' AND c.relrowsecurity = false AND c.relkind = 'r';
+JOIN pg_class c ON c.relname=t.tablename
+JOIN pg_namespace n ON n.oid=c.relnamespace AND n.nspname='public'
+WHERE t.schemaname='public' AND c.relrowsecurity=false AND c.relkind='r';
 
--- 4. Verificar se trigger de mfa_exempt continua presente
-SELECT trigger_name, event_object_table, action_timing, event_manipulation
+-- Verificar se trigger de mfa_exempt continua presente
+SELECT trigger_name, event_object_table
 FROM information_schema.triggers
-WHERE trigger_schema = 'public' AND trigger_name = 'protect_mfa_exempt_trigger';
+WHERE trigger_schema='public' AND trigger_name='protect_mfa_exempt_trigger';
 ```
 
 ---
 
-### 4.5 — Proteção contra Rollback de Segurança em CI/CD
+## Checklist de Conclusão por Fase
 
-Adicionar ao pipeline de CI (GitHub Actions / GitLab CI):
+### Fase 1 — Concluída quando:
+- [ ] Migration `20260421180000` aplicada em produção
+- [ ] T1–T8 executados e passando
+- [ ] Signup desabilitado no Supabase Dashboard (verificar com T9)
+- [ ] Edge Functions redeploy com `_shared/cors.ts` — T11, T12, T13 passando
+- [ ] Regressão confirmada: dashboard carrega, login Azure funciona, aprovação funciona
 
-```yaml
-# .github/workflows/security-check.yml
-name: Security Integrity Check
+### Fase 2 — Concluída quando:
+- [ ] Migration RPCs destrutivas aplicada — T14, T15, T16 passando
+- [ ] REVOKE anon em 52 funções — validado no staging, T17, T18, T19 passando
+- [ ] Fluxo de login redesenhado — `password` não aparece nos logs do Edge Function
+- [ ] Security headers ativos — verificar com `curl -sI https://flaghub.flag.com.br`
 
-on:
-  push:
-    paths:
-      - 'supabase/migrations/**'
-      - 'supabase/functions/**'
-      - 'src/contexts/Auth*'
-      - 'src/components/auth/**'
+### Fase 3 — Concluída quando:
+- [ ] Anon key em env vars + key rotacionada no Supabase Dashboard
+- [ ] Open redirect sanitizado — teste com `from=//evil.com` e `from=javascript:alert(1)`
+- [ ] Policy `import_events` corrigida
+- [ ] `console.log` sensíveis condicionais — verificar com `grep -r "console.log" src/ | grep -i auth`
+- [ ] MFA para SSO documentado (decisão arquitetural registrada)
 
-jobs:
-  rls-integrity:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check for USING (true) in new migrations
-        run: |
-          # Detectar USING (true) em migrations novas (não é proibido, mas requer justificativa)
-          NEW_MIGRATIONS=$(git diff --name-only HEAD~1 -- 'supabase/migrations/*.sql')
-          if [ -n "$NEW_MIGRATIONS" ]; then
-            for f in $NEW_MIGRATIONS; do
-              if grep -q 'USING (true)' "$f" || grep -q 'USING(true)' "$f"; then
-                echo "⚠️ ATENÇÃO: $f contém USING (true) — verificar se é intencional"
-                echo "Se for necessário, deve ser acompanhado de hub_is_approved() ou justificativa"
-                # Não falha o build, apenas alerta — decisão humana
-              fi
-            done
-          fi
-
-      - name: Check for hardcoded secrets in new files
-        run: |
-          # Detectar padrões de chave JWT hardcoded
-          if git diff HEAD~1 -- 'src/**' | grep -E 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'; then
-            echo "❌ ERRO: JWT hardcoded detectado no código frontend"
-            exit 1
-          fi
-
-      - name: Validate CORS in new Edge Functions
-        run: |
-          # Verificar que funções novas usam corsHeaders, não '*'
-          NEW_FUNCTIONS=$(git diff --name-only HEAD~1 -- 'supabase/functions/*/index.ts')
-          for f in $NEW_FUNCTIONS; do
-            if grep -q "'Access-Control-Allow-Origin', '\*'" "$f"; then
-              echo "❌ ERRO: $f usa CORS wildcard (*) — usar corsHeaders() de _shared/cors.ts"
-              exit 1
-            fi
-          done
-```
-
----
-
-## Checklist Final de Status
-
-### Após Fase 1 (Hoje)
-
-- [ ] Migration `20260421180000_security_approved_users_rls.sql` aplicada em produção
-- [ ] T1–T6 executados e passando
-- [ ] Edge Functions com CORS restrito deployadas
-- [ ] T7–T8 executados e passando
-
-### Após Fase 2 (7 dias)
-
-- [ ] Migration RPCs destrutivas aplicada — T9, T10 passando
-- [ ] Views com `security_invoker=true` — testadas no staging antes de produção
-- [ ] REVOKE anon em funções sensíveis — T12, T13 passando
-- [ ] Policy `import_events` corrigida — T14 passando
-- [ ] Fluxo de login redesenhado — senha não aparece nos logs do Edge Function
-- [ ] Open redirect corrigido — testes manuais passando
-- [ ] Rate limiting persistente no banco ativo
-- [ ] Security headers no deployment — verificados com `curl -I`
-
-### Após Fase 3 (30 dias)
-
-- [ ] `anon key` removida do código-fonte — nova key rotacionada
-- [ ] `console.log` com dados de auth removido ou condicional
-- [ ] `.env.example` criado e commitado
-
-### Framework Contínuo
-
-- [ ] `supabase/tests/security/rls_integrity.sql` criado e executando em CI
+### Fase 4 — Ativa quando:
+- [ ] `supabase/tests/security/rls_integrity.sql` criado e executando em CI/CD
 - [ ] PR template com checklist de segurança ativo no repositório
-- [ ] Revisão mensal de RLS agendada no calendário da equipe
-- [ ] `.github/workflows/security-check.yml` criado e ativo
+- [ ] Auditoria mensal agendada (1º de cada mês)
 
 ---
 
-## Contato e Responsabilidades
+## Responsabilidades e Prazos
 
-| Atividade | Responsável | Prazo |
-|-----------|------------|-------|
-| Aplicar migration Fase 1 | DevOps (deploy Supabase) | 21/04/2026 |
-| Fix CORS Edge Functions | Dev backend | 21/04/2026 |
-| RPCs destrutivas | Dev backend | 28/04/2026 |
-| Views security_invoker | Dev backend (staging first) | 28/04/2026 |
-| Redesenho fluxo login | Dev frontend | 28/04/2026 |
-| Security headers | DevOps (deploy config) | 28/04/2026 |
-| Anon key para env vars | Dev + DevOps | 21/05/2026 |
-| CI/CD security gates | DevOps | 21/05/2026 |
-| Revisão mensal | Lead técnico | Recorrente |
+| Fase | Atividade | Responsável | Prazo |
+|------|-----------|------------|-------|
+| 1 | Deploy migration 20260421180000 | DevOps | **21/04/2026** |
+| 1 | Desabilitar signup (Dashboard) | DevOps | **21/04/2026** |
+| 1 | CORS Edge Functions | Dev backend | **21/04/2026** |
+| 2 | RPCs destrutivas | Dev backend | 28/04/2026 |
+| 2 | REVOKE anon (testar no staging) | Dev backend | 28/04/2026 |
+| 2 | Redesenho fluxo login | Dev frontend | 28/04/2026 |
+| 2 | Security headers deployment | DevOps | 28/04/2026 |
+| 3 | Anon key env vars + rotação | Dev + DevOps | 21/05/2026 |
+| 3 | Open redirect + import_events | Dev | 21/05/2026 |
+| 4 | SQL testes integridade + PR template | Lead técnico | 21/05/2026 |
+| 4 | Auditoria mensal | Lead técnico | Recorrente |
 
 ---
 
-*Plano criado em 21/04/2026 baseado nos Pentest Reports #1, #2 e #3 — FlagHub Operations Hub*
-*Próxima revisão do plano: após conclusão da Fase 2 (28/04/2026)*
+*Versão 1.1 — 21/04/2026 — revisado com estado real do código-fonte verificado diretamente*
+*Versão anterior (1.0) continha imprecisões herdadas de relatórios LLM — corrigidas nesta versão*
