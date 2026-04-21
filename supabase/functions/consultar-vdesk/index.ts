@@ -5,11 +5,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 /**
  * Valida autenticação do usuário via JWT
@@ -51,7 +47,7 @@ async function validateAuthentication(req: Request): Promise<{ userId: string } 
 serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders(req) })
   }
 
   // =========================================
@@ -61,9 +57,9 @@ serve(async (req) => {
   if (!auth) {
     return new Response(
       JSON.stringify({ error: 'Autenticação obrigatória' }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 401 
+      {
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
+        status: 401
       }
     )
   }
@@ -72,13 +68,13 @@ serve(async (req) => {
     // Esta função está incompleta - conexão direta com SQL Server não está implementada
     // Retorna erro informativo ao invés de dados vazios
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: 'Função não implementada',
         message: 'Use a função vdesk-proxy para consultas ao VDESK. Esta função está desativada.',
         suggestion: 'Chame /functions/v1/vdesk-proxy?action=consultar ou ?action=correlacao'
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      {
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
         status: 501 // Not Implemented
       }
     )
@@ -87,9 +83,9 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return new Response(
       JSON.stringify({ error: errorMessage }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400 
+      {
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
+        status: 400
       }
     )
   }

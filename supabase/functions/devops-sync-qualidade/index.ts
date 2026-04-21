@@ -1,11 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 const QUALITY_WIQL_ID = '7b0a8298-5890-42d8-b280-1121b21786da'
 const EM_TESTE_STATE = 'Em Teste'
@@ -207,7 +202,7 @@ async function processQualityDerived(admin: any, queryId: string) {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders(req) })
   }
 
   try {
@@ -215,7 +210,7 @@ serve(async (req) => {
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Autenticação obrigatória' }), {
         status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -236,7 +231,7 @@ serve(async (req) => {
         .maybeSingle() : { data: roleRow }
       if (!roleRow && !legacyRole) {
         return new Response(JSON.stringify({ error: 'Permissão negada: apenas admins podem executar sincronização' }), {
-          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
         })
       }
     }
@@ -275,13 +270,13 @@ serve(async (req) => {
       ...syncResult,
       derived,
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
   } catch (err) {
     console.error('[DevOpsSyncQualidade] Error:', err)
     return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
   }
 })

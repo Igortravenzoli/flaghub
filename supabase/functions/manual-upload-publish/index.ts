@@ -2,20 +2,7 @@
 // Now supports area-based roles (owner) in addition to global admin/gestao
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
-function resolveCorsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get('origin')
-  return {
-    ...corsHeaders,
-    'Access-Control-Allow-Origin': origin ?? '*',
-    'Vary': 'Origin',
-  }
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 function getSupabaseAdmin() {
   return createClient(
@@ -266,10 +253,8 @@ const PUBLISH_TARGETS: Record<string, {
 }
 
 serve(async (req: Request) => {
-  const responseHeaders = resolveCorsHeaders(req)
-
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: responseHeaders })
+    return new Response('ok', { headers: corsHeaders(req) })
   }
 
   const admin = getSupabaseAdmin()
@@ -278,7 +263,7 @@ serve(async (req: Request) => {
     const userId = await getAuthUserId(req)
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Autenticação obrigatória' }), {
-        status: 401, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 401, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -287,7 +272,7 @@ serve(async (req: Request) => {
 
     if (!batch_id) {
       return new Response(JSON.stringify({ error: 'batch_id é obrigatório' }), {
-        status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -300,7 +285,7 @@ serve(async (req: Request) => {
 
     if (bErr || !batch) {
       return new Response(JSON.stringify({ error: 'Batch não encontrado' }), {
-        status: 404, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 404, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -315,14 +300,14 @@ serve(async (req: Request) => {
 
     if (!isOwner && !globalOk && !hubAdmin && !areaOk) {
       return new Response(JSON.stringify({ error: 'Acesso negado — requer ser o autor do batch ou papel de Owner/Admin na área' }), {
-        status: 403, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 403, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
     const templateKey = (batch as any).manual_import_templates?.key
     if (!templateKey) {
       return new Response(JSON.stringify({ error: 'Template não associado ao batch' }), {
-        status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -335,14 +320,14 @@ serve(async (req: Request) => {
         published_rows: 0,
         already_published: true,
         note: 'Batch já estava publicado',
-      }), { headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+      }), { headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
     }
 
     // Check status
     if (!['validated', 'parsed'].includes(batch.status)) {
       return new Response(JSON.stringify({
         error: `Batch em status '${batch.status}', não pode ser publicado. Status esperado: validated ou parsed`,
-      }), { status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+      }), { status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
     }
 
     const target = PUBLISH_TARGETS[templateKey]
@@ -369,7 +354,7 @@ serve(async (req: Request) => {
         target_table: 'manual_import_rows',
         published_rows: 0,
         note: 'Dados armazenados como raw — sem tabela curada configurada',
-      }), { headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+      }), { headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
     }
 
     // 2. Load valid rows
@@ -384,7 +369,7 @@ serve(async (req: Request) => {
 
     if (!rows || rows.length === 0) {
       return new Response(JSON.stringify({ error: 'Nenhuma linha válida para publicar' }), {
-        status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -494,12 +479,12 @@ serve(async (req: Request) => {
       template: templateKey,
       target_table: target.table,
       published_rows: publishedCount,
-    }), { headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+    }), { headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
 
   } catch (err) {
     console.error('[ManualUploadPublish] Error:', err)
     return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
-      status: 500, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
   }
 })

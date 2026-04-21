@@ -1,11 +1,7 @@
 // smtp-test — Testa conexão SMTP via TCP/TLS (compatível com Supabase Edge Runtime)
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 /** Read lines from a TCP connection until we get a complete SMTP response */
 async function readResponse(conn: Deno.Conn): Promise<string> {
@@ -29,11 +25,11 @@ function assertCode(response: string, expected: string, context: string) {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) })
 
   try {
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) return new Response(JSON.stringify({ error: 'Não autenticado' }), { status: 401, headers: corsHeaders })
+    if (!authHeader) return new Response(JSON.stringify({ error: 'Não autenticado' }), { status: 401, headers: corsHeaders(req) })
 
     const admin = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -41,7 +37,7 @@ serve(async (req) => {
     )
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authErr } = await admin.auth.getUser(token)
-    if (authErr || !user) return new Response(JSON.stringify({ error: 'Token inválido' }), { status: 401, headers: corsHeaders })
+    if (authErr || !user) return new Response(JSON.stringify({ error: 'Token inválido' }), { status: 401, headers: corsHeaders(req) })
 
     const { data: hubRoles } = await admin
       .from('hub_user_global_roles')
@@ -54,14 +50,14 @@ serve(async (req) => {
       .eq('user_id', user.id)
       .in('role', ['admin', 'gestao'])
     if (!(hubRoles?.length || legacyRoles?.length)) {
-      return new Response(JSON.stringify({ error: 'Sem permissão' }), { status: 403, headers: corsHeaders })
+      return new Response(JSON.stringify({ error: 'Sem permissão' }), { status: 403, headers: corsHeaders(req) })
     }
 
     const body = await req.json()
     const { host, port, user: smtpUser, pass, from } = body
 
     if (!host || !smtpUser || !pass || !from) {
-      return new Response(JSON.stringify({ error: 'Campos obrigatórios: host, user, pass, from' }), { status: 400, headers: corsHeaders })
+      return new Response(JSON.stringify({ error: 'Campos obrigatórios: host, user, pass, from' }), { status: 400, headers: corsHeaders(req) })
     }
 
     const smtpPort = Number(port) || 587
@@ -162,7 +158,7 @@ serve(async (req) => {
       message: `E-mail de teste enviado para ${recipient} via ${host}:${smtpPort}`,
       steps,
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
   } catch (err) {
     console.error('SMTP test error:', err)
@@ -171,7 +167,7 @@ serve(async (req) => {
       error: (err as Error).message || String(err),
     }), {
       status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
   }
 })

@@ -1,12 +1,7 @@
 // gateway-sync-clients v1.0 — Sincroniza clientes ativos do Gateway/VDesk
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 function getSupabaseAdmin() {
   return createClient(
@@ -70,7 +65,7 @@ function hashPayload(obj: any): string {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders(req) })
   }
 
   const startTime = Date.now()
@@ -80,7 +75,7 @@ serve(async (req) => {
     const userId = await validateAuth(req)
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Autenticação obrigatória' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -100,7 +95,7 @@ serve(async (req) => {
         .maybeSingle() : { data: roleRow }
       if (!roleRow && !legacyRole) {
         return new Response(JSON.stringify({ error: 'Permissão negada: apenas admins podem executar sincronização' }), {
-          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
         })
       }
     }
@@ -217,7 +212,7 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({
         success: true, total: allClients.length, upserted: upsertedCount, duration_ms: duration,
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }), { headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
 
     } catch (innerErr) {
       const duration = Date.now() - startTime
@@ -233,7 +228,7 @@ serve(async (req) => {
   } catch (err) {
     console.error('[GatewaySyncClients] Error:', err)
     return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
   }
 })
