@@ -3,6 +3,44 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
+/**
+ * Validates an SMTP hostname to prevent SSRF attacks.
+ * Blocks RFC1918, loopback, link-local (cloud metadata), and IPv6 private ranges.
+ */
+function validateSmtpHost(host: string): { ok: true } | { ok: false; reason: string } {
+  const h = host.toLowerCase().trim()
+
+  if (!h) return { ok: false, reason: 'Host SMTP não pode ser vazio' }
+  if (h === 'localhost') return { ok: false, reason: 'Host SMTP não permitido' }
+
+  // Block IPv4 private/reserved ranges
+  const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (ipv4) {
+    const [, a, b] = ipv4.map(Number)
+    if (
+      a === 127 ||                              // loopback
+      a === 10 ||                               // RFC1918 class A
+      a === 0 ||                                // reserved
+      (a === 172 && b >= 16 && b <= 31) ||      // RFC1918 class B
+      (a === 192 && b === 168) ||               // RFC1918 class C
+      (a === 169 && b === 254)                  // link-local / cloud metadata (169.254.169.254)
+    ) {
+      return { ok: false, reason: 'Endereço IP privado ou de metadata não permitido como host SMTP' }
+    }
+  }
+
+  // Block IPv6 loopback, link-local, unique-local
+  if (h === '::1' || h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd')) {
+    return { ok: false, reason: 'Endereço IPv6 privado não permitido como host SMTP' }
+  }
+
+  // Block non-standard SMTP ports that could be used for port scanning
+  return { ok: true }
+}
+
+/** Allowed SMTP ports — rejects attempts to scan other services */
+const ALLOWED_SMTP_PORTS = new Set([25, 465, 587, 2525])
+
 /** Read lines from a TCP connection until we get a complete SMTP response */
 async function readResponse(conn: Deno.Conn): Promise<string> {
   const buf = new Uint8Array(4096)
@@ -61,6 +99,15 @@ serve(async (req) => {
     }
 
     const smtpPort = Number(port) || 587
+
+    // SSRF guard: validate host and port before opening any TCP connection
+    const hostCheck = validateSmtpHost(host)
+    if (!hostCheck.ok) {
+      return new Response(JSON.stringify({ error: `Host rejeitado: ${hostCheck.reason}` }), { status: 400, headers: corsHeaders(req) })
+    }
+    if (!ALLOWED_SMTP_PORTS.has(smtpPort)) {
+      return new Response(JSON.stringify({ error: `Porta ${smtpPort} não permitida. Use 25, 465, 587 ou 2525.` }), { status: 400, headers: corsHeaders(req) })
+    }
     const recipient = body.to || user.email || from
     const steps: string[] = []
 

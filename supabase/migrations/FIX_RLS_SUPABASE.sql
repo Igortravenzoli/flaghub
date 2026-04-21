@@ -1,37 +1,17 @@
--- =====================================================
--- EXECUTAR NO SUPABASE STUDIO → SQL EDITOR
--- =====================================================
--- Este script adiciona políticas RLS para permitir INSERT/UPDATE em tickets
-
--- 1. Adicionar política para permitir INSERT em tickets (usuários autenticados)
-CREATE POLICY "Users can insert tickets in their network" ON public.tickets
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    public.is_admin() OR network_id = public.auth_network_id()
-  );
-
--- 2. Adicionar política para permitir UPDATE em tickets (usuários autenticados)
-CREATE POLICY "Users can update tickets in their network" ON public.tickets
-  FOR UPDATE TO authenticated
-  USING (public.is_admin() OR network_id = public.auth_network_id())
-  WITH CHECK (public.is_admin() OR network_id = public.auth_network_id());
-
--- 3. Política para permitir acesso anônimo durante testes
--- ATENÇÃO: Estas políticas permitem acesso total anônimo - usar apenas em ambiente de testes!
-CREATE POLICY "Allow anonymous read for testing" ON public.tickets
-  FOR SELECT TO anon
-  USING (true);
-
-CREATE POLICY "Allow anonymous insert for testing" ON public.tickets
-  FOR INSERT TO anon
-  WITH CHECK (true);
-
-CREATE POLICY "Allow anonymous update for testing" ON public.tickets
-  FOR UPDATE TO anon
-  USING (true)
-  WITH CHECK (true);
-
--- Verificar políticas criadas
-SELECT schemaname, tablename, policyname, permissive, roles, cmd 
-FROM pg_policies 
-WHERE tablename = 'tickets';
+-- ============================================================================
+-- AVISO DE SEGURANÇA — NÃO EXECUTAR ESTE ARQUIVO
+-- ============================================================================
+-- Este arquivo foi neutralizado em 2026-04-21 (pentest rodada 2).
+-- O conteúdo original criava políticas RLS que concediam acesso anônimo
+-- (role: anon) irrestrito à tabela public.tickets — expondo dados LGPD.
+--
+-- As políticas de teste foram corretamente removidas pelas migrations oficiais:
+--   20260130142646  →  dropa "Allow anonymous insert/update for testing"
+--   20260204134410  →  dropa "Allow anonymous read for testing"
+--
+-- Executar o conteúdo original deste arquivo em qualquer ambiente recriaria
+-- essas políticas perigosas. Por isso o SQL foi removido deste arquivo.
+--
+-- Para testar tickets, use uma conta autenticada com a role correta.
+-- NUNCA use a role anon para acessar dados de produção.
+-- ============================================================================
