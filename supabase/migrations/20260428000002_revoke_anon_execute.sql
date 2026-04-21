@@ -14,6 +14,8 @@
 --
 -- Strategy: Use a DO block to dynamically revoke from all functions NOT in
 --           the whitelist, so new functions are NOT automatically exposed.
+--           Also revoke from PUBLIC to prevent anon inheritance via PUBLIC,
+--           then explicitly grant to authenticated to preserve app behavior.
 --           Developers who need a function accessible to anon must explicitly
 --           GRANT it with a comment explaining why.
 -- ============================================================================
@@ -44,10 +46,33 @@ BEGIN
     fn_sig := format('%I.%I(%s)', r.schema_name, r.func_name, r.args);
     BEGIN
       EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM anon', fn_sig);
+      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', fn_sig);
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', fn_sig);
       RAISE NOTICE 'Revoked anon EXECUTE on %', fn_sig;
     EXCEPTION WHEN others THEN
       RAISE WARNING 'Could not revoke anon EXECUTE on %: %', fn_sig, SQLERRM;
     END;
+  END LOOP;
+END;
+$$;
+
+-- Ensure whitelist remains anon-callable even after PUBLIC revokes.
+GRANT EXECUTE ON FUNCTION public.hub_check_my_ip() TO anon;
+GRANT EXECUTE ON FUNCTION public.hub_request_ip() TO anon;
+GRANT EXECUTE ON FUNCTION public.cleanup_login_attempts() TO anon;
+
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT format('%I.%I(%s)', n.nspname, p.proname, pg_get_function_identity_arguments(p.oid)) AS fn_sig
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'hub_is_ip_allowed'
+  LOOP
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO anon', r.fn_sig);
   END LOOP;
 END;
 $$;

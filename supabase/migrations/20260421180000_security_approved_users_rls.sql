@@ -67,6 +67,7 @@ CREATE POLICY "hub_endpoints_select" ON public.hub_integration_endpoints
 
 -- hub_sync_jobs
 DROP POLICY IF EXISTS "Authenticated users can read sync jobs" ON public.hub_sync_jobs;
+DROP POLICY IF EXISTS "hub_sync_jobs_select" ON public.hub_sync_jobs;
 CREATE POLICY "hub_sync_jobs_select" ON public.hub_sync_jobs
   FOR SELECT TO authenticated
   USING (public.hub_is_approved());

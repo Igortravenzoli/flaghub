@@ -24,9 +24,12 @@ WITH CHECK (
       AND (
         public.is_admin()
         OR EXISTS (
-          SELECT 1 FROM public.user_roles ur
+          SELECT 1
+          FROM public.user_roles ur
+          JOIN public.profiles p ON p.user_id = ur.user_id
           WHERE ur.user_id = auth.uid()
-            AND ur.network_id = i.network_id
+            AND ur.role IN ('admin', 'gestao')
+            AND p.network_id = i.network_id
         )
       )
   )
