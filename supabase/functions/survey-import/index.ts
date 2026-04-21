@@ -1,10 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 // ── Product mapping ──────────────────────────────────────────────
 interface ProductDef {
@@ -126,11 +121,11 @@ function getVal(row: Record<string, string>, headers: string[], target: string):
 // ── Main handler ─────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders(req) });
   }
 
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+    return new Response("Method not allowed", { status: 405, headers: corsHeaders(req) });
   }
 
   try {
@@ -549,7 +544,7 @@ Deno.serve(async (req) => {
           },
           aggregate_id: aggRec?.id ?? null,
         },
-        { headers: corsHeaders },
+        { headers: corsHeaders(req) },
       );
     }
 
@@ -566,7 +561,7 @@ Deno.serve(async (req) => {
         },
         aggregate_id: null,
       },
-      { headers: corsHeaders },
+      { headers: corsHeaders(req) },
     );
   } catch (error) {
     console.error("survey-import error:", error);

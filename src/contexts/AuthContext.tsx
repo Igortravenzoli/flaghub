@@ -572,15 +572,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string, fullName?: string) => {
-    return await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: window.location.origin,
-        data: { full_name: fullName },
-      },
-    });
+  // signUp is disabled — new accounts are provisioned exclusively via Azure AD SSO.
+  // Self-registration is not supported in this version.
+  const signUp = useCallback(async (_email: string, _password: string, _fullName?: string) => {
+    return {
+      data: { user: null, session: null },
+      error: { message: "Self-registration is disabled. Please sign in with your corporate Microsoft account.", status: 403 } as never,
+    };
   }, []);
 
   const signOut = useCallback(async () => {

@@ -1,11 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 
 // Derive PROJECT_REF from SUPABASE_URL so each environment (DEV/PROD) uses its own ref automatically
@@ -89,7 +84,7 @@ async function requirePrivilegedUser(req: Request): Promise<string> {
   if (!authHeader?.startsWith("Bearer ")) {
     throw new Response(JSON.stringify({ error: "Autenticação obrigatória" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(req), "Content-Type": "application/json" },
     });
   }
 
@@ -99,7 +94,7 @@ async function requirePrivilegedUser(req: Request): Promise<string> {
   if (error || !user) {
     throw new Response(JSON.stringify({ error: "Sessão inválida" }), {
       status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(req), "Content-Type": "application/json" },
     });
   }
 
@@ -113,7 +108,7 @@ async function requirePrivilegedUser(req: Request): Promise<string> {
   if (rolesError || !roles?.length) {
     throw new Response(JSON.stringify({ error: "Permissão negada" }), {
       status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(req), "Content-Type": "application/json" },
     });
   }
 
@@ -174,13 +169,13 @@ function minutesToCron(minutes: number): string {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders(req) });
   }
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(req), "Content-Type": "application/json" },
     });
   }
 
@@ -207,7 +202,7 @@ Deno.serve(async (req) => {
         })),
       }), {
         status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders(req), "Content-Type": "application/json" },
       });
     }
 
@@ -234,7 +229,7 @@ Deno.serve(async (req) => {
           disabled_jobs: cronNames,
         }), {
           status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(req), "Content-Type": "application/json" },
         });
       }
 
@@ -242,7 +237,7 @@ Deno.serve(async (req) => {
         if (!(body.job_key in MANAGED_JOBS)) {
           return new Response(JSON.stringify({ error: "Job não suportado" }), {
             status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: { ...corsHeaders(req), "Content-Type": "application/json" },
           });
         }
 
@@ -250,7 +245,7 @@ Deno.serve(async (req) => {
         if (!minutes || minutes < 5 || minutes > 1440) {
           return new Response(JSON.stringify({ error: "Intervalo deve ser entre 5 e 1440 minutos" }), {
             status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: { ...corsHeaders(req), "Content-Type": "application/json" },
           });
         }
 
@@ -281,7 +276,7 @@ Deno.serve(async (req) => {
           cron_expression: newCron,
         }), {
           status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(req), "Content-Type": "application/json" },
         });
       }
 
@@ -289,7 +284,7 @@ Deno.serve(async (req) => {
         if (!(body.job_key in MANAGED_JOBS)) {
           return new Response(JSON.stringify({ error: "Job não suportado" }), {
             status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: { ...corsHeaders(req), "Content-Type": "application/json" },
           });
         }
 
@@ -321,13 +316,13 @@ Deno.serve(async (req) => {
           cron_name: job.cronName,
         }), {
           status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(req), "Content-Type": "application/json" },
         });
       }
 
       return new Response(JSON.stringify({ error: "Ação não reconhecida" }), {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders(req), "Content-Type": "application/json" },
       });
     } finally {
       await sql.end({ timeout: 5 });
@@ -342,7 +337,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(req), "Content-Type": "application/json" },
     });
   }
 });

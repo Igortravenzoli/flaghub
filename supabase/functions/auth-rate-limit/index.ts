@@ -1,13 +1,22 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 /**
- * Rate-limited login proxy.
+ * Auth rate-limit helper.
+ *
+ * Supports three modes via `action` field in request body:
+ *
+ *   action: "check"   — Check if the email is currently rate-limited.
+ *                        Only `email` is required. No password is ever sent here.
+ *                        Returns { ok: true } or { error: "rate_limited", retry_after: N }.
+ *
+ *   action: "record"  — Record the outcome of a login attempt that was authenticated
+ *                        directly in the browser. Requires `email` + `success: boolean`.
+ *                        Returns { ok: true }.
+ *
+ *   action: "legacy"  — (backward compat) Receives email + password, performs the
+ *                        signInWithPassword call server-side, and returns session tokens.
+ *                        Use only when the direct-browser flow is unavailable.
  *
  * Tracks failed attempts per email in the `login_attempts` DB table.
  * Persists across cold starts and shared across all edge function instances.
@@ -20,7 +29,7 @@ const LOCKOUT_MS = 60 * 1000; // 60s lockout
 
 /** Best-effort audit log insert (non-blocking) */
 function auditLog(
-  adminClient: any,
+  adminClient: ReturnType<typeof createClient>,
   action: string,
   metadata: Record<string, unknown>,
   actorUserId?: string | null,
@@ -31,23 +40,46 @@ function auditLog(
       action,
       actor_user_id: actorUserId ?? null,
       entity_type: "auth",
-      entity_id: metadata.email as string ?? null,
+      entity_id: (metadata.email as string) ?? null,
       metadata,
     })
-    .then(({ error }) => {
-      if (error) console.warn("[audit] insert failed:", error.message);
+    .then(({ error }: { error: unknown }) => {
+      if (error) console.warn("[audit] insert failed:", (error as Error).message);
     });
+}
+
+/** Fetch the current rate-limit record for an email */
+async function fetchRecord(adminClient: ReturnType<typeof createClient>, email: string) {
+  const { data } = await adminClient
+    .from("login_attempts")
+    .select("*")
+    .eq("email", email)
+    .maybeSingle();
+  return data as {
+    email: string;
+    attempt_count: number;
+    first_attempt_at: string;
+    locked_until: string | null;
+  } | null;
+}
+
+/** Check if a record is currently locked. Returns remaining seconds or 0. */
+function lockedSeconds(record: Awaited<ReturnType<typeof fetchRecord>>, now: Date): number {
+  if (!record?.locked_until) return 0;
+  const until = new Date(record.locked_until);
+  const remaining = Math.ceil((until.getTime() - now.getTime()) / 1000);
+  return remaining > 0 ? remaining : 0;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders(req) });
   }
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(req), "Content-Type": "application/json" },
     });
   }
 
@@ -57,24 +89,29 @@ Deno.serve(async (req) => {
 
   // Service role client for login_attempts table (bypasses RLS)
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
-  // Anon client for auth (signInWithPassword)
-  const anonClient = createClient(supabaseUrl, supabaseAnonKey);
 
-  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") || "unknown";
+  const clientIp =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown";
 
-  let email: string;
-  let password: string;
-
+  let body: Record<string, unknown>;
   try {
-    const body = await req.json();
-    email = body.email?.toLowerCase()?.trim();
-    password = body.password;
-    if (!email || !password) throw new Error("missing fields");
+    body = await req.json();
   } catch {
     return new Response(
-      JSON.stringify({ error: "Email e senha são obrigatórios" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Invalid JSON body" }),
+      { status: 400, headers: { ...corsHeaders(req), "Content-Type": "application/json" } },
+    );
+  }
+
+  const action = (body.action as string) ?? "legacy";
+  const email = (body.email as string)?.toLowerCase()?.trim();
+
+  if (!email) {
+    return new Response(
+      JSON.stringify({ error: "Email is required" }),
+      { status: 400, headers: { ...corsHeaders(req), "Content-Type": "application/json" } },
     );
   }
 
@@ -83,47 +120,158 @@ Deno.serve(async (req) => {
 
   const now = new Date();
 
-  // Fetch current attempt record from DB
-  const { data: record } = await adminClient
-    .from("login_attempts")
-    .select("*")
-    .eq("email", email)
-    .maybeSingle();
+  // ── ACTION: check ─────────────────────────────────────────────────────────
+  // Only email is sent — no credentials reach this function.
+  if (action === "check") {
+    const record = await fetchRecord(adminClient, email);
 
-  // Check lockout
-  if (record?.locked_until) {
-    const lockedUntil = new Date(record.locked_until);
-    if (now < lockedUntil) {
-      const retryAfter = Math.ceil((lockedUntil.getTime() - now.getTime()) / 1000);
+    // Reset expired window
+    if (record && !record.locked_until) {
+      const firstAttempt = new Date(record.first_attempt_at);
+      if (now.getTime() - firstAttempt.getTime() > WINDOW_MS) {
+        await adminClient.from("login_attempts").delete().eq("email", email);
+      }
+    }
 
-      // Suspicious: repeated requests while locked
+    const remaining = lockedSeconds(record, now);
+    if (remaining > 0) {
       auditLog(adminClient, "login_blocked_repeat", {
         email,
         ip: clientIp,
         reason: "request_while_locked",
-        locked_until: record.locked_until,
-        attempt_count: record.attempt_count,
+        locked_until: record?.locked_until,
+        attempt_count: record?.attempt_count,
       });
 
       return new Response(
         JSON.stringify({
           error: "rate_limited",
-          message: `Muitas tentativas. Tente novamente em ${retryAfter}s.`,
-          retry_after: retryAfter,
+          message: `Muitas tentativas. Tente novamente em ${remaining}s.`,
+          retry_after: remaining,
         }),
         {
           status: 429,
           headers: {
-            ...corsHeaders,
+            ...corsHeaders(req),
             "Content-Type": "application/json",
-            "Retry-After": String(retryAfter),
+            "Retry-After": String(remaining),
           },
-        }
+        },
       );
     }
+
+    return new Response(
+      JSON.stringify({ ok: true }),
+      { status: 200, headers: { ...corsHeaders(req), "Content-Type": "application/json" } },
+    );
   }
 
-  // Reset window if expired
+  // ── ACTION: record ────────────────────────────────────────────────────────
+  // Records the result of a browser-side signInWithPassword call.
+  if (action === "record") {
+    const success = body.success === true;
+    const record = await fetchRecord(adminClient, email);
+
+    if (success) {
+      // Clear attempts on success
+      await adminClient.from("login_attempts").delete().eq("email", email);
+      auditLog(adminClient, "login_success", { email, ip: clientIp });
+    } else {
+      // Reset expired window before incrementing
+      if (record) {
+        const firstAttempt = new Date(record.first_attempt_at);
+        if (now.getTime() - firstAttempt.getTime() > WINDOW_MS) {
+          await adminClient.from("login_attempts").delete().eq("email", email);
+        }
+      }
+
+      const currentCount = record?.attempt_count ?? 0;
+      const newCount = currentCount + 1;
+
+      if (newCount >= MAX_ATTEMPTS) {
+        const lockedUntil = new Date(now.getTime() + LOCKOUT_MS).toISOString();
+        await adminClient.from("login_attempts").upsert(
+          {
+            email,
+            attempt_count: newCount,
+            first_attempt_at: record?.first_attempt_at ?? now.toISOString(),
+            locked_until: lockedUntil,
+          },
+          { onConflict: "email" },
+        );
+        auditLog(adminClient, "login_lockout", {
+          email,
+          ip: clientIp,
+          reason: "max_attempts_reached",
+          attempt_count: newCount,
+          locked_until: lockedUntil,
+        });
+      } else {
+        await adminClient.from("login_attempts").upsert(
+          {
+            email,
+            attempt_count: newCount,
+            first_attempt_at: record?.first_attempt_at ?? now.toISOString(),
+            locked_until: null,
+          },
+          { onConflict: "email" },
+        );
+        auditLog(adminClient, "login_failed", {
+          email,
+          ip: clientIp,
+          attempt_count: newCount,
+          remaining_attempts: MAX_ATTEMPTS - newCount,
+        });
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true }),
+      { status: 200, headers: { ...corsHeaders(req), "Content-Type": "application/json" } },
+    );
+  }
+
+  // ── ACTION: legacy ────────────────────────────────────────────────────────
+  // Backward-compat: receives email + password and performs the auth call here.
+  // Prefer the check + record flow from Login.tsx instead.
+  const password = body.password as string;
+  if (!password) {
+    return new Response(
+      JSON.stringify({ error: "Email e senha são obrigatórios" }),
+      { status: 400, headers: { ...corsHeaders(req), "Content-Type": "application/json" } },
+    );
+  }
+
+  const record = await fetchRecord(adminClient, email);
+
+  // Check lockout
+  const remaining = lockedSeconds(record, now);
+  if (remaining > 0) {
+    auditLog(adminClient, "login_blocked_repeat", {
+      email,
+      ip: clientIp,
+      reason: "request_while_locked",
+      locked_until: record?.locked_until,
+      attempt_count: record?.attempt_count,
+    });
+    return new Response(
+      JSON.stringify({
+        error: "rate_limited",
+        message: `Muitas tentativas. Tente novamente em ${remaining}s.`,
+        retry_after: remaining,
+      }),
+      {
+        status: 429,
+        headers: {
+          ...corsHeaders(req),
+          "Content-Type": "application/json",
+          "Retry-After": String(remaining),
+        },
+      },
+    );
+  }
+
+  // Reset expired window
   if (record) {
     const firstAttempt = new Date(record.first_attempt_at);
     if (now.getTime() - firstAttempt.getTime() > WINDOW_MS) {
@@ -131,31 +279,25 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Attempt login via Supabase Auth
-  const { data, error } = await anonClient.auth.signInWithPassword({
-    email,
-    password,
-  });
+  // Anon client for auth (signInWithPassword) — only in legacy mode
+  const anonClient = createClient(supabaseUrl, supabaseAnonKey);
+  const { data, error: authError } = await anonClient.auth.signInWithPassword({ email, password });
 
-  if (error) {
-    // Record failed attempt in DB
+  if (authError) {
     const currentCount = record?.attempt_count ?? 0;
     const newCount = currentCount + 1;
 
     if (newCount >= MAX_ATTEMPTS) {
-      // Lock the account
       const lockedUntil = new Date(now.getTime() + LOCKOUT_MS).toISOString();
-
-      await adminClient
-        .from("login_attempts")
-        .upsert({
+      await adminClient.from("login_attempts").upsert(
+        {
           email,
           attempt_count: newCount,
           first_attempt_at: record?.first_attempt_at ?? now.toISOString(),
           locked_until: lockedUntil,
-        }, { onConflict: "email" });
-
-      // SUSPICIOUS: account locked due to brute force
+        },
+        { onConflict: "email" },
+      );
       auditLog(adminClient, "login_lockout", {
         email,
         ip: clientIp,
@@ -163,7 +305,6 @@ Deno.serve(async (req) => {
         attempt_count: newCount,
         locked_until: lockedUntil,
       });
-
       return new Response(
         JSON.stringify({
           error: "rate_limited",
@@ -173,57 +314,44 @@ Deno.serve(async (req) => {
         {
           status: 429,
           headers: {
-            ...corsHeaders,
+            ...corsHeaders(req),
             "Content-Type": "application/json",
             "Retry-After": String(LOCKOUT_MS / 1000),
           },
-        }
+        },
       );
     }
 
-    // Increment counter
-    await adminClient
-      .from("login_attempts")
-      .upsert({
+    await adminClient.from("login_attempts").upsert(
+      {
         email,
         attempt_count: newCount,
         first_attempt_at: record?.first_attempt_at ?? now.toISOString(),
         locked_until: null,
-      }, { onConflict: "email" });
-
-    const remaining = MAX_ATTEMPTS - newCount;
-
-    // Log failed attempt
+      },
+      { onConflict: "email" },
+    );
+    const remainingAttempts = MAX_ATTEMPTS - newCount;
     auditLog(adminClient, "login_failed", {
       email,
       ip: clientIp,
       attempt_count: newCount,
-      remaining_attempts: remaining,
+      remaining_attempts: remainingAttempts,
     });
-
     return new Response(
       JSON.stringify({
         error: "invalid_credentials",
         message: "Invalid login credentials",
-        remaining_attempts: remaining,
+        remaining_attempts: remainingAttempts,
       }),
-      {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 401, headers: { ...corsHeaders(req), "Content-Type": "application/json" } },
     );
   }
 
   // Success — clear attempts
   await adminClient.from("login_attempts").delete().eq("email", email);
+  auditLog(adminClient, "login_success", { email, ip: clientIp }, data.user?.id);
 
-  // Log successful login
-  auditLog(adminClient, "login_success", {
-    email,
-    ip: clientIp,
-  }, data.user?.id);
-
-  // Return ONLY the tokens needed for setSession
   return new Response(
     JSON.stringify({
       session: {
@@ -231,9 +359,6 @@ Deno.serve(async (req) => {
         refresh_token: data.session?.refresh_token,
       },
     }),
-    {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    }
+    { status: 200, headers: { ...corsHeaders(req), "Content-Type": "application/json" } },
   );
 });

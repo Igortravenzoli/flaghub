@@ -29,7 +29,15 @@ export default function Login() {
   const attemptsRef = useRef(0);
   const lockoutTimerRef = useRef<number | null>(null);
 
-  const from = (location.state as { from?: string })?.from || '/home';
+  // Sanitize redirect target — must be an internal path, never an external URL.
+  const rawFrom = (location.state as { from?: string })?.from;
+  const from =
+    typeof rawFrom === 'string' &&
+    rawFrom.startsWith('/') &&
+    !rawFrom.startsWith('//') &&
+    !rawFrom.includes(':')
+      ? rawFrom
+      : '/home';
 
   const isLockedOut = useCallback(() => {
     if (!lockoutUntil) return false;
@@ -79,65 +87,69 @@ export default function Login() {
 
     setIsSubmitting(true);
 
-    try {
-      let fnData: Record<string, unknown> | null = null;
-      let fnErrorMsg = '';
+    const rlBase = import.meta.env.VITE_SUPABASE_URL;
+    const rlKey  = import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+    try {
+      // ── Step 1: check rate-limit BEFORE sending credentials anywhere ──────
+      let checkData: Record<string, unknown> | null = null;
       try {
-        const res = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-rate-limit`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            },
-            body: JSON.stringify({ email: loginData.email, password: loginData.password }),
-          }
-        );
-        fnData = await res.json();
-        if (!res.ok) {
-          fnErrorMsg = fnData?.message as string || 'Credenciais inválidas';
-        }
-      } catch (networkErr) {
+        const checkRes = await fetch(`${rlBase}/functions/v1/auth-rate-limit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': rlKey },
+          body: JSON.stringify({ action: 'check', email: loginData.email }),
+        });
+        checkData = await checkRes.json();
+      } catch {
         toast.error('Erro de rede ao tentar fazer login');
         return;
       }
 
-      if (fnData?.error) {
-        if (fnData.error === 'rate_limited') {
-          const retryAfter = (fnData.retry_after as number) || LOCKOUT_SECONDS;
-          const until = Date.now() + retryAfter * 1000;
-          startLockoutTimer(until);
-          toast.error('Conta temporariamente bloqueada', {
-            description: `Muitas tentativas falharam. Aguarde ${retryAfter} segundos.`,
-            icon: <ShieldAlert className="h-4 w-4" />,
-          });
-        } else {
-          attemptsRef.current += 1;
-          const remaining = (fnData.remaining_attempts as number) ?? (MAX_ATTEMPTS - attemptsRef.current);
-          toast.error('Erro no login', {
-            description: `${fnErrorMsg || 'Credenciais inválidas'}. ${remaining} tentativa(s) restante(s).`,
-          });
-        }
-      } else if (fnData?.session) {
-        const session = fnData.session as { access_token: string; refresh_token: string };
-        try {
-          await supabase.auth.setSession({
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-          });
-        } catch (setSessionErr) {
-          console.error('[Login] setSession failed:', setSessionErr);
-          throw setSessionErr;
-        }
-        
+      if (checkData?.error === 'rate_limited') {
+        const retryAfter = (checkData.retry_after as number) || LOCKOUT_SECONDS;
+        startLockoutTimer(Date.now() + retryAfter * 1000);
+        toast.error('Conta temporariamente bloqueada', {
+          description: `Muitas tentativas falharam. Aguarde ${retryAfter} segundos.`,
+          icon: <ShieldAlert className="h-4 w-4" />,
+        });
+        return;
+      }
+
+      // ── Step 2: authenticate directly — password never leaves the browser ──
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: loginData.email,
+        password: loginData.password,
+      });
+
+      // ── Step 3: record attempt result (non-blocking) ──────────────────────
+      fetch(`${rlBase}/functions/v1/auth-rate-limit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': rlKey },
+        body: JSON.stringify({
+          action: 'record',
+          email: loginData.email,
+          success: !authError,
+        }),
+      }).catch(() => {/* non-critical */});
+
+      if (authError) {
+        attemptsRef.current += 1;
+        const remaining = Math.max(0, MAX_ATTEMPTS - attemptsRef.current);
+        toast.error('Credenciais inválidas', {
+          description: remaining > 0
+            ? `${remaining} tentativa(s) restante(s).`
+            : 'Conta será bloqueada na próxima tentativa.',
+        });
+        return;
+      }
+
+      if (authData.session) {
         attemptsRef.current = 0;
         toast.success('Login realizado com sucesso!');
 
         try {
           const { data: maskedCode, error: rpcErr } = await supabase.rpc("auth_user_role_masked");
-          if (rpcErr) {
+          if (import.meta.env.DEV && rpcErr) {
             console.error('[Login] RPC auth_user_role_masked failed:', rpcErr);
           }
           if (maskedCode === 's1') {
@@ -145,13 +157,12 @@ export default function Login() {
           } else {
             navigate(from, { replace: true });
           }
-        } catch (rpcCatchErr) {
-          console.error('[Login] RPC catch error:', rpcCatchErr);
+        } catch {
           navigate(from, { replace: true });
         }
       }
     } catch (err) {
-      console.error('[Login] Full error:', err);
+      if (import.meta.env.DEV) console.error('[Login] Full error:', err);
       toast.error(`Erro ao fazer login: ${err instanceof Error ? err.message : 'desconhecido'}`);
     } finally {
       setIsSubmitting(false);

@@ -1,20 +1,16 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders(req) });
   }
 
   try {
     // Validate JWT
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing auth' }), { status: 401, headers: corsHeaders });
+      return new Response(JSON.stringify({ success: false, error: 'Missing auth' }), { status: 401, headers: corsHeaders(req) });
     }
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -23,12 +19,12 @@ Deno.serve(async (req) => {
     );
     const { data: { user }, error: authErr } = await supabase.auth.getUser();
     if (authErr || !user) {
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), { status: 401, headers: corsHeaders(req) });
     }
 
     const { url, type, label } = await req.json();
     if (!url || !type) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing url or type' }), { status: 400, headers: corsHeaders });
+      return new Response(JSON.stringify({ success: false, error: 'Missing url or type' }), { status: 400, headers: corsHeaders(req) });
     }
 
     let body: string;
@@ -56,11 +52,11 @@ Deno.serve(async (req) => {
     const resText = await res.text();
 
     if (!res.ok) {
-      return new Response(JSON.stringify({ success: false, error: `HTTP ${res.status}: ${resText.substring(0, 300)}` }), { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify({ success: false, error: `HTTP ${res.status}: ${resText.substring(0, 300)}` }), { status: 200, headers: corsHeaders(req) });
     }
 
-    return new Response(JSON.stringify({ success: true, message: `Teste enviado com sucesso para ${type === 'teams' ? 'Teams' : 'Telegram'}!` }), { headers: corsHeaders });
+    return new Response(JSON.stringify({ success: true, message: `Teste enviado com sucesso para ${type === 'teams' ? 'Teams' : 'Telegram'}!` }), { headers: corsHeaders(req) });
   } catch (err: any) {
-    return new Response(JSON.stringify({ success: false, error: err.message || String(err) }), { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify({ success: false, error: err.message || String(err) }), { status: 200, headers: corsHeaders(req) });
   }
 });

@@ -2,20 +2,7 @@
 // Now supports area-based roles (owner) in addition to global admin/gestao
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
-function resolveCorsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get('origin')
-  return {
-    ...corsHeaders,
-    'Access-Control-Allow-Origin': origin ?? '*',
-    'Vary': 'Origin',
-  }
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 function getSupabaseAdmin() {
   return createClient(
@@ -186,10 +173,8 @@ function validateRow(
 }
 
 serve(async (req: Request) => {
-  const responseHeaders = resolveCorsHeaders(req)
-
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: responseHeaders })
+    return new Response('ok', { headers: corsHeaders(req) })
   }
 
   const admin = getSupabaseAdmin()
@@ -198,7 +183,7 @@ serve(async (req: Request) => {
     const userId = await getAuthUserId(req)
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Autenticação obrigatória' }), {
-        status: 401, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 401, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -207,7 +192,7 @@ serve(async (req: Request) => {
 
     if (!template_key || !file_content) {
       return new Response(JSON.stringify({ error: 'template_key e file_content são obrigatórios' }), {
-        status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -220,7 +205,7 @@ serve(async (req: Request) => {
 
     if (tErr || !template) {
       return new Response(JSON.stringify({ error: `Template '${template_key}' não encontrado` }), {
-        status: 404, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 404, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -233,7 +218,7 @@ serve(async (req: Request) => {
 
     if (!globalOk && !hubAdmin && !areaOk) {
       return new Response(JSON.stringify({ error: 'Acesso negado — requer papel de Owner ou Admin na área' }), {
-        status: 403, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 403, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -248,7 +233,7 @@ serve(async (req: Request) => {
 
     if (rows.length === 0) {
       return new Response(JSON.stringify({ error: 'Nenhuma linha encontrada no arquivo' }), {
-        status: 400, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -329,12 +314,12 @@ serve(async (req: Request) => {
       valid_rows: validCount,
       invalid_rows: invalidCount,
       status,
-    }), { headers: { ...responseHeaders, 'Content-Type': 'application/json' } })
+    }), { headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
 
   } catch (err) {
     console.error('[ManualUploadParse] Error:', err)
     return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
-      status: 500, headers: { ...responseHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
   }
 })

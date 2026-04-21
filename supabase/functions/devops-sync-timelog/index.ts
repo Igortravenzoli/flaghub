@@ -2,12 +2,7 @@
 // v3.0: Respond immediately, process in background to avoid CPU limits
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
+import { corsHeaders } from '../_shared/cors.ts'
 
 const TIMELOG_BASE =
   'https://extmgmt.dev.azure.com/FlagIW/_apis/ExtensionManagement/InstalledExtensions/TechsBCN/DevOps-TimeLog/Data/Scopes/Default/Current/Collections'
@@ -343,14 +338,14 @@ async function processTimeLogs(pat: string) {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders(req) })
   }
 
   try {
     const caller = await validateAuth(req)
     if (!caller) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -371,7 +366,7 @@ serve(async (req) => {
         .maybeSingle() : { data: roleRow }
       if (!roleRow && !legacyRole) {
         return new Response(JSON.stringify({ error: 'Permissão negada: apenas admins podem executar sincronização' }), {
-          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
         })
       }
     }
@@ -379,7 +374,7 @@ serve(async (req) => {
     const pat = Deno.env.get('DEVOPS_PAT')
     if (!pat) {
       return new Response(JSON.stringify({ error: 'DEVOPS_PAT not configured' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
@@ -396,7 +391,7 @@ serve(async (req) => {
       ok: true,
       message: 'TimeLogs sync started in background. Check logs for results.',
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
 
   } catch (err) {
@@ -405,7 +400,7 @@ serve(async (req) => {
       error: 'Internal error',
       detail: err instanceof Error ? err.message : String(err),
     }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     })
   }
 })
