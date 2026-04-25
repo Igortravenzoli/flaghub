@@ -1,1 +1,0 @@
-SELECT compute_pbi_health_all();

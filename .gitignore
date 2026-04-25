@@ -44,3 +44,6 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+# Local parallel worktrees/agent state
+.claude/

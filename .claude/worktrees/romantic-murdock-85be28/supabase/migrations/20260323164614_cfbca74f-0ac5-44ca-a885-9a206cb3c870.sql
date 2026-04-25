@@ -1,1 +1,0 @@
-UPDATE pbi_health_thresholds SET warn_days = 60, critical_days = 90, updated_at = now() WHERE stage_key = 'backlog' AND is_active = true;

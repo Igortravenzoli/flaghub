@@ -1,1 +1,0 @@
-ALTER TABLE devops_work_items ADD COLUMN IF NOT EXISTS state_history jsonb;

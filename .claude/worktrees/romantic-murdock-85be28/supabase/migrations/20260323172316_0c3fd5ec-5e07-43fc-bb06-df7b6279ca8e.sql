@@ -1,3 +1,0 @@
-UPDATE devops_queries 
-SET wiql_text = 'SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = ''Flag.Planejamento'' AND [System.WorkItemType] IN (''Product Backlog Item'', ''Task'', ''Bug'', ''User Story'') AND [System.State] IN (''Active'', ''In Progress'', ''New'', ''Aguardando Teste'', ''Em desenvolvimento'') ORDER BY [System.ChangedDate] DESC'
-WHERE id = '557a9643-5049-43a6-b199-e498f39e9e88';

@@ -1,1 +1,0 @@
-DELETE FROM hub_sync_jobs WHERE job_key = 'devops_qa_retorno';

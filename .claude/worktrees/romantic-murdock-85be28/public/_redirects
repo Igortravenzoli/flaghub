@@ -1,4 +1,0 @@
-/*    /index.html   200
-
-# Redireciona todas as rotas para index.html para suporte a SPA (Single Page Application)
-# Isso permite que o React Router manipule as rotas no lado do cliente
