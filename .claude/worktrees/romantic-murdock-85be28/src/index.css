@@ -1,0 +1,290 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design System - FLAG Painel Operacional */
+/* Brand Colors: Golden Yellow + Navy/White themes */
+
+@layer base {
+  /* LIGHT THEME - Clean, professional */
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* FLAG Gold as primary */
+    --primary: 43 85% 46%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 43 85% 95%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 43 85% 46%;
+
+    --radius: 0.75rem;
+
+    /* Severidade */
+    --critical: 0 84% 60%;
+    --critical-foreground: 0 0% 100%;
+    --warning: 43 85% 46%;
+    --warning-foreground: 222 47% 11%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    /* Glow effects */
+    --glow-primary: 43 85% 46%;
+    --glow-critical: 0 84% 60%;
+    --glow-warning: 43 85% 46%;
+    --glow-success: 142 71% 45%;
+
+    /* Sidebar - Light theme: Navy background, always visible */
+    --sidebar-background: 222 47% 15%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 43 85% 50%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 222 47% 22%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 47% 25%;
+    --sidebar-ring: 43 85% 50%;
+
+    /* FLAG Brand Color */
+    --flag-gold: 43 85% 46%;
+    --flag-navy: 222 47% 11%;
+  }
+
+  /* DARK THEME - Modern, immersive */
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 14%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 14%;
+    --popover-foreground: 210 40% 98%;
+
+    /* FLAG Gold as primary */
+    --primary: 43 85% 50%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 215 28% 20%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 28% 20%;
+    --input: 215 28% 20%;
+    --ring: 43 85% 50%;
+
+    /* Severidade */
+    --critical: 0 84% 60%;
+    --critical-foreground: 0 0% 100%;
+    --warning: 43 85% 50%;
+    --warning-foreground: 222 47% 11%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    /* Glow effects */
+    --glow-primary: 43 85% 50%;
+    --glow-critical: 0 84% 60%;
+    --glow-warning: 43 85% 50%;
+    --glow-success: 142 71% 45%;
+
+    /* Sidebar - Dark elegant */
+    --sidebar-background: 222 47% 8%;
+    --sidebar-foreground: 210 40% 92%;
+    --sidebar-primary: 43 85% 50%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 222 47% 14%;
+    --sidebar-accent-foreground: 210 40% 92%;
+    --sidebar-border: 215 28% 16%;
+    --sidebar-ring: 43 85% 50%;
+
+    /* FLAG Brand Color */
+    --flag-gold: 43 85% 50%;
+    --flag-navy: 222 47% 11%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  .severity-critical {
+    @apply bg-[hsl(var(--critical))] text-[hsl(var(--critical-foreground))];
+  }
+  .severity-warning {
+    @apply bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))];
+  }
+  .severity-info {
+    @apply bg-[hsl(var(--info))] text-[hsl(var(--info-foreground))];
+  }
+  .severity-success {
+    @apply bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))];
+  }
+
+  /* Glass morphism */
+  .glass {
+    @apply backdrop-blur-xl bg-card/80 border border-border/50;
+  }
+
+  .glass-subtle {
+    @apply backdrop-blur-md bg-card/60 border border-border/30;
+  }
+
+  /* Glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(var(--glow-primary) / 0.3),
+                0 0 40px hsl(var(--glow-primary) / 0.1);
+  }
+
+  .glow-critical {
+    box-shadow: 0 0 20px hsl(var(--glow-critical) / 0.4),
+                0 0 40px hsl(var(--glow-critical) / 0.2);
+  }
+
+  .glow-warning {
+    box-shadow: 0 0 20px hsl(var(--glow-warning) / 0.3),
+                0 0 40px hsl(var(--glow-warning) / 0.1);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 20px hsl(var(--glow-success) / 0.3),
+                0 0 40px hsl(var(--glow-success) / 0.1);
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-[hsl(var(--info))] to-primary;
+  }
+
+  /* Animated gradient border */
+  .gradient-border {
+    position: relative;
+    background: hsl(var(--card));
+    border-radius: var(--radius);
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: calc(var(--radius) + 1px);
+    background: linear-gradient(135deg, 
+      hsl(var(--primary)) 0%, 
+      hsl(var(--info)) 50%,
+      hsl(var(--primary)) 100%);
+    z-index: -1;
+    opacity: 0.5;
+  }
+
+  /* Pulse animation */
+  .pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 1;
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+    }
+    50% {
+      opacity: 0.8;
+      box-shadow: 0 0 40px hsl(var(--primary) / 0.5);
+    }
+  }
+
+  /* Floating animation */
+  .float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  /* Shimmer effect */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--card)) 0%,
+      hsl(var(--accent)) 50%,
+      hsl(var(--card)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+}
+
+/* ── Kiosk Mode Styles ── */
+@layer utilities {
+  .kiosk-flash {
+    color: hsl(43, 90%, 55%) !important;
+    text-shadow: 0 0 12px hsl(43, 90%, 55% / 0.4);
+  }
+
+  .kiosk-pulse-border {
+    animation: kioskPulse 2s ease-in-out infinite;
+  }
+
+  .kiosk-card-enter {
+    animation: kioskSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes kioskPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+  }
+
+  @keyframes kioskSlideUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
