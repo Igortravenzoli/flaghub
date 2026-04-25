@@ -33,7 +33,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { 
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
-  Clock, Gauge, AlertTriangle, HelpCircle, Timer, Package, Building2, 
+  Clock, Gauge, AlertTriangle, Timer, Package, Building2, 
   TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow, LayoutGrid
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -958,10 +958,10 @@ export default function FabricaDashboard() {
                 tooltipDescription="Transbordo real: mudanças relevantes de sprint menos o primeiro compromisso."
               />
               <QaReturnCard
-                totalEvents={qaReturnKpis.totalEvents}
-                openEvents={qaReturnKpis.openEvents}
-                avgDaysOpen={qaReturnKpis.avgDaysOpen}
-                maxDaysOpen={qaReturnKpis.maxDaysOpen}
+                totalEvents={qaReturnKpis.summary?.total_events ?? 0}
+                openEvents={qaReturnKpis.summary?.open_events ?? 0}
+                avgDaysOpen={qaReturnKpis.summary?.avg_days_open ?? null}
+                maxDaysOpen={qaReturnKpis.summary?.max_days_open ?? null}
                 isLoading={qaReturnKpis.isLoading}
                 onClick={() => setActiveTab('qa-return')}
               />
