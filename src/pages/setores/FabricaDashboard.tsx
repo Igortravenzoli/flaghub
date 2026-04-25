@@ -11,6 +11,9 @@ import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
 import { SprintBoardTab } from '@/components/fabrica/SprintBoardTab';
+import { QaReturnCard } from '@/components/fabrica/QaReturnCard';
+import { QaReturnTab } from '@/components/fabrica/QaReturnTab';
+import { useQaReturnKpis } from '@/hooks/useQaReturnKpis';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
@@ -248,6 +251,7 @@ export default function FabricaDashboard() {
     '03-Em Fila Backlog para Priorizar',
     '05-Em Fila UX-UI',
   ]);
+  const qaReturnKpis = useQaReturnKpis(selectedSprintCode);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<FabricaItem | null>(null);
   const [fabKpiFilter, setFabKpiFilter] = useState<FabKpiFilter>('all');
@@ -888,6 +892,9 @@ export default function FabricaDashboard() {
             <TabsTrigger value="uxui-fila" className="gap-1.5 text-xs">
               <TrendingUp className="h-3.5 w-3.5" />Fila Design / UX-UI
             </TabsTrigger>
+            <TabsTrigger value="qa-return" className="gap-1.5 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5" />Retorno QA
+            </TabsTrigger>
           </TabsList>
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
@@ -950,14 +957,13 @@ export default function FabricaDashboard() {
                 tooltipFormula="(PBIs com mudanças relevantes de sprint / Total PBIs) × 100"
                 tooltipDescription="Transbordo real: mudanças relevantes de sprint menos o primeiro compromisso."
               />
-              <HeroKpiCard 
-                label="Capacidade" 
-                value="Pendente" 
-                icon={HelpCircle} 
-                isLoading={false} 
-                delay={540}
-                accent="bg-muted-foreground"
-                description="Requer API Capacity do DevOps"
+              <QaReturnCard
+                totalEvents={qaReturnKpis.totalEvents}
+                openEvents={qaReturnKpis.openEvents}
+                avgDaysOpen={qaReturnKpis.avgDaysOpen}
+                maxDaysOpen={qaReturnKpis.maxDaysOpen}
+                isLoading={qaReturnKpis.isLoading}
+                onClick={() => setActiveTab('qa-return')}
               />
             </div>
 
@@ -1563,6 +1569,11 @@ export default function FabricaDashboard() {
                 </Table>
               </div>
             </Card>
+          </TabsContent>
+
+          {/* ═══════ TAB: Retorno QA ═══════ */}
+          <TabsContent value="qa-return" className="space-y-4 mt-0">
+            <QaReturnTab items={qaReturnKpis.openItems} isLoading={qaReturnKpis.isLoading} />
           </TabsContent>
         </Tabs>
       )}
