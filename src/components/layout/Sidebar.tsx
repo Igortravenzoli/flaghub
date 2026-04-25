@@ -24,6 +24,7 @@ import {
   Download,
   Mail,
   BarChart3,
+  RotateCcw,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -57,6 +58,7 @@ const sectorItems: NavItem[] = [
   { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck, areaKey: 'qualidade', children: [
     { label: 'Gerencial', path: '/setor/qualidade/gerencial', icon: BarChart3, areaKey: 'qualidade' },
   ] },
+  { label: 'Retorno QA', path: '/setor/retorno-qa', icon: RotateCcw, areaKey: 'infraestrutura' },
 ];
 
 const adminItems: NavItem[] = [

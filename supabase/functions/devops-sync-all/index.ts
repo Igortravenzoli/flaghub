@@ -995,6 +995,29 @@ serve(async (req: Request) => {
         console.error('[DevOpsSyncAll:BG] Lifecycle/Health error:', (lifecycleErr as Error).message)
       }
 
+      // ── Step 5: QA Return detection + alerts ──
+      try {
+        console.log('[DevOpsSyncAll:BG] Triggering QA return detection...')
+        const qaAlertUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/devops-qa-alert`
+        const cronSecret = Deno.env.get('CRON_SECRET')
+        if (cronSecret) {
+          const qaResp = await fetch(qaAlertUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-cron-secret': cronSecret,
+            },
+            body: JSON.stringify({ source: 'devops-sync-all' }),
+          })
+          const qaData = await qaResp.json().catch(() => ({}))
+          console.log(`[DevOpsSyncAll:BG] QA return: ${qaData.detected ?? 0} detected, ${qaData.alerted ?? 0} alerted, ${qaData.resolved ?? 0} resolved`)
+        } else {
+          console.warn('[DevOpsSyncAll:BG] QA return detection skipped: CRON_SECRET not configured')
+        }
+      } catch (qaErr) {
+        console.error('[DevOpsSyncAll:BG] QA return detection error:', (qaErr as Error).message)
+      }
+
       // Audit log
       await bgAdmin.rpc('hub_audit_log', {
         p_action: 'devops_sync_all',
