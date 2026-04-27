@@ -30,6 +30,15 @@ interface WorkItem {
   state_history: StateChange[] | null
 }
 
+interface RelatedWorkItem {
+  id: number
+  parent_id: number | null
+  title: string | null
+  work_item_type: string | null
+  state: string | null
+  web_url: string | null
+}
+
 // ── Detection helpers ─────────────────────────────────────────────────────────
 
 /** Retorna as transições "Em Teste" → "Em desenvolvimento" encontradas no histórico */
@@ -51,6 +60,36 @@ function extractSprintCode(iterationPath: string | null): string | null {
   if (!iterationPath) return null
   const match = iterationPath.match(/S(\d+)-(\d{4})/i)
   return match ? match[0].toUpperCase() : null
+}
+
+function shortTypeLabel(typeName: string | null): string {
+  if (!typeName) return 'Item'
+  if (typeName === 'Product Backlog Item') return 'PBI'
+  if (typeName === 'User Story') return 'Story'
+  return typeName
+}
+
+function buildRelatedItemsMarkdown(relatedItems: RelatedWorkItem[]): string {
+  if (relatedItems.length === 0) {
+    return 'Sem work items relacionados mapeados para este item.'
+  }
+
+  const topItems = relatedItems.slice(0, 6)
+  const lines = topItems.map((rel) => {
+    const label = `${shortTypeLabel(rel.work_item_type)} #${rel.id}`
+    const title = rel.title ?? 'Sem titulo'
+    const state = rel.state ?? '—'
+    if (rel.web_url) {
+      return `- [${label}](${rel.web_url}) — ${title} (Status: ${state})`
+    }
+    return `- ${label} — ${title} (Status: ${state})`
+  })
+
+  if (relatedItems.length > topItems.length) {
+    lines.push(`- ... e mais ${relatedItems.length - topItems.length} item(ns)`)
+  }
+
+  return lines.join('  \n')
 }
 
 // ── Graph API ─────────────────────────────────────────────────────────────────
@@ -80,6 +119,69 @@ async function getGraphToken(): Promise<string> {
   }
   const data = await resp.json()
   return data.access_token as string
+}
+
+/**
+ * Obtém token delegado (service account) para envio 1:1 no Teams.
+ * Requer que a app aceite ROPC e que o utilizador técnico não exija MFA.
+ */
+async function getDelegatedGraphToken(): Promise<string> {
+  const tenantId = Deno.env.get('TEAMS_GRAPH_TENANT_ID')!
+  const clientId = Deno.env.get('TEAMS_GRAPH_CLIENT_ID')!
+  const clientSecret = Deno.env.get('TEAMS_GRAPH_CLIENT_SECRET')!
+  const delegatedScopes =
+    Deno.env.get('TEAMS_GRAPH_DELEGATED_SCOPES') ??
+    'https://graph.microsoft.com/Chat.Create https://graph.microsoft.com/Chat.ReadWrite https://graph.microsoft.com/ChatMessage.Send https://graph.microsoft.com/User.Read https://graph.microsoft.com/User.Read.All'
+  const username =
+    Deno.env.get('TEAMS_GRAPH_SENDER_USER_ID') ??
+    Deno.env.get('TEAMS_DELEGATED_USERNAME')
+  const password =
+    Deno.env.get('TEAMS_GRAPH_SENDER_USER_AUTH') ??
+    Deno.env.get('TEAMS_DELEGATED_PASSWORD')
+
+  if (!username || !password) {
+    throw new Error('Delegated token skipped: missing TEAMS_DELEGATED_USERNAME/TEAMS_DELEGATED_PASSWORD')
+  }
+
+  const resp = await fetch(
+    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'password',
+        client_id: clientId,
+        client_secret: clientSecret,
+        username,
+        password,
+        scope: delegatedScopes,
+      }),
+    },
+  )
+  if (!resp.ok) {
+    const body = await resp.text()
+    if (body.includes('AADSTS50076') || body.includes('AADSTS50079')) {
+      throw new Error(`Delegated token blocked by MFA (${resp.status}): ${body.slice(0, 240)}`)
+    }
+    throw new Error(`Delegated token failed (${resp.status}): ${body.slice(0, 240)}`)
+  }
+  const data = await resp.json()
+  return data.access_token as string
+}
+
+/** Lê o user id do utilizador autenticado no token delegado */
+async function getMeUserId(token: string): Promise<string> {
+  const resp = await fetch('https://graph.microsoft.com/v1.0/me?$select=id', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!resp.ok) {
+    const body = await resp.text()
+    throw new Error(`Read /me failed (${resp.status}): ${body.slice(0, 200)}`)
+  }
+  const data = await resp.json()
+  const id = data?.id as string | undefined
+  if (!id) throw new Error('Read /me failed: missing id')
+  return id
 }
 
 /**
@@ -167,6 +269,29 @@ async function sendTeams1on1(
 
 /** Fallback: envia MessageCard via webhook de canal */
 async function sendTeamsWebhook(webhookUrl: string, card: object): Promise<void> {
+  // webhookbot.c-toss.com expects a bot message payload (type/text/attachments)
+  if (webhookUrl.includes('webhookbot.c-toss.com')) {
+    const asAny = card as any
+    const text = typeof asAny?.text === 'string'
+      ? asAny.text
+      : (typeof asAny?.summary === 'string' ? asAny.summary : 'Notificação de Retorno QA')
+
+    const resp = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'message',
+        text,
+        attachments: [],
+      }),
+    })
+    if (!resp.ok) {
+      const body = await resp.text()
+      throw new Error(`Webhook failed (${resp.status}): ${body.slice(0, 260)}`)
+    }
+    return
+  }
+
   const resp = await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -180,7 +305,13 @@ async function sendTeamsWebhook(webhookUrl: string, card: object): Promise<void>
 
 // ── Card builders ─────────────────────────────────────────────────────────────
 
-function buildAdaptiveCard(item: WorkItem, sprintCode: string | null): object {
+function buildAdaptiveCard(
+  item: WorkItem,
+  sprintCode: string | null,
+  relatedItems: RelatedWorkItem[],
+): object {
+  const relatedMarkdown = buildRelatedItemsMarkdown(relatedItems)
+
   return {
     $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
     type: 'AdaptiveCard',
@@ -188,7 +319,7 @@ function buildAdaptiveCard(item: WorkItem, sprintCode: string | null): object {
     body: [
       {
         type: 'TextBlock',
-        text: '🔄 Retorno de QA — Item devolvido ao Desenvolvimento',
+        text: '🔔 Notificação de Retorno QA',
         weight: 'Bolder',
         size: 'Medium',
         color: 'Warning',
@@ -206,9 +337,14 @@ function buildAdaptiveCard(item: WorkItem, sprintCode: string | null): object {
       },
       {
         type: 'TextBlock',
-        text: 'Este item retornou de **Em Teste** para **Em desenvolvimento**. Por favor verifique o feedback de QA.',
+        text: 'Descrição: Este item retornou de **Em Teste** para **Em desenvolvimento**. Favor validar o feedback e ajustar o plano de correção.',
         wrap: true,
         color: 'Attention',
+      },
+      {
+        type: 'TextBlock',
+        text: `Work items relacionados:\n${relatedMarkdown}`,
+        wrap: true,
       },
     ],
     actions: item.web_url
@@ -217,28 +353,82 @@ function buildAdaptiveCard(item: WorkItem, sprintCode: string | null): object {
   }
 }
 
-function buildWebhookCard(item: WorkItem, sprintCode: string | null): object {
+function buildWebhookCard(
+  item: WorkItem,
+  sprintCode: string | null,
+  relatedItems: RelatedWorkItem[],
+): object {
+  const relatedMarkdown = buildRelatedItemsMarkdown(relatedItems)
+  const relatedActions = relatedItems
+    .filter((rel) => !!rel.web_url)
+    .slice(0, 3)
+    .map((rel) => ({
+      '@type': 'OpenUri',
+      name: `${shortTypeLabel(rel.work_item_type)} #${rel.id}`,
+      targets: [{ os: 'default', uri: rel.web_url! }],
+    }))
+
+  const plainText = [
+    '🔔 Notificação de Retorno QA',
+    `Work Item: #${item.id}`,
+    `Título: ${item.title ?? 'Sem titulo'}`,
+    `Responsável: ${item.assigned_to_display ?? '—'}`,
+    `Sprint: ${sprintCode ?? '—'}`,
+    `Tipo: ${item.work_item_type ?? '—'}`,
+    '',
+    'Descrição:',
+    'Este item retornou de Em Teste para Em desenvolvimento. Favor validar o feedback do QA e atualizar as tasks de correção.',
+    '',
+    'Work items relacionados (PBI/Bug/Task):',
+    relatedItems.length > 0
+      ? relatedItems
+          .slice(0, 6)
+          .map((rel) => `- ${shortTypeLabel(rel.work_item_type)} #${rel.id}: ${rel.title ?? 'Sem titulo'} (${rel.state ?? '—'})`)
+          .join('\n')
+      : '- Sem work items relacionados mapeados para este item.',
+  ].join('\n')
+
   return {
     '@type': 'MessageCard',
     '@context': 'http://schema.org/extensions',
     themeColor: 'FF8C00',
-    summary: `Retorno QA — #${item.id} ${item.title ?? ''}`,
-    title: `🔄 Retorno de QA — #${item.id}`,
-    text: [
-      `**${item.title ?? 'Sem título'}**`,
-      `Responsável: ${item.assigned_to_display ?? '—'}`,
-      `Sprint: ${sprintCode ?? '—'}`,
-      `Tipo: ${item.work_item_type ?? '—'}`,
-    ].join('  \n'),
-    potentialAction: item.web_url
-      ? [
-          {
-            '@type': 'OpenUri',
-            name: 'Abrir no Azure DevOps',
-            targets: [{ os: 'default', uri: item.web_url }],
-          },
-        ]
-      : [],
+    summary: `Notificacao de Retorno QA — #${item.id} ${item.title ?? ''}`,
+    title: '🔔 Notificação de Retorno QA',
+    sections: [
+      {
+        activityTitle: `**${item.title ?? 'Sem titulo'}**`,
+        facts: [
+          { name: 'Work Item', value: `#${item.id}` },
+          { name: 'Tipo', value: item.work_item_type ?? '—' },
+          { name: 'Responsavel', value: item.assigned_to_display ?? '—' },
+          { name: 'Sprint', value: sprintCode ?? '—' },
+        ],
+        markdown: true,
+      },
+      {
+        title: 'Descricao',
+        text: 'Este item retornou de **Em Teste** para **Em desenvolvimento**. Favor validar o feedback do QA e atualizar as tasks de correcao.',
+        markdown: true,
+      },
+      {
+        title: 'Work items relacionados (PBI/Bug/Task)',
+        text: relatedMarkdown,
+        markdown: true,
+      },
+    ],
+    text: plainText,
+    potentialAction: [
+      ...(item.web_url
+        ? [
+            {
+              '@type': 'OpenUri',
+              name: 'Abrir item principal no Azure DevOps',
+              targets: [{ os: 'default', uri: item.web_url }],
+            },
+          ]
+        : []),
+      ...relatedActions,
+    ],
   }
 }
 
@@ -257,6 +447,9 @@ async function run(
     !!Deno.env.get('TEAMS_GRAPH_TENANT_ID') &&
     !!Deno.env.get('TEAMS_GRAPH_CLIENT_ID') &&
     !!Deno.env.get('TEAMS_GRAPH_CLIENT_SECRET')
+  const delegatedConfigured =
+    (!!Deno.env.get('TEAMS_GRAPH_SENDER_USER_ID') && !!Deno.env.get('TEAMS_GRAPH_SENDER_USER_AUTH')) ||
+    (!!Deno.env.get('TEAMS_DELEGATED_USERNAME') && !!Deno.env.get('TEAMS_DELEGATED_PASSWORD'))
 
   // Obtém token Graph uma única vez (reutilizado para todos os alertas)
   let graphToken: string | null = null
@@ -265,6 +458,20 @@ async function run(
       graphToken = await getGraphToken()
     } catch (err) {
       console.error('[QAAlert] Graph token error:', (err as Error).message)
+    }
+  }
+
+  // Token delegado para envio 1:1 (evita limitação de app-only no send message)
+  let delegatedToken: string | null = null
+  let delegatedSenderUserId: string | null = null
+  let delegatedInitError: string | null = null
+  if (delegatedConfigured) {
+    try {
+      delegatedToken = await getDelegatedGraphToken()
+      delegatedSenderUserId = Deno.env.get('TEAMS_GRAPH_SENDER_USER_ID') ?? await getMeUserId(delegatedToken)
+    } catch (err) {
+      delegatedInitError = (err as Error).message
+      console.error('[QAAlert] Delegated token error:', delegatedInitError)
     }
   }
 
@@ -278,6 +485,29 @@ async function run(
     .eq('state', 'Em desenvolvimento')
 
   if (candidatesErr) throw new Error(`Fetch candidates: ${candidatesErr.message}`)
+
+  // Pré-carrega itens relacionados (filhos) para enriquecer a notificação visual.
+  const candidateIds = ((candidates ?? []) as WorkItem[]).map((wi) => wi.id)
+  const relatedByParent = new Map<number, RelatedWorkItem[]>()
+
+  if (candidateIds.length > 0) {
+    const { data: relatedItems, error: relatedErr } = await admin
+      .from('devops_work_items')
+      .select('id, parent_id, title, work_item_type, state, web_url')
+      .in('parent_id', candidateIds)
+      .in('work_item_type', ['Product Backlog Item', 'User Story', 'Task', 'Bug'])
+
+    if (relatedErr) {
+      console.error('[QAAlert] Related items query error:', relatedErr.message)
+    } else {
+      for (const rel of (relatedItems ?? []) as RelatedWorkItem[]) {
+        if (rel.parent_id == null) continue
+        const bucket = relatedByParent.get(rel.parent_id) ?? []
+        bucket.push(rel)
+        relatedByParent.set(rel.parent_id, bucket)
+      }
+    }
+  }
 
   for (const item of (candidates ?? []) as WorkItem[]) {
     const history = (item.state_history ?? []) as StateChange[]
@@ -313,8 +543,10 @@ async function run(
     // Se não encontrado (email divergente, utilizador fora do tenant), teamsUserId = null
     // e o alerta cai em fallback webhook.
     let teamsUserId: string | null = null
-    if (graphToken && item.assigned_to_unique) {
-      teamsUserId = await resolveTeamsUserId(item.assigned_to_unique, graphToken)
+    // Prefer delegated token when available to avoid app-only permission gaps on /users lookup.
+    const resolverToken = delegatedToken ?? graphToken
+    if (resolverToken && item.assigned_to_unique) {
+      teamsUserId = await resolveTeamsUserId(item.assigned_to_unique, resolverToken)
     }
 
     // ── Inserir evento ───────────────────────────────────────────────────────
@@ -349,21 +581,43 @@ async function run(
     }
 
     // ── Enviar alerta ────────────────────────────────────────────────────────
-    const adaptiveCard = buildAdaptiveCard(item, sprintCode)
+    const relatedItems = relatedByParent.get(item.id) ?? []
+    const adaptiveCard = buildAdaptiveCard(item, sprintCode, relatedItems)
     let alertStatus = 'skipped'
     let alertChannelType = 'none'
     let alertError: string | null = null
 
     try {
-      if (graphToken && teamsUserId && senderUserId) {
-        // 1ª opção: Teams 1:1 via Graph (user ID resolvido on-demand)
-        await sendTeams1on1(graphToken, senderUserId, teamsUserId, adaptiveCard)
+      // Se modo delegado está configurado, não cair para app-only automaticamente.
+      // Em tenant com MFA/CA, ROPC pode falhar; nesse caso usamos webhook com erro explícito.
+      let tokenFor1on1: string | null = null
+      let senderFor1on1: string | null = null
+
+      if (delegatedConfigured) {
+        tokenFor1on1 = delegatedToken
+        senderFor1on1 = delegatedSenderUserId
+        if (!tokenFor1on1 || !senderFor1on1) {
+          alertError = `1:1 delegated unavailable: ${delegatedInitError ?? 'missing delegated token or sender'}`
+        }
+      } else {
+        tokenFor1on1 = graphToken
+        senderFor1on1 = senderUserId
+      }
+
+      if (!teamsUserId) {
+        alertError = alertError ?? `1:1 skipped: recipient not resolved from assigned_to_unique (${item.assigned_to_unique ?? 'null'})`
+      }
+
+      if (tokenFor1on1 && teamsUserId && senderFor1on1) {
+        // 1ª opção: Teams 1:1 via Graph
+        // Preferência: token delegado (service account). Fallback: app-only.
+        await sendTeams1on1(tokenFor1on1, senderFor1on1, teamsUserId, adaptiveCard)
         alertStatus = 'sent'
         alertChannelType = 'teams_1on1'
         alerted++
       } else if (fallbackWebhook) {
         // 2ª opção: webhook de canal (fallback)
-        await sendTeamsWebhook(fallbackWebhook, buildWebhookCard(item, sprintCode))
+        await sendTeamsWebhook(fallbackWebhook, buildWebhookCard(item, sprintCode, relatedItems))
         alertStatus = 'fallback_sent'
         alertChannelType = 'teams_webhook'
         alerted++
@@ -376,7 +630,7 @@ async function run(
       // Tenta fallback se o 1:1 falhou
       if (fallbackWebhook) {
         try {
-          await sendTeamsWebhook(fallbackWebhook, buildWebhookCard(item, sprintCode))
+          await sendTeamsWebhook(fallbackWebhook, buildWebhookCard(item, sprintCode, relatedItems))
           alertStatus = 'fallback_sent'
           alertChannelType = 'teams_webhook'
           alerted++
