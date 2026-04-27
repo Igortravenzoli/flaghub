@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, Loader2, CheckCircle2, BellRing, MessageSquareWarning } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { SectorAlerts } from './SectorAlerts';
@@ -16,6 +16,7 @@ interface SectorSettingsProps {
 export function SectorSettings({ sectorName, sectorKey, syncFunctions = [] }: SectorSettingsProps) {
   const [syncingFns, setSyncingFns] = useState<Set<string>>(new Set());
   const [syncResults, setSyncResults] = useState<Record<string, 'ok' | 'error'>>({});
+  const showFabricaQaAlertConfig = sectorKey === 'fabrica';
 
   const handleSync = async (fnName: string, label: string, payload?: Record<string, unknown>) => {
     setSyncingFns(prev => new Set(prev).add(fnName));
@@ -89,6 +90,45 @@ export function SectorSettings({ sectorName, sectorKey, syncFunctions = [] }: Se
 
       {/* Sector Alerts */}
       {sectorKey && <SectorAlerts sector={sectorKey} sectorLabel={sectorName} />}
+
+      {showFabricaQaAlertConfig && (
+        <Card className="p-5 border-primary/20 bg-primary/5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <BellRing className="h-4 w-4 text-primary" />
+                <h4 className="font-semibold text-foreground">Aviso de Retorno QA</h4>
+                <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200">Ativo</Badge>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                O alerta automático de Retorno QA está habilitado para a Fábrica e prioriza notificação direta no Teams 1:1.
+              </p>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg border border-border bg-background/80 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Canal primário</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">Teams 1:1</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Envio direto ao responsável pelo item quando o destinatário é resolvido no tenant M365.</p>
+                </div>
+
+                <div className="rounded-lg border border-border bg-background/80 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fallback</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">Canal Flaghub</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Usado automaticamente quando o envio 1:1 falha ou o destinatário não é resolvido.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                <MessageSquareWarning className="h-4 w-4 shrink-0 mt-0.5" />
+                <p className="text-xs leading-relaxed">
+                  Na aba Retorno QA, passe o cursor sobre o selo de alerta para validar o último disparo, o canal utilizado e o destino do envio.
+                </p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

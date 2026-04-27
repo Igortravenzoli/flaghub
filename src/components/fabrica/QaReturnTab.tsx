@@ -6,12 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, Search, ChevronLeft, ChevronRight, ExternalLink, Calendar, Clock, AlertCircle,
+  AlertTriangle, Search, ChevronLeft, ChevronRight, ExternalLink, AlertCircle,
 } from 'lucide-react';
 import { QaReturnOpenItem } from '@/hooks/useQaReturnKpis';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const PAGE_SIZE = 25;
 
@@ -20,24 +21,83 @@ interface QaReturnTabProps {
   isLoading: boolean;
 }
 
-function getDaysColor(days: number): string {
-  if (days < 7) return 'text-green-600 bg-green-50';
-  if (days <= 14) return 'text-amber-600 bg-amber-50';
-  return 'text-red-600 bg-red-50';
+function getAlertLabel(status: string | null | undefined): string {
+  switch (status?.toLowerCase()) {
+    case 'pending':
+      return 'Pendente';
+    case 'sent':
+      return 'Enviado';
+    case 'failed':
+      return 'Falha';
+    case 'fallback_sent':
+      return 'Enviado no Flaghub';
+    case 'skipped':
+      return 'Ignorado';
+    default:
+      return '—';
+  }
 }
 
-function getStatusColor(status: string): string {
+function getStatusColor(status: string | null | undefined): string {
   switch (status?.toLowerCase()) {
-    case 'open':
-      return 'bg-red-100 text-red-700 border border-red-300';
-    case 'resolved':
-    case 'closed':
+    case 'sent':
       return 'bg-green-100 text-green-700 border border-green-300';
     case 'pending':
       return 'bg-amber-100 text-amber-700 border border-amber-300';
+    case 'failed':
+      return 'bg-red-100 text-red-700 border border-red-300';
+    case 'fallback_sent':
+      return 'bg-sky-100 text-sky-700 border border-sky-300';
+    case 'skipped':
+      return 'bg-slate-100 text-slate-700 border border-slate-300';
     default:
       return 'bg-gray-100 text-gray-700 border border-gray-300';
   }
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getAlertTarget(item: QaReturnOpenItem): string {
+  if (item.alert_channel_type === 'teams_webhook') return 'Canal Flaghub';
+  if (item.assigned_to_email) return item.assigned_to_email;
+  if (item.assigned_to_display) return item.assigned_to_display;
+  return 'Destino não identificado';
+}
+
+function AlertBadge({ item }: { item: QaReturnOpenItem }) {
+  const label = getAlertLabel(item.alert_status);
+  const hasDispatchContext = Boolean(item.alert_sent_at || item.alert_error || item.alert_channel_type);
+
+  if (!hasDispatchContext) {
+    return <Badge className={`text-xs ${getStatusColor(item.alert_status)}`}>{label}</Badge>;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge className={`cursor-help text-xs ${getStatusColor(item.alert_status)}`}>{label}</Badge>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[280px] space-y-1.5 text-xs leading-relaxed">
+        <p className="font-semibold text-foreground">Último disparo do alerta</p>
+        <p><span className="text-muted-foreground">Status:</span> {label}</p>
+        <p><span className="text-muted-foreground">Enviado em:</span> {formatDateTime(item.alert_sent_at)}</p>
+        <p><span className="text-muted-foreground">Canal:</span> {item.alert_channel_type === 'teams_1on1' ? 'Teams 1:1' : item.alert_channel_type === 'teams_webhook' ? 'Canal Flaghub' : 'Não enviado'}</p>
+        <p><span className="text-muted-foreground">Destino:</span> {getAlertTarget(item)}</p>
+        {item.alert_error && (
+          <p><span className="text-muted-foreground">Falha:</span> {item.alert_error}</p>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
@@ -72,7 +132,7 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
 
   const summary = useMemo(() => {
     const total = items.length;
-    const open = items.filter(i => i.alert_status?.toLowerCase() === 'open').length;
+    const sent = items.filter(i => ['sent', 'fallback_sent'].includes(i.alert_status?.toLowerCase())).length;
     const avgDays = items.length > 0
       ? (items.reduce((sum, i) => sum + (i.days_since_return || 0), 0) / items.length).toFixed(1)
       : '0';
@@ -80,7 +140,7 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
       ? Math.max(...items.map(i => i.days_since_return || 0))
       : 0;
 
-    return { total, open, avgDays, maxDays };
+    return { total, sent, avgDays, maxDays };
   }, [items]);
 
   if (isLoading) {
@@ -109,9 +169,10 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
         <Card>
           <div className="p-4">
             <p className="text-xs text-muted-foreground font-medium mb-1">Abertos</p>
-            <p className={`text-2xl font-bold ${summary.open > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {summary.open}
+            <p className={`text-2xl font-bold ${summary.sent > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+              {summary.sent}
             </p>
+            <p className="text-[11px] text-muted-foreground mt-1">alertas enviados</p>
           </div>
         </Card>
         <Card>
@@ -153,14 +214,16 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
               />
             </div>
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
-              <SelectTrigger className="w-32 h-8 text-xs">
-                <SelectValue placeholder="Status" />
+              <SelectTrigger className="w-40 h-8 text-xs">
+                <SelectValue placeholder="Alerta" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="open">Aberto</SelectItem>
-                <SelectItem value="resolved">Resolvido</SelectItem>
                 <SelectItem value="pending">Pendente</SelectItem>
+                <SelectItem value="sent">Enviado</SelectItem>
+                <SelectItem value="fallback_sent">Enviado no Flaghub</SelectItem>
+                <SelectItem value="failed">Falha</SelectItem>
+                <SelectItem value="skipped">Ignorado</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -168,7 +231,8 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
       </Card>
 
       {/* Table */}
-      <Card className="overflow-hidden">
+      <TooltipProvider>
+        <Card className="overflow-hidden">
         {pagedItems.length === 0 ? (
           <div className="p-8 text-center">
             <AlertCircle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
@@ -187,9 +251,8 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
                     <TableHead className="text-xs font-semibold w-24">Tipo</TableHead>
                     <TableHead className="text-xs font-semibold w-20">Sprint</TableHead>
                     <TableHead className="text-xs font-semibold w-32">Responsável</TableHead>
-                    <TableHead className="text-xs font-semibold w-20">Detectado</TableHead>
-                    <TableHead className="text-xs font-semibold w-20">Dias</TableHead>
-                    <TableHead className="text-xs font-semibold w-20">Status</TableHead>
+                    <TableHead className="text-xs font-semibold w-36">Retorno</TableHead>
+                    <TableHead className="text-xs font-semibold w-28">Alerta</TableHead>
                     <TableHead className="text-xs font-semibold w-12">Link</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -234,19 +297,15 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
                         )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {item.detected_at
-                          ? new Date(item.detected_at).toLocaleDateString('pt-BR')
-                          : '—'}
+                        <div className="space-y-0.5">
+                          <p className="font-medium text-foreground">{formatDateTime(item.transition_date ?? item.detected_at)}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {item.transition_date ? 'volta para desenvolvimento' : 'detecção sem histórico da transição'}
+                          </p>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={`text-xs font-mono ${getDaysColor(item.days_since_return || 0)}`}>
-                          {item.days_since_return ?? 0}d
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`text-xs ${getStatusColor(item.alert_status)}`}>
-                          {item.alert_status?.charAt(0).toUpperCase() + item.alert_status?.slice(1).toLowerCase() || '—'}
-                        </Badge>
+                        <AlertBadge item={item} />
                       </TableCell>
                       <TableCell>
                         {item.web_url ? (
@@ -298,7 +357,8 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
             )}
           </>
         )}
-      </Card>
+        </Card>
+      </TooltipProvider>
     </div>
   );
 }

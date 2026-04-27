@@ -39,6 +39,9 @@ export interface QaReturnOpenItem {
   transition_date: string | null
   days_since_return: number
   alert_status: string
+  alert_sent_at: string | null
+  alert_channel_type: 'teams_1on1' | 'teams_webhook' | 'none' | null
+  alert_error: string | null
   web_url: string | null
 }
 
