@@ -14,16 +14,16 @@ const integrations: Integration[] = [
   { name: 'GitHub API', type: 'api', status: 'up', lastCheck: '20/02/2026 09:00', latency: '110ms', description: 'Repositórios & Pull Requests' },
 ];
 
-function MacroCard({ label, value, icon: Icon, color, subtitle, delay = 0 }: {
-  label: string; value: number; icon: React.ComponentType<{ className?: string }>; color: string; subtitle?: string; delay?: number;
+function MacroCard({ label, value, icon: Icon, color, subtitle }: {
+  label: string; value: number; icon: React.ComponentType<{ className?: string }>; color: string; subtitle?: string;
 }) {
   const animated = useCountUp(value);
   return (
-    <Card className="p-5 text-center animate-fade-in hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5" style={{ animationDelay: `${delay}ms` }}>
+    <Card className="p-5 text-center transition-colors duration-150 hover:bg-muted/30">
       <div className={`mx-auto w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${color}`}>
         <Icon className="h-6 w-6" />
       </div>
-      <p className="text-3xl font-bold font-mono text-foreground">{animated}</p>
+      <p className="text-2xl font-semibold font-mono text-foreground">{animated}</p>
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-1">{label}</p>
       {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
     </Card>
@@ -78,16 +78,16 @@ export default function ProgramacaoDashboard() {
     <SectorLayout title="Programação" subtitle="Sprint Board — S4-2026" lastUpdate="20/02/2026 09:00" integrations={integrations}>
       {/* KPI Macro Counters */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <MacroCard label="Total Tasks" value={data.length} icon={ListTodo} color="bg-primary/10 text-primary" delay={0} />
-        <MacroCard label="Em Progresso" value={stats.inProgress} icon={Code2} color="bg-[hsl(var(--info))]/10 text-[hsl(var(--info))]" delay={80} />
-        <MacroCard label="To Do" value={stats.toDo} icon={ListTodo} color="bg-accent text-accent-foreground" delay={160} />
-        <MacroCard label="✈ Aviões" value={stats.aviao} icon={Plane} color="bg-[hsl(var(--info))]/10 text-[hsl(var(--info))]" subtitle="Tag AVIAO" delay={240} />
-        <MacroCard label="🐛 Bugs" value={stats.bugs} icon={Bug} color="bg-[hsl(var(--critical))]/10 text-[hsl(var(--critical))]" delay={320} />
-        <MacroCard label="Transbordos" value={stats.transbordo} icon={AlertTriangle} color="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]" delay={400} />
+        <MacroCard label="Total Tasks" value={data.length} icon={ListTodo} color="bg-primary/10 text-primary" />
+        <MacroCard label="Em Progresso" value={stats.inProgress} icon={Code2} color="bg-[hsl(var(--info))]/10 text-[hsl(var(--info))]" />
+        <MacroCard label="To Do" value={stats.toDo} icon={ListTodo} color="bg-accent text-accent-foreground" />
+        <MacroCard label="✈ Aviões" value={stats.aviao} icon={Plane} color="bg-[hsl(var(--info))]/10 text-[hsl(var(--info))]" subtitle="Tag AVIAO" />
+        <MacroCard label="🐛 Bugs" value={stats.bugs} icon={Bug} color="bg-[hsl(var(--critical))]/10 text-[hsl(var(--critical))]" />
+        <MacroCard label="Transbordos" value={stats.transbordo} icon={AlertTriangle} color="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]" />
       </div>
 
       {/* Tasks por Colaborador */}
-      <Card className="p-5 animate-fade-in" style={{ animationDelay: '300ms' }}>
+      <Card className="p-5">
         <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
           <Users className="h-4 w-4 text-primary" />
           Tasks por Colaborador
@@ -95,8 +95,8 @@ export default function ProgramacaoDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
           {Object.entries(stats.porProgramador)
             .sort(([, a], [, b]) => b - a)
-            .map(([name, count], i) => (
-              <div key={name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm animate-fade-in" style={{ animationDelay: `${400 + i * 50}ms` }}>
+            .map(([name, count]) => (
+              <div key={name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm">
                 <span className="text-foreground truncate">{name}</span>
                 <Badge variant="secondary" className="ml-1 font-mono">{count}</Badge>
               </div>
@@ -105,7 +105,7 @@ export default function ProgramacaoDashboard() {
       </Card>
 
       {/* Airport Board */}
-      <Card className={`bg-card text-card-foreground overflow-hidden animate-fade-in border ${boardFullscreen ? 'fixed inset-0 z-50 rounded-none m-0' : ''}`} style={{ animationDelay: '500ms' }}>
+      <Card className={`bg-card text-card-foreground overflow-hidden border ${boardFullscreen ? 'fixed inset-0 z-50 rounded-none m-0' : ''}`}>
         <div className="p-4 border-b border-border flex items-center gap-3">
           <Plane className="h-5 w-5 text-[hsl(var(--warning))]" />
           <h3 className="font-bold text-lg font-mono tracking-wider">PAINEL DE MONITORAMENTO — SPRINT S4-2026</h3>
@@ -131,7 +131,7 @@ export default function ProgramacaoDashboard() {
             </TableHeader>
             <TableBody>
               {data.map((item, i) => (
-                <TableRow key={item.id} className="border-border hover:bg-muted/50 transition-colors animate-fade-in" style={{ animationDelay: `${600 + i * 30}ms` }}>
+                <TableRow key={item.id} className="border-border hover:bg-muted/50 transition-colors">
                   <TableCell className="font-mono text-xs text-primary">#{item.id}</TableCell>
                   <TableCell className="text-sm max-w-[350px] truncate text-foreground">{item.title}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{item.assignedTo || '—'}</TableCell>

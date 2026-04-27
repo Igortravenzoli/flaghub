@@ -18,6 +18,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
+import { CHART_COLORS } from '@/lib/chartColors';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { MovimentacaoTab } from '@/components/comercial/MovimentacaoTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
@@ -197,29 +198,31 @@ export default function ComercialDashboard() {
           </TabsList>
 
           <TabsContent value="visao-clientes" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 gap-4">
-              <DashboardKpiCard
-                label="Ativos"
-                value={stats.ativos}
-                icon={UserCheck}
-                isLoading={isLoading}
-                active={statusFilter === 'ativo'}
-                onClick={() => handleKpiClick('ativo')}
-                tooltipFormula="COUNT(status = 'Ativo')"
-                tooltipDescription="Contagem de clientes com status ativo na base."
-              />
-              <DashboardKpiCard
-                label="Bloqueados"
-                value={stats.bloqueados}
-                icon={ShieldBan}
-                isLoading={isLoading}
-                delay={80}
-                active={statusFilter === 'bloqueado'}
-                onClick={() => handleKpiClick('bloqueado')}
-                tooltipFormula="COUNT(status = 'Bloqueado')"
-                tooltipDescription="Contagem de clientes com status bloqueado na base."
-              />
-            </div>
+            <Card className="p-5 border transition-colors duration-150">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">BASE DE CLIENTES</p>
+                  <p className="text-3xl font-semibold text-foreground font-mono mt-0.5">{isLoading ? '—' : totalClientes}</p>
+                </div>
+                <UserCheck className="h-8 w-8 text-muted-foreground/40" />
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-border border-t pt-3 -mx-5 px-5">
+                <button
+                  onClick={() => handleKpiClick('ativo')}
+                  className={`flex flex-col items-center py-2 rounded-l transition-colors hover:bg-muted/30 ${statusFilter === 'ativo' ? 'bg-primary/5' : ''}`}
+                >
+                  <p className="text-2xl font-semibold font-mono">{isLoading ? '—' : stats.ativos}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Ativos</p>
+                </button>
+                <button
+                  onClick={() => handleKpiClick('bloqueado')}
+                  className={`flex flex-col items-center py-2 rounded-r transition-colors hover:bg-muted/30 ${statusFilter === 'bloqueado' ? 'bg-primary/5' : ''}`}
+                >
+                  <p className="text-2xl font-semibold text-destructive font-mono">{isLoading ? '—' : stats.bloqueados}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Bloqueados</p>
+                </button>
+              </div>
+            </Card>
 
             {/* Chart: Clientes Ativos por Bandeira */}
             {(() => {
@@ -234,16 +237,6 @@ export default function ComercialDashboard() {
               const chartData = Array.from(bandeiraMap.entries())
                 .map(([name, count]) => ({ name, count }))
                 .sort((a, b) => b.count - a.count);
-              const COLORS = [
-                'hsl(var(--primary))',
-                'hsl(var(--accent))',
-                'hsl(var(--muted-foreground))',
-                'hsl(210, 70%, 55%)',
-                'hsl(160, 60%, 45%)',
-                'hsl(30, 80%, 55%)',
-                'hsl(280, 60%, 55%)',
-                'hsl(0, 65%, 55%)',
-              ];
               const handleBarClick = (data: any) => {
                 if (data?.name) {
                   setSelectedBandeira(prev => prev === data.name ? null : data.name);
@@ -275,7 +268,7 @@ export default function ComercialDashboard() {
                           {chartData.map((entry, i) => (
                             <Cell
                               key={i}
-                              fill={COLORS[i % COLORS.length]}
+                              fill={CHART_COLORS[i % CHART_COLORS.length]}
                               opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.3 : 1}
                             />
                           ))}
@@ -328,12 +321,30 @@ export default function ComercialDashboard() {
           </TabsContent>
 
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={Layers} isLoading={pbiHealthBatch.isLoading} onClick={() => handleHealthClick('all')} active={healthFilter === 'all'} />
-              <DashboardKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(142,71%,45%)]" onClick={() => handleHealthClick('verde')} active={healthFilter === 'verde'} />
-              <DashboardKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-[hsl(43,85%,46%)]" onClick={() => handleHealthClick('amarelo')} active={healthFilter === 'amarelo'} />
-              <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => handleHealthClick('vermelho')} active={healthFilter === 'vermelho'} />
-            </div>
+            <Card className="p-5 border transition-colors duration-150">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">SAÚDE PBI</p>
+                  <p className="text-3xl font-semibold text-foreground font-mono mt-0.5">{pbiHealthBatch.isLoading ? '—' : pbiHealthBatch.overview.total}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">PBIs monitorados</p>
+                </div>
+                <Layers className="h-8 w-8 text-muted-foreground/40" />
+              </div>
+              <div className="grid grid-cols-3 divide-x divide-border border-t pt-3 -mx-5 px-5">
+                <button onClick={() => handleHealthClick('verde')} className={`flex flex-col items-center py-2 transition-colors hover:bg-muted/30 ${healthFilter === 'verde' ? 'bg-primary/5' : ''}`}>
+                  <p className="text-xl font-semibold font-mono" style={{ color: 'hsl(142,71%,45%)' }}>{pbiHealthBatch.overview.verde}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Saudável</p>
+                </button>
+                <button onClick={() => handleHealthClick('amarelo')} className={`flex flex-col items-center py-2 transition-colors hover:bg-muted/30 ${healthFilter === 'amarelo' ? 'bg-primary/5' : ''}`}>
+                  <p className="text-xl font-semibold font-mono" style={{ color: 'hsl(43,85%,46%)' }}>{pbiHealthBatch.overview.amarelo}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Atenção</p>
+                </button>
+                <button onClick={() => handleHealthClick('vermelho')} className={`flex flex-col items-center py-2 transition-colors hover:bg-muted/30 ${healthFilter === 'vermelho' ? 'bg-primary/5' : ''}`}>
+                  <p className="text-xl font-semibold text-destructive font-mono">{pbiHealthBatch.overview.vermelho}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Crítica</p>
+                </button>
+              </div>
+            </Card>
 
             {healthFilteredItems.length === 0 && !operational.isLoading ? (
               <DashboardEmptyState description="Nenhum item da esteira comercial para o filtro selecionado." />
