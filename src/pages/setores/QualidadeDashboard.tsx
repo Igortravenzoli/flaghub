@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -128,23 +129,28 @@ export default function QualidadeDashboard() {
   const reworkQuery = useQuery({
     queryKey: ['qualidade', 'rework-done-v3'],
     queryFn: async () => {
-      const doneStates = ['Done', 'Closed', 'Resolved'];
-      const allDoneItems: any[] = [];
-      for (const st of doneStates) {
-        let from = 0;
-        const PAGE = 1000;
-        while (true) {
-          const { data } = await supabase
+      const DONE_STATES = ['Done', 'Closed', 'Resolved'];
+      const PAGE = 1000;
+
+      // Count first, then fetch all pages in parallel — eliminates serial while(true) loop
+      const { count } = await supabase
+        .from('devops_work_items')
+        .select('id', { count: 'exact', head: true })
+        .in('state', DONE_STATES);
+
+      if (!count || count === 0) return [];
+
+      const pages = Math.ceil(count / PAGE);
+      const results = await Promise.all(
+        Array.from({ length: pages }, (_, i) =>
+          supabase
             .from('devops_work_items')
             .select('id, title, work_item_type, state, assigned_to_display, priority, iteration_path, created_date, changed_date, web_url, tags, state_history')
-            .eq('state', st)
-            .range(from, from + PAGE - 1);
-          if (!data || data.length === 0) break;
-          allDoneItems.push(...data);
-          if (data.length < PAGE) break;
-          from += PAGE;
-        }
-      }
+            .in('state', DONE_STATES)
+            .range(i * PAGE, (i + 1) * PAGE - 1)
+        )
+      );
+      const allDoneItems = results.flatMap(r => r.data || []);
       if (allDoneItems.length === 0) return [];
 
       // QA origin state set (case-insensitive matching via normalized)
@@ -586,24 +592,97 @@ export default function QualidadeDashboard() {
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-              <DashboardKpiCard label="Total QA" value={officialOverview.totalQa} icon={FileCheck} isLoading={base.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} tooltipFormula="COUNT(itens QA no escopo)" tooltipDescription="Total de itens de qualidade no recorte atual." />
-              <DashboardKpiCard label="Em Teste" value={officialOverview.emTeste} icon={TrendingUp} isLoading={base.isLoading} delay={80} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('em_teste')} active={kpiFilter === 'em_teste'} tooltipFormula="COUNT(state = Em Teste)" tooltipDescription="Itens efetivamente em execução de testes no escopo filtrado." />
-              <DashboardKpiCard label="Aguardando Deploy" value={officialOverview.aguardandoDeploy} icon={BarChart3} isLoading={base.isLoading} delay={160} accent="bg-[hsl(199,89%,48%)]" onClick={() => toggleKpi('deploy')} active={kpiFilter === 'deploy'} tooltipFormula="COUNT(state = Aguardando Deploy)" tooltipDescription="Itens já testados e aguardando janela de deploy." />
-              <DashboardKpiCard label="Retorno QA" value={officialOverview.itensComRetorno} suffix={officialOverview.totalRetornos > 0 ? ` (${officialOverview.totalRetornos}x)` : ''} icon={RotateCcw} isLoading={base.isLoading} delay={240} accent="bg-[hsl(0,72%,51%)]" onClick={() => toggleKpi('com_retorno')} active={kpiFilter === 'com_retorno'} tooltipFormula="COUNT(itens com qa_retorno_count > 0)" tooltipDescription="Itens que retornaram para nova rodada de testes após a primeira entrada." />
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Bloco Fila QA */}
+              {base.isLoading ? (
+                <Card className="p-6"><Skeleton className="h-3 w-24 mb-4" /><Skeleton className="h-9 w-20 mb-2" /><Skeleton className="h-2 w-full rounded-full mb-4" /><div className="grid grid-cols-3 gap-2 pt-4 border-t border-border">{Array.from({length:3}).map((_,i)=><Skeleton key={i} className="h-12 w-full rounded-lg"/>)}</div></Card>
+              ) : (
+                <Card className="p-6">
+                  <p className="text-xs font-medium text-muted-foreground mb-4">FILA QA</p>
+                  <div className="flex items-start justify-between mb-3">
                     <div>
-                      <DashboardKpiCard label="Aviões testados" value={officialOverview.avioesTestados} icon={Plane} isLoading={base.isLoading} delay={320} accent="bg-[hsl(210,80%,52%)]" onClick={() => toggleKpi('aviao')} active={kpiFilter === 'aviao'} tooltipFormula="COUNT(tags ILIKE '%AVIAO%' AND state IN Testing, Done, Closed, Resolved)" tooltipDescription="Itens com tag AVIAO que já passaram por etapa de teste." />
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Total no escopo</p>
+                      <span className="text-4xl font-bold text-foreground">{officialOverview.totalQa}</span>
                     </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs max-w-[240px]">
-                    Itens com tag AVIAO em estado de teste ou deploy. Clique para filtrar.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <DashboardKpiCard label="Fila Atual" value={officialOverview.filaAtual} icon={Clock} isLoading={base.isLoading} delay={400} accent="bg-[hsl(43,85%,46%)]" tooltipFormula="COUNT(state IN Em Teste, Aguardando Deploy)" tooltipDescription="Fila atual oficial da Qualidade, incluindo itens herdados de sprints passadas." />
+                    <div className="text-right">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Fila ativa</p>
+                      <span className="text-2xl font-semibold text-[hsl(43,85%,46%)]">{officialOverview.filaAtual}</span>
+                    </div>
+                  </div>
+                  {/* Barra: emTeste | aguardandoDeploy | restante */}
+                  {(() => {
+                    const total = officialOverview.totalQa || 1;
+                    const testePct = (officialOverview.emTeste / total) * 100;
+                    const deployPct = (officialOverview.aguardandoDeploy / total) * 100;
+                    return (
+                      <div className="relative h-2 rounded-full bg-muted overflow-hidden mb-5">
+                        <div className="absolute left-0 top-0 h-full bg-[hsl(142,71%,45%)] transition-all duration-500" style={{ width: `${testePct}%` }} />
+                        <div className="absolute top-0 h-full bg-[hsl(199,89%,48%)] transition-all duration-500" style={{ left: `${testePct}%`, width: `${deployPct}%` }} />
+                      </div>
+                    );
+                  })()}
+                  <div className="grid grid-cols-3 gap-2 pt-4 border-t border-border">
+                    {[
+                      { key: 'all' as QaKpiFilter, label: 'Total QA', value: officialOverview.totalQa, dotColor: 'bg-primary' },
+                      { key: 'em_teste' as QaKpiFilter, label: 'Em Teste', value: officialOverview.emTeste, dotColor: 'bg-[hsl(142,71%,45%)]' },
+                      { key: 'deploy' as QaKpiFilter, label: 'Ag. Deploy', value: officialOverview.aguardandoDeploy, dotColor: 'bg-[hsl(199,89%,48%)]' },
+                    ].map(item => (
+                      <button key={item.key} onClick={() => toggleKpi(item.key)}
+                        className={`text-left p-2 rounded-lg transition-colors hover:bg-muted/50 focus-visible:outline-none ${kpiFilter === item.key ? 'bg-muted' : ''}`}>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`h-1.5 w-1.5 rounded-full ${item.dotColor}`} />
+                          <span className="text-[11px] font-medium text-muted-foreground">{item.label}</span>
+                        </div>
+                        <span className={`text-xl font-bold ${kpiFilter === item.key ? 'text-foreground' : 'text-foreground'}`}>{item.value}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* Bloco Qualidade */}
+              {base.isLoading ? (
+                <Card className="p-6"><Skeleton className="h-3 w-20 mb-4" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
+              ) : (
+                <Card className="p-6">
+                  <p className="text-xs font-medium text-muted-foreground mb-4">QUALIDADE</p>
+                  <div className="space-y-0 divide-y divide-border">
+                    <button onClick={() => toggleKpi('com_retorno')}
+                      className={`w-full text-left flex items-center justify-between py-3 rounded-lg px-2 -mx-2 transition-colors hover:bg-muted/20 ${kpiFilter === 'com_retorno' ? 'bg-muted' : ''}`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`p-1.5 rounded-lg ${officialOverview.itensComRetorno > 0 ? 'bg-destructive/10' : 'bg-muted'}`}>
+                          <RotateCcw className={`h-3.5 w-3.5 ${officialOverview.itensComRetorno > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Retorno QA</p>
+                          <p className="text-[11px] text-muted-foreground/70">itens que voltaram para testes</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-2xl font-semibold ${officialOverview.itensComRetorno > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                          {officialOverview.itensComRetorno}
+                        </span>
+                        {officialOverview.totalRetornos > 0 && (
+                          <p className="text-[11px] text-muted-foreground">{officialOverview.totalRetornos} ciclos</p>
+                        )}
+                      </div>
+                    </button>
+                    <button onClick={() => toggleKpi('aviao')}
+                      className={`w-full text-left flex items-center justify-between py-3 rounded-lg px-2 -mx-2 transition-colors hover:bg-muted/20 ${kpiFilter === 'aviao' ? 'bg-muted' : ''}`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-[hsl(210,80%,52%)]/10">
+                          <Plane className="h-3.5 w-3.5 text-[hsl(210,80%,52%)]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Aviões testados</p>
+                          <p className="text-[11px] text-muted-foreground/70">itens AVIAO em testes ou deploy</p>
+                        </div>
+                      </div>
+                      <span className="text-2xl font-semibold text-foreground">{officialOverview.avioesTestados}</span>
+                    </button>
+                  </div>
+                </Card>
+              )}
             </div>
 
 

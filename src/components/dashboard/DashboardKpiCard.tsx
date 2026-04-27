@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCountUp } from '@/hooks/useCountUp';
@@ -42,7 +43,7 @@ const KPI_TOOLTIP_MAP: Record<string, { formula: string; description: string }> 
   'Implantações Finalizadas': { formula: 'COUNT(implantacoes com status encerrado)', description: 'Implantações concluídas no recorte atual.' },
 };
 
-export function DashboardKpiCard({
+export const DashboardKpiCard = memo(function DashboardKpiCard({
   label,
   value,
   icon: Icon,
@@ -83,8 +84,7 @@ export function DashboardKpiCard({
 
   return (
     <Card
-      className={`p-5 animate-fade-in group hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 relative overflow-hidden ${onClick ? 'cursor-pointer' : ''} ${active ? 'ring-2 ring-primary shadow-lg' : ''}`}
-      style={{ animationDelay: `${delay}ms` }}
+      className={`p-5 transition-colors duration-150 relative overflow-hidden ${onClick ? 'cursor-pointer hover:bg-muted/30' : ''} ${active ? 'border-primary bg-primary/5' : ''}`}
       onClick={onClick}
     >
       <div className={`absolute inset-0 opacity-[0.04] ${accent || 'bg-primary'}`} />
@@ -131,4 +131,4 @@ export function DashboardKpiCard({
       </div>
     </Card>
   );
-}
+});

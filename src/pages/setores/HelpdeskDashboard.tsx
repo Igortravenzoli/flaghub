@@ -30,6 +30,7 @@ import {
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CHART_COLORS } from '@/lib/chartColors';
 
 // Lazy load ticket sub-pages for tab embedding
 const DashboardPage = lazy(() => import('@/pages/Dashboard'));
@@ -39,18 +40,6 @@ const integrations: Integration[] = [
   { name: 'VDesk Helpdesk API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Dashboard Helpdesk' },
 ];
 
-const CHART_COLORS = [
-  'hsl(var(--primary))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
-  'hsl(210, 70%, 55%)',
-  'hsl(280, 60%, 55%)',
-  'hsl(30, 80%, 55%)',
-  'hsl(160, 60%, 45%)',
-  'hsl(340, 65%, 50%)',
-];
 
 const STORAGE_KEY = 'helpdesk_consultant_filter';
 const DEFAULT_COLLABORATORS = ['Leandrofaria', 'Ailton', 'Italo', 'Vagner', 'Bruna', 'Ricardo', 'Ronaldo', 'Brunosassada'];
@@ -416,96 +405,80 @@ export default function HelpdeskDashboard() {
         <DashboardEmptyState description="Nenhum dado de helpdesk encontrado. Execute o sync via Admin > Sync Central para carregar os dados da API." />
       ) : (
         <>
-           {/* === Hero KPI Cards === */}
-
-          {/* Daily KPIs based on selected day */}
+          {/* === KPI Cards consolidados === */}
           {(() => {
             const dayData = horasTotaisPorDia.find(h => h.data === selectedDay);
-            // Fallback: if horasTotaisPorDia is empty/zero, sum from consultant minutes
-            const dayHoras = (dayData?.totalHoras ?? 0) > 0
-              ? dayData!.totalHoras
-              : filteredTotalHoras;
-            const dayMinutos = (dayData?.totalMinutos ?? 0) > 0
-              ? dayData!.totalMinutos
-              : filteredTotalMinutos;
+            const dayHoras = (dayData?.totalHoras ?? 0) > 0 ? dayData!.totalHoras : filteredTotalHoras;
+            const diaLabel = selectedDay === new Date().toISOString().slice(0, 10)
+              ? 'Hoje'
+              : new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
             return (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <DashboardKpiCard
-                  label="Total Registros"
-                  value={filteredTotalRegistros}
-                  icon={FileText}
-                  isLoading={isLoading}
-                  onClick={() => handleKpiClick('consultores')}
-                  active={activeView === 'consultores'}
-                  tooltipFormula="SUM(acumulado dos snapshots no período)"
-                  tooltipDescription="Soma do acumulado dos registros de helpdesk no período selecionado."
-                />
-                <DashboardKpiCard
-                  label="Horas Acumuladas"
-                  value={filteredTotalHoras}
-                  suffix="h"
-                  icon={Clock}
-                  isLoading={isLoading}
-                  delay={80}
-                  onClick={() => handleKpiClick('chamados')}
-                  active={activeView === 'chamados'}
-                  tooltipFormula="SUM(totalMinutos) / 60"
-                  tooltipDescription="Total de horas registradas no período selecionado."
-                />
-                <DashboardKpiCard
-                  label={`Horas ${selectedDay === new Date().toISOString().slice(0, 10) ? 'Hoje' : new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
-                  value={dayHoras}
-                  suffix="h"
-                  icon={TrendingUp}
-                  isLoading={isLoading}
-                  delay={160}
-                  tooltipFormula="SUM(time_minutes do dia) / 60"
-                  tooltipDescription="Horas registradas no dia selecionado."
-                />
-                <DashboardKpiCard
-                  label="Consultores Ativos"
-                  value={selectedConsultants.length || totalConsultores}
-                  icon={Users}
-                  isLoading={isLoading}
-                  delay={240}
-                  onClick={() => handleKpiClick('consultores')}
-                  active={activeView === 'consultores'}
-                  tooltipFormula="COUNT(DISTINCT consultor)"
-                  tooltipDescription="Consolidado por nome do consultor no período."
-                />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {/* ATENDIMENTO */}
+                <Card className="p-5 border transition-colors duration-150">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">ATENDIMENTO</p>
+                      <p className="text-3xl font-semibold text-foreground font-mono mt-0.5">{filteredTotalRegistros}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Total Registros</p>
+                    </div>
+                    <FileText className="h-8 w-8 text-muted-foreground/40" />
+                  </div>
+                  <div className="grid grid-cols-3 divide-x divide-border border-t pt-3 -mx-5 px-5">
+                    <button
+                      onClick={() => handleKpiClick('chamados')}
+                      className={`flex flex-col items-center py-2 rounded-l transition-colors hover:bg-muted/30 ${activeView === 'chamados' ? 'bg-primary/5' : ''}`}
+                    >
+                      <p className="text-lg font-semibold font-mono">{filteredTotalHoras}h</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Horas Acum.</p>
+                    </button>
+                    <div className="flex flex-col items-center py-2">
+                      <p className="text-lg font-semibold font-mono">{dayHoras}h</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Horas {diaLabel}</p>
+                    </div>
+                    <button
+                      onClick={() => handleKpiClick('consultores')}
+                      className={`flex flex-col items-center py-2 rounded-r transition-colors hover:bg-muted/30 ${activeView === 'consultores' ? 'bg-primary/5' : ''}`}
+                    >
+                      <p className="text-lg font-semibold font-mono">{selectedConsultants.length || totalConsultores}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Consultores</p>
+                    </button>
+                  </div>
+                </Card>
+
+                {/* COBERTURA */}
+                <Card className="p-5 border transition-colors duration-150">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">COBERTURA</p>
+                  <div className="grid grid-cols-3 divide-x divide-border">
+                    <button
+                      onClick={() => handleKpiClick('sistemas')}
+                      className={`flex flex-col items-center py-3 rounded-l transition-colors hover:bg-muted/30 ${activeView === 'sistemas' ? 'bg-primary/5' : ''}`}
+                    >
+                      <Monitor className="h-4 w-4 text-muted-foreground mb-2" />
+                      <p className="text-2xl font-semibold font-mono">{registrosPorSistema.length}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Sistemas</p>
+                    </button>
+                    <button
+                      onClick={() => handleKpiClick('bandeiras')}
+                      className={`flex flex-col items-center py-3 transition-colors hover:bg-muted/30 ${activeView === 'bandeiras' ? 'bg-primary/5' : ''}`}
+                    >
+                      <Flag className="h-4 w-4 text-muted-foreground mb-2" />
+                      <p className="text-2xl font-semibold font-mono">{registrosPorBandeira.length}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Bandeiras</p>
+                    </button>
+                    <button
+                      onClick={() => handleKpiClick('clientes')}
+                      className={`flex flex-col items-center py-3 rounded-r transition-colors hover:bg-muted/30 ${activeView === 'clientes' ? 'bg-primary/5' : ''}`}
+                    >
+                      <UserCheck className="h-4 w-4 text-muted-foreground mb-2" />
+                      <p className="text-2xl font-semibold font-mono">{registrosPorCliente.length}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Clientes</p>
+                    </button>
+                  </div>
+                </Card>
               </div>
             );
           })()}
-
-          {/* === Secondary KPI row === */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
-            <DashboardKpiCard
-              label="Sistemas"
-              value={registrosPorSistema.length}
-              icon={Monitor}
-              isLoading={isLoading}
-              onClick={() => handleKpiClick('sistemas')}
-              active={activeView === 'sistemas'}
-            />
-            <DashboardKpiCard
-              label="Bandeiras"
-              value={registrosPorBandeira.length}
-              icon={Flag}
-              isLoading={isLoading}
-              delay={80}
-              onClick={() => handleKpiClick('bandeiras')}
-              active={activeView === 'bandeiras'}
-            />
-            <DashboardKpiCard
-              label="Clientes"
-              value={registrosPorCliente.length}
-              icon={UserCheck}
-              isLoading={isLoading}
-              delay={160}
-              onClick={() => handleKpiClick('clientes')}
-              active={activeView === 'clientes'}
-            />
-          </div>
 
           {/* === Charts Section (Tabbed) === */}
           {!isLoading && hasData && (
