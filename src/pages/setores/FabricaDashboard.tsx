@@ -106,10 +106,10 @@ function AnimatedNumber({ value, suffix = '' }: { value: number | null; suffix?:
   return <span>{value}{suffix}</span>;
 }
 
-function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, delay = 0, onClick, isLoading, active, tooltipFormula, tooltipDescription }: {
+function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, onClick, isLoading, active, tooltipFormula, tooltipDescription }: {
   label: string; value: number | string | null; suffix?: string;
   icon: React.ComponentType<{ className?: string }>;
-  description?: string; accent?: string; delay?: number;
+  description?: string; accent?: string;
   onClick?: () => void; isLoading?: boolean; active?: boolean;
   tooltipFormula?: string; tooltipDescription?: string;
 }) {
@@ -117,50 +117,127 @@ function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, de
 
   if (isLoading) {
     return (
-      <Card className="relative overflow-hidden">
-        <div className="p-5">
-          <Skeleton className="h-4 w-20 mb-3" />
-          <Skeleton className="h-9 w-16 mb-1" />
-          <Skeleton className="h-3 w-32" />
+      <Card className="p-5">
+        <Skeleton className="h-3 w-20 mb-3" />
+        <Skeleton className="h-7 w-16 mb-2" />
+        <Skeleton className="h-3 w-32" />
+      </Card>
+    );
+  }
+
+  const iconColor = accent ? accent.replace('bg-', 'text-') : 'text-primary';
+  const iconBg = accent ? `${accent}/10` : 'bg-primary/10';
+
+  return (
+    <Card
+      className={`p-5 transition-colors duration-150 ${onClick ? 'cursor-pointer hover:bg-muted/30' : ''} ${active ? 'border-primary bg-primary/5' : ''}`}
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <div className={`p-1.5 rounded-lg ${iconBg}`}>
+          <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
+        </div>
+        {hasTooltip ? (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-xs font-medium text-muted-foreground underline decoration-dotted cursor-help">{label}</p>
+              </TooltipTrigger>
+              <TooltipContent side="top" align="start" className="max-w-md text-xs leading-relaxed">
+                <p className="font-semibold mb-1">{label}</p>
+                {tooltipFormula && <p className="mb-1"><span className="font-medium">Fórmula:</span> {tooltipFormula}</p>}
+                {tooltipDescription && <p><span className="font-medium">Descrição:</span> {tooltipDescription}</p>}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        )}
+      </div>
+      <p className="text-2xl font-semibold text-foreground tracking-tight">
+        {typeof value === 'number' ? value : value ?? <span className="text-sm font-normal text-muted-foreground">—</span>}
+        {suffix && <span className="text-sm font-normal text-muted-foreground ml-1">{suffix}</span>}
+      </p>
+      {description && <p className="text-[11px] text-muted-foreground/60 mt-1">{description}</p>}
+    </Card>
+  );
+}
+
+function SprintStatusCard({ total, inProgress, toDo, done, semTask, isLoading, fabKpiFilter, toggleFab }: {
+  total: number; inProgress: number; toDo: number; done: number; semTask: number;
+  isLoading: boolean; fabKpiFilter: FabKpiFilter;
+  toggleFab: (f: FabKpiFilter) => void;
+}) {
+  const completedPct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const donePct = total > 0 ? (done / total) * 100 : 0;
+  const inProgressPct = total > 0 ? (inProgress / total) * 100 : 0;
+  const todoPct = total > 0 ? (toDo / total) * 100 : 0;
+
+  const subItems: { key: FabKpiFilter; label: string; value: number; valueColor: string; dotColor: string }[] = [
+    { key: 'in_progress', label: 'Em Progresso', value: inProgress, valueColor: 'text-[hsl(var(--info))]', dotColor: 'bg-[hsl(var(--info))]' },
+    { key: 'todo',        label: 'A Fazer',      value: toDo,       valueColor: 'text-amber-600 dark:text-amber-400', dotColor: 'bg-amber-400' },
+    { key: 'done',        label: 'Finalizados',  value: done,       valueColor: 'text-[hsl(var(--success))]', dotColor: 'bg-[hsl(var(--success))]' },
+    { key: 'sem_task',    label: 'Sem Task',     value: semTask,    valueColor: semTask > 0 ? 'text-destructive' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive' : 'bg-border' },
+  ];
+
+  if (isLoading) {
+    return (
+      <Card className="p-6">
+        <div className="flex justify-between mb-5">
+          <div><Skeleton className="h-3 w-24 mb-2" /><Skeleton className="h-9 w-16" /></div>
+          <div className="text-right"><Skeleton className="h-3 w-20 mb-2" /><Skeleton className="h-7 w-10 ml-auto" /></div>
+        </div>
+        <Skeleton className="h-2 w-full rounded-full mb-5" />
+        <div className="grid grid-cols-4 gap-2 pt-4 border-t border-border">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
         </div>
       </Card>
     );
   }
 
   return (
-    <Card 
-      className={`relative overflow-hidden group transition-all duration-500 hover:shadow-xl hover:-translate-y-1 animate-fade-in ${onClick ? 'cursor-pointer' : ''} ${active ? 'ring-2 ring-primary shadow-xl scale-[1.02]' : ''}`}
-      style={{ animationDelay: `${delay}ms` }}
-      onClick={onClick}
-    >
-      <div className={`absolute top-0 left-0 w-1 h-full ${accent || 'bg-primary'} transition-all duration-300 group-hover:w-1.5`} />
-      <div className="p-5 pl-6">
-        <div className="flex items-center gap-2 mb-2">
-          <div className={`p-2 rounded-xl ${accent ? accent + '/10' : 'bg-primary/10'} transition-transform duration-300 group-hover:scale-110`}>
-            <Icon className={`h-4 w-4 ${accent ? accent.replace('bg-', 'text-') : 'text-primary'}`} />
+    <Card className="p-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1">ITENS NO ESCOPO</p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-bold text-foreground">{total}</span>
+            <span className="text-sm text-muted-foreground">itens</span>
           </div>
-          {hasTooltip ? (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider underline decoration-dotted cursor-help">{label}</p>
-                </TooltipTrigger>
-                <TooltipContent side="top" align="start" className="max-w-md text-xs leading-relaxed">
-                  <p className="font-semibold mb-1">{label}</p>
-                  {tooltipFormula && <p className="mb-1"><span className="font-medium">Fórmula:</span> {tooltipFormula}</p>}
-                  {tooltipDescription && <p><span className="font-medium">Descrição:</span> {tooltipDescription}</p>}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
-          )}
         </div>
-        <p className="text-3xl font-black text-foreground tracking-tight">
-          {typeof value === 'number' ? value : value ?? <span className="text-sm font-normal text-muted-foreground">—</span>}
-          {suffix && <span className="text-lg font-semibold text-muted-foreground ml-1">{suffix}</span>}
-        </p>
-        {description && <p className="text-[11px] text-muted-foreground/70 mt-1.5">{description}</p>}
+        <div className="text-right">
+          <p className="text-xs font-medium text-muted-foreground mb-1">CONCLUÍDO</p>
+          <span className={`text-2xl font-semibold ${completedPct > 0 ? 'text-[hsl(var(--success))]' : 'text-muted-foreground'}`}>
+            {completedPct}%
+          </span>
+        </div>
+      </div>
+
+      {/* Barra de progresso segmentada */}
+      <div className="relative h-2 rounded-full bg-muted overflow-hidden mb-5">
+        <div className="absolute left-0 top-0 h-full bg-[hsl(var(--success))] transition-all duration-500" style={{ width: `${donePct}%` }} />
+        <div className="absolute top-0 h-full bg-[hsl(var(--info))] transition-all duration-500" style={{ left: `${donePct}%`, width: `${inProgressPct}%` }} />
+        <div className="absolute top-0 h-full bg-amber-400 transition-all duration-500" style={{ left: `${donePct + inProgressPct}%`, width: `${todoPct}%` }} />
+      </div>
+
+      {/* Sub-items clicáveis */}
+      <div className="grid grid-cols-4 gap-2 pt-4 border-t border-border">
+        {subItems.map(item => {
+          const isActive = fabKpiFilter === item.key;
+          return (
+            <button
+              key={item.key}
+              onClick={() => toggleFab(item.key)}
+              className={`text-left p-3 rounded-lg transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isActive ? 'bg-muted' : ''}`}
+            >
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <div className={`h-1.5 w-1.5 rounded-full ${item.dotColor}`} />
+                <span className="text-[11px] font-medium text-muted-foreground leading-none">{item.label}</span>
+              </div>
+              <span className={`text-xl font-bold ${isActive ? 'text-foreground' : item.valueColor}`}>{item.value}</span>
+            </button>
+          );
+        })}
       </div>
     </Card>
   );
@@ -898,73 +975,144 @@ export default function FabricaDashboard() {
           </TabsList>
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
-          <TabsContent value="overview" className="space-y-5 mt-0">
-            {/* Hero KPI row */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              <HeroKpiCard label="Total" value={sprintTotal} icon={ListTodo} isLoading={fab.isLoading} onClick={() => toggleFab('all')} active={fabKpiFilter === 'all'} tooltipFormula="COUNT(itens KPI sem dupla contagem)" tooltipDescription="Itens KPI sem dupla contagem de PBI + task filha." />
-              <HeroKpiCard label="Em Progresso" value={sprintInProgress} icon={Code2} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" onClick={() => toggleFab('in_progress')} active={fabKpiFilter === 'in_progress'} tooltipFormula="COUNT(state IN In Progress, Active, Em desenvolvimento, Aguardando Teste)" tooltipDescription="Itens em estado ativo de desenvolvimento." />
-              <HeroKpiCard label="A Fazer" value={sprintToDo} icon={ListTodo} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleFab('todo')} active={fabKpiFilter === 'todo'} tooltipFormula="COUNT(state IN To Do, New)" tooltipDescription="Itens aguardando início de desenvolvimento." />
-              <HeroKpiCard label="Finalizados" value={sprintDone} icon={Bug} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleFab('done')} active={fabKpiFilter === 'done'} tooltipFormula="COUNT(state IN Done, Closed, Resolved)" tooltipDescription="Itens concluídos no período/sprint filtrado." />
-              <HeroKpiCard 
-                label="PBI sem Task" 
-                value={sprintPbisSemTaskCount} 
-                icon={AlertTriangle} 
-                isLoading={fab.isLoading} 
-                delay={320} 
-                accent={sprintPbisSemTaskCount > 0 ? 'bg-destructive' : 'bg-[hsl(142,71%,45%)]'}
-                description={sprintPbisSemTaskCount > 0 ? 'Anomalia: PBIs sem task vinculada' : 'Todos PBIs possuem tasks'}
-                onClick={() => toggleFab('sem_task')} 
-                active={fabKpiFilter === 'sem_task'}
-                tooltipFormula="COUNT(PBI/Story sem Task filha vinculada)"
-                tooltipDescription="PBIs ou User Stories que não possuem pelo menos uma Task vinculada — indica anomalia de planejamento."
-              />
-            </div>
+          <TabsContent value="overview" className="space-y-4 mt-0">
+            {/* Sprint Status consolidado */}
+            <SprintStatusCard
+              total={sprintTotal}
+              inProgress={sprintInProgress}
+              toDo={sprintToDo}
+              done={sprintDone}
+              semTask={sprintPbisSemTaskCount}
+              isLoading={fab.isLoading}
+              fabKpiFilter={fabKpiFilter}
+              toggleFab={toggleFab}
+            />
 
-            {/* Corporate KPIs */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <HeroKpiCard 
-                label="Lead Time Médio" 
-                value={fab.leadTimeMedio} 
-                suffix={fab.leadTimeSource === 'effort' ? ' pts' : 'h'}
-                icon={Clock} 
-                isLoading={fab.isLoading} 
-                delay={300}
-                description={fab.leadTimeSource === 'effort' ? 'Effort médio / PBI (DevOps)' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
-                tooltipFormula="Horas médias por PBI (timelog) ou Effort médio por PBI"
-                tooltipDescription="Lead time médio por PBI com base em timelog; sem timelog, usa esforço médio."
-              />
-              <HeroKpiCard 
-                label="Velocidade Média" 
-                value={fab.velocidadeMedia} 
-                suffix={fab.velocidadeSource === 'effort' ? ' pts' : 'h'}
-                icon={Gauge} 
-                isLoading={fab.isLoading} 
-                delay={380}
-                accent="bg-[hsl(var(--info))]"
-                description={fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
-                tooltipFormula="Total Horas (ou Effort) / Nº Sprints"
-                tooltipDescription="Média de horas ou esforço entregue por sprint."
-              />
-              <HeroKpiCard 
-                label="Transbordo" 
-                value={sprintTransbordoPct != null ? `${sprintTransbordoPct}%` : null} 
-                icon={AlertTriangle} 
-                isLoading={fab.isLoading} 
-                delay={460}
-                accent={sprintTransbordoPct != null && sprintTransbordoPct > 50 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'}
-                description={sprintTransbordoCount > 0 ? `${sprintTransbordoCount} de ${sprintTransbordoTotal} itens` : 'Itens não entregues na sprint'}
-                onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('transbordo')}
-                tooltipFormula="(PBIs com mudanças relevantes de sprint / Total PBIs) × 100"
-                tooltipDescription="Transbordo real: mudanças relevantes de sprint menos o primeiro compromisso."
-              />
-              <QaReturnCard
-                totalEvents={qaReturnKpis.summary?.total_events ?? 0}
-                openEvents={qaReturnKpis.summary?.open_events ?? 0}
-                avgDaysOpen={qaReturnKpis.summary?.avg_days_open ?? null}
-                maxDaysOpen={qaReturnKpis.summary?.max_days_open ?? null}
-                isLoading={qaReturnKpis.isLoading}
-                onClick={() => setActiveTab('qa-return')}
-              />
+            {/* Performance + Riscos */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Performance */}
+              {fab.isLoading ? (
+                <Card className="p-6"><Skeleton className="h-3 w-24 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
+              ) : (
+                <Card className="p-6">
+                  <p className="text-xs font-medium text-muted-foreground mb-4">PERFORMANCE</p>
+                  <div className="space-y-0 divide-y divide-border">
+                    <div className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-primary/10">
+                          <Clock className="h-3.5 w-3.5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Lead Time Médio</p>
+                          <p className="text-[11px] text-muted-foreground/70">
+                            {fab.leadTimeSource === 'effort' ? 'Effort médio / PBI' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-2xl font-semibold text-foreground">
+                          {fab.leadTimeMedio ?? <span className="text-muted-foreground text-base">—</span>}
+                        </span>
+                        {fab.leadTimeMedio != null && (
+                          <span className="text-xs text-muted-foreground ml-1">{fab.leadTimeSource === 'effort' ? 'pts' : 'h'}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-[hsl(var(--info))]/10">
+                          <Gauge className="h-3.5 w-3.5 text-[hsl(var(--info))]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Velocidade Média</p>
+                          <p className="text-[11px] text-muted-foreground/70">
+                            {fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-2xl font-semibold text-foreground">
+                          {fab.velocidadeMedia ?? <span className="text-muted-foreground text-base">—</span>}
+                        </span>
+                        {fab.velocidadeMedia != null && (
+                          <span className="text-xs text-muted-foreground ml-1">{fab.velocidadeSource === 'effort' ? 'pts' : 'h'}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {/* Riscos */}
+              {fab.isLoading || qaReturnKpis.isLoading ? (
+                <Card className="p-6"><Skeleton className="h-3 w-16 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
+              ) : (() => {
+                const transbordoHigh = sprintTransbordoPct != null && sprintTransbordoPct > 50;
+                const qaOpen = qaReturnKpis.summary?.open_events ?? 0;
+                const qaTotal = qaReturnKpis.summary?.total_events ?? 0;
+                const qaAvg = qaReturnKpis.summary?.avg_days_open;
+                const qaMax = qaReturnKpis.summary?.max_days_open;
+                return (
+                  <Card className="p-6">
+                    <p className="text-xs font-medium text-muted-foreground mb-4">RISCOS</p>
+                    <div className="space-y-0 divide-y divide-border">
+                      <button
+                        className="w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
+                        onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('transbordo')}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className={`p-1.5 rounded-lg ${transbordoHigh ? 'bg-destructive/10' : 'bg-amber-500/10'}`}>
+                            <AlertTriangle className={`h-3.5 w-3.5 ${transbordoHigh ? 'text-destructive' : 'text-amber-500'}`} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Transbordo</p>
+                            <p className="text-[11px] text-muted-foreground/70">
+                              {sprintTransbordoCount > 0 ? `${sprintTransbordoCount} de ${sprintTransbordoTotal} itens` : 'Itens não entregues na sprint'}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`text-2xl font-semibold ${transbordoHigh ? 'text-destructive' : sprintTransbordoPct != null && sprintTransbordoPct > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                          {sprintTransbordoPct != null ? `${sprintTransbordoPct}%` : '—'}
+                        </span>
+                      </button>
+                      <button
+                        className="w-full text-left flex items-start justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
+                        onClick={() => setActiveTab('qa-return')}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className={`p-1.5 rounded-lg ${qaOpen > 0 ? 'bg-destructive/10' : 'bg-muted'}`}>
+                            <AlertTriangle className={`h-3.5 w-3.5 ${qaOpen > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Retorno QA</p>
+                            <p className="text-[11px] text-muted-foreground/70">{qaTotal} total no período</p>
+                          </div>
+                        </div>
+                        <div className="text-right space-y-1">
+                          <div className="flex items-baseline gap-1.5 justify-end">
+                            <span className="text-2xl font-semibold text-foreground">{qaTotal}</span>
+                            {qaOpen > 0 && (
+                              <span className="text-sm font-medium text-destructive">{qaOpen} abertos</span>
+                            )}
+                          </div>
+                          {qaOpen > 0 && (qaAvg != null || qaMax != null) && (
+                            <div className="flex gap-3 justify-end">
+                              {qaAvg != null && (
+                                <span className="text-[11px] text-muted-foreground">méd. {qaAvg.toFixed(1)}d</span>
+                              )}
+                              {qaMax != null && (
+                                <span className={`text-[11px] font-medium ${qaMax > 14 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                  máx. {qaMax}d
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    </div>
+                  </Card>
+                );
+              })()}
             </div>
 
             {/* Charts row */}
@@ -1239,9 +1387,9 @@ export default function FabricaDashboard() {
           <TabsContent value="timelog" className="space-y-5 mt-0">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <HeroKpiCard label="Total horas" value={Math.round(fab.totalHoursLogged)} suffix="h" icon={Timer} isLoading={fab.isLoading} />
-              <HeroKpiCard label="Dias úteis (≈)" value={fab.totalHoursLogged > 0 ? Math.round(fab.totalHoursLogged / 8) : 0} suffix="d" icon={Clock} isLoading={fab.isLoading} delay={80} accent="bg-[hsl(var(--info))]" />
-              <HeroKpiCard label="Colaboradores" value={fab.horasPorColaborador.length} icon={Users} isLoading={fab.isLoading} delay={160} accent="bg-[hsl(142,71%,45%)]" />
-              <HeroKpiCard label="Produtos" value={fab.horasPorProduto.length} icon={Package} isLoading={fab.isLoading} delay={240} accent="bg-[hsl(43,85%,46%)]" />
+              <HeroKpiCard label="Dias úteis (≈)" value={fab.totalHoursLogged > 0 ? Math.round(fab.totalHoursLogged / 8) : 0} suffix="d" icon={Clock} isLoading={fab.isLoading} accent="bg-[hsl(var(--info))]" />
+              <HeroKpiCard label="Colaboradores" value={fab.horasPorColaborador.length} icon={Users} isLoading={fab.isLoading} accent="bg-[hsl(142,71%,45%)]" />
+              <HeroKpiCard label="Produtos" value={fab.horasPorProduto.length} icon={Package} isLoading={fab.isLoading} accent="bg-[hsl(43,85%,46%)]" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

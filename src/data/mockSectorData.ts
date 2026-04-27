@@ -14,15 +14,6 @@ export interface SectorInfo {
 
 export const sectors: SectorInfo[] = [
   {
-    slug: 'produtos',
-    name: 'Produtos',
-    icon: 'Package',
-    kpiLabel: 'Emails enviados',
-    kpiValue: '285',
-    lastUpdate: '19/02/2026 09:10',
-    status: 'up',
-  },
-  {
     slug: 'comercial',
     name: 'Comercial',
     icon: 'TrendingUp',

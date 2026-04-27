@@ -4,14 +4,12 @@ import { Minimize2, Clock, Monitor } from 'lucide-react';
 import type { SectorInfo } from '@/data/mockSectorData';
 import KioskSectorView from './KioskSectorView';
 import Dashboard from '@/pages/Dashboard';
-import ProdutosDashboard from '@/pages/setores/ProdutosDashboard';
 
 /** Sectors that have curated kiosk views */
 const CURATED_SECTORS = new Set(['helpdesk', 'fabrica', 'comercial', 'customer-service', 'qualidade', 'infraestrutura']);
 
 const fallbackComponents: Record<string, React.ComponentType> = {
   tickets_os: Dashboard,
-  produtos: ProdutosDashboard,
 };
 
 /** Refresh interval: 3 minutes */
