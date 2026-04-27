@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
@@ -201,18 +202,85 @@ export default function InfraestruturaDashboard() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4 mt-0">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            <DashboardKpiCard label="Total Atividades" value={scoped.total} icon={Server} isLoading={scoped.isLoading} onClick={() => toggleKpi('all')} active={kpiFilter === 'all'} tooltipFormula="COUNT(itens no escopo do filtro)" tooltipDescription="Quantidade total de atividades de infraestrutura no período." />
-            <DashboardKpiCard label="Pendentes" value={scoped.pendentes} icon={Clock} isLoading={scoped.isLoading} delay={80} accent="bg-[hsl(43,85%,46%)]" onClick={() => toggleKpi('pendentes')} active={kpiFilter === 'pendentes'} tooltipFormula="COUNT(state IN New, To Do)" tooltipDescription="Itens aguardando início de execução." />
-            <DashboardKpiCard label="Em Andamento" value={scoped.emAndamento} icon={Wrench} isLoading={scoped.isLoading} delay={160} accent="bg-[hsl(var(--info))]" onClick={() => toggleKpi('em_andamento')} active={kpiFilter === 'em_andamento'} tooltipFormula="COUNT(state IN In Progress, Active)" tooltipDescription="Itens em execução ativa." />
-            <DashboardKpiCard label="Concluídos" value={scoped.concluidos} icon={CheckCircle} isLoading={scoped.isLoading} delay={240} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('concluidos')} active={kpiFilter === 'concluidos'} tooltipFormula="COUNT(state IN Done, Closed, Resolved)" tooltipDescription="Itens concluídos no período selecionado." />
-          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Bloco Status Sprint */}
+            {scoped.isLoading ? (
+              <Card className="p-6"><Skeleton className="h-3 w-28 mb-4" /><Skeleton className="h-9 w-20 mb-2" /><Skeleton className="h-2 w-full rounded-full mb-5" /><div className="grid grid-cols-3 gap-2 pt-4 border-t border-border">{Array.from({length:3}).map((_,i)=><Skeleton key={i} className="h-12 w-full rounded-lg"/>)}</div></Card>
+            ) : (
+              <Card className="p-6">
+                <p className="text-xs font-medium text-muted-foreground mb-4">STATUS SPRINT</p>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Total de atividades</p>
+                    <span className="text-4xl font-bold text-foreground">{scoped.total}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Concluídas</p>
+                    <span className={`text-2xl font-semibold ${scoped.concluidos > 0 ? 'text-[hsl(142,71%,45%)]' : 'text-muted-foreground'}`}>
+                      {scoped.total > 0 ? Math.round((scoped.concluidos / scoped.total) * 100) : 0}%
+                    </span>
+                  </div>
+                </div>
+                {(() => {
+                  const total = scoped.total || 1;
+                  const conclPct = (scoped.concluidos / total) * 100;
+                  const andPct = (scoped.emAndamento / total) * 100;
+                  return (
+                    <div className="relative h-2 rounded-full bg-muted overflow-hidden mb-5">
+                      <div className="absolute left-0 top-0 h-full bg-[hsl(142,71%,45%)] transition-all duration-500" style={{ width: `${conclPct}%` }} />
+                      <div className="absolute top-0 h-full bg-[hsl(var(--info))] transition-all duration-500" style={{ left: `${conclPct}%`, width: `${andPct}%` }} />
+                    </div>
+                  );
+                })()}
+                <div className="grid grid-cols-3 gap-2 pt-4 border-t border-border">
+                  {[
+                    { key: 'em_andamento' as InfraKpiFilter, label: 'Em Andamento', value: scoped.emAndamento, dotColor: 'bg-[hsl(var(--info))]' },
+                    { key: 'pendentes' as InfraKpiFilter, label: 'Pendentes', value: scoped.pendentes, dotColor: 'bg-amber-400' },
+                    { key: 'concluidos' as InfraKpiFilter, label: 'Concluídos', value: scoped.concluidos, dotColor: 'bg-[hsl(142,71%,45%)]' },
+                  ].map(item => (
+                    <button key={item.key} onClick={() => toggleKpi(item.key)}
+                      className={`text-left p-2 rounded-lg transition-colors hover:bg-muted/50 focus-visible:outline-none ${kpiFilter === item.key ? 'bg-muted' : ''}`}>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <div className={`h-1.5 w-1.5 rounded-full ${item.dotColor}`} />
+                        <span className="text-[11px] font-medium text-muted-foreground">{item.label}</span>
+                      </div>
+                      <span className="text-xl font-bold text-foreground">{item.value}</span>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            )}
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <DashboardKpiCard label="Melhorias Implementadas" value={scoped.melhorias} icon={Wrench} isLoading={scoped.isLoading} delay={300} accent="bg-[hsl(142,71%,45%)]" onClick={() => toggleKpi('melhorias')} active={kpiFilter === 'melhorias'} tooltipFormula="COUNT(tags ILIKE '%MELHORIA%')" tooltipDescription="Itens com tag MELHORIA no escopo filtrado." />
-            <DashboardKpiCard label="Atividades ISO 27001" value={scoped.iso27001} icon={Shield} isLoading={scoped.isLoading} delay={360} accent="bg-[hsl(280,65%,60%)]" onClick={() => toggleKpi('iso27001')} active={kpiFilter === 'iso27001'} tooltipFormula="COUNT(tags ILIKE '%ISO27001%' OR '%ISO%')" tooltipDescription="Itens com tag ISO27001 ou ISO no escopo filtrado." />
-            <DashboardKpiCard label="Trocas de Sprint" value={scoped.sprintMigracoes} icon={Workflow} isLoading={scoped.isLoading} delay={420} accent="bg-[hsl(210,80%,52%)]" onClick={() => toggleKpi('migracoes')} active={kpiFilter === 'migracoes'} tooltipFormula="SUM(sprint_migration_count)" tooltipDescription="Total de migrações detectadas no histórico de sprint." />
-            <DashboardKpiCard label="Transbordo" value={scoped.transbordo} icon={AlertTriangle} isLoading={scoped.isLoading} delay={480} accent="bg-[hsl(0,84%,60%)]" onClick={() => toggleKpi('transbordo')} active={kpiFilter === 'transbordo'} tooltipFormula="SUM(transbordo_count)" tooltipDescription="Soma do excesso real depois do primeiro compromisso." />
+            {/* Bloco Iniciativas & Riscos */}
+            {scoped.isLoading ? (
+              <Card className="p-6"><Skeleton className="h-3 w-36 mb-4" /><div className="grid grid-cols-2 gap-3">{Array.from({length:4}).map((_,i)=><Skeleton key={i} className="h-20 w-full rounded-lg"/>)}</div></Card>
+            ) : (
+              <Card className="p-6">
+                <p className="text-xs font-medium text-muted-foreground mb-4">INICIATIVAS & RISCOS</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { key: 'melhorias' as InfraKpiFilter, label: 'Melhorias', value: scoped.melhorias, icon: Wrench, dotColor: 'bg-[hsl(142,71%,45%)]', iconBg: 'bg-[hsl(142,71%,45%)]/10', iconColor: 'text-[hsl(142,71%,45%)]' },
+                    { key: 'iso27001' as InfraKpiFilter, label: 'ISO 27001', value: scoped.iso27001, icon: Shield, dotColor: 'bg-[hsl(280,65%,60%)]', iconBg: 'bg-[hsl(280,65%,60%)]/10', iconColor: 'text-[hsl(280,65%,60%)]' },
+                    { key: 'migracoes' as InfraKpiFilter, label: 'Trocas Sprint', value: scoped.sprintMigracoes, icon: Workflow, dotColor: 'bg-[hsl(210,80%,52%)]', iconBg: 'bg-[hsl(210,80%,52%)]/10', iconColor: 'text-[hsl(210,80%,52%)]' },
+                    { key: 'transbordo' as InfraKpiFilter, label: 'Transbordo', value: scoped.transbordo, icon: AlertTriangle, dotColor: scoped.transbordo > 0 ? 'bg-destructive' : 'bg-muted-foreground', iconBg: scoped.transbordo > 0 ? 'bg-destructive/10' : 'bg-muted', iconColor: scoped.transbordo > 0 ? 'text-destructive' : 'text-muted-foreground' },
+                  ].map(item => {
+                    const Icon = item.icon;
+                    return (
+                      <button key={item.key} onClick={() => toggleKpi(item.key)}
+                        className={`text-left p-3 rounded-lg border border-border transition-colors hover:bg-muted/30 focus-visible:outline-none ${kpiFilter === item.key ? 'border-primary bg-primary/5' : ''}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={`p-1 rounded-md ${item.iconBg}`}>
+                            <Icon className={`h-3 w-3 ${item.iconColor}`} />
+                          </div>
+                          <span className="text-[11px] font-medium text-muted-foreground">{item.label}</span>
+                        </div>
+                        <span className="text-2xl font-bold text-foreground">{item.value}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
           </div>
 
           {!isLoading && filteredItems.length === 0 ? (

@@ -19,6 +19,7 @@ import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -442,14 +443,77 @@ export default function CustomerServiceDashboard() {
 
           {/* ═══ TAB: FILA CS ═══ */}
           <TabsContent value="fila" className="space-y-4 animate-fade-in">
-            <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-              <DashboardKpiCard label="Volume Fila" value={totalFilaCS} icon={Layers} isLoading={isLoading} onClick={() => handleKpiClick('fila')} active={kpiFilter === 'fila'} tooltipFormula="COUNT(itens DevOps do setor no recorte)" tooltipDescription="Volume de itens ativos na fila operacional do Customer Service." />
-              <DashboardKpiCard label="Aprovação CS" value={aprovacaoCSCount} icon={Target} isLoading={isLoading} delay={60} accent="bg-[hsl(199,89%,48%)]" onClick={() => handleKpiClick('aprovacao_cs')} active={kpiFilter === 'aprovacao_cs'} tooltipFormula="COUNT(responsável = aprovacaocs@flag.com.br)" tooltipDescription="Itens com responsável ligado a aprovacaocs@flag.com.br." />
-              <DashboardKpiCard label="Customer Service" value={customerServiceCount} icon={Users} isLoading={isLoading} delay={80} accent="bg-[hsl(174,58%,40%)]" onClick={() => handleKpiClick('customer_service')} active={kpiFilter === 'customer_service'} tooltipFormula="COUNT(responsável = cs@flag.com.br)" tooltipDescription="Itens com responsável ligado a cs@flag.com.br." />
-              <DashboardKpiCard label="Responsáveis" value={Object.keys(porResponsavel).length} icon={Users} isLoading={isLoading} delay={100} onClick={() => handleKpiClick('responsaveis')} active={kpiFilter === 'responsaveis'} tooltipFormula="COUNT(DISTINCT assigned_to_display)" tooltipDescription="Quantidade de responsáveis distintos na fila." />
-              <DashboardKpiCard label="No Backlog" value={inBacklogCount} icon={ArrowRight} isLoading={isLoading} delay={120} accent="bg-[hsl(262,83%,58%)]" onClick={() => handleKpiClick('no_backlog')} active={kpiFilter === 'no_backlog'} tooltipFormula="COUNT(responsável contém 'lantim')" tooltipDescription="Itens no backlog, baseado em responsável contendo 'lantim'." />
-              <DashboardKpiCard label="Alertas Atraso" value={alertCounts.total} icon={AlertTriangle} isLoading={isLoading} delay={160} accent={alertCounts.critical > 0 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} onClick={() => handleKpiClick('alertas_atraso')} active={kpiFilter === 'alertas_atraso'} tooltipFormula="COUNT(alertLevel != 'none')" tooltipDescription="Itens com alerta de atraso. VDesk→DevOps: alerta 7d, crítico 14d. DevOps→agora: alerta 14d, crítico 30d." />
-              <DashboardKpiCard label="Impl. Ativas" value={implAndamento} icon={Package} isLoading={isLoading} delay={200} accent="bg-[hsl(199,89%,48%)]" onClick={() => { setActiveTab('implantacoes'); setImplFilter('impl_andamento'); setImplFilterValue(null); }} tooltipFormula="COUNT(implantações com status não encerrado)" tooltipDescription="Implantações em progresso no recorte atual." />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Bloco Fila CS */}
+              {isLoading ? (
+                <Card className="p-6"><Skeleton className="h-3 w-20 mb-4" /><Skeleton className="h-9 w-16 mb-4" /><div className="grid grid-cols-2 gap-3 pt-4 border-t border-border">{Array.from({length:4}).map((_,i)=><Skeleton key={i} className="h-12 w-full rounded-lg"/>)}</div></Card>
+              ) : (
+                <Card className="p-6">
+                  <p className="text-xs font-medium text-muted-foreground mb-4">FILA CS</p>
+                  <div className="flex items-baseline gap-2 mb-5">
+                    <span className="text-4xl font-bold text-foreground">{totalFilaCS}</span>
+                    <span className="text-sm text-muted-foreground">itens na fila</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-4 border-t border-border">
+                    {[
+                      { key: 'aprovacao_cs' as KpiFilter, label: 'Aprovação CS', value: aprovacaoCSCount, dotColor: 'bg-[hsl(199,89%,48%)]' },
+                      { key: 'customer_service' as KpiFilter, label: 'Customer Service', value: customerServiceCount, dotColor: 'bg-[hsl(174,58%,40%)]' },
+                      { key: 'responsaveis' as KpiFilter, label: 'Responsáveis', value: Object.keys(porResponsavel).length, dotColor: 'bg-primary' },
+                      { key: 'no_backlog' as KpiFilter, label: 'No Backlog', value: inBacklogCount, dotColor: 'bg-[hsl(262,83%,58%)]' },
+                    ].map(item => (
+                      <button key={item.key} onClick={() => handleKpiClick(item.key)}
+                        className={`text-left p-3 rounded-lg transition-colors hover:bg-muted/50 focus-visible:outline-none ${kpiFilter === item.key ? 'bg-muted' : ''}`}>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className={`h-1.5 w-1.5 rounded-full ${item.dotColor}`} />
+                          <span className="text-[11px] font-medium text-muted-foreground">{item.label}</span>
+                        </div>
+                        <span className="text-xl font-bold text-foreground">{item.value}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* Bloco Alertas & Implantações */}
+              {isLoading ? (
+                <Card className="p-6"><Skeleton className="h-3 w-32 mb-4" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
+              ) : (
+                <Card className="p-6">
+                  <p className="text-xs font-medium text-muted-foreground mb-4">ALERTAS & IMPLANTAÇÕES</p>
+                  <div className="space-y-0 divide-y divide-border">
+                    <button onClick={() => handleKpiClick('alertas_atraso')}
+                      className={`w-full text-left flex items-center justify-between py-3 rounded-lg px-2 -mx-2 transition-colors hover:bg-muted/20 ${kpiFilter === 'alertas_atraso' ? 'bg-muted' : ''}`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`p-1.5 rounded-lg ${alertCounts.critical > 0 ? 'bg-destructive/10' : alertCounts.warning > 0 ? 'bg-amber-500/10' : 'bg-muted'}`}>
+                          <AlertTriangle className={`h-3.5 w-3.5 ${alertCounts.critical > 0 ? 'text-destructive' : alertCounts.warning > 0 ? 'text-amber-500' : 'text-muted-foreground'}`} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Alertas de Atraso</p>
+                          <p className="text-[11px] text-muted-foreground/70">
+                            {alertCounts.critical > 0 ? `${alertCounts.critical} críticos` : ''}{alertCounts.critical > 0 && alertCounts.warning > 0 ? ' · ' : ''}{alertCounts.warning > 0 ? `${alertCounts.warning} atenção` : ''}{alertCounts.total === 0 ? 'nenhum alerta ativo' : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`text-2xl font-semibold ${alertCounts.critical > 0 ? 'text-destructive' : alertCounts.warning > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                        {alertCounts.total}
+                      </span>
+                    </button>
+                    <button onClick={() => { setActiveTab('implantacoes'); setImplFilter('impl_andamento'); setImplFilterValue(null); }}
+                      className="w-full text-left flex items-center justify-between py-3 rounded-lg px-2 -mx-2 transition-colors hover:bg-muted/20">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-[hsl(199,89%,48%)]/10">
+                          <Package className="h-3.5 w-3.5 text-[hsl(199,89%,48%)]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Implantações Ativas</p>
+                          <p className="text-[11px] text-muted-foreground/70">{implFinalizadas} finalizadas · {implTotal} total</p>
+                        </div>
+                      </div>
+                      <span className="text-2xl font-semibold text-foreground">{implAndamento}</span>
+                    </button>
+                  </div>
+                </Card>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -31,14 +31,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
-import { 
+import {
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
-  Clock, Gauge, AlertTriangle, Timer, Package, Building2, 
-  TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow, LayoutGrid
+  Clock, Gauge, AlertTriangle, Timer, Package, Building2,
+  TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow, LayoutGrid, MoreHorizontal
 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
+import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aviao' | 'sem_task';
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
@@ -64,40 +66,9 @@ const integrations: Integration[] = [
   { name: 'DevOps TimeLog', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Horas alocadas (TechsBCN)' },
 ];
 
-const typeColors: Record<string, string> = {
-  'Product Backlog Item': 'bg-primary/15 text-primary border-primary/30',
-  'Task': 'bg-accent text-accent-foreground',
-  'Bug': 'bg-destructive/15 text-destructive border-destructive/30',
-  'User Story': 'bg-[hsl(var(--info))]/15 text-[hsl(var(--info))]',
-};
-const typeLabels: Record<string, string> = {
-  'Product Backlog Item': 'PBI',
-  'Task': 'Task',
-  'Bug': 'Bug',
-  'User Story': 'Story',
-};
-const stateColors: Record<string, string> = {
-  'In Progress': 'bg-[hsl(var(--info))] text-white',
-  'Active': 'bg-[hsl(var(--info))] text-white',
-  'Em desenvolvimento': 'bg-[hsl(var(--info))] text-white',
-  'Aguardando Teste': 'bg-rose-100 text-rose-700 border border-rose-300',
-  'To Do': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
-  'New': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
-  'Done': 'bg-[hsl(var(--success))] text-white',
-  'Closed': 'bg-[hsl(var(--success))] text-white',
-  'Resolved': 'bg-[hsl(var(--success))] text-white',
-};
-
-const CHART_COLORS = [
-  'hsl(var(--primary))',
-  'hsl(var(--info))',
-  'hsl(142, 71%, 45%)',
-  'hsl(43, 85%, 46%)',
-  'hsl(280, 65%, 60%)',
-  'hsl(200, 80%, 50%)',
-  'hsl(340, 75%, 55%)',
-  'hsl(160, 60%, 45%)',
-];
+const typeColors = TYPE_COLORS;
+const typeLabels = TYPE_LABELS;
+const stateColors = STATE_COLORS;
 
 const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
 
@@ -936,43 +907,64 @@ export default function FabricaDashboard() {
         <DashboardEmptyState variant="error" onRetry={() => fab.refetch()} />
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="bg-muted/50 p-1">
-            <TabsTrigger value="overview" className="gap-1.5 text-xs">
-              <Zap className="h-3.5 w-3.5" />Visão Geral
-            </TabsTrigger>
-            <TabsTrigger value="timelog" className="gap-1.5 text-xs">
-              <Timer className="h-3.5 w-3.5" />Horas (TimeLog)
-            </TabsTrigger>
-            <TabsTrigger value="transbordo" className="gap-1.5 text-xs">
-              <AlertTriangle className="h-3.5 w-3.5" />Transbordo
-              {sprintTransbordoCount > 0 && (
-                <Badge variant={sprintTransbordoPct != null && sprintTransbordoPct > 50 ? 'destructive' : 'secondary'} className="text-[10px] ml-1 px-1.5 py-0">
-                  {sprintTransbordoCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs">
-              <HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde
-            </TabsTrigger>
-            <TabsTrigger value="gargalos" className="gap-1.5 text-xs">
-              <AlertTriangle className="h-3.5 w-3.5" />Gargalos
-            </TabsTrigger>
-            <TabsTrigger value="por-feature" className="gap-1.5 text-xs">
-              <Workflow className="h-3.5 w-3.5" />Por Feature
-            </TabsTrigger>
-            <TabsTrigger value="sprint-board" className="gap-1.5 text-xs">
-              <LayoutGrid className="h-3.5 w-3.5" />Sprint Board
-            </TabsTrigger>
-            <TabsTrigger value="backlog-priorizar" className="gap-1.5 text-xs">
-              <ListTodo className="h-3.5 w-3.5" />Backlog Priorizar
-            </TabsTrigger>
-            <TabsTrigger value="uxui-fila" className="gap-1.5 text-xs">
-              <TrendingUp className="h-3.5 w-3.5" />Fila Design / UX-UI
-            </TabsTrigger>
-            <TabsTrigger value="qa-return" className="gap-1.5 text-xs">
-              <AlertTriangle className="h-3.5 w-3.5" />Retorno QA
-            </TabsTrigger>
-          </TabsList>
+          {/* Tabs primárias visíveis + dropdown para secundárias */}
+          <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1 w-full overflow-x-auto">
+            <TabsList className="bg-transparent p-0 h-auto gap-0.5 flex-shrink-0">
+              <TabsTrigger value="overview" className="gap-1.5 text-xs h-8">
+                <Zap className="h-3.5 w-3.5" />Visão Geral
+              </TabsTrigger>
+              <TabsTrigger value="timelog" className="gap-1.5 text-xs h-8">
+                <Timer className="h-3.5 w-3.5" />TimeLog
+              </TabsTrigger>
+              <TabsTrigger value="transbordo" className="gap-1.5 text-xs h-8">
+                <AlertTriangle className="h-3.5 w-3.5" />Transbordo
+                {sprintTransbordoCount > 0 && (
+                  <Badge variant={sprintTransbordoPct != null && sprintTransbordoPct > 50 ? 'destructive' : 'secondary'} className="text-[10px] ml-0.5 px-1 py-0">
+                    {sprintTransbordoCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="sprint-board" className="gap-1.5 text-xs h-8">
+                <LayoutGrid className="h-3.5 w-3.5" />Sprint Board
+              </TabsTrigger>
+              <TabsTrigger value="qa-return" className="gap-1.5 text-xs h-8">
+                <AlertTriangle className="h-3.5 w-3.5" />Retorno QA
+              </TabsTrigger>
+              <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs h-8">
+                <HeartPulse className="h-3.5 w-3.5" />Saúde
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Tabs secundárias no dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md transition-colors flex-shrink-0 ml-auto
+                  ${['gargalos','por-feature','backlog-priorizar','uxui-fila'].includes(activeTab)
+                    ? 'bg-background shadow-sm text-foreground font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background/60'}`}>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  Mais
+                  {['gargalos','por-feature','backlog-priorizar','uxui-fila'].includes(activeTab) && (
+                    <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => setActiveTab('gargalos')} className={`gap-2 text-xs ${activeTab === 'gargalos' ? 'font-medium text-primary' : ''}`}>
+                  <AlertTriangle className="h-3.5 w-3.5" />Gargalos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setActiveTab('por-feature')} className={`gap-2 text-xs ${activeTab === 'por-feature' ? 'font-medium text-primary' : ''}`}>
+                  <Workflow className="h-3.5 w-3.5" />Por Feature
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setActiveTab('backlog-priorizar')} className={`gap-2 text-xs ${activeTab === 'backlog-priorizar' ? 'font-medium text-primary' : ''}`}>
+                  <ListTodo className="h-3.5 w-3.5" />Backlog Priorizar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setActiveTab('uxui-fila')} className={`gap-2 text-xs ${activeTab === 'uxui-fila' ? 'font-medium text-primary' : ''}`}>
+                  <TrendingUp className="h-3.5 w-3.5" />Fila Design / UX-UI
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
