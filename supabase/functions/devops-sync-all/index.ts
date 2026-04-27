@@ -962,6 +962,16 @@ serve(async (req: Request) => {
       let childrenResult = { fetched: 0, upserted: 0 }
       let iterHistory = { processed: 0, withChanges: 0 }
       let lifecycleHealth = { processed: 0, skippedTimeout: 0 }
+      let qaResult = {
+        attempted: false,
+        ok: false,
+        auth_mode: 'none',
+        status: 0,
+        detected: 0,
+        alerted: 0,
+        resolved: 0,
+        error: null as string | null,
+      }
 
       // ── Step 2: Iteration history ──
       try {
@@ -1000,22 +1010,50 @@ serve(async (req: Request) => {
         console.log('[DevOpsSyncAll:BG] Triggering QA return detection...')
         const qaAlertUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/devops-qa-alert`
         const cronSecret = Deno.env.get('CRON_SECRET')
-        if (cronSecret) {
+        const qaHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+
+        if (isCron && cronSecret) {
+          qaHeaders['x-cron-secret'] = cronSecret
+          qaResult.auth_mode = 'cron_secret'
+        } else {
+          const auth = req.headers.get('authorization')
+          if (auth) {
+            qaHeaders['Authorization'] = auth
+            qaResult.auth_mode = 'bearer_forwarded'
+          }
+        }
+
+        if (!qaHeaders['x-cron-secret'] && !qaHeaders['Authorization']) {
+          qaResult.attempted = false
+          qaResult.ok = false
+          qaResult.error = 'qa-alert skipped: no auth available (CRON_SECRET missing and Authorization missing)'
+          console.warn(`[DevOpsSyncAll:BG] ${qaResult.error}`)
+        } else {
+          qaResult.attempted = true
           const qaResp = await fetch(qaAlertUrl, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-cron-secret': cronSecret,
-            },
+            headers: qaHeaders,
             body: JSON.stringify({ source: 'devops-sync-all' }),
           })
-          const qaData = await qaResp.json().catch(() => ({}))
-          console.log(`[DevOpsSyncAll:BG] QA return: ${qaData.detected ?? 0} detected, ${qaData.alerted ?? 0} alerted, ${qaData.resolved ?? 0} resolved`)
-        } else {
-          console.warn('[DevOpsSyncAll:BG] QA return detection skipped: CRON_SECRET not configured')
+
+          const qaData = await qaResp.json().catch(() => ({} as Record<string, unknown>))
+          qaResult.status = qaResp.status
+          qaResult.ok = qaResp.ok
+          qaResult.detected = Number((qaData as any).detected ?? 0)
+          qaResult.alerted = Number((qaData as any).alerted ?? 0)
+          qaResult.resolved = Number((qaData as any).resolved ?? 0)
+          qaResult.error = typeof (qaData as any).error === 'string' ? (qaData as any).error : null
+
+          if (!qaResp.ok) {
+            throw new Error(`qa-alert failed (${qaResp.status}): ${qaResult.error ?? 'unknown error'}`)
+          }
+
+          console.log(`[DevOpsSyncAll:BG] QA return: ${qaResult.detected} detected, ${qaResult.alerted} alerted, ${qaResult.resolved} resolved`) 
         }
       } catch (qaErr) {
-        console.error('[DevOpsSyncAll:BG] QA return detection error:', (qaErr as Error).message)
+        qaResult.ok = false
+        qaResult.error = (qaErr as Error).message
+        console.error('[DevOpsSyncAll:BG] QA return detection error:', qaResult.error)
       }
 
       // Audit log
@@ -1028,7 +1066,7 @@ serve(async (req: Request) => {
           succeeded,
           failed,
           children: childrenResult,
-          qa_retorno: { delegated_to: 'devops-sync-qualidade' },
+          qa_retorno: qaResult,
           iteration_history: iterHistory,
           lifecycle_health: lifecycleHealth,
           skipped_quality_wiql_id: QUALITY_WIQL_ID,
@@ -1046,7 +1084,12 @@ serve(async (req: Request) => {
           items_found: generalQueries.length,
           items_upserted: succeeded,
           error: failed > 0 ? `${failed} queries falharam` : null,
-          meta: { children: childrenResult, iteration_history: iterHistory, lifecycle_health: lifecycleHealth },
+          meta: {
+            children: childrenResult,
+            iteration_history: iterHistory,
+            lifecycle_health: lifecycleHealth,
+            qa_retorno: qaResult,
+          },
         }).eq('id', runId)
       }
       if (syncJobId) {
