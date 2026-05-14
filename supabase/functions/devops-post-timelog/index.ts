@@ -344,6 +344,32 @@ async function processQueue(
     }
   }
 
+  // ── 4) Trigger devops-sync-timelog so v_timelog_unified reflects new posts ──
+  // Without this, freshly-posted entries stay invisible to recon (minutes_devops=0)
+  // until the next scheduled sync. Fire-and-forget; failures don't block the response.
+  if (result.posted > 0) {
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')
+      const cronSecret = Deno.env.get('CRON_SECRET')
+      if (supabaseUrl && cronSecret) {
+        // Don't await — devops-sync-timelog already uses EdgeRuntime.waitUntil internally
+        fetch(`${supabaseUrl}/functions/v1/devops-sync-timelog`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-cron-secret': cronSecret,
+          },
+          body: JSON.stringify({ triggered_by: 'post-timelog-auto' }),
+        }).catch(err => console.warn('[post-timelog] auto-sync trigger failed:', err))
+        console.log('[post-timelog] Triggered devops-sync-timelog after posting')
+      } else {
+        console.warn('[post-timelog] SUPABASE_URL or CRON_SECRET missing — skipping auto-sync trigger')
+      }
+    } catch (err) {
+      console.warn('[post-timelog] auto-sync trigger error:', err)
+    }
+  }
+
   return result
 }
 
