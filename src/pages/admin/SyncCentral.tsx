@@ -1,14 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database, Power, PowerOff, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Play, Loader2, CheckCircle, XCircle, Clock, Database, Power, PowerOff, AlertTriangle, Users, GitMerge } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
+import { VdeskSyncPanel, VdeskSyncHistory, CollaboradoresTab } from '@/components/timelog/TimelogSharedComponents';
 
 const JOB_FUNCTION_MAP: Record<string, string> = {
   devops_sync_all_default: 'devops-sync-all',
@@ -490,6 +491,33 @@ export default function SyncCentral() {
             ))}
           </TableBody>
         </Table>
+      </Card>
+
+      {/* ── VDESK Sync Manual ──────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-6">
+          <CardTitle className="text-base flex items-center gap-2">
+            <GitMerge className="h-4 w-4 text-flag-gold" />
+            VDESK Sync Manual
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-6 pb-6 space-y-4">
+          <VdeskSyncPanel onSynced={() => {}} />
+          <VdeskSyncHistory />
+        </CardContent>
+      </Card>
+
+      {/* ── Mapeamento de Colaboradores ────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-6">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4 text-flag-gold" />
+            Mapeamento de Colaboradores VDESK
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-6 pb-6">
+          <CollaboradoresTab />
+        </CardContent>
       </Card>
     </div>
   );

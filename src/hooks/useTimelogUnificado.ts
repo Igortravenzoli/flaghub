@@ -26,6 +26,8 @@ export interface TimelogFilters {
   userCanonical?: string;
   status?: TimelogStatus | '';
   taskId?: string;
+  /** Filter to a specific set of DevOps work item IDs (for sector-scoped views) */
+  workItemIds?: number[];
 }
 
 export function useTimelogUnificado(filters: TimelogFilters = {}) {
@@ -48,6 +50,9 @@ export function useTimelogUnificado(filters: TimelogFilters = {}) {
         const id = parseInt(filters.taskId.trim(), 10);
         if (!Number.isNaN(id)) query = query.eq('task_id', id);
       }
+      if (filters.workItemIds?.length) {
+        query = query.in('task_id', filters.workItemIds);
+      }
 
       const { data, error } = await query.limit(2000);
       if (error) throw error;
@@ -55,6 +60,8 @@ export function useTimelogUnificado(filters: TimelogFilters = {}) {
     },
     staleTime: 3 * 60 * 1000,
     placeholderData: keepPreviousData,
+    // If caller passes workItemIds=[] (still loading), skip query
+    enabled: filters.workItemIds === undefined || filters.workItemIds.length > 0,
   });
 }
 

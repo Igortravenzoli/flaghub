@@ -206,12 +206,13 @@ export function useFabricaKpis(
     queryFn: async () => {
       let q = (supabase as any)
         .from('vdesk_time_logs')
-        .select('task_devops, usuario_vdesk, log_date, tempo_segundos');
+        .select('id, task_devops, usuario_vdesk, log_date, tempo_segundos');
       if (fromStr) q = q.gte('log_date', fromStr);
       if (toStr)   q = q.lte('log_date', toStr);
       const { data, error } = await q.limit(5000);
       if (error) throw error;
       return (data || []) as Array<{
+        id: string;
         task_devops: number;
         usuario_vdesk: string;
         log_date: string;
@@ -642,6 +643,8 @@ export function useFabricaKpis(
     horasVdeskPorProduto,
     vdeskMatchRate,
     vdeskIsLoading: vdeskLogsQuery.isLoading,
+    /** Raw scoped VDESK log entries (with id) — for post-to-DevOps queue UI */
+    scopedVdeskLogs,
     tagsByWorkItemId,
     allCollaborators,
   };

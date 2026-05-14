@@ -6,7 +6,6 @@ import {
   Users,
   Settings,
   Monitor,
-  Clock,
   ChevronLeft,
   ChevronRight,
   LogIn,
@@ -45,7 +44,6 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboards', path: '/home', icon: LayoutDashboard },
-  { label: 'TimeLog Híbrido', path: '/timelog', icon: Clock },
 ];
 
 const sectorItems: NavItem[] = [
