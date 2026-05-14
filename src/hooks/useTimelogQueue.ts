@@ -87,6 +87,48 @@ export function useTimelogQueueApprove() {
   });
 }
 
+/** Call devops-post-timelog Edge Function */
+export function useTimelogQueueProcess() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: {
+      mode: 'probe' | 'process' | 'process-one';
+      queueId?: string;
+      limit?: number;
+    }) => {
+      const { data: { session } } = await (await import('@/integrations/supabase/client')).supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error('Não autenticado.');
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const resp = await fetch(`${supabaseUrl}/functions/v1/devops-post-timelog`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(params),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json?.error ?? json?.detail ?? `HTTP ${resp.status}`);
+      return json as {
+        ok: boolean;
+        mode: string;
+        collection?: string;
+        message?: string;
+        processed?: number;
+        posted?: number;
+        dry_run_skipped?: number;
+        errors?: number;
+        details?: Array<{ id: string; status: string; message: string }>;
+      };
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['timelog-post-queue'] });
+    },
+  });
+}
+
 /** Reject a pending queue entry */
 export function useTimelogQueueReject() {
   const queryClient = useQueryClient();
