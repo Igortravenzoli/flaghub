@@ -119,10 +119,59 @@ interface QueueEntry {
   attempt_count: number
 }
 
+// ── Per-run caches for identity & work-item title lookups ───────────────────
+const userIdCache = new Map<string, string>()
+const workItemNameCache = new Map<number, string>()
+
+function newUuid(): string {
+  // RFC 4122 v4 UUID via crypto
+  return crypto.randomUUID()
+}
+
+async function lookupUserId(email: string, pat: string): Promise<string> {
+  const cached = userIdCache.get(email.toLowerCase())
+  if (cached !== undefined) return cached
+  try {
+    const url = `https://vssps.dev.azure.com/FlagIW/_apis/identities?searchFilter=MailAddress&filterValue=${encodeURIComponent(email)}&api-version=7.1-preview.1`
+    const resp = await fetch(url, { headers: makeAuthHeaders(pat) })
+    if (resp.ok) {
+      const json = await resp.json()
+      const id = json?.value?.[0]?.id ?? ''
+      userIdCache.set(email.toLowerCase(), id)
+      return id
+    }
+  } catch (e) {
+    console.warn(`[post-timelog] lookupUserId failed for ${email}:`, e)
+  }
+  userIdCache.set(email.toLowerCase(), '')
+  return ''
+}
+
+async function lookupWorkItemName(taskId: number, pat: string): Promise<string> {
+  const cached = workItemNameCache.get(taskId)
+  if (cached !== undefined) return cached
+  try {
+    const url = `https://dev.azure.com/FlagIW/_apis/wit/workitems/${taskId}?fields=System.Title&api-version=7.1-preview.3`
+    const resp = await fetch(url, { headers: makeAuthHeaders(pat) })
+    if (resp.ok) {
+      const json = await resp.json()
+      const title = json?.fields?.['System.Title'] ?? ''
+      workItemNameCache.set(taskId, title)
+      return title
+    }
+  } catch (e) {
+    console.warn(`[post-timelog] lookupWorkItemName failed for ${taskId}:`, e)
+  }
+  workItemNameCache.set(taskId, '')
+  return ''
+}
+
 /**
  * POST a single time entry to TechsBCN DevOps TimeLog.
- * Uses Azure DevOps Extension Data PATCH (upsert-by-etag) API.
- * Returns the entry id created by the API, or throws on failure.
+ *
+ * TechsBCN stores each entry as its OWN document (UUID id) with FLAT fields:
+ *   { id, user, userId, workItemId, workItemName, startTime, date, time, notes }
+ * There is NO nested `value` array.
  */
 async function postToDevOps(
   entry: QueueEntry,
@@ -130,69 +179,47 @@ async function postToDevOps(
   pat: string,
 ): Promise<string> {
   const headers = makeAuthHeaders(pat)
-  const docKey = String(entry.task_devops)   // TechsBCN keys documents by work item ID
+  const email = entry.target_user_email ?? ''
+  const displayName = entry.target_user_display ?? entry.vdesk_user_name
 
-  // ── Step 1: Try to fetch existing document for this work item ────────────
-  const getUrl = `${TIMELOG_BASE}/${collection}/Documents/${docKey}?api-version=7.1-preview.1`
-  console.log(`[post-timelog] GET ${collection}/Documents/${docKey}`)
-  const getResp = await fetch(getUrl, { headers })
-  console.log(`[post-timelog] GET response: ${getResp.status}`)
+  // Resolve Azure DevOps identity id + work item title in parallel
+  const [userId, workItemName] = await Promise.all([
+    email ? lookupUserId(email, pat) : Promise.resolve(''),
+    lookupWorkItemName(entry.task_devops, pat),
+  ])
 
-  let existingEntries: unknown[] = []
-  let currentEtag: number | string = -1
-  let docExists = false
-
-  if (getResp.ok) {
-    const existing = await getResp.json()
-    existingEntries = Array.isArray(existing?.value) ? existing.value : []
-    currentEtag = existing?.__etag ?? -1
-    docExists = true
-    console.log(`[post-timelog] Found existing doc etag=${currentEtag}, ${existingEntries.length} entries`)
-  } else if (getResp.status !== 404) {
-    const errText = await getResp.text()
-    throw new Error(`GET document failed ${getResp.status}: ${errText.slice(0, 300)}`)
-  } else {
-    console.log(`[post-timelog] No existing doc for workItem=${docKey}, will create`)
-  }
-
-  // ── Step 2: Build the new time entry ────────────────────────────────────
-  const newEntry = {
-    id: `fh-${entry.id.replace(/-/g, '').slice(0, 12)}`,   // unique entry-level id
-    workItemId: entry.task_devops,
-    date:      entry.log_date,
-    time:      entry.time_minutes,
-    user:      entry.target_user_email ?? entry.target_user_display ?? entry.vdesk_user_name,
-    notes:     entry.notes ?? `VDESK ${entry.vdesk_user_name} — lançamento automatizado FlagHub`,
-    startTime: '00:00',
-  }
-
+  const docId = newUuid()
   const doc = {
-    '__etag': docExists ? currentEtag : -1,
-    id: docKey,
-    value: [...existingEntries, newEntry],
+    id: docId,
+    user: displayName,                                      // display name (matches real docs)
+    userId: userId,                                         // Azure DevOps identity GUID
+    workItemId: entry.task_devops,
+    workItemName: workItemName,
+    startTime: '00:00',
+    date: entry.log_date,
+    time: entry.time_minutes,
+    notes: entry.notes ?? `VDESK ${entry.vdesk_user_name} — lançamento automatizado FlagHub`,
   }
 
-  // ── Step 3: PATCH (update) or POST (create) ──────────────────────────────
-  const method = docExists ? 'PATCH' : 'POST'
   const writeUrl = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
-  console.log(`[post-timelog] ${method} ${collection}/Documents id=${docKey} entries=${doc.value.length}`)
+  console.log(`[post-timelog] POST ${collection}/Documents id=${docId} workItem=${entry.task_devops} user=${email}`)
 
   const writeResp = await fetch(writeUrl, {
-    method,
+    method: 'POST',
     headers,
     body: JSON.stringify(doc),
   })
 
   const writeText = await writeResp.text()
-  console.log(`[post-timelog] ${method} response: ${writeResp.status} ${writeText.slice(0, 300)}`)
+  console.log(`[post-timelog] POST response: ${writeResp.status} ${writeText.slice(0, 300)}`)
 
   if (!writeResp.ok) {
-    throw new Error(`DevOps API ${method} ${writeResp.status}: ${writeText.slice(0, 400)}`)
+    throw new Error(`DevOps API POST ${writeResp.status}: ${writeText.slice(0, 400)}`)
   }
 
   let parsed: Record<string, unknown> = {}
   try { parsed = JSON.parse(writeText) } catch { /* ignore */ }
-  return (parsed?.id as string) ?? docKey
+  return (parsed?.id as string) ?? docId
 }
 
 // ── Main processor ────────────────────────────────────────────────────────────
