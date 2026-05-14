@@ -119,6 +119,8 @@ ALTER TABLE public.devops_qa_return_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.devops_lead_mapping     ENABLE ROW LEVEL SECURITY;
 
 -- devops_qa_return_events: leitura para aprovados, escrita apenas server-side/admin
+DROP POLICY IF EXISTS "qa_events_select"   ON public.devops_qa_return_events;
+DROP POLICY IF EXISTS "qa_events_admin_all" ON public.devops_qa_return_events;
 CREATE POLICY "qa_events_select" ON public.devops_qa_return_events
   FOR SELECT TO authenticated
   USING (public.hub_is_approved());
@@ -129,6 +131,8 @@ CREATE POLICY "qa_events_admin_all" ON public.devops_qa_return_events
   WITH CHECK (public.hub_is_admin());
 
 -- devops_lead_mapping: leitura para aprovados, escrita só admin
+DROP POLICY IF EXISTS "lead_mapping_select"    ON public.devops_lead_mapping;
+DROP POLICY IF EXISTS "lead_mapping_admin_all" ON public.devops_lead_mapping;
 CREATE POLICY "lead_mapping_select" ON public.devops_lead_mapping
   FOR SELECT TO authenticated
   USING (public.hub_is_approved());
@@ -249,6 +253,7 @@ $$;
 
 -- ── 8. RPC: rpc_qa_return_open_items ─────────────────────────────────────────
 
+DROP FUNCTION IF EXISTS public.rpc_qa_return_open_items();
 CREATE OR REPLACE FUNCTION public.rpc_qa_return_open_items()
 RETURNS TABLE (
   id                   bigint,
