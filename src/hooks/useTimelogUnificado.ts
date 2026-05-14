@@ -82,9 +82,8 @@ export function useVdeskSyncTrigger() {
 }
 
 export interface CollaboratorMapRow {
-  id: string;
+  timelog_name: string;
   canonical_name: string | null;
-  timelog_name: string | null;
   vdesk_user_name: string | null;
   devops_email: string | null;
   is_active: boolean;
@@ -96,7 +95,7 @@ export function useCollaboratorMap() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('devops_collaborator_map')
-        .select('id,canonical_name,timelog_name,vdesk_user_name,devops_email,is_active')
+        .select('timelog_name,canonical_name,vdesk_user_name,devops_email,is_active')
         .order('canonical_name', { ascending: true });
       if (error) throw error;
       return (data ?? []) as unknown as CollaboratorMapRow[];

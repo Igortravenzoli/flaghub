@@ -321,7 +321,7 @@ ON CONFLICT (timelog_name) DO UPDATE SET
                     </TableRow>
                   )
                 : mapRows.map(r => (
-                    <TableRow key={r.id} className="text-xs">
+                    <TableRow key={r.timelog_name} className="text-xs">
                       <TableCell className="font-medium">{r.canonical_name ?? <span className="text-muted-foreground italic">—</span>}</TableCell>
                       <TableCell className={r.vdesk_user_name ? '' : 'text-muted-foreground italic'}>{r.vdesk_user_name ?? '—'}</TableCell>
                       <TableCell className={r.devops_email ? '' : 'text-muted-foreground italic'}>{r.devops_email ?? '—'}</TableCell>
@@ -389,6 +389,7 @@ export default function TimelogHibridoDashboard() {
     queryClient.invalidateQueries({ queryKey: ['timelog-unificado'] });
     queryClient.invalidateQueries({ queryKey: ['timelog-sync-runs'] });
     queryClient.invalidateQueries({ queryKey: ['vdesk-distinct-users'] });
+    queryClient.invalidateQueries({ queryKey: ['collaborator-map'] });
   };
 
   const setFilter = (key: keyof TimelogFilters, value: string) =>
