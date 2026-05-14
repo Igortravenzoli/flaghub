@@ -69,17 +69,17 @@ export function useTimelogQueuePost() {
   });
 }
 
-/** Approve a pending queue entry (status: pending → approved) */
+/** Approve a pending queue entry — uses SECURITY DEFINER rpc_timelog_set_status */
 export function useTimelogQueueApprove() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (queueId: string) => {
-      const { error } = await (supabase as any)
-        .from('timelog_post_queue')
-        .update({ status: 'approved' })
-        .eq('id', queueId)
-        .eq('status', 'pending');
+      const { data, error } = await (supabase as any).rpc('rpc_timelog_set_status', {
+        p_queue_id: queueId,
+        p_action: 'approve',
+      });
       if (error) throw error;
+      return data;
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['timelog-post-queue'] });
@@ -129,17 +129,17 @@ export function useTimelogQueueProcess() {
   });
 }
 
-/** Reject a pending queue entry */
+/** Reject a pending/error queue entry — uses SECURITY DEFINER rpc_timelog_set_status */
 export function useTimelogQueueReject() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (queueId: string) => {
-      const { error } = await (supabase as any)
-        .from('timelog_post_queue')
-        .update({ status: 'rejected' })
-        .eq('id', queueId)
-        .in('status', ['pending', 'error']);
+      const { data, error } = await (supabase as any).rpc('rpc_timelog_set_status', {
+        p_queue_id: queueId,
+        p_action: 'reject',
+      });
       if (error) throw error;
+      return data;
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['timelog-post-queue'] });
