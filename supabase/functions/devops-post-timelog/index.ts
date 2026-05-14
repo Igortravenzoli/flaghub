@@ -143,22 +143,41 @@ async function postToDevOps(
   }
 
   const doc = {
-    '__etag': -1,   // -1 = create or overwrite regardless of current etag
+    '__etag': -1,   // -1 = no conflict check (create freely)
     id: docId,
     value: [timeEntry],
   }
 
+  // POST creates a new document; PATCH updates existing (throws 404 if not found)
   const url = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
-  console.log(`[post-timelog] PATCH ${collection}/Documents id=${docId} workItem=${entry.task_devops} minutes=${entry.time_minutes}`)
+  console.log(`[post-timelog] POST ${collection}/Documents id=${docId} workItem=${entry.task_devops} minutes=${entry.time_minutes}`)
 
   const resp = await fetch(url, {
-    method: 'PATCH',
+    method: 'POST',
     headers,
     body: JSON.stringify(doc),
   })
 
   const respText = await resp.text()
-  console.log(`[post-timelog] PATCH response: ${resp.status} ${respText.slice(0, 200)}`)
+  console.log(`[post-timelog] POST response: ${resp.status} ${respText.slice(0, 300)}`)
+
+  // 409 Conflict = document ID already exists → try PUT to overwrite
+  if (resp.status === 409) {
+    console.log(`[post-timelog] 409 conflict for ${docId}, retrying with PUT`)
+    const putResp = await fetch(url, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(doc),
+    })
+    const putText = await putResp.text()
+    console.log(`[post-timelog] PUT response: ${putResp.status} ${putText.slice(0, 300)}`)
+    if (!putResp.ok) {
+      throw new Error(`DevOps API PUT ${putResp.status}: ${putText.slice(0, 400)}`)
+    }
+    let putParsed: Record<string, unknown> = {}
+    try { putParsed = JSON.parse(putText) } catch { /* ignore */ }
+    return (putParsed?.id as string) ?? docId
+  }
 
   if (!resp.ok) {
     throw new Error(`DevOps API ${resp.status}: ${respText.slice(0, 400)}`)

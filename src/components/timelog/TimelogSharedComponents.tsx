@@ -24,6 +24,7 @@ import {
   useTimelogQueuePost,
   useTimelogQueueApprove,
   useTimelogQueueReject,
+  useTimelogQueueReset,
   useTimelogQueueProcess,
   type TimelogQueueRow,
 } from '@/hooks/useTimelogQueue';
@@ -301,6 +302,7 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
   const queuePost    = useTimelogQueuePost();
   const approve      = useTimelogQueueApprove();
   const reject       = useTimelogQueueReject();
+  const reset        = useTimelogQueueReset();
   const processor    = useTimelogQueueProcess();
   const emailMap     = useEmailMap();
 
@@ -331,6 +333,7 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
   const approvedCount = queueRows.filter(q => q.status === 'approved').length;
   const pendingCount  = queueRows.filter(q => q.status === 'pending').length;
   const postedCount   = queueRows.filter(q => q.status === 'posted').length;
+  const errorCount    = queueRows.filter(q => q.status === 'error').length;
 
   const handleProbe = () => {
     setProbeResult(null);
@@ -387,6 +390,11 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
           <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
             {postedCount} enviadas
           </Badge>
+          {errorCount > 0 && (
+            <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
+              {errorCount} erros
+            </Badge>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -410,6 +418,23 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
               ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />A processar…</>
               : <><ListChecks className="h-3.5 w-3.5" />Processar Aprovadas ({approvedCount})</>}
           </Button>
+
+          {errorCount > 0 && (
+            <Button size="sm" variant="outline"
+              className="h-7 text-xs gap-1.5 text-red-600 border-red-300 hover:bg-red-50"
+              disabled={reset.isPending}
+              onClick={() => {
+                const errorIds = queueRows.filter(q => q.status === 'error').map(q => q.id);
+                Promise.all(errorIds.map(id => reset.mutateAsync(id)))
+                  .then(() => toast.success(`${errorIds.length} entradas reposta para aprovação`))
+                  .catch((e: any) => toast.error('Erro no reset', { description: e?.message }));
+              }}>
+              {reset.isPending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5" />}
+              Retry Erros ({errorCount})
+            </Button>
+          )}
         </div>
 
         {/* Probe result */}
@@ -477,7 +502,11 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
                   </TableCell>
                   <TableCell>
                     {statusCfg
-                      ? <Badge variant="outline" className={`text-[10px] ${statusCfg.color}`}>{statusCfg.label}</Badge>
+                      ? <Badge variant="outline"
+                          className={`text-[10px] ${statusCfg.color} cursor-default`}
+                          title={q?.status === 'error' ? (q.error_message ?? '') : undefined}>
+                          {statusCfg.label}
+                        </Badge>
                       : <span className="text-muted-foreground text-[10px]">—</span>}
                   </TableCell>
                   <TableCell>
@@ -508,6 +537,18 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
                             <ThumbsDown className="h-3 w-3" />
                           </Button>
                         </>
+                      )}
+                      {q?.status === 'error' && (
+                        <Button size="sm" variant="outline"
+                          className="h-6 text-[10px] px-2 gap-1 text-red-600 border-red-300 hover:bg-red-50"
+                          disabled={reset.isPending}
+                          title={q.error_message ?? ''}
+                          onClick={() => reset.mutate(q.id, {
+                            onSuccess: () => toast.success('Reposta para aprovação'),
+                            onError: (err: any) => toast.error('Erro', { description: err?.message }),
+                          })}>
+                          <RefreshCw className="h-3 w-3" />Retry
+                        </Button>
                       )}
                     </div>
                   </TableCell>

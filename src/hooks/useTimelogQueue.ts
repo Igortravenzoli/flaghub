@@ -87,6 +87,24 @@ export function useTimelogQueueApprove() {
   });
 }
 
+/** Reset an error/rejected entry back to pending for retry */
+export function useTimelogQueueReset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (queueId: string) => {
+      const { data, error } = await (supabase as any).rpc('rpc_timelog_set_status', {
+        p_queue_id: queueId,
+        p_action: 'reset',
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['timelog-post-queue'] });
+    },
+  });
+}
+
 /** Call devops-post-timelog Edge Function */
 export function useTimelogQueueProcess() {
   const queryClient = useQueryClient();
