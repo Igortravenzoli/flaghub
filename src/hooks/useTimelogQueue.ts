@@ -110,10 +110,11 @@ export function useTimelogQueueProcess() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (params: {
-      mode: 'probe' | 'process' | 'process-one' | 'probe-docs';
+      mode: 'probe' | 'process' | 'process-one' | 'probe-docs' | 'cleanup';
       queueId?: string;
       limit?: number;
       checkIds?: number[];
+      taskIds?: number[];
     }) => {
       const { data: { session } } = await (await import('@/integrations/supabase/client')).supabase.auth.getSession();
       const token = session?.access_token;

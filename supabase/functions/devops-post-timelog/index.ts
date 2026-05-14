@@ -460,7 +460,79 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, mode, collection_used: 'auto', ...result }), { status: 200, headers })
     }
 
-    return new Response(JSON.stringify({ error: `Modo desconhecido: ${mode}. Use probe | process | process-one` }), { status: 400, headers })
+    // ── MODE: cleanup ───────────────────────────────────────────────────────
+    // Deletes orphan TechsBCN documents (from previous wrong-format attempts) and
+    // resets the corresponding timelog_post_queue rows back to 'pending' so they
+    // can be re-approved and re-posted with the correct structure.
+    if (mode === 'cleanup') {
+      const taskIds = (body.taskIds as number[] | undefined) ?? []
+      if (!Array.isArray(taskIds) || taskIds.length === 0) {
+        return new Response(JSON.stringify({ error: 'taskIds[] obrigatório para mode=cleanup' }), { status: 400, headers })
+      }
+
+      const probe = await probeCollection(pat)
+      if (!probe.ok) {
+        return new Response(JSON.stringify({ error: `Conectividade DevOps falhou: ${probe.message}` }), { status: 502, headers })
+      }
+      const collection = probe.collection!
+      const authHdrs = makeAuthHeaders(pat)
+
+      // Fetch queue rows for these tasks (any status)
+      const { data: rows, error: qErr } = await (sb as any)
+        .from('timelog_post_queue')
+        .select('id, task_devops, status, devops_entry_id')
+        .in('task_devops', taskIds)
+      if (qErr) {
+        return new Response(JSON.stringify({ error: `Erro ao buscar fila: ${qErr.message}` }), { status: 500, headers })
+      }
+
+      const cleanupDetails: Array<Record<string, unknown>> = []
+      // Always also try to delete docs keyed by the task id itself (legacy bug-shape docs)
+      const docIdsToDelete = new Set<string>(taskIds.map(String))
+      for (const r of (rows ?? []) as Array<{ id: string; task_devops: number; status: string; devops_entry_id: string | null }>) {
+        if (r.devops_entry_id) docIdsToDelete.add(r.devops_entry_id)
+      }
+
+      for (const docId of docIdsToDelete) {
+        const delUrl = `${TIMELOG_BASE}/${collection}/Documents/${encodeURIComponent(docId)}?api-version=7.1-preview.1`
+        const resp = await fetch(delUrl, { method: 'DELETE', headers: authHdrs })
+        cleanupDetails.push({
+          docId,
+          httpStatus: resp.status,
+          deleted: resp.ok,
+          message: resp.ok ? 'deleted' : (await resp.text()).slice(0, 200),
+        })
+      }
+
+      // Reset queue rows to pending so they can be re-approved
+      const { error: updErr } = await (sb as any)
+        .from('timelog_post_queue')
+        .update({
+          status: 'pending',
+          devops_entry_id: null,
+          posted_at: null,
+          error_code: null,
+          error_message: null,
+          attempt_count: 0,
+        })
+        .in('task_devops', taskIds)
+      if (updErr) {
+        return new Response(JSON.stringify({ error: `Erro ao resetar fila: ${updErr.message}`, cleanup: cleanupDetails }), { status: 500, headers })
+      }
+
+      return new Response(JSON.stringify({
+        ok: true,
+        mode: 'cleanup',
+        collection,
+        taskIds,
+        docs_attempted: cleanupDetails.length,
+        docs_deleted: cleanupDetails.filter(d => d.deleted).length,
+        queue_rows_reset: rows?.length ?? 0,
+        details: cleanupDetails,
+      }, null, 2), { status: 200, headers })
+    }
+
+    return new Response(JSON.stringify({ error: `Modo desconhecido: ${mode}. Use probe | probe-docs | process | process-one | cleanup` }), { status: 400, headers })
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

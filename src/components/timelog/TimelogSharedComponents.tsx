@@ -448,6 +448,26 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
             }}>
             🔍 Inspecionar Docs
           </Button>
+
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 text-orange-600 border-orange-300 hover:bg-orange-50"
+            disabled={processor.isPending}
+            onClick={() => {
+              const taskIds = [15035, 15345, 15374];
+              if (!confirm(`Apagar docs órfãos no TechsBCN e resetar fila para tasks ${taskIds.join(', ')}?`)) return;
+              setInspectResult(null);
+              processor.mutate({ mode: 'cleanup', taskIds } as any, {
+                onSuccess: (res) => {
+                  setInspectResult(JSON.stringify(res, null, 2));
+                  toast.success(`Cleanup: ${res?.docs_deleted ?? 0}/${res?.docs_attempted ?? 0} docs apagados, ${res?.queue_rows_reset ?? 0} fila reset`);
+                },
+                onError: (err: any) => {
+                  setInspectResult(`Erro: ${err?.message}`);
+                  toast.error('Cleanup falhou', { description: err?.message });
+                },
+              });
+            }}>
+            🧹 Limpar Órfãos (15035, 15345, 15374)
+          </Button>
         </div>
 
         {/* Probe result */}
