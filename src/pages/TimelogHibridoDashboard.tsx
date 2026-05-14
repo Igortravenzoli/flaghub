@@ -277,10 +277,13 @@ function CollaboradoresTab() {
             </p>
             <pre className="bg-muted rounded p-3 text-[11px] overflow-x-auto select-all">
 {`INSERT INTO public.devops_collaborator_map
-  (canonical_name, vdesk_user_name, devops_email, is_active)
+  (canonical_name, timelog_name, vdesk_user_name, devops_email, is_active)
 VALUES
-${unmapped.map(u => `  ('${u}', '${u}', 'email@flag.com.br', true)`).join(',\n')}
-ON CONFLICT DO NOTHING;`}
+${unmapped.map(u => `  ('${u}', '${u}', '${u}', 'email@flag.com.br', true)`).join(',\n')}
+ON CONFLICT (timelog_name) DO UPDATE SET
+  vdesk_user_name = EXCLUDED.vdesk_user_name,
+  devops_email    = EXCLUDED.devops_email,
+  is_active       = EXCLUDED.is_active;`}
             </pre>
           </CardContent>
         </Card>
