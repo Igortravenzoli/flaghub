@@ -130,62 +130,69 @@ async function postToDevOps(
   pat: string,
 ): Promise<string> {
   const headers = makeAuthHeaders(pat)
-  const docId = `flaghub-${entry.id.replace(/-/g, '').slice(0, 16)}`
+  const docKey = String(entry.task_devops)   // TechsBCN keys documents by work item ID
 
-  // Build the time entry document
-  const timeEntry = {
+  // ── Step 1: Try to fetch existing document for this work item ────────────
+  const getUrl = `${TIMELOG_BASE}/${collection}/Documents/${docKey}?api-version=7.1-preview.1`
+  console.log(`[post-timelog] GET ${collection}/Documents/${docKey}`)
+  const getResp = await fetch(getUrl, { headers })
+  console.log(`[post-timelog] GET response: ${getResp.status}`)
+
+  let existingEntries: unknown[] = []
+  let currentEtag: number | string = -1
+  let docExists = false
+
+  if (getResp.ok) {
+    const existing = await getResp.json()
+    existingEntries = Array.isArray(existing?.value) ? existing.value : []
+    currentEtag = existing?.__etag ?? -1
+    docExists = true
+    console.log(`[post-timelog] Found existing doc etag=${currentEtag}, ${existingEntries.length} entries`)
+  } else if (getResp.status !== 404) {
+    const errText = await getResp.text()
+    throw new Error(`GET document failed ${getResp.status}: ${errText.slice(0, 300)}`)
+  } else {
+    console.log(`[post-timelog] No existing doc for workItem=${docKey}, will create`)
+  }
+
+  // ── Step 2: Build the new time entry ────────────────────────────────────
+  const newEntry = {
+    id: `fh-${entry.id.replace(/-/g, '').slice(0, 12)}`,   // unique entry-level id
     workItemId: entry.task_devops,
-    date:       entry.log_date,
-    time:       entry.time_minutes,
-    user:       entry.target_user_email ?? entry.target_user_display ?? entry.vdesk_user_name,
-    notes:      entry.notes ?? `VDESK ${entry.vdesk_user_name} — lançamento automatizado FlagHub`,
-    startTime:  '00:00',
+    date:      entry.log_date,
+    time:      entry.time_minutes,
+    user:      entry.target_user_email ?? entry.target_user_display ?? entry.vdesk_user_name,
+    notes:     entry.notes ?? `VDESK ${entry.vdesk_user_name} — lançamento automatizado FlagHub`,
+    startTime: '00:00',
   }
 
   const doc = {
-    '__etag': -1,   // -1 = no conflict check (create freely)
-    id: docId,
-    value: [timeEntry],
+    '__etag': docExists ? currentEtag : -1,
+    id: docKey,
+    value: [...existingEntries, newEntry],
   }
 
-  // POST creates a new document; PATCH updates existing (throws 404 if not found)
-  const url = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
-  console.log(`[post-timelog] POST ${collection}/Documents id=${docId} workItem=${entry.task_devops} minutes=${entry.time_minutes}`)
+  // ── Step 3: PATCH (update) or POST (create) ──────────────────────────────
+  const method = docExists ? 'PATCH' : 'POST'
+  const writeUrl = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
+  console.log(`[post-timelog] ${method} ${collection}/Documents id=${docKey} entries=${doc.value.length}`)
 
-  const resp = await fetch(url, {
-    method: 'POST',
+  const writeResp = await fetch(writeUrl, {
+    method,
     headers,
     body: JSON.stringify(doc),
   })
 
-  const respText = await resp.text()
-  console.log(`[post-timelog] POST response: ${resp.status} ${respText.slice(0, 300)}`)
+  const writeText = await writeResp.text()
+  console.log(`[post-timelog] ${method} response: ${writeResp.status} ${writeText.slice(0, 300)}`)
 
-  // 409 Conflict = document ID already exists → try PUT to overwrite
-  if (resp.status === 409) {
-    console.log(`[post-timelog] 409 conflict for ${docId}, retrying with PUT`)
-    const putResp = await fetch(url, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(doc),
-    })
-    const putText = await putResp.text()
-    console.log(`[post-timelog] PUT response: ${putResp.status} ${putText.slice(0, 300)}`)
-    if (!putResp.ok) {
-      throw new Error(`DevOps API PUT ${putResp.status}: ${putText.slice(0, 400)}`)
-    }
-    let putParsed: Record<string, unknown> = {}
-    try { putParsed = JSON.parse(putText) } catch { /* ignore */ }
-    return (putParsed?.id as string) ?? docId
-  }
-
-  if (!resp.ok) {
-    throw new Error(`DevOps API ${resp.status}: ${respText.slice(0, 400)}`)
+  if (!writeResp.ok) {
+    throw new Error(`DevOps API ${method} ${writeResp.status}: ${writeText.slice(0, 400)}`)
   }
 
   let parsed: Record<string, unknown> = {}
-  try { parsed = JSON.parse(respText) } catch { /* ignore */ }
-  return (parsed?.id as string) ?? docId
+  try { parsed = JSON.parse(writeText) } catch { /* ignore */ }
+  return (parsed?.id as string) ?? docKey
 }
 
 // ── Main processor ────────────────────────────────────────────────────────────
@@ -348,6 +355,37 @@ serve(async (req) => {
     } catch { /* GET or empty body → defaults */ }
 
     const mode = (body.mode as string) ?? 'probe'
+
+    // ── MODE: probe-docs ────────────────────────────────────────────────────
+    if (mode === 'probe-docs') {
+      const probe = await probeCollection(pat)
+      if (!probe.ok) {
+        return new Response(JSON.stringify({ ok: false, message: probe.message }), { status: 502, headers })
+      }
+      const collection = probe.collection!
+      const authHdrs = makeAuthHeaders(pat)
+      const url = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
+      const resp = await fetch(url, { headers: authHdrs })
+      const raw = await resp.json()
+
+      // Normalize to array of documents
+      const docs: unknown[] = Array.isArray(raw) ? raw
+        : Array.isArray(raw?.value) ? raw.value
+        : []
+
+      // Return first 5 docs with redacted structure: id, __etag, value[0..1] (sample)
+      const sample = docs.slice(0, 5).map((d: any) => ({
+        id: d?.id,
+        __etag: d?.__etag,
+        value_count: Array.isArray(d?.value) ? d.value.length : typeof d?.value,
+        value_sample: Array.isArray(d?.value) ? d.value.slice(0, 2) : d?.value,
+        other_keys: Object.keys(d ?? {}).filter(k => !['id','__etag','value'].includes(k)),
+      }))
+
+      return new Response(JSON.stringify({
+        ok: true, collection, total_docs: docs.length, sample,
+      }), { status: 200, headers })
+    }
 
     // ── MODE: probe ─────────────────────────────────────────────────────────
     if (mode === 'probe') {
