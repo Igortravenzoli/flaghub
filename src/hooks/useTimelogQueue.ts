@@ -110,9 +110,10 @@ export function useTimelogQueueProcess() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (params: {
-      mode: 'probe' | 'process' | 'process-one';
+      mode: 'probe' | 'process' | 'process-one' | 'probe-docs';
       queueId?: string;
       limit?: number;
+      checkIds?: number[];
     }) => {
       const { data: { session } } = await (await import('@/integrations/supabase/client')).supabase.auth.getSession();
       const token = session?.access_token;
@@ -129,17 +130,7 @@ export function useTimelogQueueProcess() {
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json?.error ?? json?.detail ?? `HTTP ${resp.status}`);
-      return json as {
-        ok: boolean;
-        mode: string;
-        collection?: string;
-        message?: string;
-        processed?: number;
-        posted?: number;
-        dry_run_skipped?: number;
-        errors?: number;
-        details?: Array<{ id: string; status: string; message: string }>;
-      };
+      return json;
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['timelog-post-queue'] });

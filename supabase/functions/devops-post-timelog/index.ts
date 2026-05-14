@@ -364,27 +364,44 @@ serve(async (req) => {
       }
       const collection = probe.collection!
       const authHdrs = makeAuthHeaders(pat)
-      const url = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
-      const resp = await fetch(url, { headers: authHdrs })
-      const raw = await resp.json()
 
-      // Normalize to array of documents
-      const docs: unknown[] = Array.isArray(raw) ? raw
-        : Array.isArray(raw?.value) ? raw.value
-        : []
+      // List all documents
+      const listUrl = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
+      const listResp = await fetch(listUrl, { headers: authHdrs })
+      const rawList = await listResp.json()
+      const docs: unknown[] = Array.isArray(rawList) ? rawList
+        : Array.isArray(rawList?.value) ? rawList.value : []
 
-      // Return first 5 docs with redacted structure: id, __etag, value[0..1] (sample)
-      const sample = docs.slice(0, 5).map((d: any) => ({
+      // Sample first 5 docs (structure only)
+      const sampleDocs = docs.slice(0, 5).map((d: any) => ({
         id: d?.id,
         __etag: d?.__etag,
-        value_count: Array.isArray(d?.value) ? d.value.length : typeof d?.value,
-        value_sample: Array.isArray(d?.value) ? d.value.slice(0, 2) : d?.value,
+        value_type: Array.isArray(d?.value) ? `array[${d.value.length}]` : typeof d?.value,
+        value_sample: Array.isArray(d?.value) ? d.value.slice(0, 1) : d?.value,
         other_keys: Object.keys(d ?? {}).filter(k => !['id','__etag','value'].includes(k)),
       }))
 
+      // Try to read specific work item documents that user is testing
+      const testIds = (body.checkIds as number[] | undefined) ?? [15345, 15374]
+      const specificDocs: Record<string, unknown> = {}
+      for (const id of testIds) {
+        const getResp = await fetch(
+          `${TIMELOG_BASE}/${collection}/Documents/${id}?api-version=7.1-preview.1`,
+          { headers: authHdrs }
+        )
+        if (getResp.ok) {
+          specificDocs[String(id)] = await getResp.json()
+        } else {
+          specificDocs[String(id)] = { httpStatus: getResp.status, message: await getResp.text().then(t => t.slice(0, 200)) }
+        }
+      }
+
       return new Response(JSON.stringify({
-        ok: true, collection, total_docs: docs.length, sample,
-      }), { status: 200, headers })
+        ok: true, collection,
+        total_docs: docs.length,
+        sample_docs: sampleDocs,
+        specific_docs: specificDocs,
+      }, null, 2), { status: 200, headers })
     }
 
     // ── MODE: probe ─────────────────────────────────────────────────────────

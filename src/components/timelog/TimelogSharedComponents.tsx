@@ -310,6 +310,7 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
   const [processResult, setProcessResult] = useState<{
     processed: number; posted: number; dry_run_skipped: number; errors: number;
   } | null>(null);
+  const [inspectResult, setInspectResult] = useState<string | null>(null);
 
   // Map vdesk_log_id → queue row for fast lookup
   const queueByLogId = useMemo(() => {
@@ -435,6 +436,18 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
               Retry Erros ({errorCount})
             </Button>
           )}
+
+          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1.5 text-muted-foreground ml-auto"
+            disabled={processor.isPending}
+            onClick={() => {
+              setInspectResult(null);
+              processor.mutate({ mode: 'probe-docs' } as any, {
+                onSuccess: (res) => setInspectResult(JSON.stringify(res, null, 2)),
+                onError: (err: any) => setInspectResult(`Erro: ${err?.message}`),
+              });
+            }}>
+            🔍 Inspecionar Docs
+          </Button>
         </div>
 
         {/* Probe result */}
@@ -454,6 +467,16 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
             <span>{processResult.posted} enviadas</span>
             {processResult.dry_run_skipped > 0 && <><span>·</span><span>{processResult.dry_run_skipped} dry-run</span></>}
             {processResult.errors > 0 && <><span>·</span><span className="text-red-600 font-medium">{processResult.errors} erros</span></>}
+          </div>
+        )}
+
+        {inspectResult && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Estrutura dos documentos DevOps:</span>
+              <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1" onClick={() => setInspectResult(null)}>✕</Button>
+            </div>
+            <pre className="bg-muted rounded p-2 text-[10px] overflow-auto max-h-64 select-all whitespace-pre-wrap">{inspectResult}</pre>
           </div>
         )}
 
