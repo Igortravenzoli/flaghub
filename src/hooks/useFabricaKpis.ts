@@ -200,6 +200,28 @@ export function useFabricaKpis(
     staleTime: 5 * 60 * 1000,
   });
 
+  // ── VDESK time logs: server-side filtered by date range ──
+  const vdeskLogsQuery = useQuery({
+    queryKey: ['fabrica', 'vdesk-time-logs', fromStr, toStr, includeTimeLogs],
+    queryFn: async () => {
+      let q = (supabase as any)
+        .from('vdesk_time_logs')
+        .select('task_devops, usuario_vdesk, log_date, tempo_segundos');
+      if (fromStr) q = q.gte('log_date', fromStr);
+      if (toStr)   q = q.lte('log_date', toStr);
+      const { data, error } = await q.limit(5000);
+      if (error) throw error;
+      return (data || []) as Array<{
+        task_devops: number;
+        usuario_vdesk: string;
+        log_date: string;
+        tempo_segundos: number;
+      }>;
+    },
+    enabled: includeTimeLogs,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Work items with tags for product mapping & iteration_history
   const workItemsQuery = useQuery({
     queryKey: ['fabrica', 'work-items-tags', includeWorkItemMeta],
@@ -387,6 +409,65 @@ export function useFabricaKpis(
       .sort((a, b) => b.hours - a.hours);
   })();
 
+  // ── VDESK aggregations (automatic, more reliable source) ──
+  const vdeskLogs = vdeskLogsQuery.data || [];
+  const scopedVdeskLogs = vdeskLogs.filter((vl) => {
+    if (!itemIdsInScope.has(vl.task_devops)) return false;
+    return !isExcluded(vl.usuario_vdesk) && !isExcluded(normalizeCollaboratorName(vl.usuario_vdesk));
+  });
+  const totalVdeskHours = scopedVdeskLogs.reduce((sum, vl) => sum + vl.tempo_segundos, 0) / 3600;
+  const hasVdeskData = scopedVdeskLogs.length > 0;
+
+  const horasVdeskPorColaborador: TimelogAggregation[] = (() => {
+    if (!hasVdeskData) return [];
+    const map: Record<string, number> = {};
+    const labelMap: Record<string, string> = {};
+    const collabMap = collabMapQuery.data || new Map<string, string>();
+    for (const vl of scopedVdeskLogs) {
+      const rawName = vl.usuario_vdesk || 'Desconhecido';
+      if (isExcluded(rawName)) continue;
+      const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
+      const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
+      if (canonical) labelMap[normalized] = canonical;
+      else labelMap[normalized] = labelMap[normalized] ?? rawName;
+      map[normalized] = (map[normalized] || 0) + vl.tempo_segundos;
+    }
+    return Object.entries(map)
+      .map(([normalized, seconds]) => ({
+        name: labelMap[normalized] || normalized,
+        hours: Math.round(seconds / 3600 * 10) / 10,
+        minutes: Math.round(seconds / 60),
+      }))
+      .sort((a, b) => b.hours - a.hours);
+  })();
+
+  const horasVdeskPorProduto: TimelogAggregation[] = (() => {
+    if (!hasVdeskData) return [];
+    const map: Record<string, number> = {};
+    for (const vl of scopedVdeskLogs) {
+      const wi = wiMap.get(vl.task_devops);
+      const products = extractProducts(wi?.tags || null);
+      if (products.length > 0) {
+        const share = vl.tempo_segundos / products.length;
+        for (const p of products) {
+          const normalized = normalizeProduct(p);
+          map[normalized] = (map[normalized] || 0) + share;
+        }
+      }
+    }
+    return Object.entries(map)
+      .map(([name, seconds]) => ({ name, hours: Math.round(seconds / 3600 * 10) / 10, minutes: Math.round(seconds / 60) }))
+      .sort((a, b) => b.hours - a.hours);
+  })();
+
+  // Coverage: how much of max(vdesk,devops) total hours is covered by the other source
+  const vdeskMatchRate: number | null = (() => {
+    if (!hasVdeskData || !hasTimeLogs) return null;
+    const maxH = Math.max(totalVdeskHours, totalHoursLogged);
+    if (maxH === 0) return null;
+    return Math.round(Math.min(totalVdeskHours, totalHoursLogged) / maxH * 100);
+  })();
+
   // ── Corporate KPIs ──
   const pbis = filteredItems.filter(
     i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
@@ -550,10 +631,17 @@ export function useFabricaKpis(
     sprintCount,
     hasTimeLogs,
     totalHoursLogged,
-    // Timelog aggregations
+    // Timelog aggregations (DevOps — manual entries)
     horasPorColaborador,
     horasPorProduto,
     horasPorFabrica,
+    // VDESK aggregations (automatic — more reliable)
+    hasVdeskData,
+    totalVdeskHours,
+    horasVdeskPorColaborador,
+    horasVdeskPorProduto,
+    vdeskMatchRate,
+    vdeskIsLoading: vdeskLogsQuery.isLoading,
     tagsByWorkItemId,
     allCollaborators,
   };

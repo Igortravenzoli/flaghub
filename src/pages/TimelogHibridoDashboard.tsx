@@ -469,7 +469,9 @@ export default function TimelogHibridoDashboard() {
         <Tabs defaultValue="dados">
           <TabsList>
             <TabsTrigger value="dados"          className="gap-1.5"><Clock   className="h-3.5 w-3.5" />Dados</TabsTrigger>
-            <TabsTrigger value="colaboradores"  className="gap-1.5"><Users   className="h-3.5 w-3.5" />Colaboradores</TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="colaboradores"  className="gap-1.5"><Users   className="h-3.5 w-3.5" />Colaboradores</TabsTrigger>
+            )}
             {isAdmin && (
               <TabsTrigger value="sync"         className="gap-1.5"><Play    className="h-3.5 w-3.5" />Sync Manual</TabsTrigger>
             )}
@@ -636,10 +638,12 @@ export default function TimelogHibridoDashboard() {
             </Card>
           </TabsContent>
 
-          {/* ─ TAB: Colaboradores ─ */}
-          <TabsContent value="colaboradores" className="mt-4">
-            <CollaboradoresTab />
-          </TabsContent>
+          {/* ─ TAB: Colaboradores (admin only) ─ */}
+          {isAdmin && (
+            <TabsContent value="colaboradores" className="mt-4">
+              <CollaboradoresTab />
+            </TabsContent>
+          )}
 
           {/* ─ TAB: Sync Manual (admin only) ─ */}
           {isAdmin && (
