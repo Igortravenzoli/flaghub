@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export type TimelogStatus = 'match' | 'only_vdesk' | 'only_devops' | 'divergent';
@@ -67,6 +67,58 @@ export interface TimelogSyncRun {
   rows_updated: number;
   triggered_by: string;
   error_message: string | null;
+}
+
+export function useVdeskSyncTrigger() {
+  return useMutation({
+    mutationFn: async (params: { from: string; to: string }) => {
+      const { data, error } = await (supabase as any).functions.invoke('vdesk-sync-timelog', {
+        body: { from: params.from, to: params.to },
+      });
+      if (error) throw error;
+      return data as { ok: boolean; runId: string; from: string; to: string; message: string };
+    },
+  });
+}
+
+export interface CollaboratorMapRow {
+  id: string;
+  canonical_name: string | null;
+  timelog_name: string | null;
+  vdesk_user_name: string | null;
+  devops_email: string | null;
+  is_active: boolean;
+}
+
+export function useCollaboratorMap() {
+  return useQuery({
+    queryKey: ['collaborator-map'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('devops_collaborator_map')
+        .select('id,canonical_name,timelog_name,vdesk_user_name,devops_email,is_active')
+        .order('canonical_name', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as CollaboratorMapRow[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useVdeskDistinctUsers() {
+  return useQuery({
+    queryKey: ['vdesk-distinct-users'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('vdesk_time_logs')
+        .select('usuario_vdesk')
+        .limit(2000);
+      if (error) throw error;
+      const users = [...new Set((data ?? []).map((r: any) => r.usuario_vdesk as string))].sort();
+      return users as string[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 }
 
 export function useTimelogSyncRuns() {
