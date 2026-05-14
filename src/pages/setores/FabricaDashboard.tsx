@@ -336,14 +336,15 @@ export default function FabricaDashboard() {
 
   const { data: reconRows = [], isLoading: reconLoading } = useTimelogUnificado(reconFilters);
 
-  // per-task status counts for correlation chart
+  // per-task aggregated map: status is RECOMPUTED from summed minutes (the
+  // view's per-day status doesn't represent the whole task)
   const reconTaskMap = useMemo(() => {
     const m = new Map<number, { title: string; status: string; vdeskMin: number; devopsMin: number }>();
     for (const r of reconRows) {
       if (!m.has(r.task_id)) {
         m.set(r.task_id, {
           title: r.work_item_title ?? `#${r.task_id}`,
-          status: r.status,
+          status: 'match', // recomputed below
           vdeskMin: 0,
           devopsMin: 0,
         });
@@ -351,6 +352,15 @@ export default function FabricaDashboard() {
       const entry = m.get(r.task_id)!;
       entry.vdeskMin  += r.minutes_vdesk  ?? 0;
       entry.devopsMin += r.minutes_devops ?? 0;
+    }
+    // Recompute aggregate status (tolerance = max(15min, 5%))
+    for (const e of m.values()) {
+      if (e.vdeskMin === 0 && e.devopsMin === 0) { e.status = 'match'; continue; }
+      if (e.vdeskMin === 0) { e.status = 'only_devops'; continue; }
+      if (e.devopsMin === 0) { e.status = 'only_vdesk'; continue; }
+      const gap = Math.abs(e.vdeskMin - e.devopsMin);
+      const tol = Math.max(15, Math.max(e.vdeskMin, e.devopsMin) * 0.05);
+      e.status = gap <= tol ? 'match' : 'divergent';
     }
     return m;
   }, [reconRows]);
@@ -387,24 +397,6 @@ export default function FabricaDashboard() {
     }
     return Array.from(map.values()).sort((a, b) => (b.vdesk + b.devops) - (a.vdesk + a.devops));
   }, [fab.horasVdeskPorColaborador, fab.horasPorColaborador, showVdesk, showDevops]);
-
-  // Consolidated KPIs based on active source filters
-  const consolidatedKpis = useMemo(() => {
-    const useV = showVdesk && fab.hasVdeskData;
-    const useD = showDevops;
-    const totalHours = (useV ? fab.totalVdeskHours : 0) + (useD ? fab.totalHoursLogged : 0);
-    const collaboratorNames = new Set<string>();
-    if (useV) for (const c of fab.horasVdeskPorColaborador) collaboratorNames.add(c.name);
-    if (useD) for (const c of fab.horasPorColaborador) collaboratorNames.add(c.name);
-    const productNames = new Set<string>();
-    if (useV) for (const p of fab.horasVdeskPorProduto) productNames.add(p.name);
-    if (useD) for (const p of fab.horasPorProduto) productNames.add(p.name);
-    return {
-      totalHours,
-      collaboratorCount: collaboratorNames.size,
-      productCount: productNames.size,
-    };
-  }, [showVdesk, showDevops, fab.hasVdeskData, fab.totalVdeskHours, fab.totalHoursLogged, fab.horasVdeskPorColaborador, fab.horasPorColaborador, fab.horasVdeskPorProduto, fab.horasPorProduto]);
 
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(fab.allItems, [(i) => i.created_date, (i) => i.changed_date]),
@@ -1465,60 +1457,6 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Horas (TimeLog) ═══════ */}
           <TabsContent value="timelog" className="space-y-5 mt-0">
-            {/* Source filter + coverage badge */}
-            <div className="flex flex-wrap items-center gap-3 text-xs rounded-lg border bg-muted/30 px-3 py-2">
-              <span className="text-muted-foreground">Fontes:</span>
-              <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
-                <input type="checkbox" checked={showVdesk} onChange={(e) => setShowVdesk(e.target.checked)} className="h-3.5 w-3.5 accent-emerald-500" />
-                <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
-                <strong className="text-emerald-700 dark:text-emerald-400">Vdesk</strong>
-              </label>
-              <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
-                <input type="checkbox" checked={showDevops} onChange={(e) => setShowDevops(e.target.checked)} className="h-3.5 w-3.5 accent-blue-500" />
-                <span className="h-2 w-2 rounded-full bg-blue-400 inline-block" />
-                <strong className="text-blue-600 dark:text-blue-400">Devops</strong>
-              </label>
-              {fab.vdeskMatchRate !== null && (
-                <Badge variant="outline" className="ml-auto text-xs">
-                  Cobertura Vdesk/Devops ≈ {fab.vdeskMatchRate}%
-                </Badge>
-              )}
-            </div>
-
-            {/* KPIs — consolidados conforme filtro de fonte */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <HeroKpiCard
-                label="Horas"
-                value={Math.round(consolidatedKpis.totalHours)}
-                suffix="h"
-                icon={Timer}
-                isLoading={fab.isLoading || fab.vdeskIsLoading}
-                accent={showVdesk && fab.hasVdeskData ? 'bg-emerald-500' : 'bg-blue-500'}
-              />
-              <HeroKpiCard
-                label="Dias úteis (≈)"
-                value={consolidatedKpis.totalHours > 0 ? Math.round(consolidatedKpis.totalHours / 8) : 0}
-                suffix="d"
-                icon={Clock}
-                isLoading={fab.isLoading || fab.vdeskIsLoading}
-                accent={showVdesk && fab.hasVdeskData ? 'bg-emerald-500' : 'bg-blue-500'}
-              />
-              <HeroKpiCard
-                label="Colaboradores"
-                value={consolidatedKpis.collaboratorCount}
-                icon={Users}
-                isLoading={fab.isLoading || fab.vdeskIsLoading}
-                accent={showVdesk && fab.hasVdeskData ? 'bg-emerald-500' : 'bg-blue-500'}
-              />
-              <HeroKpiCard
-                label="Produtos"
-                value={consolidatedKpis.productCount}
-                icon={Package}
-                isLoading={fab.isLoading || fab.vdeskIsLoading}
-                accent={showVdesk && fab.hasVdeskData ? 'bg-emerald-500' : 'bg-blue-500'}
-              />
-            </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <HoursRankingCard
                 title={fab.hasVdeskData ? 'Horas por Produto (VDESK)' : 'Horas por Produto'}
@@ -1538,135 +1476,144 @@ export default function FabricaDashboard() {
               />
             </div>
 
-            {/* Merged collaborator chart — Vdesk + Devops */}
-            {mergedCollaboradores.length > 0 && (showVdesk || showDevops) && (
-              <Card className="animate-fade-in border-l-4 border-l-primary" style={{ animationDelay: '600ms' }}>
-                <CardHeader className="pb-2">
+            {/* ── Reconciliação + Horas por Colaborador (lado a lado) ───── */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              {/* Reconciliação Vdesk ↔ Devops */}
+              <Card className="animate-fade-in border-l-4 border-l-purple-400 lg:col-span-3" style={{ animationDelay: '600ms' }}>
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <GitMerge className="h-4 w-4 text-purple-500" />
+                    Reconciliação Vdesk ↔ Devops
+                    {reconLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-1" />}
+                    {fab.vdeskMatchRate !== null && (
+                      <Badge variant="outline" className="ml-auto text-[10px]">
+                        Cobertura ≈ {fab.vdeskMatchRate}%
+                      </Badge>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { key: 'match',       label: 'Sincronizados', color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800' },
+                      { key: 'only_vdesk',  label: 'Vdesk',         color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' },
+                      { key: 'only_devops', label: 'Devops',        color: 'text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800' },
+                      { key: 'divergent',   label: 'Divergentes',   color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800' },
+                    ].map(({ key, label, color }) => (
+                      <div key={key} className={`rounded-lg border p-2 text-center ${color}`}>
+                        <div className="text-xl font-bold leading-none">{reconStatusCounts[key] ?? 0}</div>
+                        <div className="text-[10px] font-medium mt-1">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {reconRows.length > 0 && (
+                    <div className="overflow-x-auto max-h-[260px] overflow-y-auto border rounded-md">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted sticky top-0">
+                          <tr>
+                            <th className="text-left px-2 py-1.5 font-medium">Task</th>
+                            <th className="text-left px-2 py-1.5 font-medium">Título</th>
+                            <th className="text-right px-2 py-1.5 font-medium">Vdesk</th>
+                            <th className="text-right px-2 py-1.5 font-medium">Devops</th>
+                            <th className="text-right px-2 py-1.5 font-medium">Gap</th>
+                            <th className="text-center px-2 py-1.5 font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {Array.from(reconTaskMap.entries()).slice(0, 50).map(([taskId, entry]) => {
+                            const gapMin = entry.vdeskMin - entry.devopsMin;
+                            const statusColors: Record<string, string> = {
+                              match: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
+                              only_vdesk: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
+                              only_devops: 'bg-blue-500/10 text-blue-700 border-blue-500/30',
+                              divergent: 'bg-red-500/10 text-red-700 border-red-500/30',
+                            };
+                            const statusLabels: Record<string, string> = {
+                              match: 'OK', only_vdesk: 'Vdesk', only_devops: 'Devops', divergent: 'Divergente',
+                            };
+                            const h = (m: number) => m >= 60 ? `${Math.floor(m/60)}h${m%60>0?` ${m%60}m`:''}` : `${m}m`;
+                            return (
+                              <tr key={taskId} className="hover:bg-muted/30">
+                                <td className="px-2 py-1 font-mono">#{taskId}</td>
+                                <td className="px-2 py-1 max-w-[180px] truncate text-muted-foreground" title={entry.title}>{entry.title}</td>
+                                <td className="px-2 py-1 text-right font-mono">{entry.vdeskMin > 0 ? h(entry.vdeskMin) : '—'}</td>
+                                <td className="px-2 py-1 text-right font-mono">{entry.devopsMin > 0 ? h(entry.devopsMin) : '—'}</td>
+                                <td className={`px-2 py-1 text-right font-mono ${gapMin > 30 ? 'text-red-600' : gapMin < -30 ? 'text-blue-600' : 'text-muted-foreground'}`}>
+                                  {gapMin === 0 ? <Minus className="h-3 w-3 inline" /> : (gapMin > 0 ? '+' : '') + h(Math.abs(gapMin))}
+                                </td>
+                                <td className="px-2 py-1 text-center">
+                                  <Badge variant="outline" className={`text-[10px] ${statusColors[entry.status] ?? ''}`}>
+                                    {statusLabels[entry.status] ?? entry.status}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {reconTaskMap.size > 50 && (
+                        <p className="text-center text-xs text-muted-foreground py-2">
+                          +{reconTaskMap.size - 50} tarefas — filtre por sprint para ver mais
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {reconRows.length === 0 && !reconLoading && (
+                    <p className="text-xs text-muted-foreground text-center py-4">
+                      Sem dados para o período seleccionado.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Horas por Colaborador (chart compacto) */}
+              <Card className="animate-fade-in border-l-4 border-l-primary lg:col-span-2" style={{ animationDelay: '700ms' }}>
+                <CardHeader className="pb-2 pt-4">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
                     <BarChart3 className="h-4 w-4 text-primary" />
                     Horas por Colaborador
-                    <div className="flex items-center gap-3 ml-auto text-xs font-normal">
-                      {showVdesk && (
-                        <span className="inline-flex items-center gap-1">
-                          <span className="h-2 w-2 rounded-sm bg-emerald-500 inline-block" />
-                          <span className="text-emerald-700 dark:text-emerald-400">Vdesk</span>
-                        </span>
-                      )}
-                      {showDevops && (
-                        <span className="inline-flex items-center gap-1">
-                          <span className="h-2 w-2 rounded-sm bg-blue-400 inline-block" />
-                          <span className="text-blue-600 dark:text-blue-400">Devops</span>
-                        </span>
-                      )}
-                    </div>
                   </CardTitle>
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] mt-1">
+                    <label className="inline-flex items-center gap-1 cursor-pointer select-none">
+                      <input type="checkbox" checked={showVdesk} onChange={(e) => setShowVdesk(e.target.checked)} className="h-3 w-3 accent-emerald-500" />
+                      <span className="h-2 w-2 rounded-sm bg-emerald-500 inline-block" />
+                      <span className="text-emerald-700 dark:text-emerald-400 font-medium">Vdesk</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1 cursor-pointer select-none">
+                      <input type="checkbox" checked={showDevops} onChange={(e) => setShowDevops(e.target.checked)} className="h-3 w-3 accent-blue-500" />
+                      <span className="h-2 w-2 rounded-sm bg-blue-400 inline-block" />
+                      <span className="text-blue-600 dark:text-blue-400 font-medium">Devops</span>
+                    </label>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={Math.max(220, mergedCollaboradores.length * 36)}>
-                    <BarChart data={mergedCollaboradores.slice(0, 12)} layout="vertical" margin={{ left: 0, right: 16 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                      <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" unit="h" />
-                      <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
-                      <RechartsTooltip
-                        contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                        formatter={(value: number, name: string) => [`${value}h`, name === 'vdesk' ? 'Vdesk' : 'Devops']}
-                      />
-                      {showVdesk && (
-                        <Bar dataKey="vdesk" stackId="horas" fill="hsl(142,71%,45%)" radius={showDevops ? [0, 0, 0, 0] : [0, 6, 6, 0]} />
-                      )}
-                      {showDevops && (
-                        <Bar dataKey="devops" stackId="horas" fill="hsl(210,90%,60%)" radius={[0, 6, 6, 0]} />
-                      )}
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {mergedCollaboradores.length === 0 || (!showVdesk && !showDevops) ? (
+                    <p className="text-xs text-muted-foreground text-center py-8">
+                      {(!showVdesk && !showDevops) ? 'Selecione ao menos uma fonte.' : 'Sem dados.'}
+                    </p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={Math.min(320, Math.max(180, mergedCollaboradores.slice(0, 8).length * 32))}>
+                      <BarChart data={mergedCollaboradores.slice(0, 8)} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                        <XAxis type="number" fontSize={10} stroke="hsl(var(--muted-foreground))" unit="h" />
+                        <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={110} />
+                        <RechartsTooltip
+                          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '11px' }}
+                          formatter={(value: number, name: string) => [`${value}h`, name === 'vdesk' ? 'Vdesk' : 'Devops']}
+                        />
+                        {showVdesk && (
+                          <Bar dataKey="vdesk" stackId="horas" fill="hsl(142,71%,45%)" radius={showDevops ? [0, 0, 0, 0] : [0, 4, 4, 0]} />
+                        )}
+                        {showDevops && (
+                          <Bar dataKey="devops" stackId="horas" fill="hsl(210,90%,60%)" radius={[0, 4, 4, 0]} />
+                        )}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </CardContent>
               </Card>
-            )}
-            {/* ── Reconciliação VDESK ↔ DevOps ─────────────────────────────── */}
-            <Card className="animate-fade-in border-l-4 border-l-purple-400" style={{ animationDelay: '800ms' }}>
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <GitMerge className="h-4 w-4 text-purple-500" />
-                  Reconciliação VDESK ↔ DevOps
-                  {reconLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-1" />}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Status summary cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { key: 'match',       label: 'Sincronizados',   color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800' },
-                    { key: 'only_vdesk',  label: 'Vdesk',           color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' },
-                    { key: 'only_devops', label: 'Devops',          color: 'text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800' },
-                    { key: 'divergent',   label: 'Divergentes',     color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800' },
-                  ].map(({ key, label, color }) => (
-                    <div key={key} className={`rounded-lg border p-3 text-center ${color}`}>
-                      <div className="text-2xl font-bold">{reconStatusCounts[key] ?? 0}</div>
-                      <div className="text-xs font-medium mt-0.5">{label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Reconciliation table */}
-                {reconRows.length > 0 && (
-                  <div className="overflow-x-auto max-h-64 overflow-y-auto border rounded-md">
-                    <table className="w-full text-xs">
-                      <thead className="bg-muted sticky top-0">
-                        <tr>
-                          <th className="text-left px-3 py-2 font-medium">Task</th>
-                          <th className="text-left px-3 py-2 font-medium">Título</th>
-                          <th className="text-right px-3 py-2 font-medium">VDESK</th>
-                          <th className="text-right px-3 py-2 font-medium">DevOps</th>
-                          <th className="text-right px-3 py-2 font-medium">Gap</th>
-                          <th className="text-center px-3 py-2 font-medium">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {Array.from(reconTaskMap.entries()).slice(0, 50).map(([taskId, entry]) => {
-                          const gapMin = entry.vdeskMin - entry.devopsMin;
-                          const statusColors: Record<string, string> = {
-                            match: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
-                            only_vdesk: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
-                            only_devops: 'bg-blue-500/10 text-blue-700 border-blue-500/30',
-                            divergent: 'bg-red-500/10 text-red-700 border-red-500/30',
-                          };
-                          const statusLabels: Record<string, string> = {
-                            match: 'OK', only_vdesk: 'Vdesk', only_devops: 'Devops', divergent: 'Divergente',
-                          };
-                          const h = (m: number) => m >= 60 ? `${Math.floor(m/60)}h${m%60>0?` ${m%60}m`:''}` : `${m}m`;
-                          return (
-                            <tr key={taskId} className="hover:bg-muted/30">
-                              <td className="px-3 py-1.5 font-mono">#{taskId}</td>
-                              <td className="px-3 py-1.5 max-w-[220px] truncate text-muted-foreground" title={entry.title}>{entry.title}</td>
-                              <td className="px-3 py-1.5 text-right font-mono">{entry.vdeskMin > 0 ? h(entry.vdeskMin) : '—'}</td>
-                              <td className="px-3 py-1.5 text-right font-mono">{entry.devopsMin > 0 ? h(entry.devopsMin) : '—'}</td>
-                              <td className={`px-3 py-1.5 text-right font-mono ${gapMin > 30 ? 'text-red-600' : gapMin < -30 ? 'text-blue-600' : 'text-muted-foreground'}`}>
-                                {gapMin === 0 ? <Minus className="h-3 w-3 inline" /> : (gapMin > 0 ? '+' : '') + h(Math.abs(gapMin))}
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <Badge variant="outline" className={`text-[10px] ${statusColors[entry.status] ?? ''}`}>
-                                  {statusLabels[entry.status] ?? entry.status}
-                                </Badge>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {reconTaskMap.size > 50 && (
-                      <p className="text-center text-xs text-muted-foreground py-2">
-                        +{reconTaskMap.size - 50} tarefas — filtre por sprint para ver mais
-                      </p>
-                    )}
-                  </div>
-                )}
-                {reconRows.length === 0 && !reconLoading && (
-                  <p className="text-xs text-muted-foreground text-center py-4">
-                    Nenhum dado de reconciliação para o período seleccionado.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+            </div>
 
             {/* ── Admin: Nivelamento Horas Vdesk → Devops (colapsável) ───── */}
             {isAdmin && (
