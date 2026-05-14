@@ -8,7 +8,7 @@ import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_C
 import { useTimelogUnificado } from '@/hooks/useTimelogUnificado';
 import { useAuth } from '@/hooks/useAuth';
 import { useHubIsAdmin } from '@/hooks/useHubPermissions';
-import { VdeskSyncPanel, PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
+import { PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
@@ -362,6 +362,49 @@ export default function FabricaDashboard() {
     }
     return counts;
   }, [reconTaskMap]);
+
+  // ── Timelog tab: source filters + merged data ────────────────────────────
+  const [showVdesk, setShowVdesk] = useState(true);
+  const [showDevops, setShowDevops] = useState(true);
+  const [nivelamentoOpen, setNivelamentoOpen] = useState(false);
+
+  // Merge VDESK + DevOps collaborators by canonical name
+  const mergedCollaboradores = useMemo(() => {
+    const map = new Map<string, { name: string; vdesk: number; devops: number }>();
+    if (showVdesk) {
+      for (const c of fab.horasVdeskPorColaborador) {
+        const e = map.get(c.name) ?? { name: c.name, vdesk: 0, devops: 0 };
+        e.vdesk += c.hours;
+        map.set(c.name, e);
+      }
+    }
+    if (showDevops) {
+      for (const c of fab.horasPorColaborador) {
+        const e = map.get(c.name) ?? { name: c.name, vdesk: 0, devops: 0 };
+        e.devops += c.hours;
+        map.set(c.name, e);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (b.vdesk + b.devops) - (a.vdesk + a.devops));
+  }, [fab.horasVdeskPorColaborador, fab.horasPorColaborador, showVdesk, showDevops]);
+
+  // Consolidated KPIs based on active source filters
+  const consolidatedKpis = useMemo(() => {
+    const useV = showVdesk && fab.hasVdeskData;
+    const useD = showDevops;
+    const totalHours = (useV ? fab.totalVdeskHours : 0) + (useD ? fab.totalHoursLogged : 0);
+    const collaboratorNames = new Set<string>();
+    if (useV) for (const c of fab.horasVdeskPorColaborador) collaboratorNames.add(c.name);
+    if (useD) for (const c of fab.horasPorColaborador) collaboratorNames.add(c.name);
+    const productNames = new Set<string>();
+    if (useV) for (const p of fab.horasVdeskPorProduto) productNames.add(p.name);
+    if (useD) for (const p of fab.horasPorProduto) productNames.add(p.name);
+    return {
+      totalHours,
+      collaboratorCount: collaboratorNames.size,
+      productCount: productNames.size,
+    };
+  }, [showVdesk, showDevops, fab.hasVdeskData, fab.totalVdeskHours, fab.totalHoursLogged, fab.horasVdeskPorColaborador, fab.horasPorColaborador, fab.horasVdeskPorProduto, fab.horasPorProduto]);
 
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(fab.allItems, [(i) => i.created_date, (i) => i.changed_date]),
@@ -1422,52 +1465,59 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Horas (TimeLog) ═══════ */}
           <TabsContent value="timelog" className="space-y-5 mt-0">
-            {/* Source legend */}
-            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground rounded-lg border bg-muted/30 px-3 py-2">
-              <span className="inline-flex items-center gap-1.5">
+            {/* Source filter + coverage badge */}
+            <div className="flex flex-wrap items-center gap-3 text-xs rounded-lg border bg-muted/30 px-3 py-2">
+              <span className="text-muted-foreground">Fontes:</span>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                <input type="checkbox" checked={showVdesk} onChange={(e) => setShowVdesk(e.target.checked)} className="h-3.5 w-3.5 accent-emerald-500" />
                 <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
-                <strong className="text-emerald-700 dark:text-emerald-400">VDESK</strong> — apontamento automático (fonte confiável)
-              </span>
-              <span className="text-muted-foreground/40">·</span>
-              <span className="inline-flex items-center gap-1.5">
+                <strong className="text-emerald-700 dark:text-emerald-400">Vdesk</strong>
+              </label>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                <input type="checkbox" checked={showDevops} onChange={(e) => setShowDevops(e.target.checked)} className="h-3.5 w-3.5 accent-blue-500" />
                 <span className="h-2 w-2 rounded-full bg-blue-400 inline-block" />
-                <strong className="text-blue-600 dark:text-blue-400">DevOps</strong> — lançamento manual (referência)
-              </span>
+                <strong className="text-blue-600 dark:text-blue-400">Devops</strong>
+              </label>
               {fab.vdeskMatchRate !== null && (
                 <Badge variant="outline" className="ml-auto text-xs">
-                  Cobertura VDESK/DevOps ≈ {fab.vdeskMatchRate}%
+                  Cobertura Vdesk/Devops ≈ {fab.vdeskMatchRate}%
                 </Badge>
               )}
             </div>
 
-            {/* KPIs — VDESK primary when available, else DevOps */}
-            {fab.hasVdeskData ? (
-              <>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <HeroKpiCard label="Horas VDESK" value={Math.round(fab.totalVdeskHours)} suffix="h" icon={Timer} isLoading={fab.isLoading || fab.vdeskIsLoading} accent="bg-emerald-500" />
-                  <HeroKpiCard label="Dias úteis VDESK (≈)" value={fab.totalVdeskHours > 0 ? Math.round(fab.totalVdeskHours / 8) : 0} suffix="d" icon={Clock} isLoading={fab.isLoading || fab.vdeskIsLoading} accent="bg-emerald-500" />
-                  <HeroKpiCard label="Colaboradores (VDESK)" value={fab.horasVdeskPorColaborador.length} icon={Users} isLoading={fab.isLoading || fab.vdeskIsLoading} accent="bg-emerald-500" />
-                  <HeroKpiCard label="Produtos (VDESK)" value={fab.horasVdeskPorProduto.length} icon={Package} isLoading={fab.isLoading || fab.vdeskIsLoading} accent="bg-emerald-500" />
-                </div>
-                {/* DevOps compact reference row */}
-                <div className="rounded-lg border border-blue-200/50 bg-blue-50/30 dark:bg-blue-950/10 px-4 py-3">
-                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-2">DevOps — Lançamento Manual (referência)</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div><span className="text-muted-foreground">Total: </span><span className="font-semibold">{Math.round(fab.totalHoursLogged)}h</span></div>
-                    <div><span className="text-muted-foreground">Dias: </span><span className="font-semibold">{fab.totalHoursLogged > 0 ? Math.round(fab.totalHoursLogged / 8) : 0}d</span></div>
-                    <div><span className="text-muted-foreground">Colaboradores: </span><span className="font-semibold">{fab.horasPorColaborador.length}</span></div>
-                    <div><span className="text-muted-foreground">Produtos: </span><span className="font-semibold">{fab.horasPorProduto.length}</span></div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <HeroKpiCard label="Total horas" value={Math.round(fab.totalHoursLogged)} suffix="h" icon={Timer} isLoading={fab.isLoading} />
-                <HeroKpiCard label="Dias úteis (≈)" value={fab.totalHoursLogged > 0 ? Math.round(fab.totalHoursLogged / 8) : 0} suffix="d" icon={Clock} isLoading={fab.isLoading} accent="bg-[hsl(var(--info))]" />
-                <HeroKpiCard label="Colaboradores" value={fab.horasPorColaborador.length} icon={Users} isLoading={fab.isLoading} accent="bg-[hsl(142,71%,45%)]" />
-                <HeroKpiCard label="Produtos" value={fab.horasPorProduto.length} icon={Package} isLoading={fab.isLoading} accent="bg-[hsl(43,85%,46%)]" />
-              </div>
-            )}
+            {/* KPIs — consolidados conforme filtro de fonte */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <HeroKpiCard
+                label="Horas"
+                value={Math.round(consolidatedKpis.totalHours)}
+                suffix="h"
+                icon={Timer}
+                isLoading={fab.isLoading || fab.vdeskIsLoading}
+                accent={showVdesk && fab.hasVdeskData ? 'bg-emerald-500' : 'bg-blue-500'}
+              />
+              <HeroKpiCard
+                label="Dias úteis (≈)"
+                value={consolidatedKpis.totalHours > 0 ? Math.round(consolidatedKpis.totalHours / 8) : 0}
+                suffix="d"
+                icon={Clock}
+                isLoading={fab.isLoading || fab.vdeskIsLoading}
+                accent={showVdesk && fab.hasVdeskData ? 'bg-emerald-500' : 'bg-blue-500'}
+              />
+              <HeroKpiCard
+                label="Colaboradores"
+                value={consolidatedKpis.collaboratorCount}
+                icon={Users}
+                isLoading={fab.isLoading || fab.vdeskIsLoading}
+                accent={showVdesk && fab.hasVdeskData ? 'bg-emerald-500' : 'bg-blue-500'}
+              />
+              <HeroKpiCard
+                label="Produtos"
+                value={consolidatedKpis.productCount}
+                icon={Package}
+                isLoading={fab.isLoading || fab.vdeskIsLoading}
+                accent={showVdesk && fab.hasVdeskData ? 'bg-emerald-500' : 'bg-blue-500'}
+              />
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <HoursRankingCard
@@ -1488,59 +1538,45 @@ export default function FabricaDashboard() {
               />
             </div>
 
-            {/* VDESK collaborator chart — primary when available */}
-            {fab.hasVdeskData && fab.horasVdeskPorColaborador.length > 0 && (
-              <Card className="animate-fade-in border-l-4 border-l-emerald-500" style={{ animationDelay: '600ms' }}>
+            {/* Merged collaborator chart — Vdesk + Devops */}
+            {mergedCollaboradores.length > 0 && (showVdesk || showDevops) && (
+              <Card className="animate-fade-in border-l-4 border-l-primary" style={{ animationDelay: '600ms' }}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-emerald-600" />Horas por Colaborador — VDESK
-                    <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-500/30 bg-emerald-500/5">Automático</Badge>
+                    <BarChart3 className="h-4 w-4 text-primary" />
+                    Horas por Colaborador
+                    <div className="flex items-center gap-3 ml-auto text-xs font-normal">
+                      {showVdesk && (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="h-2 w-2 rounded-sm bg-emerald-500 inline-block" />
+                          <span className="text-emerald-700 dark:text-emerald-400">Vdesk</span>
+                        </span>
+                      )}
+                      {showDevops && (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="h-2 w-2 rounded-sm bg-blue-400 inline-block" />
+                          <span className="text-blue-600 dark:text-blue-400">Devops</span>
+                        </span>
+                      )}
+                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={Math.max(200, fab.horasVdeskPorColaborador.length * 36)}>
-                    <BarChart data={fab.horasVdeskPorColaborador.slice(0, 12)} layout="vertical" margin={{ left: 0, right: 16 }}>
+                  <ResponsiveContainer width="100%" height={Math.max(220, mergedCollaboradores.length * 36)}>
+                    <BarChart data={mergedCollaboradores.slice(0, 12)} layout="vertical" margin={{ left: 0, right: 16 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                       <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" unit="h" />
                       <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
                       <RechartsTooltip
                         contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                        formatter={(value: number) => [`${value}h`, 'Horas VDESK']}
+                        formatter={(value: number, name: string) => [`${value}h`, name === 'vdesk' ? 'Vdesk' : 'Devops']}
                       />
-                      <Bar dataKey="hours" fill="hsl(142,71%,45%)" radius={[0, 6, 6, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* DevOps collaborator chart */}
-            {fab.horasPorColaborador.length > 0 && (
-              <Card
-                className={`animate-fade-in border-l-4 ${fab.hasVdeskData ? 'border-l-blue-400' : 'border-l-primary'}`}
-                style={{ animationDelay: fab.hasVdeskData ? '700ms' : '600ms' }}
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <BarChart3 className={`h-4 w-4 ${fab.hasVdeskData ? 'text-blue-500' : 'text-primary'}`} />
-                    Horas por Colaborador — DevOps{fab.hasVdeskData ? ' (referência manual)' : ''}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={Math.max(200, fab.horasPorColaborador.length * 36)}>
-                    <BarChart data={fab.horasPorColaborador.slice(0, 12)} layout="vertical" margin={{ left: 0, right: 16 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                      <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" unit="h" />
-                      <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={130} />
-                      <RechartsTooltip
-                        contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                        formatter={(value: number) => [`${value}h`, 'Horas']}
-                      />
-                      <Bar
-                        dataKey="hours"
-                        fill={fab.hasVdeskData ? 'hsl(210,90%,60%)' : 'hsl(var(--primary))'}
-                        radius={[0, 6, 6, 0]}
-                      />
+                      {showVdesk && (
+                        <Bar dataKey="vdesk" stackId="horas" fill="hsl(142,71%,45%)" radius={showDevops ? [0, 0, 0, 0] : [0, 6, 6, 0]} />
+                      )}
+                      {showDevops && (
+                        <Bar dataKey="devops" stackId="horas" fill="hsl(210,90%,60%)" radius={[0, 6, 6, 0]} />
+                      )}
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -1560,8 +1596,8 @@ export default function FabricaDashboard() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { key: 'match',       label: 'Sincronizados',   color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800' },
-                    { key: 'only_vdesk',  label: 'Só no VDESK',     color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' },
-                    { key: 'only_devops', label: 'Só no DevOps',    color: 'text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800' },
+                    { key: 'only_vdesk',  label: 'Vdesk',           color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' },
+                    { key: 'only_devops', label: 'Devops',          color: 'text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800' },
                     { key: 'divergent',   label: 'Divergentes',     color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800' },
                   ].map(({ key, label, color }) => (
                     <div key={key} className={`rounded-lg border p-3 text-center ${color}`}>
@@ -1595,7 +1631,7 @@ export default function FabricaDashboard() {
                             divergent: 'bg-red-500/10 text-red-700 border-red-500/30',
                           };
                           const statusLabels: Record<string, string> = {
-                            match: 'OK', only_vdesk: 'Só VDESK', only_devops: 'Só DevOps', divergent: 'Divergente',
+                            match: 'OK', only_vdesk: 'Vdesk', only_devops: 'Devops', divergent: 'Divergente',
                           };
                           const h = (m: number) => m >= 60 ? `${Math.floor(m/60)}h${m%60>0?` ${m%60}m`:''}` : `${m}m`;
                           return (
@@ -1632,22 +1668,25 @@ export default function FabricaDashboard() {
               </CardContent>
             </Card>
 
-            {/* ── Admin: Sync manual + Post to DevOps ──────────────────────── */}
+            {/* ── Admin: Nivelamento Horas Vdesk → Devops (colapsável) ───── */}
             {isAdmin && (
-              <div className="space-y-4">
-                <VdeskSyncPanel />
-                <Card className="border-orange-400/20 bg-orange-500/5">
-                  <CardHeader className="pb-2 pt-4">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <SendHorizonal className="h-4 w-4 text-orange-500" />
-                      Enfileirar Horas VDESK → DevOps
-                    </CardTitle>
-                  </CardHeader>
+              <Card className="border-orange-400/20 bg-orange-500/5">
+                <CardHeader
+                  className="pb-2 pt-4 cursor-pointer select-none"
+                  onClick={() => setNivelamentoOpen(o => !o)}
+                >
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <SendHorizonal className="h-4 w-4 text-orange-500" />
+                    Nivelamento Horas Vdesk → Devops
+                    <ChevronRight className={`h-4 w-4 ml-auto text-muted-foreground transition-transform ${nivelamentoOpen ? 'rotate-90' : ''}`} />
+                  </CardTitle>
+                </CardHeader>
+                {nivelamentoOpen && (
                   <CardContent>
                     <PostarParaDevOps vdeskLogs={fab.scopedVdeskLogs} />
                   </CardContent>
-                </Card>
-              </div>
+                )}
+              </Card>
             )}
           </TabsContent>
 
