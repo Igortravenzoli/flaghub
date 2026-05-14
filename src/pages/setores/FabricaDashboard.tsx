@@ -8,6 +8,7 @@ import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_C
 import { useTimelogUnificado } from '@/hooks/useTimelogUnificado';
 import { useAuth } from '@/hooks/useAuth';
 import { useHubIsAdmin } from '@/hooks/useHubPermissions';
+import { useHubAreas } from '@/hooks/useHubAreas';
 import { PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
@@ -327,6 +328,10 @@ export default function FabricaDashboard() {
   const { isAdmin: isAuthAdmin } = useAuth();
   const isHubAdmin = useHubIsAdmin();
   const isAdmin = isAuthAdmin || isHubAdmin;
+  const { isOwner } = useHubAreas();
+  const isFabricaOwner = isOwner('fabrica');
+  // Owners do setor tambem podem nivelar/gerenciar timelog
+  const canManageTimelog = isAdmin || isFabricaOwner;
 
   const reconFilters = useMemo(() => ({
     dateFrom: effectiveRange?.from?.toISOString?.()?.slice(0, 10) ?? undefined,
@@ -336,26 +341,54 @@ export default function FabricaDashboard() {
 
   const { data: reconRows = [], isLoading: reconLoading } = useTimelogUnificado(reconFilters);
 
-  // per-task aggregated map: status is RECOMPUTED from summed minutes (the
-  // view's per-day status doesn't represent the whole task)
+  // per-task aggregated map: seeded with ALL Tasks do setor (mesmo sem apontamento)
+  // e enriquecido com vdesk/devops minutos. status recomputado a partir dos totais.
+  type ReconEntry = {
+    title: string;
+    state: string | null;
+    assignedTo: string | null;
+    url: string | null;
+    status: 'match' | 'only_vdesk' | 'only_devops' | 'divergent' | 'no_log';
+    vdeskMin: number;
+    devopsMin: number;
+  };
   const reconTaskMap = useMemo(() => {
-    const m = new Map<number, { title: string; status: string; vdeskMin: number; devopsMin: number }>();
+    const m = new Map<number, ReconEntry>();
+    // 1) Seed com TODAS as tasks do setor (Tasks apenas — PBIs/Bugs nao tem apontamento)
+    for (const it of fab.allItems) {
+      if (!it.id) continue;
+      if (it.work_item_type && it.work_item_type !== 'Task') continue;
+      m.set(it.id, {
+        title: it.title ?? `#${it.id}`,
+        state: it.state,
+        assignedTo: it.assigned_to_display,
+        url: it.web_url,
+        status: 'no_log',
+        vdeskMin: 0,
+        devopsMin: 0,
+      });
+    }
+    // 2) Somar minutos das linhas da view (recon)
     for (const r of reconRows) {
-      if (!m.has(r.task_id)) {
-        m.set(r.task_id, {
+      let entry = m.get(r.task_id);
+      if (!entry) {
+        entry = {
           title: r.work_item_title ?? `#${r.task_id}`,
-          status: 'match', // recomputed below
+          state: r.work_item_state ?? null,
+          assignedTo: null,
+          url: r.work_item_url ?? null,
+          status: 'no_log',
           vdeskMin: 0,
           devopsMin: 0,
-        });
+        };
+        m.set(r.task_id, entry);
       }
-      const entry = m.get(r.task_id)!;
       entry.vdeskMin  += r.minutes_vdesk  ?? 0;
       entry.devopsMin += r.minutes_devops ?? 0;
     }
-    // Recompute aggregate status (tolerance = max(15min, 5%))
+    // 3) Recomputa status (tolerancia = max(15min, 5%))
     for (const e of m.values()) {
-      if (e.vdeskMin === 0 && e.devopsMin === 0) { e.status = 'match'; continue; }
+      if (e.vdeskMin === 0 && e.devopsMin === 0) { e.status = 'no_log'; continue; }
       if (e.vdeskMin === 0) { e.status = 'only_devops'; continue; }
       if (e.devopsMin === 0) { e.status = 'only_vdesk'; continue; }
       const gap = Math.abs(e.vdeskMin - e.devopsMin);
@@ -363,15 +396,22 @@ export default function FabricaDashboard() {
       e.status = gap <= tol ? 'match' : 'divergent';
     }
     return m;
-  }, [reconRows]);
+  }, [reconRows, fab.allItems]);
 
   const reconStatusCounts = useMemo(() => {
-    const counts: Record<string, number> = { match: 0, only_vdesk: 0, only_devops: 0, divergent: 0 };
+    const counts: Record<string, number> = { match: 0, only_vdesk: 0, only_devops: 0, divergent: 0, no_log: 0 };
     for (const v of reconTaskMap.values()) {
       counts[v.status] = (counts[v.status] ?? 0) + 1;
     }
     return counts;
   }, [reconTaskMap]);
+
+  const [reconFilter, setReconFilter] = useState<'all' | ReconEntry['status']>('all');
+  const filteredReconEntries = useMemo(() => {
+    const arr = Array.from(reconTaskMap.entries());
+    if (reconFilter === 'all') return arr;
+    return arr.filter(([, v]) => v.status === reconFilter);
+  }, [reconTaskMap, reconFilter]);
 
   // ── Timelog tab: source filters + merged data ────────────────────────────
   const [showVdesk, setShowVdesk] = useState(true);
@@ -1493,27 +1533,42 @@ export default function FabricaDashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                     {[
-                      { key: 'match',       label: 'Sincronizados', color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800' },
-                      { key: 'only_vdesk',  label: 'Vdesk',         color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' },
-                      { key: 'only_devops', label: 'Devops',        color: 'text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800' },
-                      { key: 'divergent',   label: 'Divergentes',   color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800' },
-                    ].map(({ key, label, color }) => (
-                      <div key={key} className={`rounded-lg border p-2 text-center ${color}`}>
-                        <div className="text-xl font-bold leading-none">{reconStatusCounts[key] ?? 0}</div>
-                        <div className="text-[10px] font-medium mt-1">{label}</div>
-                      </div>
-                    ))}
+                      { key: 'all',         label: 'Todas',           color: 'text-foreground bg-muted/50 border-border' },
+                      { key: 'match',       label: 'Sincronizados',   color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800' },
+                      { key: 'only_vdesk',  label: 'Só Vdesk',        color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' },
+                      { key: 'divergent',   label: 'Divergentes',     color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800' },
+                      { key: 'no_log',      label: 'Sem apontamento', color: 'text-slate-600 bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-700' },
+                    ].map(({ key, label, color }) => {
+                      const isActive = reconFilter === key;
+                      const count = key === 'all'
+                        ? reconTaskMap.size
+                        : (reconStatusCounts[key] ?? 0);
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setReconFilter(key as typeof reconFilter)}
+                          className={`rounded-lg border p-2 text-center transition hover:brightness-95 ${color} ${isActive ? 'ring-2 ring-offset-1 ring-primary' : ''}`}
+                          title={isActive ? 'Clique novamente em Todas para limpar o filtro' : `Filtrar por: ${label}`}
+                        >
+                          <div className="text-xl font-bold leading-none">{count}</div>
+                          <div className="text-[10px] font-medium mt-1">{label}</div>
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  {reconRows.length > 0 && (
+                  {filteredReconEntries.length > 0 && (
                     <div className="overflow-x-auto max-h-[260px] overflow-y-auto border rounded-md">
                       <table className="w-full text-xs">
                         <thead className="bg-muted sticky top-0">
                           <tr>
                             <th className="text-left px-2 py-1.5 font-medium">Task</th>
                             <th className="text-left px-2 py-1.5 font-medium">Título</th>
+                            <th className="text-left px-2 py-1.5 font-medium">Dono</th>
+                            <th className="text-left px-2 py-1.5 font-medium">Estado</th>
                             <th className="text-right px-2 py-1.5 font-medium">Vdesk</th>
                             <th className="text-right px-2 py-1.5 font-medium">Devops</th>
                             <th className="text-right px-2 py-1.5 font-medium">Gap</th>
@@ -1521,22 +1576,25 @@ export default function FabricaDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y">
-                          {Array.from(reconTaskMap.entries()).slice(0, 50).map(([taskId, entry]) => {
+                          {filteredReconEntries.slice(0, 100).map(([taskId, entry]) => {
                             const gapMin = entry.vdeskMin - entry.devopsMin;
                             const statusColors: Record<string, string> = {
                               match: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
                               only_vdesk: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
                               only_devops: 'bg-blue-500/10 text-blue-700 border-blue-500/30',
                               divergent: 'bg-red-500/10 text-red-700 border-red-500/30',
+                              no_log: 'bg-slate-400/10 text-slate-600 border-slate-400/30',
                             };
                             const statusLabels: Record<string, string> = {
-                              match: 'OK', only_vdesk: 'Vdesk', only_devops: 'Devops', divergent: 'Divergente',
+                              match: 'OK', only_vdesk: 'Vdesk', only_devops: 'Devops', divergent: 'Divergente', no_log: 'Sem apont.',
                             };
                             const h = (m: number) => m >= 60 ? `${Math.floor(m/60)}h${m%60>0?` ${m%60}m`:''}` : `${m}m`;
                             return (
                               <tr key={taskId} className="hover:bg-muted/30">
                                 <td className="px-2 py-1 font-mono">#{taskId}</td>
                                 <td className="px-2 py-1 max-w-[180px] truncate text-muted-foreground" title={entry.title}>{entry.title}</td>
+                                <td className="px-2 py-1 max-w-[110px] truncate" title={entry.assignedTo ?? ''}>{entry.assignedTo ?? <span className="text-muted-foreground">—</span>}</td>
+                                <td className="px-2 py-1">{entry.state ? <Badge variant="outline" className="text-[10px]">{entry.state}</Badge> : <span className="text-muted-foreground">—</span>}</td>
                                 <td className="px-2 py-1 text-right font-mono">{entry.vdeskMin > 0 ? h(entry.vdeskMin) : '—'}</td>
                                 <td className="px-2 py-1 text-right font-mono">{entry.devopsMin > 0 ? h(entry.devopsMin) : '—'}</td>
                                 <td className={`px-2 py-1 text-right font-mono ${gapMin > 30 ? 'text-red-600' : gapMin < -30 ? 'text-blue-600' : 'text-muted-foreground'}`}>
@@ -1552,16 +1610,16 @@ export default function FabricaDashboard() {
                           })}
                         </tbody>
                       </table>
-                      {reconTaskMap.size > 50 && (
+                      {filteredReconEntries.length > 100 && (
                         <p className="text-center text-xs text-muted-foreground py-2">
-                          +{reconTaskMap.size - 50} tarefas — filtre por sprint para ver mais
+                          +{filteredReconEntries.length - 100} tarefas — filtre por sprint ou status para refinar
                         </p>
                       )}
                     </div>
                   )}
-                  {reconRows.length === 0 && !reconLoading && (
+                  {filteredReconEntries.length === 0 && !reconLoading && (
                     <p className="text-xs text-muted-foreground text-center py-4">
-                      Sem dados para o período seleccionado.
+                      {reconFilter === 'all' ? 'Sem tarefas para o período seleccionado.' : 'Nenhuma tarefa neste status.'}
                     </p>
                   )}
                 </CardContent>
@@ -1615,9 +1673,8 @@ export default function FabricaDashboard() {
               </Card>
             </div>
 
-            {/* ── Admin: Nivelamento Horas Vdesk → Devops (colapsável) ───── */}
-            {isAdmin && (
-              <Card className="border-orange-400/20 bg-orange-500/5">
+            {/* ── Nivelamento Horas Vdesk → Devops (admin OU owner do setor) ── */}
+            {canManageTimelog && (              <Card className="border-orange-400/20 bg-orange-500/5">
                 <CardHeader
                   className="pb-2 pt-4 cursor-pointer select-none"
                   onClick={() => setNivelamentoOpen(o => !o)}

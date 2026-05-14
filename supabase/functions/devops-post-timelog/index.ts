@@ -66,7 +66,16 @@ async function assertAdmin(caller: string, sb: ReturnType<typeof getSupabaseAdmi
     .eq('user_id', caller)
     .eq('role', 'admin')
     .maybeSingle()
-  return !!r2
+  if (r2) return true
+  // Owner da area 'fabrica' tambem pode operar nivelamento de timelog
+  const { data: r3 } = await sb
+    .from('hub_area_members')
+    .select('area_role, hub_areas!inner(key)')
+    .eq('user_id', caller)
+    .eq('area_role', 'owner')
+    .eq('hub_areas.key', 'fabrica')
+    .maybeSingle()
+  return !!r3
 }
 
 // ── DevOps API helpers ────────────────────────────────────────────────────────
@@ -392,7 +401,7 @@ serve(async (req) => {
     const sb = getSupabaseAdmin()
     const isAdmin = await assertAdmin(caller, sb)
     if (!isAdmin) {
-      return new Response(JSON.stringify({ error: 'Permissão negada: apenas admins.' }), { status: 403, headers })
+      return new Response(JSON.stringify({ error: 'Permissão negada: apenas admins ou owner da Fábrica.' }), { status: 403, headers })
     }
 
     // ── PAT ─────────────────────────────────────────────────────────────────
