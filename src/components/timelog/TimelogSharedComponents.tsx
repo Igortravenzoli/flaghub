@@ -297,7 +297,7 @@ function useEmailMap() {
   }, [mapRows]);
 }
 
-export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) {
+export function PostarParaDevOps({ vdeskLogs, taskScopeIds }: { vdeskLogs: VdeskLogEntry[]; taskScopeIds?: number[] }) {
   const { data: queueRows = [], isLoading: queueLoading } = useTimelogQueue();
   const queuePost    = useTimelogQueuePost();
   const approve      = useTimelogQueueApprove();
@@ -312,12 +312,29 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
   } | null>(null);
   const [inspectResult, setInspectResult] = useState<string | null>(null);
 
+  const scopedTaskIdSet = useMemo(() => {
+    if (taskScopeIds && taskScopeIds.length > 0) return new Set(taskScopeIds);
+    return new Set(vdeskLogs.map((log) => log.task_devops));
+  }, [taskScopeIds, vdeskLogs]);
+
+  const scopedVdeskLogIdSet = useMemo(
+    () => new Set(vdeskLogs.map((log) => log.id)),
+    [vdeskLogs]
+  );
+
+  // Restrict queue stats/actions to the current sector/sprint scope.
+  const scopedQueueRows = useMemo(() => {
+    return queueRows.filter((q) => (
+      scopedVdeskLogIdSet.has(q.vdesk_log_id) || scopedTaskIdSet.has(q.task_devops)
+    ));
+  }, [queueRows, scopedVdeskLogIdSet, scopedTaskIdSet]);
+
   // Map vdesk_log_id → queue row for fast lookup
   const queueByLogId = useMemo(() => {
     const m = new Map<string, TimelogQueueRow>();
-    for (const q of queueRows) m.set(q.vdesk_log_id, q);
+    for (const q of scopedQueueRows) m.set(q.vdesk_log_id, q);
     return m;
-  }, [queueRows]);
+  }, [scopedQueueRows]);
 
   const handleQueue = (log: VdeskLogEntry) => {
     const email = emailMap.get(log.usuario_vdesk.toLowerCase()) ?? undefined;
@@ -331,10 +348,10 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
     <p className="text-xs text-muted-foreground text-center py-4">Sem entradas VDESK para o período.</p>
   );
 
-  const approvedCount = queueRows.filter(q => q.status === 'approved').length;
-  const pendingCount  = queueRows.filter(q => q.status === 'pending').length;
-  const postedCount   = queueRows.filter(q => q.status === 'posted').length;
-  const errorCount    = queueRows.filter(q => q.status === 'error').length;
+  const approvedCount = scopedQueueRows.filter(q => q.status === 'approved').length;
+  const pendingCount  = scopedQueueRows.filter(q => q.status === 'pending').length;
+  const postedCount   = scopedQueueRows.filter(q => q.status === 'posted').length;
+  const errorCount    = scopedQueueRows.filter(q => q.status === 'error').length;
 
   const handleProbe = () => {
     setProbeResult(null);
@@ -353,7 +370,8 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
 
   const handleProcess = () => {
     setProcessResult(null);
-    processor.mutate({ mode: 'process', limit: 20 }, {
+    const taskIds = Array.from(scopedTaskIdSet);
+    processor.mutate({ mode: 'process', limit: 20, taskIds }, {
       onSuccess: (res) => {
         setProcessResult({
           processed: res.processed ?? 0,
@@ -381,7 +399,7 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
       <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
         {/* Queue stats */}
         <div className="flex flex-wrap gap-3 items-center">
-          <span className="text-xs font-medium text-muted-foreground">Fila:</span>
+          <span className="text-xs font-medium text-muted-foreground">Fila (escopo atual):</span>
           <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/30">
             {pendingCount} pendentes
           </Badge>
@@ -413,7 +431,7 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
 
           <Button size="sm"
             className="h-7 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-            disabled={processor.isPending || approvedCount === 0}
+            disabled={processor.isPending || approvedCount === 0 || scopedTaskIdSet.size === 0}
             onClick={handleProcess}>
             {processor.isPending
               ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />A processar…</>
@@ -425,7 +443,7 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
               className="h-7 text-xs gap-1.5 text-red-600 border-red-300 hover:bg-red-50"
               disabled={reset.isPending}
               onClick={() => {
-                const errorIds = queueRows.filter(q => q.status === 'error').map(q => q.id);
+                const errorIds = scopedQueueRows.filter(q => q.status === 'error').map(q => q.id);
                 Promise.all(errorIds.map(id => reset.mutateAsync(id)))
                   .then(() => toast.success(`${errorIds.length} entradas reposta para aprovação`))
                   .catch((e: any) => toast.error('Erro no reset', { description: e?.message }));
@@ -483,6 +501,9 @@ export function PostarParaDevOps({ vdeskLogs }: { vdeskLogs: VdeskLogEntry[] }) 
         <p className="text-[11px] text-muted-foreground">
           Use <strong>Testar Ligação</strong> primeiro para validar o PAT. Só entradas <em>aprovadas</em> são enviadas. Entradas com <code>dry_run=true</code> são marcadas como enviadas sem fazer chamada à API.
         </p>
+        {queueLoading && (
+          <p className="text-[11px] text-muted-foreground">A carregar estado da fila…</p>
+        )}
       </div>
 
       {/* ── Existing info banner ──────────────────────────────────────────── */}

@@ -33,7 +33,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import {
@@ -220,9 +219,11 @@ function SprintStatusCard({ total, inProgress, toDo, done, semTask, isLoading, f
   );
 }
 
-function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, delay = 0 }: {
+function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, delay = 0, onItemClick, activeItemName }: {
   title: string; icon: React.ComponentType<{ className?: string }>;
   data: TimelogAggregation[]; isLoading: boolean; emptyMessage: string; delay?: number;
+  onItemClick?: (item: TimelogAggregation) => void;
+  activeItemName?: string | null;
 }) {
   const maxHours = data.length > 0 ? data[0].hours : 1;
 
@@ -264,23 +265,32 @@ function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, de
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2.5">
-        {data.slice(0, 8).map((item, idx) => (
-          <div key={item.name} className="group animate-fade-in" style={{ animationDelay: `${idx * 50}ms` }}>
-            <div className="flex items-center justify-between text-sm mb-1">
-              <span className="text-foreground font-medium truncate max-w-[60%]">{item.name}</span>
-              <span className="text-muted-foreground font-mono text-xs">{item.hours}h</span>
-            </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-700 ease-out"
-                style={{
-                  width: `${Math.max(4, (item.hours / maxHours) * 100)}%`,
-                  background: CHART_COLORS[idx % CHART_COLORS.length],
-                }}
-              />
-            </div>
-          </div>
-        ))}
+        {data.slice(0, 8).map((item, idx) => {
+          const isActive = activeItemName === item.name;
+          return (
+            <button
+              key={item.name}
+              type="button"
+              className={`group animate-fade-in w-full text-left rounded-md px-1 py-1 transition-colors ${onItemClick ? 'cursor-pointer hover:bg-muted/50' : ''} ${isActive ? 'ring-1 ring-primary bg-muted/40' : ''}`}
+              style={{ animationDelay: `${idx * 50}ms` }}
+              onClick={() => onItemClick?.(item)}
+            >
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="text-foreground font-medium truncate max-w-[60%]">{item.name}</span>
+                <span className="text-muted-foreground font-mono text-xs">{item.hours}h</span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700 ease-out"
+                  style={{
+                    width: `${Math.max(4, (item.hours / maxHours) * 100)}%`,
+                    background: CHART_COLORS[idx % CHART_COLORS.length],
+                  }}
+                />
+              </div>
+            </button>
+          );
+        })}
         {data.length > 8 && (
           <p className="text-xs text-muted-foreground/60 text-center pt-1">
             +{data.length - 8} mais
@@ -292,15 +302,56 @@ function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, de
 }
 
 export default function FabricaDashboard() {
-  const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
+  const [sprintSelection, setSprintSelection] = useState<string[]>(['__pending__']);
+  const [sprintsOpen, setSprintsOpen] = useState(false);
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
-  const [excludedCollabs, setExcludedCollabs] = useState<Set<string>>(new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS));
+  const [excludedCollabs, setExcludedCollabs] = useState<Set<string>>(() => {
+    const fallback = new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS);
+    if (typeof window === 'undefined') return fallback;
+    try {
+      const raw = window.localStorage.getItem('fabrica.excluded-collabs.v1');
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return fallback;
+      return new Set(parsed.filter((v): v is string => typeof v === 'string'));
+    } catch {
+      return fallback;
+    }
+  });
   const [collaboratorsOpen, setCollaboratorsOpen] = useState(false);
-  const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
-  const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
+  const hasAllSprints = sprintSelection.includes('all');
+  const selectedSprintPaths = useMemo(
+    () => sprintSelection.filter((s) => s !== 'all' && s !== '__pending__'),
+    [sprintSelection]
+  );
+  const selectedSprintCodes = useMemo(
+    () => selectedSprintPaths.map((sp) => extractSprintCodeFromPath(sp)).filter((code): code is string => !!code),
+    [selectedSprintPaths]
+  );
+  const selectedSprintCode = selectedSprintCodes.length === 1 ? selectedSprintCodes[0] : null;
+  const sprintRange = useMemo(() => {
+    if (hasAllSprints || selectedSprintCodes.length === 0) return null;
+    const ranges = selectedSprintCodes
+      .map((code) => getOfficialSprintRange(code))
+      .filter((r): r is { from: Date; to: Date } => !!r);
+    if (ranges.length === 0) return null;
+    const from = new Date(Math.min(...ranges.map((r) => r.from.getTime())));
+    const to = new Date(Math.max(...ranges.map((r) => r.to.getTime())));
+    return { from, to };
+  }, [hasAllSprints, selectedSprintCodes]);
   const effectiveRange = customActive && customRange ? customRange : sprintRange;
-  const fab = useFabricaKpis(effectiveRange?.from, effectiveRange?.to, customActive ? 'all' : sprintFilter, undefined, excludedCollabs);
+  const sprintParamForKpis: string | string[] = customActive
+    ? 'all'
+    : hasAllSprints
+      ? 'all'
+      : selectedSprintPaths.length <= 1
+        ? (selectedSprintPaths[0] ?? 'all')
+        : selectedSprintPaths;
+  const sprintFilter = hasAllSprints || selectedSprintPaths.length !== 1
+    ? 'all'
+    : selectedSprintPaths[0];
+  const fab = useFabricaKpis(effectiveRange?.from, effectiveRange?.to, sprintParamForKpis, undefined, excludedCollabs);
   const operational = useDevopsOperationalQueue([
     '03-Em Fila Backlog para Priorizar',
     '05-Em Fila UX-UI',
@@ -321,7 +372,7 @@ export default function FabricaDashboard() {
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const PAGE_SIZE = 25;
 
-  const localFabItemIds = useMemo(() => fab.allItems.map(i => i.id).filter(Boolean) as number[], [fab.allItems]);
+  const localFabItemIds = useMemo(() => fab.allSprintItems.map(i => i.id).filter(Boolean) as number[], [fab.allSprintItems]);
   const { crossSectorResult } = useCrossSectorSearch(search, 'fabrica', localFabItemIds);
 
   // ── Admin & reconciliation ───────────────────────────────────────────────
@@ -355,7 +406,7 @@ export default function FabricaDashboard() {
   const reconTaskMap = useMemo(() => {
     const m = new Map<number, ReconEntry>();
     // 1) Seed com TODAS as tasks do setor (Tasks apenas — PBIs/Bugs nao tem apontamento)
-    for (const it of fab.allItems) {
+    for (const it of fab.allSprintItems) {
       if (!it.id) continue;
       if (it.work_item_type && it.work_item_type !== 'Task') continue;
       m.set(it.id, {
@@ -396,27 +447,86 @@ export default function FabricaDashboard() {
       e.status = gap <= tol ? 'match' : 'divergent';
     }
     return m;
-  }, [reconRows, fab.allItems]);
+  }, [reconRows, fab.allSprintItems]);
+
+  const [reconFilter, setReconFilter] = useState<'all' | ReconEntry['status']>('all');
+  const [timelogDrilldown, setTimelogDrilldown] = useState<{ type: 'none' | 'fabrica' | 'collaborator'; key: string | null; taskIds: number[] }>({
+    type: 'none',
+    key: null,
+    taskIds: [],
+  });
+
+  const drilldownTaskIdSet = useMemo(() => {
+    if (timelogDrilldown.type === 'none') return null;
+    return new Set(timelogDrilldown.taskIds);
+  }, [timelogDrilldown]);
+
+  const reconEntriesScoped = useMemo(() => {
+    const arr = Array.from(reconTaskMap.entries());
+    if (!drilldownTaskIdSet) return arr;
+    return arr.filter(([taskId]) => drilldownTaskIdSet.has(taskId));
+  }, [reconTaskMap, drilldownTaskIdSet]);
 
   const reconStatusCounts = useMemo(() => {
     const counts: Record<string, number> = { match: 0, only_vdesk: 0, only_devops: 0, divergent: 0, no_log: 0 };
-    for (const v of reconTaskMap.values()) {
+    for (const [, v] of reconEntriesScoped) {
       counts[v.status] = (counts[v.status] ?? 0) + 1;
     }
     return counts;
-  }, [reconTaskMap]);
+  }, [reconEntriesScoped]);
 
-  const [reconFilter, setReconFilter] = useState<'all' | ReconEntry['status']>('all');
   const filteredReconEntries = useMemo(() => {
-    const arr = Array.from(reconTaskMap.entries());
+    const arr = reconEntriesScoped;
     if (reconFilter === 'all') return arr;
     return arr.filter(([, v]) => v.status === reconFilter);
-  }, [reconTaskMap, reconFilter]);
+  }, [reconEntriesScoped, reconFilter]);
 
   // ── Timelog tab: source filters + merged data ────────────────────────────
   const [showVdesk, setShowVdesk] = useState(true);
   const [showDevops, setShowDevops] = useState(true);
   const [nivelamentoOpen, setNivelamentoOpen] = useState(false);
+
+  const collaboratorTaskScopeMap = useMemo(() => {
+    const map = new Map<string, Set<number>>();
+    const add = (name: string, ids: number[]) => {
+      const set = map.get(name) ?? new Set<number>();
+      for (const id of ids) set.add(id);
+      map.set(name, set);
+    };
+    if (showDevops) {
+      for (const [name, ids] of Object.entries(fab.collaboratorTaskIdsDevops || {})) {
+        add(name, ids);
+      }
+    }
+    if (showVdesk) {
+      for (const [name, ids] of Object.entries(fab.collaboratorTaskIdsVdesk || {})) {
+        add(name, ids);
+      }
+    }
+    return map;
+  }, [fab.collaboratorTaskIdsDevops, fab.collaboratorTaskIdsVdesk, showDevops, showVdesk]);
+
+  const fabricaTaskScopeMap = useMemo(() => {
+    const map = new Map<string, number[]>();
+    for (const row of fab.horasPorFabricaScope || []) {
+      map.set(row.displayName, row.taskIds);
+    }
+    return map;
+  }, [fab.horasPorFabricaScope]);
+
+  const horasPorFabricaData = useMemo(
+    () => (fab.horasPorFabricaScope || []).map((row) => ({
+      name: row.displayName,
+      hours: row.hours,
+      minutes: row.minutes,
+    })),
+    [fab.horasPorFabricaScope]
+  );
+
+  const timelogScopeTaskIds = useMemo(
+    () => reconEntriesScoped.map(([taskId]) => taskId),
+    [reconEntriesScoped]
+  );
 
   // Merge VDESK + DevOps collaborators by canonical name
   const mergedCollaboradores = useMemo(() => {
@@ -449,20 +559,30 @@ export default function FabricaDashboard() {
   );
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('fabrica.excluded-collabs.v1', JSON.stringify(Array.from(excludedCollabs)));
+  }, [excludedCollabs]);
+
+  useEffect(() => {
     if (fab.sortedSprints.length === 0) return;
-    if (sprintFilter === '__pending__') {
+    if (sprintSelection.includes('__pending__')) {
       const officialCurrentCode = getCurrentOfficialSprintCode();
       const currentSprintPath = fab.sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
-      setSprintFilter(currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]);
+      setSprintSelection([currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]]);
       return;
     }
-    if (sprintFilter === 'all') return;
-    if (!fab.sortedSprints.includes(sprintFilter)) {
+    if (hasAllSprints) return;
+    const cleaned = selectedSprintPaths.filter((sp) => fab.sortedSprints.includes(sp));
+    if (cleaned.length === 0) {
       const officialCurrentCode = getCurrentOfficialSprintCode();
       const currentSprintPath = fab.sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
-      setSprintFilter(currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]);
+      setSprintSelection([currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]]);
+      return;
     }
-  }, [fab.sortedSprints, sprintFilter]);
+    if (cleaned.length !== selectedSprintPaths.length) {
+      setSprintSelection(cleaned);
+    }
+  }, [fab.sortedSprints, sprintSelection, selectedSprintPaths, hasAllSprints]);
 
   // Auto-switch sprint when searching for a task ID that exists in a different sprint
   useEffect(() => {
@@ -476,17 +596,21 @@ export default function FabricaDashboard() {
     if (!searchId) return;
 
     // Check if item exists in current sprint filter
-    const inCurrent = sprintFilter === 'all' || fab.items.some(i => i.id === searchId && i.iteration_path === sprintFilter);
+    const inCurrent = sprintFilter === 'all' || selectedSprintPaths.some((sp) => fab.items.some(i => i.id === searchId && i.iteration_path === sp));
     if (inCurrent) return;
 
     // Find the item across ALL items
     const match = fab.allItems.find(i => i.id === searchId);
     if (match?.iteration_path && fab.sortedSprints.includes(match.iteration_path)) {
       setSearchAutoSwitched(match.iteration_path);
-      setSprintFilter(match.iteration_path);
+      setSprintSelection((prev) => {
+        if (prev.includes('all')) return prev;
+        const base = prev.filter((v) => v !== '__pending__');
+        return base.includes(match.iteration_path!) ? base : [...base, match.iteration_path!];
+      });
       setPage(0);
     }
-  }, [search, fab.allItems, fab.items, fab.sortedSprints, sprintFilter, searchAutoSwitched]);
+  }, [search, fab.allItems, fab.items, fab.sortedSprints, sprintFilter, searchAutoSwitched, selectedSprintPaths]);
 
   const colabChartData = useMemo(() =>
     Object.entries(fab.porColaborador)
@@ -500,6 +624,23 @@ export default function FabricaDashboard() {
     () => fab.allCollaborators.filter((name) => !isCollaboratorExcluded(name, excludedCollabs)).length,
     [fab.allCollaborators, excludedCollabs]
   );
+
+  const selectedSprintsCount = hasAllSprints ? fab.sortedSprints.length : selectedSprintPaths.length;
+
+  const setSprintIncluded = useCallback((sprintPath: string, include: boolean) => {
+    setSprintSelection((prev) => {
+      const base = prev.filter((v) => v !== '__pending__' && v !== 'all');
+      const next = new Set(base);
+      if (include) next.add(sprintPath);
+      else next.delete(sprintPath);
+
+      if (next.size === 0) return ['all'];
+      return Array.from(next);
+    });
+    setCustomActive(false);
+    setFabKpiFilter('all');
+    setPage(0);
+  }, []);
 
   const setCollaboratorIncluded = useCallback((name: string, include: boolean) => {
     const normalized = normalizeCollaboratorName(name);
@@ -517,6 +658,20 @@ export default function FabricaDashboard() {
       return next;
     });
   }, []);
+
+  const markAllCollaborators = useCallback(() => {
+    setExcludedCollabs(new Set());
+  }, []);
+
+  const unmarkAllCollaborators = useCallback(() => {
+    const allExcluded = new Set<string>();
+    for (const name of fab.allCollaborators) {
+      for (const key of getCollaboratorExclusionKeys(name)) {
+        allExcluded.add(key);
+      }
+    }
+    setExcludedCollabs(allExcluded);
+  }, [fab.allCollaborators]);
 
   const TYPE_COLORS: Record<string, string> = {
     'PBI': 'hsl(var(--primary))',
@@ -940,17 +1095,63 @@ export default function FabricaDashboard() {
 
       <div className="flex flex-wrap items-center gap-3">
         {fab.sortedSprints.length > 0 && (
-          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setCustomActive(false); setFabKpiFilter('all'); setPage(0); }}>
-            <SelectTrigger className="w-[200px] h-8 text-xs">
-              <SelectValue placeholder="Sprint" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as Sprints</SelectItem>
-              {[...fab.sortedSprints].reverse().map(sp => (
-                <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={sprintsOpen} onOpenChange={setSprintsOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="gap-1 h-8 px-3 text-xs">
+                <GitMerge className="h-3.5 w-3.5" />
+                Sprints ({selectedSprintsCount}/{fab.sortedSprints.length})
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 p-2" align="start">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Sprints no escopo</p>
+              <ScrollArea className="h-[280px]">
+                <div className="space-y-1">
+                  {[...fab.sortedSprints].reverse().map((sp) => {
+                    const isChecked = hasAllSprints || selectedSprintPaths.includes(sp);
+                    return (
+                      <label key={sp} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(checked) => setSprintIncluded(sp, checked === true)}
+                        />
+                        <span className="truncate">{sp.split('\\').pop()}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              <div className="border-t mt-2 pt-2 flex gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs flex-1 h-7"
+                  onClick={() => {
+                    setSprintSelection(['all']);
+                    setCustomActive(false);
+                    setFabKpiFilter('all');
+                    setPage(0);
+                  }}
+                >
+                  Marcar todos
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs flex-1 h-7"
+                  onClick={() => {
+                    const officialCurrentCode = getCurrentOfficialSprintCode();
+                    const currentSprintPath = fab.sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+                    setSprintSelection([currentSprintPath || fab.sortedSprints[fab.sortedSprints.length - 1]]);
+                    setCustomActive(false);
+                    setFabKpiFilter('all');
+                    setPage(0);
+                  }}
+                >
+                  Sprint atual
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
         {/* Collaborator multi-select filter */}
         {fab.allCollaborators.length > 0 && (
@@ -982,8 +1183,11 @@ export default function FabricaDashboard() {
                 </div>
               </ScrollArea>
               <div className="border-t mt-2 pt-2 flex gap-1">
-                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setExcludedCollabs(new Set())}>
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={markAllCollaborators}>
                   Marcar todos
+                </Button>
+                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={unmarkAllCollaborators}>
+                  Desmarcar todos
                 </Button>
                 <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setExcludedCollabs(new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS))}>
                   Padrão
@@ -1497,22 +1701,25 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Horas (TimeLog) ═══════ */}
           <TabsContent value="timelog" className="space-y-5 mt-0">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <HoursRankingCard
-                title={fab.hasVdeskData ? 'Horas por Produto (VDESK)' : 'Horas por Produto'}
-                icon={Package}
-                data={fab.hasVdeskData ? fab.horasVdeskPorProduto : fab.horasPorProduto}
-                isLoading={fab.isLoading || fab.vdeskIsLoading}
-                emptyMessage="Nenhum produto identificado"
-                delay={400}
-              />
+            <div className="grid grid-cols-1 gap-4">
               <HoursRankingCard
                 title="Horas por Fábrica (DevOps)"
                 icon={Building2}
-                data={fab.horasPorFabrica}
+                data={horasPorFabricaData}
                 isLoading={fab.isLoading}
                 emptyMessage="Nenhuma fábrica identificada"
                 delay={500}
+                activeItemName={timelogDrilldown.type === 'fabrica' ? timelogDrilldown.key : null}
+                onItemClick={(item) => {
+                  const taskIds = fabricaTaskScopeMap.get(item.name) || [];
+                  setTimelogDrilldown((prev) => {
+                    if (prev.type === 'fabrica' && prev.key === item.name) {
+                      return { type: 'none', key: null, taskIds: [] };
+                    }
+                    return { type: 'fabrica', key: item.name, taskIds };
+                  });
+                  setReconFilter('all');
+                }}
               />
             </div>
 
@@ -1533,6 +1740,24 @@ export default function FabricaDashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {timelogDrilldown.type !== 'none' && (
+                    <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                      <Badge variant="outline" className="text-[10px]">
+                        {timelogDrilldown.type === 'fabrica' ? 'Filtro por Fábrica' : 'Filtro por Colaborador'}
+                      </Badge>
+                      <span className="truncate text-muted-foreground">{timelogDrilldown.key}</span>
+                      <span className="ml-auto text-muted-foreground">{timelogDrilldown.taskIds.length} tasks</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px]"
+                        onClick={() => setTimelogDrilldown({ type: 'none', key: null, taskIds: [] })}
+                      >
+                        Limpar
+                      </Button>
+                    </div>
+                  )}
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                     {[
                       { key: 'all',         label: 'Todas',           color: 'text-foreground bg-muted/50 border-border' },
@@ -1543,7 +1768,7 @@ export default function FabricaDashboard() {
                     ].map(({ key, label, color }) => {
                       const isActive = reconFilter === key;
                       const count = key === 'all'
-                        ? reconTaskMap.size
+                        ? reconEntriesScoped.length
                         : (reconStatusCounts[key] ?? 0);
                       return (
                         <button
@@ -1591,7 +1816,21 @@ export default function FabricaDashboard() {
                             const h = (m: number) => m >= 60 ? `${Math.floor(m/60)}h${m%60>0?` ${m%60}m`:''}` : `${m}m`;
                             return (
                               <tr key={taskId} className="hover:bg-muted/30">
-                                <td className="px-2 py-1 font-mono">#{taskId}</td>
+                                <td className="px-2 py-1 font-mono">
+                                  {entry.url ? (
+                                    <a
+                                      href={entry.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                                    >
+                                      #{taskId}
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  ) : (
+                                    <>#{taskId}</>
+                                  )}
+                                </td>
                                 <td className="px-2 py-1 max-w-[180px] truncate text-muted-foreground" title={entry.title}>{entry.title}</td>
                                 <td className="px-2 py-1 max-w-[110px] truncate" title={entry.assignedTo ?? ''}>{entry.assignedTo ?? <span className="text-muted-foreground">—</span>}</td>
                                 <td className="px-2 py-1">{entry.state ? <Badge variant="outline" className="text-[10px]">{entry.state}</Badge> : <span className="text-muted-foreground">—</span>}</td>
@@ -1652,7 +1891,7 @@ export default function FabricaDashboard() {
                     </p>
                   ) : (
                     <ResponsiveContainer width="100%" height={Math.min(320, Math.max(180, mergedCollaboradores.slice(0, 8).length * 32))}>
-                      <BarChart data={mergedCollaboradores.slice(0, 8)} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 0 }}>
+                      <BarChart data={mergedCollaboradores.slice(0, 8)} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 0 }} style={{ cursor: 'pointer' }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                         <XAxis type="number" fontSize={10} stroke="hsl(var(--muted-foreground))" unit="h" />
                         <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={110} />
@@ -1661,10 +1900,44 @@ export default function FabricaDashboard() {
                           formatter={(value: number, name: string) => [`${value}h`, name === 'vdesk' ? 'Vdesk' : 'Devops']}
                         />
                         {showVdesk && (
-                          <Bar dataKey="vdesk" stackId="horas" fill="hsl(142,71%,45%)" radius={showDevops ? [0, 0, 0, 0] : [0, 4, 4, 0]} />
+                          <Bar
+                            dataKey="vdesk"
+                            stackId="horas"
+                            fill="hsl(142,71%,45%)"
+                            radius={showDevops ? [0, 0, 0, 0] : [0, 4, 4, 0]}
+                            onClick={(payload: unknown) => {
+                              const data = payload as { name?: string };
+                              if (!data?.name) return;
+                              const taskIds = collaboratorTaskScopeMap.get(data.name) ? Array.from(collaboratorTaskScopeMap.get(data.name)!) : [];
+                              setTimelogDrilldown((prev) => {
+                                if (prev.type === 'collaborator' && prev.key === data.name) {
+                                  return { type: 'none', key: null, taskIds: [] };
+                                }
+                                return { type: 'collaborator', key: data.name, taskIds };
+                              });
+                              setReconFilter('all');
+                            }}
+                          />
                         )}
                         {showDevops && (
-                          <Bar dataKey="devops" stackId="horas" fill="hsl(210,90%,60%)" radius={[0, 4, 4, 0]} />
+                          <Bar
+                            dataKey="devops"
+                            stackId="horas"
+                            fill="hsl(210,90%,60%)"
+                            radius={[0, 4, 4, 0]}
+                            onClick={(payload: unknown) => {
+                              const data = payload as { name?: string };
+                              if (!data?.name) return;
+                              const taskIds = collaboratorTaskScopeMap.get(data.name) ? Array.from(collaboratorTaskScopeMap.get(data.name)!) : [];
+                              setTimelogDrilldown((prev) => {
+                                if (prev.type === 'collaborator' && prev.key === data.name) {
+                                  return { type: 'none', key: null, taskIds: [] };
+                                }
+                                return { type: 'collaborator', key: data.name, taskIds };
+                              });
+                              setReconFilter('all');
+                            }}
+                          />
                         )}
                       </BarChart>
                     </ResponsiveContainer>
@@ -1687,7 +1960,7 @@ export default function FabricaDashboard() {
                 </CardHeader>
                 {nivelamentoOpen && (
                   <CardContent>
-                    <PostarParaDevOps vdeskLogs={fab.scopedVdeskLogs} />
+                    <PostarParaDevOps vdeskLogs={fab.scopedVdeskLogs} taskScopeIds={timelogScopeTaskIds} />
                   </CardContent>
                 )}
               </Card>

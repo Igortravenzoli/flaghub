@@ -22,6 +22,7 @@ export interface TimelogQueueRow {
   vdesk_user_name: string;
   notes: string | null;
   status: QueueStatus;
+  error_message: string | null;
   created_at: string;
   updated_at: string;
 }

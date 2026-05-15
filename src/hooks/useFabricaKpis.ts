@@ -64,6 +64,14 @@ export interface TimelogAggregation {
   minutes: number;
 }
 
+export interface TimelogFabricaScope {
+  key: string;
+  displayName: string;
+  taskIds: number[];
+  hours: number;
+  minutes: number;
+}
+
 interface UseFabricaKpisOptions {
   includeTimeLogs?: boolean;
   includeWorkItemMeta?: boolean;
@@ -143,7 +151,7 @@ export function isCollaboratorExcluded(name: string | null | undefined, excluded
 export function useFabricaKpis(
   dateFrom?: Date,
   dateTo?: Date,
-  sprintFilter: string = 'all',
+  sprintFilter: string | string[] = 'all',
   options?: UseFabricaKpisOptions,
   excludedCollaborators?: Set<string>,
 ) {
@@ -268,12 +276,19 @@ export function useFabricaKpis(
     ? nonInfraItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
     : nonInfraItems;
 
-  const effectiveSprintFilter = sprintFilter === '__pending__' ? 'all' : sprintFilter;
+  const effectiveSprintFilter = Array.isArray(sprintFilter)
+    ? sprintFilter.filter(Boolean)
+    : (sprintFilter === '__pending__' ? 'all' : sprintFilter);
 
   // Sprint is the primary filter. In custom mode (all sprints), date range scopes work items.
-  const items = effectiveSprintFilter === 'all'
-    ? dateScopedItems
-    : nonInfraItems.filter(i => i.iteration_path === effectiveSprintFilter);
+  const items = (() => {
+    if (effectiveSprintFilter === 'all') return dateScopedItems;
+    if (Array.isArray(effectiveSprintFilter)) {
+      const sprintSet = new Set(effectiveSprintFilter);
+      return nonInfraItems.filter(i => !!i.iteration_path && sprintSet.has(i.iteration_path));
+    }
+    return nonInfraItems.filter(i => i.iteration_path === effectiveSprintFilter);
+  })();
 
   const isExcluded = (name: string | null | undefined): boolean => isCollaboratorExcluded(name, excludedCollaborators);
 
@@ -371,6 +386,27 @@ export function useFabricaKpis(
       .sort((a, b) => b.hours - a.hours);
   })();
 
+  const collaboratorTaskIdsDevops: Record<string, number[]> = (() => {
+    const byName = new Map<string, Set<number>>();
+    const collabMap = collabMapQuery.data || new Map<string, string>();
+    for (const tl of scopedTimeLogs) {
+      if (!tl.work_item_id) continue;
+      const rawName = tl.user_name || 'Desconhecido';
+      if (isExcluded(rawName)) continue;
+      const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
+      const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
+      const label = canonical || rawName;
+      const set = byName.get(label) ?? new Set<number>();
+      set.add(tl.work_item_id);
+      byName.set(label, set);
+    }
+    const out: Record<string, number[]> = {};
+    for (const [label, ids] of byName.entries()) {
+      out[label] = Array.from(ids);
+    }
+    return out;
+  })();
+
   // Hours by product
   const horasPorProduto: TimelogAggregation[] = (() => {
     if (!hasTimeLogs) return [];
@@ -410,6 +446,30 @@ export function useFabricaKpis(
       .sort((a, b) => b.hours - a.hours);
   })();
 
+  const horasPorFabricaScope: TimelogFabricaScope[] = (() => {
+    if (!hasTimeLogs) return [];
+    const minutesByKey = new Map<string, number>();
+    const taskIdsByKey = new Map<string, Set<number>>();
+    for (const tl of scopedTimeLogs) {
+      if (!tl.work_item_id) continue;
+      const epic = findEpic(tl.work_item_id);
+      const key = epic?.title || 'Sem Epic';
+      minutesByKey.set(key, (minutesByKey.get(key) || 0) + (tl.time_minutes || 0));
+      const ids = taskIdsByKey.get(key) ?? new Set<number>();
+      ids.add(tl.work_item_id);
+      taskIdsByKey.set(key, ids);
+    }
+    return Array.from(minutesByKey.entries())
+      .map(([key, minutes]) => ({
+        key,
+        displayName: `${key} ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
+        taskIds: Array.from(taskIdsByKey.get(key) || []),
+        hours: Math.round(minutes / 60 * 10) / 10,
+        minutes,
+      }))
+      .sort((a, b) => b.hours - a.hours);
+  })();
+
   // ── VDESK aggregations (automatic, more reliable source) ──
   const vdeskLogs = vdeskLogsQuery.data || [];
   const scopedVdeskLogs = vdeskLogs.filter((vl) => {
@@ -440,6 +500,26 @@ export function useFabricaKpis(
         minutes: Math.round(seconds / 60),
       }))
       .sort((a, b) => b.hours - a.hours);
+  })();
+
+  const collaboratorTaskIdsVdesk: Record<string, number[]> = (() => {
+    const byName = new Map<string, Set<number>>();
+    const collabMap = collabMapQuery.data || new Map<string, string>();
+    for (const vl of scopedVdeskLogs) {
+      const rawName = vl.usuario_vdesk || 'Desconhecido';
+      if (isExcluded(rawName)) continue;
+      const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
+      const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
+      const label = canonical || rawName;
+      const set = byName.get(label) ?? new Set<number>();
+      set.add(vl.task_devops);
+      byName.set(label, set);
+    }
+    const out: Record<string, number[]> = {};
+    for (const [label, ids] of byName.entries()) {
+      out[label] = Array.from(ids);
+    }
+    return out;
   })();
 
   const horasVdeskPorProduto: TimelogAggregation[] = (() => {
@@ -636,6 +716,9 @@ export function useFabricaKpis(
     horasPorColaborador,
     horasPorProduto,
     horasPorFabrica,
+    horasPorFabricaScope,
+    collaboratorTaskIdsDevops,
+    collaboratorTaskIdsVdesk,
     // VDESK aggregations (automatic — more reliable)
     hasVdeskData,
     totalVdeskHours,
