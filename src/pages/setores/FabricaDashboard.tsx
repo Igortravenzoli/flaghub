@@ -419,6 +419,17 @@ export default function FabricaDashboard() {
   const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
+  const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
+
+  const toggleBlockCollapse = (blockKey: string) => {
+    setCollapsedBlocks(prev => {
+      const next = new Set(prev);
+      if (next.has(blockKey)) next.delete(blockKey);
+      else next.add(blockKey);
+      return next;
+    });
+  };
+
   const PAGE_SIZE = 25;
 
   const localFabItemIds = useMemo(() => fab.allSprintItems.map(i => i.id).filter(Boolean) as number[], [fab.allSprintItems]);
