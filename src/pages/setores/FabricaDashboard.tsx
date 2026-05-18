@@ -77,6 +77,15 @@ const stateColors = STATE_COLORS;
 
 const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
 
+function formatHoursFromMinutes(minutes: number): number {
+  return Math.round((minutes / 60) * 10) / 10;
+}
+
+function formatMinutesAsHoursLabel(minutes: number): string {
+  const hours = formatHoursFromMinutes(minutes);
+  return `${hours.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}h`;
+}
+
 function AnimatedNumber({ value, suffix = '' }: { value: number | null; suffix?: string }) {
   if (value == null) return <span className="text-sm font-normal text-muted-foreground">Sem dados</span>;
   return <span>{value}{suffix}</span>;
@@ -403,12 +412,35 @@ export default function FabricaDashboard() {
     vdeskMin: number;
     devopsMin: number;
   };
+  const [reconFilter, setReconFilter] = useState<'all' | ReconEntry['status']>('all');
+  const [timelogDrilldown, setTimelogDrilldown] = useState<{ type: 'none' | 'fabrica' | 'collaborator'; key: string | null; taskIds: number[]; userCanonical: string | null }>({
+    type: 'none',
+    key: null,
+    taskIds: [],
+    userCanonical: null,
+  });
+
+  const drilldownTaskIdSet = useMemo(() => {
+    if (timelogDrilldown.type === 'none') return null;
+    return new Set(timelogDrilldown.taskIds);
+  }, [timelogDrilldown]);
+
+  const scopedReconRows = useMemo(() => {
+    const rows = timelogDrilldown.type === 'collaborator' && timelogDrilldown.userCanonical
+      ? reconRows.filter((row) => row.user_canonical === timelogDrilldown.userCanonical)
+      : reconRows;
+
+    if (!drilldownTaskIdSet) return rows;
+    return rows.filter((row) => drilldownTaskIdSet.has(row.task_id));
+  }, [reconRows, drilldownTaskIdSet, timelogDrilldown.type, timelogDrilldown.userCanonical]);
+
   const reconTaskMap = useMemo(() => {
     const m = new Map<number, ReconEntry>();
-    // 1) Seed com TODAS as tasks do setor (Tasks apenas — PBIs/Bugs nao tem apontamento)
+    // 1) Seed com as tasks do setor dentro do recorte atual.
     for (const it of fab.allSprintItems) {
       if (!it.id) continue;
       if (it.work_item_type && it.work_item_type !== 'Task') continue;
+      if (drilldownTaskIdSet && !drilldownTaskIdSet.has(it.id)) continue;
       m.set(it.id, {
         title: it.title ?? `#${it.id}`,
         state: it.state,
@@ -420,7 +452,7 @@ export default function FabricaDashboard() {
       });
     }
     // 2) Somar minutos das linhas da view (recon)
-    for (const r of reconRows) {
+    for (const r of scopedReconRows) {
       let entry = m.get(r.task_id);
       if (!entry) {
         entry = {
@@ -434,7 +466,7 @@ export default function FabricaDashboard() {
         };
         m.set(r.task_id, entry);
       }
-      entry.vdeskMin  += r.minutes_vdesk  ?? 0;
+      entry.vdeskMin += r.minutes_vdesk ?? 0;
       entry.devopsMin += r.minutes_devops ?? 0;
     }
     // 3) Recomputa status (tolerancia = max(15min, 5%))
@@ -447,25 +479,11 @@ export default function FabricaDashboard() {
       e.status = gap <= tol ? 'match' : 'divergent';
     }
     return m;
-  }, [reconRows, fab.allSprintItems]);
-
-  const [reconFilter, setReconFilter] = useState<'all' | ReconEntry['status']>('all');
-  const [timelogDrilldown, setTimelogDrilldown] = useState<{ type: 'none' | 'fabrica' | 'collaborator'; key: string | null; taskIds: number[] }>({
-    type: 'none',
-    key: null,
-    taskIds: [],
-  });
-
-  const drilldownTaskIdSet = useMemo(() => {
-    if (timelogDrilldown.type === 'none') return null;
-    return new Set(timelogDrilldown.taskIds);
-  }, [timelogDrilldown]);
+  }, [scopedReconRows, fab.allSprintItems, drilldownTaskIdSet]);
 
   const reconEntriesScoped = useMemo(() => {
-    const arr = Array.from(reconTaskMap.entries());
-    if (!drilldownTaskIdSet) return arr;
-    return arr.filter(([taskId]) => drilldownTaskIdSet.has(taskId));
-  }, [reconTaskMap, drilldownTaskIdSet]);
+    return Array.from(reconTaskMap.entries());
+  }, [reconTaskMap]);
 
   const reconStatusCounts = useMemo(() => {
     const counts: Record<string, number> = { match: 0, only_vdesk: 0, only_devops: 0, divergent: 0, no_log: 0 };
@@ -527,6 +545,62 @@ export default function FabricaDashboard() {
     () => reconEntriesScoped.map(([taskId]) => taskId),
     [reconEntriesScoped]
   );
+
+  const timelogExportMetaByTask = useMemo(() => {
+    const map = new Map<number, {
+      users: Set<string>;
+      firstLogDate: string | null;
+      lastLogDate: string | null;
+      sampleOs: Set<string>;
+    }>();
+
+    for (const row of scopedReconRows) {
+      const entry = map.get(row.task_id) ?? {
+        users: new Set<string>(),
+        firstLogDate: null,
+        lastLogDate: null,
+        sampleOs: new Set<string>(),
+      };
+
+      if (row.user_canonical) entry.users.add(row.user_canonical);
+      if (row.num_os_sample) entry.sampleOs.add(row.num_os_sample);
+      if (!entry.firstLogDate || row.log_date < entry.firstLogDate) entry.firstLogDate = row.log_date;
+      if (!entry.lastLogDate || row.log_date > entry.lastLogDate) entry.lastLogDate = row.log_date;
+      map.set(row.task_id, entry);
+    }
+
+    return map;
+  }, [scopedReconRows]);
+
+  const timelogExportRows = useMemo(() => {
+    return filteredReconEntries.map(([taskId, entry]) => {
+      const meta = timelogExportMetaByTask.get(taskId);
+      return {
+        task_id: taskId,
+        titulo: entry.title,
+        estado: entry.state ?? '',
+        responsavel: entry.assignedTo ?? '',
+        usuarios_apontamento: meta ? Array.from(meta.users).join(' | ') : '',
+        primeira_data_log: meta?.firstLogDate ?? '',
+        ultima_data_log: meta?.lastLogDate ?? '',
+        os_amostra: meta ? Array.from(meta.sampleOs).join(' | ') : '',
+        horas_devops: formatHoursFromMinutes(entry.devopsMin),
+        horas_vdesk: formatHoursFromMinutes(entry.vdeskMin),
+        gap_horas: formatHoursFromMinutes(Math.abs(entry.vdeskMin - entry.devopsMin)),
+        gap_direcao: entry.vdeskMin === entry.devopsMin ? 'OK' : entry.vdeskMin > entry.devopsMin ? 'Vdesk > DevOps' : 'DevOps > Vdesk',
+        status_reconciliacao: entry.status,
+      };
+    });
+  }, [filteredReconEntries, timelogExportMetaByTask]);
+
+  const timelogTotals = useMemo(() => {
+    return filteredReconEntries.reduce((acc, [, entry]) => {
+      acc.devopsMinutes += entry.devopsMin;
+      acc.vdeskMinutes += entry.vdeskMin;
+      acc.gapMinutes += Math.abs(entry.vdeskMin - entry.devopsMin);
+      return acc;
+    }, { devopsMinutes: 0, vdeskMinutes: 0, gapMinutes: 0 });
+  }, [filteredReconEntries]);
 
   // Merge VDESK + DevOps collaborators by canonical name
   const mergedCollaboradores = useMemo(() => {
@@ -751,6 +825,22 @@ export default function FabricaDashboard() {
     }).length;
   }, [sprintFilteredItems, fab.tagsByWorkItemId]);
 
+  const sprintDetailedStatuses = useMemo(() => {
+    const statusDefinitions = [
+      { label: 'Aguardando Deploy', states: ['Aguardando Deploy'] },
+      { label: 'Aguardando Teste', states: ['Aguardando Teste'] },
+      { label: 'Done', states: ['Done'] },
+      { label: 'Em Desenvolvimento', states: ['Em desenvolvimento', 'Em Desenvolvimento'] },
+      { label: 'Em Teste', states: ['Em Teste'] },
+      { label: 'New', states: ['New'] },
+    ];
+
+    return statusDefinitions.map((definition) => ({
+      ...definition,
+      count: sprintFilteredItems.filter((item) => definition.states.includes(item.state || '')).length,
+    }));
+  }, [sprintFilteredItems]);
+
   const pbiHealthIds = useMemo(
     () => sprintFilteredItems
       .filter((i) => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || ''))
@@ -952,23 +1042,72 @@ export default function FabricaDashboard() {
     ? 'Custom'
     : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint');
 
-  const handleExportCSV = () => exportCSV({
-    title: 'Sprint Board', area: 'Fábrica', periodLabel,
-    columns: ['id', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path'],
-    rows: fab.items as any[],
-  });
+  const handleExportCSV = () => {
+    if (activeTab === 'timelog') {
+      exportCSV({
+        title: timelogDrilldown.type === 'collaborator' && timelogDrilldown.key
+          ? `TimeLog - ${timelogDrilldown.key}`
+          : 'TimeLog',
+        area: 'Fábrica',
+        periodLabel,
+        columns: ['task_id', 'titulo', 'estado', 'responsavel', 'usuarios_apontamento', 'primeira_data_log', 'ultima_data_log', 'os_amostra', 'horas_devops', 'horas_vdesk', 'gap_horas', 'gap_direcao', 'status_reconciliacao'],
+        rows: timelogExportRows,
+      });
+      return;
+    }
 
-  const handleExportPDF = () => exportPDF({
-    title: 'Dashboard Fábrica', area: 'Fábrica', periodLabel,
-    kpis: [
-      { label: 'Total', value: fab.total },
-      { label: 'Em Progresso', value: fab.inProgress },
-      { label: 'A Fazer', value: fab.toDo },
-      { label: 'Finalizados', value: fab.done },
-    ],
-    columns: ['id', 'title', 'assigned_to_display', 'state', 'priority'],
-    rows: fab.items as any[],
-  });
+    exportCSV({
+      title: 'Sprint Board', area: 'Fábrica', periodLabel,
+      columns: ['id', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path'],
+      rows: fab.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        assigned_to_display: item.assigned_to_display,
+        state: item.state,
+        priority: item.priority,
+        iteration_path: item.iteration_path,
+      })),
+    });
+  };
+
+  const handleExportPDF = () => {
+    if (activeTab === 'timelog') {
+      exportPDF({
+        title: timelogDrilldown.type === 'collaborator' && timelogDrilldown.key
+          ? `TimeLog - ${timelogDrilldown.key}`
+          : 'TimeLog',
+        area: 'Fábrica',
+        periodLabel,
+        kpis: [
+          { label: 'Tasks no escopo', value: timelogExportRows.length },
+          { label: 'Horas DevOps', value: formatMinutesAsHoursLabel(timelogTotals.devopsMinutes) },
+          { label: 'Horas Vdesk', value: formatMinutesAsHoursLabel(timelogTotals.vdeskMinutes) },
+          { label: 'Gap absoluto', value: formatMinutesAsHoursLabel(timelogTotals.gapMinutes) },
+        ],
+        columns: ['task_id', 'titulo', 'estado', 'responsavel', 'usuarios_apontamento', 'horas_devops', 'horas_vdesk', 'gap_horas', 'status_reconciliacao'],
+        rows: timelogExportRows,
+      });
+      return;
+    }
+
+    exportPDF({
+      title: 'Dashboard Fábrica', area: 'Fábrica', periodLabel,
+      kpis: [
+        { label: 'Total', value: fab.total },
+        { label: 'Em Progresso', value: fab.inProgress },
+        { label: 'A Fazer', value: fab.toDo },
+        { label: 'Finalizados', value: fab.done },
+      ],
+      columns: ['id', 'title', 'assigned_to_display', 'state', 'priority'],
+      rows: fab.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        assigned_to_display: item.assigned_to_display,
+        state: item.state,
+        priority: item.priority,
+      })),
+    });
+  };
 
   const drawerFields: DrawerField[] = drawerItem ? [
     { label: 'ID', value: drawerItem.id },
@@ -1304,6 +1443,23 @@ export default function FabricaDashboard() {
               toggleFab={toggleFab}
             />
 
+            <Card className="p-4">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <p className="text-xs font-medium text-muted-foreground">STATUS DETALHADOS</p>
+                <span className="text-[11px] text-muted-foreground">Estados exatos no escopo atual</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+                {sprintDetailedStatuses.map((status) => (
+                  <div key={status.label} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                    <Badge variant="outline" className={`mb-2 text-[10px] ${stateColors[status.states[0]] || ''}`}>
+                      {status.label}
+                    </Badge>
+                    <div className="text-xl font-semibold leading-none">{status.count}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
             {/* Performance + Riscos */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Performance */}
@@ -1454,7 +1610,7 @@ export default function FabricaDashboard() {
                           dataKey="count"
                           radius={[0, 6, 6, 0]}
                           cursor="pointer"
-                          onClick={(data: any) => {
+                          onClick={(data: { name?: string } | undefined) => {
                             if (data?.name) {
                               setCollaboratorFilter(prev => prev === data.name ? null : data.name);
                               setPage(0);
@@ -1714,9 +1870,9 @@ export default function FabricaDashboard() {
                   const taskIds = fabricaTaskScopeMap.get(item.name) || [];
                   setTimelogDrilldown((prev) => {
                     if (prev.type === 'fabrica' && prev.key === item.name) {
-                      return { type: 'none', key: null, taskIds: [] };
+                      return { type: 'none', key: null, taskIds: [], userCanonical: null };
                     }
-                    return { type: 'fabrica', key: item.name, taskIds };
+                    return { type: 'fabrica', key: item.name, taskIds, userCanonical: null };
                   });
                   setReconFilter('all');
                 }}
@@ -1752,11 +1908,16 @@ export default function FabricaDashboard() {
                         variant="ghost"
                         size="sm"
                         className="h-6 text-[10px]"
-                        onClick={() => setTimelogDrilldown({ type: 'none', key: null, taskIds: [] })}
+                        onClick={() => setTimelogDrilldown({ type: 'none', key: null, taskIds: [], userCanonical: null })}
                       >
                         Limpar
                       </Button>
                     </div>
+                  )}
+                  {timelogDrilldown.type === 'collaborator' && timelogDrilldown.userCanonical && (
+                    <p className="text-[11px] text-muted-foreground">
+                      A reconciliação e o export usam apenas os apontamentos do colaborador selecionado.
+                    </p>
                   )}
                   <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                     {[
@@ -1911,9 +2072,9 @@ export default function FabricaDashboard() {
                               const taskIds = collaboratorTaskScopeMap.get(data.name) ? Array.from(collaboratorTaskScopeMap.get(data.name)!) : [];
                               setTimelogDrilldown((prev) => {
                                 if (prev.type === 'collaborator' && prev.key === data.name) {
-                                  return { type: 'none', key: null, taskIds: [] };
+                                  return { type: 'none', key: null, taskIds: [], userCanonical: null };
                                 }
-                                return { type: 'collaborator', key: data.name, taskIds };
+                                return { type: 'collaborator', key: data.name, taskIds, userCanonical: data.name };
                               });
                               setReconFilter('all');
                             }}
@@ -1931,9 +2092,9 @@ export default function FabricaDashboard() {
                               const taskIds = collaboratorTaskScopeMap.get(data.name) ? Array.from(collaboratorTaskScopeMap.get(data.name)!) : [];
                               setTimelogDrilldown((prev) => {
                                 if (prev.type === 'collaborator' && prev.key === data.name) {
-                                  return { type: 'none', key: null, taskIds: [] };
+                                  return { type: 'none', key: null, taskIds: [], userCanonical: null };
                                 }
-                                return { type: 'collaborator', key: data.name, taskIds };
+                                return { type: 'collaborator', key: data.name, taskIds, userCanonical: data.name };
                               });
                               setReconFilter('all');
                             }}
