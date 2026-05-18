@@ -246,7 +246,7 @@ async function getVdeskToken(endpoint: { url: string; name: string }): Promise<s
   }
 }
 
-async function proxyToVdesk(endpoint: { url: string; name: string }, path: string, token: string): Promise<Response> {
+async function proxyToVdesk(endpoint: { url: string; name: string }, path: string, token: string, req: Request): Promise<Response> {
   const fullUrl = `${endpoint.url}${path}`
   
   console.log(`[VdeskProxy] Chamando ${endpoint.name}: ${path}`)
@@ -286,7 +286,7 @@ async function proxyToVdesk(endpoint: { url: string; name: string }, path: strin
   }
 }
 
-async function executeProxyWithRetry(path: string): Promise<Response> {
+async function executeProxyWithRetry(path: string, req: Request): Promise<Response> {
   let lastError: unknown = null
 
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -295,7 +295,7 @@ async function executeProxyWithRetry(path: string): Promise<Response> {
 
     try {
       const token = await getVdeskToken(endpoint)
-      return await proxyToVdesk(endpoint, path, token)
+      return await proxyToVdesk(endpoint, path, token, req)
     } catch (err: unknown) {
       lastError = err
       const msg = err instanceof Error ? err.message : String(err)
@@ -392,7 +392,7 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
         )
       }
-      return await executeProxyWithRetry(`/api/tickets-os/correlacao?ticketNestle=${encodeURIComponent(ticketNestle)}`)
+      return await executeProxyWithRetry(`/api/tickets-os/correlacao?ticketNestle=${encodeURIComponent(ticketNestle)}`, req)
     }
 
     // =========================================
@@ -545,7 +545,7 @@ serve(async (req) => {
         }
       }
       
-      return await executeProxyWithRetry(`/api/tickets-os/consultar?${params}`)
+      return await executeProxyWithRetry(`/api/tickets-os/consultar?${params}`, req)
     }
 
     return new Response(
