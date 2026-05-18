@@ -47,8 +47,10 @@ import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
 
-type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aviao' | 'sem_task';
+type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
+type DetailedStatusKey = 'aguardando_deploy' | 'aguardando_teste' | 'done' | 'em_desenvolvimento' | 'em_teste' | 'new' | 'aviao';
+type DetailedScopeMode = 'gestor' | 'tasks';
 
 const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
@@ -76,6 +78,43 @@ const typeLabels = TYPE_LABELS;
 const stateColors = STATE_COLORS;
 
 const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
+const TAG_AGUARDANDO_DEPLOY_REGEX = /(^|;)\s*(AGUARDANDO\s*DEPLOY|DEPLOY)\s*(;|$)/i;
+const TAG_AGUARDANDO_TESTE_REGEX = /(^|;)\s*(AGUARDANDO\s*TESTE|QA\s*PENDENTE)\s*(;|$)/i;
+const TAG_EM_TESTE_REGEX = /(^|;)\s*(EM\s*TESTE|TESTE|TESTING|IN\s*TEST)\s*(;|$)/i;
+const TAG_EM_DESENVOLVIMENTO_REGEX = /(^|;)\s*(EM\s*DESENVOLVIMENTO|DESENVOLVIMENTO|IN\s*PROGRESS|ACTIVE|DEV)\s*(;|$)/i;
+const TAG_DONE_REGEX = /(^|;)\s*(DONE|RESOLVED|CLOSED|FINALIZADO)\s*(;|$)/i;
+const TAG_NEW_REGEX = /(^|;)\s*(NEW|TODO|TO\s*DO|BACKLOG)\s*(;|$)/i;
+
+function getItemTags(item: FabricaItem, tagsByWorkItemId: Record<number, string>): string {
+  if (item.id && tagsByWorkItemId[item.id]) return tagsByWorkItemId[item.id];
+  return item.tags || '';
+}
+
+function isTaskLikeItem(item: FabricaItem): boolean {
+  return item.work_item_type === 'Task' || item.work_item_type === 'Bug';
+}
+
+function isTaskOnlyItem(item: FabricaItem): boolean {
+  return item.work_item_type === 'Task';
+}
+
+function isManagerLikeItem(item: FabricaItem): boolean {
+  return item.work_item_type === 'Product Backlog Item' || item.work_item_type === 'User Story' || item.work_item_type === 'Bug';
+}
+
+function getDetailedStatusKey(item: FabricaItem, tagsByWorkItemId: Record<number, string>): Exclude<DetailedStatusKey, 'aviao'> | null {
+  const state = (item.state || '').trim();
+  const tags = getItemTags(item, tagsByWorkItemId);
+
+  if (state === 'Aguardando Deploy' || TAG_AGUARDANDO_DEPLOY_REGEX.test(tags)) return 'aguardando_deploy';
+  if (state === 'Em Teste' || TAG_EM_TESTE_REGEX.test(tags)) return 'em_teste';
+  if (state === 'Aguardando Teste' || TAG_AGUARDANDO_TESTE_REGEX.test(tags)) return 'aguardando_teste';
+  if (DONE_STATES.has(state) || TAG_DONE_REGEX.test(tags)) return 'done';
+  if (FABRICA_IN_PROGRESS_STATES.has(state) || TAG_EM_DESENVOLVIMENTO_REGEX.test(tags)) return 'em_desenvolvimento';
+  if (state === 'New' || TAG_NEW_REGEX.test(tags)) return 'new';
+
+  return null;
+}
 
 function formatHoursFromMinutes(minutes: number): number {
   return Math.round((minutes / 60) * 10) / 10;
@@ -162,7 +201,7 @@ function SprintStatusCard({ total, inProgress, toDo, done, semTask, isLoading, f
     { key: 'in_progress', label: 'Em Progresso', value: inProgress, valueColor: 'text-[hsl(var(--info))]', dotColor: 'bg-[hsl(var(--info))]' },
     { key: 'todo',        label: 'A Fazer',      value: toDo,       valueColor: 'text-amber-600 dark:text-amber-400', dotColor: 'bg-amber-400' },
     { key: 'done',        label: 'Finalizados',  value: done,       valueColor: 'text-[hsl(var(--success))]', dotColor: 'bg-[hsl(var(--success))]' },
-    { key: 'sem_task',    label: 'Sem Task',     value: semTask,    valueColor: semTask > 0 ? 'text-destructive' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive' : 'bg-border' },
+    { key: 'sem_task',    label: 'PBI/BUG sem Task', value: semTask, valueColor: semTask > 0 ? 'text-destructive' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive' : 'bg-border' },
   ];
 
   if (isLoading) {
@@ -374,6 +413,7 @@ export default function FabricaDashboard() {
   const [searchAutoSwitched, setSearchAutoSwitched] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
+  const [detailedScopeMode, setDetailedScopeMode] = useState<DetailedScopeMode>('gestor');
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
@@ -412,7 +452,8 @@ export default function FabricaDashboard() {
     vdeskMin: number;
     devopsMin: number;
   };
-  const [reconFilter, setReconFilter] = useState<'all' | ReconEntry['status']>('all');
+  type ReconFilter = 'all' | ReconEntry['status'] | 'bo_sem_apontamento';
+  const [reconFilter, setReconFilter] = useState<ReconFilter>('all');
   const [timelogDrilldown, setTimelogDrilldown] = useState<{ type: 'none' | 'fabrica' | 'collaborator'; key: string | null; taskIds: number[]; userCanonical: string | null }>({
     type: 'none',
     key: null,
@@ -493,8 +534,15 @@ export default function FabricaDashboard() {
     return counts;
   }, [reconEntriesScoped]);
 
+  const boSemApontamentoCount = useMemo(() => {
+    return reconEntriesScoped.filter(([, entry]) => entry.status === 'no_log' && !isFabricaTodo(entry.state)).length;
+  }, [reconEntriesScoped]);
+
   const filteredReconEntries = useMemo(() => {
     const arr = reconEntriesScoped;
+    if (reconFilter === 'bo_sem_apontamento') {
+      return arr.filter(([, entry]) => entry.status === 'no_log' && !isFabricaTodo(entry.state));
+    }
     if (reconFilter === 'all') return arr;
     return arr.filter(([, v]) => v.status === reconFilter);
   }, [reconEntriesScoped, reconFilter]);
@@ -765,7 +813,7 @@ export default function FabricaDashboard() {
   const sprintFilteredItems = useMemo(() => fab.items, [fab.items]);
 
   const sprintKpiItems = useMemo(
-    () => sprintFilteredItems.filter((item) => item.count_in_kpi !== false),
+    () => sprintFilteredItems.filter((item) => item.count_in_kpi !== false && isManagerLikeItem(item)),
     [sprintFilteredItems]
   );
 
@@ -784,16 +832,24 @@ export default function FabricaDashboard() {
   const sprintDone = sprintKpiItems.filter(i => isDone(i.state)).length;
   const sprintAguardandoTeste = sprintFilteredItems.filter(i => i.state === 'Aguardando Teste').length;
 
-  // PBIs sem Task vinculada (anomalia)
+  const sprintTaskItems = useMemo(
+    () => sprintFilteredItems.filter((item) => isTaskOnlyItem(item)),
+    [sprintFilteredItems]
+  );
+
+  const sprintManagerItems = useMemo(
+    () => sprintFilteredItems.filter((item) => isManagerLikeItem(item)),
+    [sprintFilteredItems]
+  );
+
+  // Itens de gestor (PBI/BUG) sem Task vinculada (anomalia/BO)
   const sprintPbisSemTask = useMemo(() => {
     const childParentIds = new Set(
       sprintFilteredItems
         .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
         .map(i => i.parent_id!)
     );
-    return sprintFilteredItems.filter(
-      i => (i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story') && i.id != null && !childParentIds.has(i.id)
-    );
+    return sprintFilteredItems.filter((i) => isManagerLikeItem(i) && i.id != null && !childParentIds.has(i.id));
   }, [sprintFilteredItems]);
   const sprintPbisSemTaskCount = sprintPbisSemTask.length;
 
@@ -816,30 +872,42 @@ export default function FabricaDashboard() {
     : 0;
 
   const sprintAviaoCount = useMemo(() => {
-    return sprintFilteredItems.filter(i => {
+    const source = detailedScopeMode === 'gestor' ? sprintManagerItems : sprintTaskItems;
+    return source.filter(i => {
       if (!i.id) return false;
-      const isTrackedType = i.work_item_type === 'Task' || i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story';
-      if (!isTrackedType) return false;
-      const tags = fab.tagsByWorkItemId[i.id] || '';
+      const tags = getItemTags(i, fab.tagsByWorkItemId);
       return AVIAO_REGEX.test(tags);
     }).length;
-  }, [sprintFilteredItems, fab.tagsByWorkItemId]);
+  }, [detailedScopeMode, sprintManagerItems, sprintTaskItems, fab.tagsByWorkItemId]);
 
   const sprintDetailedStatuses = useMemo(() => {
-    const statusDefinitions = [
-      { label: 'Aguardando Deploy', states: ['Aguardando Deploy'] },
-      { label: 'Aguardando Teste', states: ['Aguardando Teste'] },
-      { label: 'Done', states: ['Done'] },
-      { label: 'Em Desenvolvimento', states: ['Em desenvolvimento', 'Em Desenvolvimento'] },
-      { label: 'Em Teste', states: ['Em Teste'] },
-      { label: 'New', states: ['New'] },
-    ];
+    const counts: Record<Exclude<DetailedStatusKey, 'aviao'>, number> = {
+      aguardando_deploy: 0,
+      aguardando_teste: 0,
+      done: 0,
+      em_desenvolvimento: 0,
+      em_teste: 0,
+      new: 0,
+    };
 
-    return statusDefinitions.map((definition) => ({
-      ...definition,
-      count: sprintFilteredItems.filter((item) => definition.states.includes(item.state || '')).length,
-    }));
-  }, [sprintFilteredItems]);
+    const source = detailedScopeMode === 'gestor' ? sprintManagerItems : sprintTaskItems;
+
+    for (const item of source) {
+      const key = getDetailedStatusKey(item, fab.tagsByWorkItemId);
+      if (!key) continue;
+      counts[key] += 1;
+    }
+
+    return [
+      { key: 'aguardando_deploy' as FabKpiFilter, label: 'Aguardando Deploy', stateColor: 'Aguardando Deploy', count: counts.aguardando_deploy },
+      { key: 'aguardando_teste' as FabKpiFilter, label: 'Aguardando Teste', stateColor: 'Aguardando Teste', count: counts.aguardando_teste },
+      { key: 'done' as FabKpiFilter, label: 'Done', stateColor: 'Done', count: counts.done },
+      { key: 'em_desenvolvimento' as FabKpiFilter, label: 'Em Desenvolvimento', stateColor: 'Em desenvolvimento', count: counts.em_desenvolvimento },
+      { key: 'em_teste' as FabKpiFilter, label: 'Em Teste', stateColor: 'Em Teste', count: counts.em_teste },
+      { key: 'new' as FabKpiFilter, label: 'New', stateColor: 'New', count: counts.new },
+      { key: 'aviao' as FabKpiFilter, label: 'Aviões na Sprint', stateColor: 'Active', count: sprintAviaoCount },
+    ];
+  }, [detailedScopeMode, sprintManagerItems, sprintTaskItems, fab.tagsByWorkItemId, sprintAviaoCount]);
 
   const pbiHealthIds = useMemo(
     () => sprintFilteredItems
@@ -907,14 +975,41 @@ export default function FabricaDashboard() {
 
   const filteredFabItems = useMemo(() => {
     let items = sprintFilteredItems;
+    const filterByDetailedStatus = (statusKey: Exclude<DetailedStatusKey, 'aviao'>) => {
+      if (detailedScopeMode === 'tasks') {
+        return sprintFilteredItems.filter((i) => isTaskOnlyItem(i) && getDetailedStatusKey(i, fab.tagsByWorkItemId) === statusKey);
+      }
+
+      const managerMatches = sprintFilteredItems.filter(
+        (i) => isManagerLikeItem(i) && getDetailedStatusKey(i, fab.tagsByWorkItemId) === statusKey
+      );
+      const managerIds = new Set(managerMatches.map((i) => i.id).filter((id): id is number => id != null));
+
+      return sprintFilteredItems.filter((i) => {
+        if (isManagerLikeItem(i)) {
+          return managerIds.has(i.id as number);
+        }
+        if (isTaskOnlyItem(i) && i.parent_id != null) {
+          return managerIds.has(i.parent_id);
+        }
+        return false;
+      });
+    };
+
     switch (fabKpiFilter) {
       case 'in_progress': items = items.filter(i => isFabricaInProgress(i.state)); break;
       case 'todo': items = items.filter(i => isFabricaTodo(i.state)); break;
       case 'done': items = items.filter(i => isDone(i.state)); break;
-      case 'aguardando_teste': items = items.filter(i => i.state === 'Aguardando Teste'); break;
+      case 'aguardando_teste': items = filterByDetailedStatus('aguardando_teste'); break;
+      case 'aguardando_deploy': items = filterByDetailedStatus('aguardando_deploy'); break;
+      case 'em_teste': items = filterByDetailedStatus('em_teste'); break;
+      case 'em_desenvolvimento': items = filterByDetailedStatus('em_desenvolvimento'); break;
+      case 'new': items = filterByDetailedStatus('new'); break;
       case 'aviao': items = items.filter(i => {
         if (!i.id) return false;
-        const tags = fab.tagsByWorkItemId[i.id] || '';
+        if (detailedScopeMode === 'tasks' && !isTaskOnlyItem(i)) return false;
+        if (detailedScopeMode === 'gestor' && !isManagerLikeItem(i)) return false;
+        const tags = getItemTags(i, fab.tagsByWorkItemId);
         return AVIAO_REGEX.test(tags);
       }); break;
       case 'sem_task': {
@@ -924,7 +1019,7 @@ export default function FabricaDashboard() {
             .map(i => i.parent_id!)
         );
         items = items.filter(
-          i => (i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story') && i.id != null && !childParentIds.has(i.id)
+          i => isManagerLikeItem(i) && i.id != null && !childParentIds.has(i.id)
         );
         break;
       }
@@ -943,7 +1038,7 @@ export default function FabricaDashboard() {
       });
     }
     return items;
-  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, typeFilter, collaboratorFilter]);
+  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, detailedScopeMode, typeFilter, collaboratorFilter]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
@@ -1177,8 +1272,12 @@ export default function FabricaDashboard() {
       case 'todo': return 'A Fazer';
       case 'done': return 'Finalizados';
       case 'aguardando_teste': return 'Aguardando Teste';
+      case 'aguardando_deploy': return 'Aguardando Deploy';
+      case 'em_teste': return 'Em Teste';
+      case 'em_desenvolvimento': return 'Em Desenvolvimento';
+      case 'new': return 'New';
       case 'aviao': return 'Avião';
-      case 'sem_task': return 'PBI sem Task';
+      case 'sem_task': return 'PBI/BUG sem Task';
     }
   };
 
@@ -1431,34 +1530,64 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
-            {/* Sprint Status consolidado */}
-            <SprintStatusCard
-              total={sprintTotal}
-              inProgress={sprintInProgress}
-              toDo={sprintToDo}
-              done={sprintDone}
-              semTask={sprintPbisSemTaskCount}
-              isLoading={fab.isLoading}
-              fabKpiFilter={fabKpiFilter}
-              toggleFab={toggleFab}
-            />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {/* Sprint Status consolidado */}
+              <SprintStatusCard
+                total={sprintTotal}
+                inProgress={sprintInProgress}
+                toDo={sprintToDo}
+                done={sprintDone}
+                semTask={sprintPbisSemTaskCount}
+                isLoading={fab.isLoading}
+                fabKpiFilter={fabKpiFilter}
+                toggleFab={toggleFab}
+              />
 
-            <Card className="p-4">
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <p className="text-xs font-medium text-muted-foreground">STATUS DETALHADOS</p>
-                <span className="text-[11px] text-muted-foreground">Estados exatos no escopo atual</span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-                {sprintDetailedStatuses.map((status) => (
-                  <div key={status.label} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                    <Badge variant="outline" className={`mb-2 text-[10px] ${stateColors[status.states[0]] || ''}`}>
-                      {status.label}
-                    </Badge>
-                    <div className="text-xl font-semibold leading-none">{status.count}</div>
+              <Card className="p-4">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <p className="text-xs font-medium text-muted-foreground">STATUS DETALHADOS</p>
+                  <div className="inline-flex rounded-md border border-border overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setDetailedScopeMode('gestor')}
+                      className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${detailedScopeMode === 'gestor' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                    >
+                      Gestor (PBI/BUG)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDetailedScopeMode('tasks')}
+                      className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${detailedScopeMode === 'tasks' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                    >
+                      Tasks
+                    </button>
                   </div>
-                ))}
-              </div>
-            </Card>
+                </div>
+                {detailedScopeMode === 'gestor' && (
+                  <p className="text-[11px] text-muted-foreground mb-2">
+                    Contagem primária em PBI/BUG com exploração das tasks filhas ao aplicar filtro.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {sprintDetailedStatuses.map((status) => {
+                    const isActive = fabKpiFilter === status.key;
+                    return (
+                      <button
+                        key={status.label}
+                        type="button"
+                        onClick={() => toggleFab(status.key)}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/40 ${isActive ? 'border-primary ring-1 ring-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}
+                      >
+                        <Badge variant="outline" className={`mb-2 text-[10px] ${stateColors[status.stateColor] || ''}`}>
+                          {status.label}
+                        </Badge>
+                        <div className="text-xl font-semibold leading-none">{status.count}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
 
             {/* Performance + Riscos */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1919,17 +2048,20 @@ export default function FabricaDashboard() {
                       A reconciliação e o export usam apenas os apontamentos do colaborador selecionado.
                     </p>
                   )}
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                     {[
                       { key: 'all',         label: 'Todas',           color: 'text-foreground bg-muted/50 border-border' },
                       { key: 'match',       label: 'Sincronizados',   color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800' },
                       { key: 'only_vdesk',  label: 'Só Vdesk',        color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' },
                       { key: 'divergent',   label: 'Divergentes',     color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800' },
                       { key: 'no_log',      label: 'Sem apontamento', color: 'text-slate-600 bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-700' },
+                      { key: 'bo_sem_apontamento', label: 'BO sem apont.', color: 'text-red-700 bg-red-50 border-red-200 dark:bg-red-950/40 dark:border-red-800' },
                     ].map(({ key, label, color }) => {
                       const isActive = reconFilter === key;
                       const count = key === 'all'
                         ? reconEntriesScoped.length
+                        : key === 'bo_sem_apontamento'
+                          ? boSemApontamentoCount
                         : (reconStatusCounts[key] ?? 0);
                       return (
                         <button
@@ -1945,6 +2077,9 @@ export default function FabricaDashboard() {
                       );
                     })}
                   </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Regra BO: task fora de To Do/New sem apontamento de horas.
+                  </p>
 
                   {filteredReconEntries.length > 0 && (
                     <div className="overflow-x-auto max-h-[260px] overflow-y-auto border rounded-md">
@@ -1964,6 +2099,7 @@ export default function FabricaDashboard() {
                         <tbody className="divide-y">
                           {filteredReconEntries.slice(0, 100).map(([taskId, entry]) => {
                             const gapMin = entry.vdeskMin - entry.devopsMin;
+                            const isBoSemApontamento = entry.status === 'no_log' && !isFabricaTodo(entry.state);
                             const statusColors: Record<string, string> = {
                               match: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
                               only_vdesk: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
@@ -2001,8 +2137,11 @@ export default function FabricaDashboard() {
                                   {gapMin === 0 ? <Minus className="h-3 w-3 inline" /> : (gapMin > 0 ? '+' : '') + h(Math.abs(gapMin))}
                                 </td>
                                 <td className="px-2 py-1 text-center">
-                                  <Badge variant="outline" className={`text-[10px] ${statusColors[entry.status] ?? ''}`}>
-                                    {statusLabels[entry.status] ?? entry.status}
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[10px] ${isBoSemApontamento ? 'bg-red-500/10 text-red-700 border-red-500/30' : (statusColors[entry.status] ?? '')}`}
+                                  >
+                                    {isBoSemApontamento ? 'BO sem apont.' : (statusLabels[entry.status] ?? entry.status)}
                                   </Badge>
                                 </td>
                               </tr>
