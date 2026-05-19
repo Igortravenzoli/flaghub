@@ -39,6 +39,7 @@ const JOB_SECTOR_MAP: Record<string, string> = {
 };
 
 const VDESK_MANUAL_KEY = 'manual-vdesk-sync';
+const QUALITY_WIQL_ID = '7b0a8298-5890-42d8-b280-1121b21786da';
 
 const INTERVAL_OPTIONS = [
   { value: '5', label: '5 min' },
@@ -68,6 +69,8 @@ const buildInvokeErrorMessage = (functionName: string, err: any) => {
   }
   return message;
 };
+
+const isInvokeSuccess = (data: any) => !!(data?.success || data?.ok);
 
 export default function SyncCentral() {
   const queryClient = useQueryClient();
@@ -171,6 +174,12 @@ export default function SyncCentral() {
     queryClient.invalidateQueries({ queryKey: ['timelog_sync_runs_central'] });
   };
 
+  const refreshSyncDataWithDelay = () => {
+    refreshSyncData();
+    setTimeout(refreshSyncData, 5000);
+    setTimeout(refreshSyncData, 15000);
+  };
+
   const invokeFunction = async (functionName: string, body?: unknown) => {
     const { data, error } = await supabase.functions.invoke(functionName, {
       body,
@@ -228,7 +237,7 @@ export default function SyncCentral() {
 
       if (error) throw error;
 
-      if (data?.success) {
+      if (isInvokeSuccess(data)) {
         toast.success(`Sync concluído: ${job.job_key}`, {
           description: data.items_upserted !== undefined
             ? `${data.items_upserted} itens atualizados`
@@ -247,7 +256,7 @@ export default function SyncCentral() {
         next.delete(job.id);
         return next;
       });
-      refreshSyncData();
+      refreshSyncDataWithDelay();
     }
   };
 
@@ -308,7 +317,7 @@ export default function SyncCentral() {
       toast.success('Sync VDESK iniciado em background', {
         description: `${vdeskFrom} -> ${vdeskTo}${data?.runId ? ` | run ${String(data.runId).slice(0, 8)}` : ''}`,
       });
-      refreshSyncData();
+      refreshSyncDataWithDelay();
     } catch (err: any) {
       toast.error('Erro ao iniciar sync VDESK', { description: buildInvokeErrorMessage('vdesk-sync-timelog', err) });
     } finally {
@@ -418,6 +427,7 @@ export default function SyncCentral() {
   };
 
   const lastVdeskRun = timelogRuns[0] ?? null;
+  const qualityQuery = devopsQueries.find((q: any) => q.wiql_id === QUALITY_WIQL_ID);
 
   const unifiedRuns = useMemo(() => {
     const centralRuns = runs.map((run: any) => ({
@@ -607,14 +617,29 @@ export default function SyncCentral() {
               const jobRuns = runs.filter((r: any) => r.job_id === job.id);
               const lastRun = jobRuns[0];
               const recentErrors = jobRuns.slice(0, 3).filter((r: any) => r.status === 'error').length;
-              const healthStatus = !lastRun
+              const vdeskStatus = job.job_key === 'vdesk-sync-timelog' ? lastVdeskRun?.status : null;
+              const qualityLastSyncAt = job.job_key === 'devops-sync-qualidade' ? qualityQuery?.last_synced_at : null;
+              const healthStatus = vdeskStatus
+                ? vdeskStatus === 'error'
+                  ? 'falhando'
+                  : vdeskStatus === 'partial'
+                  ? 'degradado'
+                  : 'ativo'
+                : qualityLastSyncAt && !lastRun
+                ? 'ativo'
+                : !lastRun
                 ? 'unknown'
                 : lastRun.status === 'error'
                 ? recentErrors >= 2 ? 'degradado' : 'falhando'
                 : 'ativo';
 
               // Derive last execution time: prefer job.last_run_at, fallback to most recent run
-              const lastExecAt = job.last_run_at || lastRun?.finished_at || lastRun?.started_at || null;
+              const lastExecAt =
+                job.job_key === 'vdesk-sync-timelog'
+                  ? lastVdeskRun?.finished_at || lastVdeskRun?.started_at || job.last_run_at || null
+                  : job.job_key === 'devops-sync-qualidade'
+                  ? qualityLastSyncAt || job.last_run_at || lastRun?.finished_at || lastRun?.started_at || null
+                  : job.last_run_at || lastRun?.finished_at || lastRun?.started_at || null;
 
               const healthBadge = () => {
                 switch (healthStatus) {
