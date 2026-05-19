@@ -3,16 +3,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 
+const normalizeFabricaState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
+
 export const FABRICA_IN_PROGRESS_STATES = new Set([
-  'In Progress',
-  'Active',
-  'Em desenvolvimento',
-  'Aguardando Teste',
-  'Em Teste',
-  'Aguardando Deploy',
+  'in progress',
+  'active',
+  'em desenvolvimento',
+  'aguardando teste',
+  'em teste',
+  'aguardando deploy',
 ]);
-const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
-const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+const FABRICA_TODO_STATES = new Set(['to do', 'new']);
+const DONE_STATES = new Set(['done', 'closed', 'resolved']);
 const FABRICA_MANAGER_ITEM_TYPES = new Set(['Product Backlog Item', 'User Story', 'Bug']);
 const FABRICA_COUNTABLE_STATES = new Set([
   ...FABRICA_IN_PROGRESS_STATES,
@@ -24,11 +26,11 @@ const FABRICA_COUNTABLE_STATES = new Set([
 export const KPI_DEFAULT_EXCLUDED_COLLABORATORS = new Set(['ari']);
 
 export function isFabricaInProgress(state: string | null | undefined): boolean {
-  return FABRICA_IN_PROGRESS_STATES.has(state || '');
+  return FABRICA_IN_PROGRESS_STATES.has(normalizeFabricaState(state));
 }
 
 export function isFabricaCountableState(state: string | null | undefined): boolean {
-  return FABRICA_COUNTABLE_STATES.has(state || '');
+  return FABRICA_COUNTABLE_STATES.has(normalizeFabricaState(state));
 }
 
 function isFabricaManagerItem(workItemType: string | null | undefined): boolean {
@@ -40,11 +42,11 @@ function isFabricaTaskItem(workItemType: string | null | undefined): boolean {
 }
 
 function isFabricaTodo(state: string | null | undefined): boolean {
-  return FABRICA_TODO_STATES.has(state || '');
+  return FABRICA_TODO_STATES.has(normalizeFabricaState(state));
 }
 
 function isDone(state: string | null | undefined): boolean {
-  return DONE_STATES.has(state || '');
+  return DONE_STATES.has(normalizeFabricaState(state));
 }
 
 export interface TransbordoItem extends FabricaItem {
@@ -779,6 +781,7 @@ export function useFabricaKpis(
     items: filteredItems,
     allSprintItems: scopedItems,
     allItems: nonInfraItems,
+    allWorkItems: nonInfraWorkItems,
     total,
     inProgress,
     toDo,

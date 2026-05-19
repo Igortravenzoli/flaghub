@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
@@ -37,7 +37,7 @@ import {
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
   Clock, Gauge, AlertTriangle, Timer, Package, Building2,
   TrendingUp, BarChart3, Zap, HeartPulse, Workflow, LayoutGrid, MoreHorizontal,
-  GitMerge, Loader2, ExternalLink, CheckCircle2, Minus, SendHorizonal,
+  GitMerge, Loader2, ExternalLink, CheckCircle2, Check, Minus, SendHorizonal,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
@@ -46,24 +46,30 @@ import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficia
 import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'entregue' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
+type SemTaskContextFilter = 'all' | 'stc' | 'ctc';
 type CollaboratorViewMode = 'tasks' | 'gestor';
 type PrevistoFilter = 'previsto' | 'nao_previsto';
 
-const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
-const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
-const ENTREGUE_STATES = new Set(['Aguardando Teste', 'Em Teste', 'Aguardando Deploy']);
+const normalizeState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
+const FABRICA_TODO_STATES = new Set(['to do', 'new']);
+const DONE_STATES = new Set(['done', 'closed', 'resolved']);
+const ENTREGUE_STATES = new Set(['aguardando teste', 'em teste', 'aguardando deploy']);
 const RETORNO_QA_REGEX = /retorno\s*(de)?\s*qa/i;
 
 function isFabricaTodo(state: string | null | undefined): boolean {
-  return FABRICA_TODO_STATES.has(state || '');
+  return FABRICA_TODO_STATES.has(normalizeState(state));
 }
 
 function isDone(state: string | null | undefined): boolean {
-  return DONE_STATES.has(state || '');
+  return DONE_STATES.has(normalizeState(state));
 }
 
 function isRemoved(state: string | null | undefined): boolean {
-  return (state || '').trim().toLowerCase() === 'removed';
+  return normalizeState(state) === 'removed';
+}
+
+function isEntregueState(state: string | null | undefined): boolean {
+  return ENTREGUE_STATES.has(normalizeState(state));
 }
 
 const integrations: Integration[] = [
@@ -73,7 +79,15 @@ const integrations: Integration[] = [
 
 const typeColors = TYPE_COLORS;
 const typeLabels = TYPE_LABELS;
-const stateColors = STATE_COLORS;
+const stateColors: Record<string, string> = {
+  ...STATE_COLORS,
+  'In Progress': 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
+  'Active': 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
+  'Em desenvolvimento': 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
+  'Done': 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
+  'Closed': 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
+  'Resolved': 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
+};
 
 const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
 
@@ -115,6 +129,53 @@ function formatMinutesAsHoursLabel(minutes: number): string {
   return `${hours.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}h`;
 }
 
+function DraggableScrollArea({ className, children }: { className?: string; children: React.ReactNode }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{ isDragging: boolean; startX: number; startScrollLeft: number }>({
+    isDragging: false,
+    startX: 0,
+    startScrollLeft: 0,
+  });
+
+  const handleMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    dragStateRef.current = {
+      isDragging: true,
+      startX: event.clientX,
+      startScrollLeft: el.scrollLeft,
+    };
+  };
+
+  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const el = containerRef.current;
+    const drag = dragStateRef.current;
+    if (!el || !drag.isDragging) return;
+
+    const deltaX = event.clientX - drag.startX;
+    el.scrollLeft = drag.startScrollLeft - deltaX;
+  };
+
+  const stopDragging = () => {
+    dragStateRef.current.isDragging = false;
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={`overflow-auto resize-x cursor-grab active:cursor-grabbing ${className || ''}`}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={stopDragging}
+      onMouseLeave={stopDragging}
+    >
+      {children}
+    </div>
+  );
+}
+
 function getFabFilterLabel(f: FabKpiFilter) {
   switch (f) {
     case 'all': return 'Todos';
@@ -132,10 +193,12 @@ function getFabFilterLabel(f: FabKpiFilter) {
   }
 }
 
-function SprintStatusCard({ total, inProgress, toDo, done, entregue, semTask, isLoading, fabKpiFilter, toggleFab, sprintEndDate }: {
+function SprintStatusCard({ total, inProgress, toDo, done, entregue, semTask, semTaskNeverChild, semTaskChildDone, semTaskContextFilter, isLoading, fabKpiFilter, toggleFab, toggleSemTaskContext, sprintEndDate }: {
   total: number; inProgress: number; toDo: number; done: number; entregue: number; semTask: number;
+  semTaskNeverChild: number; semTaskChildDone: number; semTaskContextFilter: SemTaskContextFilter;
   isLoading: boolean; fabKpiFilter: FabKpiFilter;
   toggleFab: (f: FabKpiFilter) => void;
+  toggleSemTaskContext: (context: Exclude<SemTaskContextFilter, 'all'>) => void;
   sprintEndDate?: Date | null;
 }) {
   const concluidos = done + entregue;
@@ -161,11 +224,11 @@ function SprintStatusCard({ total, inProgress, toDo, done, entregue, semTask, is
   })();
 
   const subItems: { key: FabKpiFilter; label: string; value: number; valueColor: string; dotColor: string }[] = [
-    { key: 'in_progress', label: 'Em Desenvolvimento', value: inProgress, valueColor: 'text-[hsl(var(--info))]',            dotColor: 'bg-[hsl(var(--info))]' },
-    { key: 'todo',        label: 'To Do',             value: toDo,       valueColor: 'text-amber-600 dark:text-amber-400', dotColor: 'bg-amber-400' },
-    { key: 'entregue',    label: 'Entregue',          value: entregue,   valueColor: 'text-emerald-600 dark:text-emerald-400', dotColor: 'bg-emerald-500' },
-    { key: 'done',        label: 'Done',              value: done,       valueColor: 'text-[hsl(var(--success))]',         dotColor: 'bg-[hsl(var(--success))]' },
-    { key: 'sem_task',    label: 'US/BUG sem Task',   value: semTask,    valueColor: semTask > 0 ? 'text-destructive' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive' : 'bg-border' },
+    { key: 'in_progress', label: 'Em Desenv.', value: inProgress, valueColor: 'text-orange-500/85 dark:text-orange-300/90', dotColor: 'bg-orange-400/90' },
+    { key: 'todo',        label: 'To Do',      value: toDo,       valueColor: 'text-red-500/85 dark:text-red-300/90',       dotColor: 'bg-red-400/90' },
+    { key: 'entregue',    label: 'Entregue',   value: entregue,   valueColor: 'text-blue-500/85 dark:text-blue-300/90',     dotColor: 'bg-blue-400/90' },
+    { key: 'done',        label: 'Done',       value: done,       valueColor: 'text-[hsl(var(--success)/0.85)]',            dotColor: 'bg-[hsl(var(--success)/0.85)]' },
+    { key: 'sem_task',    label: 'Pbi s/ Task',value: semTask,    valueColor: semTask > 0 ? 'text-destructive/85' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive/85' : 'bg-border' },
   ];
 
   if (isLoading) {
@@ -206,10 +269,10 @@ function SprintStatusCard({ total, inProgress, toDo, done, entregue, semTask, is
 
       {/* Barra de progresso segmentada */}
       <div className="relative h-2 rounded-full bg-muted overflow-hidden mb-5">
-        <div className="absolute left-0 top-0 h-full bg-[hsl(var(--success))] transition-all duration-500" style={{ width: `${donePct}%` }} />
-        <div className="absolute top-0 h-full bg-emerald-500 transition-all duration-500" style={{ left: `${donePct}%`, width: `${entregPct}%` }} />
-        <div className="absolute top-0 h-full bg-[hsl(var(--info))] transition-all duration-500" style={{ left: `${donePct + entregPct}%`, width: `${inProgressPct}%` }} />
-        <div className="absolute top-0 h-full bg-amber-400 transition-all duration-500" style={{ left: `${donePct + entregPct + inProgressPct}%`, width: `${todoPct}%` }} />
+        <div className="absolute left-0 top-0 h-full bg-[hsl(var(--success)/0.85)] transition-all duration-500" style={{ width: `${donePct}%` }} />
+        <div className="absolute top-0 h-full bg-blue-400/90 transition-all duration-500" style={{ left: `${donePct}%`, width: `${entregPct}%` }} />
+        <div className="absolute top-0 h-full bg-orange-400/90 transition-all duration-500" style={{ left: `${donePct + entregPct}%`, width: `${inProgressPct}%` }} />
+        <div className="absolute top-0 h-full bg-red-400/90 transition-all duration-500" style={{ left: `${donePct + entregPct + inProgressPct}%`, width: `${todoPct}%` }} />
       </div>
 
       <div className={`rounded-md border px-2.5 pt-1.5 pb-1 mb-4 ${inverseTone}`}>
@@ -246,13 +309,35 @@ function SprintStatusCard({ total, inProgress, toDo, done, entregue, semTask, is
             <button
               key={item.key}
               onClick={() => toggleFab(item.key)}
-              className={`text-left p-3 rounded-lg transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isActive ? 'bg-muted' : ''}`}
+              className={`relative min-w-0 text-center p-3 ${item.key === 'sem_task' ? 'pb-6' : ''} rounded-xl border border-border/70 bg-background/85 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isActive ? 'bg-muted/80 border-primary/40 shadow-md' : ''}`}
             >
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <div className={`h-1.5 w-1.5 rounded-full ${item.dotColor}`} />
-                <span className="text-[11px] font-medium text-muted-foreground leading-none">{item.label}</span>
+              <div className="flex items-center justify-center gap-1.5 mb-1.5 min-h-[24px]">
+                <div className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${item.dotColor}`} />
+                <span className="min-w-0 whitespace-normal break-words text-[11px] font-medium text-muted-foreground leading-tight text-center">{item.label}</span>
               </div>
               <span className={`text-xl font-bold ${isActive ? 'text-foreground' : item.valueColor}`}>{item.value}</span>
+              {item.key === 'sem_task' && item.value > 0 && (
+                <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 opacity-70">
+                  <button
+                    type="button"
+                    title="Sem task child"
+                    aria-label="Sem task child"
+                    onClick={(event) => { event.stopPropagation(); toggleSemTaskContext('stc'); }}
+                    className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm text-[10px] leading-none transition-colors ${semTaskContextFilter === 'stc' ? 'text-red-500/75 dark:text-red-300/75' : 'text-red-400/45 dark:text-red-300/45 hover:text-red-400/65 dark:hover:text-red-300/65'}`}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Com task child em done"
+                    aria-label="Com task child em done"
+                    onClick={(event) => { event.stopPropagation(); toggleSemTaskContext('ctc'); }}
+                    className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm text-[10px] leading-none transition-colors ${semTaskContextFilter === 'ctc' ? 'text-red-500/75 dark:text-red-300/75' : 'text-red-400/45 dark:text-red-300/45 hover:text-red-400/65 dark:hover:text-red-300/65'}`}
+                  >
+                    <Check className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              )}
             </button>
           );
         })}
@@ -408,6 +493,7 @@ export default function FabricaDashboard() {
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<FabricaItem | null>(null);
   const [fabKpiFilter, setFabKpiFilter] = useState<FabKpiFilter>('all');
+  const [semTaskContextFilter, setSemTaskContextFilter] = useState<SemTaskContextFilter>('all');
   const [expandedPbis, setExpandedPbis] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
   const [searchAutoSwitched, setSearchAutoSwitched] = useState<string | null>(null);
@@ -523,6 +609,7 @@ export default function FabricaDashboard() {
     for (const it of fab.allSprintItems) {
       if (!it.id) continue;
       if (it.work_item_type && it.work_item_type !== 'Task') continue;
+      if (isRemoved(it.state)) continue;
       if (!timelogTaskScopeSet.has(it.id)) continue;
       if (drilldownTaskIdSet && !drilldownTaskIdSet.has(it.id)) continue;
       m.set(it.id, {
@@ -537,6 +624,7 @@ export default function FabricaDashboard() {
     }
     // 2) Somar minutos das linhas da view (recon)
     for (const r of scopedReconRows) {
+      if (isRemoved(r.work_item_state)) continue;
       let entry = m.get(r.task_id);
       if (!entry) {
         entry = {
@@ -729,6 +817,12 @@ export default function FabricaDashboard() {
   }, [excludedCollabs]);
 
   useEffect(() => {
+    if (fabKpiFilter !== 'sem_task' && semTaskContextFilter !== 'all') {
+      setSemTaskContextFilter('all');
+    }
+  }, [fabKpiFilter, semTaskContextFilter]);
+
+  useEffect(() => {
     if (fab.sortedSprints.length === 0) return;
     if (sprintSelection.includes('__pending__')) {
       const officialCurrentCode = getCurrentOfficialSprintCode();
@@ -905,13 +999,89 @@ export default function FabricaDashboard() {
   );
 
   const sprintTotal = sprintKpiItems.length;
-  const sprintEntregue = sprintKpiItems.filter(i => ENTREGUE_STATES.has(i.state || '')).length;
-  const sprintInProgress = sprintKpiItems.filter(i => isFabricaInProgress(i.state) && !ENTREGUE_STATES.has(i.state || '')).length;
+  const sprintEntregue = sprintKpiItems.filter(i => isEntregueState(i.state)).length;
+  const sprintInProgress = sprintKpiItems.filter(i => isFabricaInProgress(i.state) && !isEntregueState(i.state)).length;
   const sprintToDo = sprintKpiItems.filter(i => isFabricaTodo(i.state)).length;
   const sprintDone = sprintKpiItems.filter(i => isDone(i.state)).length;
-  const sprintTaskItems = useMemo(
-    () => collaboratorScopedItems.filter((item) => isTaskOnlyItem(item)),
+  const sprintTaskParentScope = useMemo(() => {
+    const itemById = new Map<number, {
+      id: number;
+      parent_id: number | null;
+      state: string | null;
+      work_item_type: string | null;
+    }>();
+    for (const item of fab.allWorkItems || []) {
+      if (item.id != null) {
+        itemById.set(item.id, {
+          id: item.id,
+          parent_id: item.parent_id,
+          state: item.state,
+          work_item_type: item.work_item_type,
+        });
+      }
+    }
+
+    const resolveManagerAncestorId = (startParentId: number): number | null => {
+      let currentId: number | null = startParentId;
+      const visited = new Set<number>();
+
+      while (currentId != null && !visited.has(currentId)) {
+        visited.add(currentId);
+        const current = itemById.get(currentId);
+
+        // Se não achar o nó, mantém o vínculo no melhor nível conhecido.
+        if (!current) return currentId;
+        if (
+          current.work_item_type === 'Product Backlog Item' ||
+          current.work_item_type === 'User Story' ||
+          current.work_item_type === 'Bug'
+        ) {
+          return currentId;
+        }
+
+        currentId = current.parent_id ?? null;
+      }
+
+      return null;
+    };
+
+    const managerParentIdsWithAnyTask = new Set<number>();
+    const managerParentIdsWithOpenTask = new Set<number>();
+    for (const item of fab.allWorkItems || []) {
+      if (item.work_item_type !== 'Task' || item.parent_id == null || isRemoved(item.state)) continue;
+
+      const managerAncestorId = resolveManagerAncestorId(item.parent_id);
+      if (managerAncestorId != null) {
+        managerParentIdsWithAnyTask.add(managerAncestorId);
+        if (!isDone(item.state)) {
+          managerParentIdsWithOpenTask.add(managerAncestorId);
+        }
+      }
+    }
+
+    return {
+      managerParentIdsWithAnyTask,
+      managerParentIdsWithOpenTask,
+    };
+  }, [fab.allWorkItems]);
+
+  const sprintPendingManagerItems = useMemo(
+    () => collaboratorScopedItems.filter((item) =>
+      item.count_in_kpi !== false &&
+      isManagerLikeItem(item) &&
+      (isFabricaTodo(item.state) || (isFabricaInProgress(item.state) && !isEntregueState(item.state)))
+    ),
     [collaboratorScopedItems]
+  );
+
+  const sprintPbisSemTaskNeverChildCount = useMemo(
+    () => sprintPendingManagerItems.filter((i) => i.id != null && !sprintTaskParentScope.managerParentIdsWithAnyTask.has(i.id)).length,
+    [sprintPendingManagerItems, sprintTaskParentScope]
+  );
+
+  const sprintPbisSemTaskChildDoneCount = useMemo(
+    () => sprintPendingManagerItems.filter((i) => i.id != null && sprintTaskParentScope.managerParentIdsWithAnyTask.has(i.id) && !sprintTaskParentScope.managerParentIdsWithOpenTask.has(i.id)).length,
+    [sprintPendingManagerItems, sprintTaskParentScope]
   );
 
   const sprintManagerItems = useMemo(
@@ -921,18 +1091,16 @@ export default function FabricaDashboard() {
 
   // Itens de gestor (PBI/BUG) sem Task vinculada (anomalia/BO)
   const sprintPbisSemTask = useMemo(() => {
-    const childParentIds = new Set(
-      sprintFilteredItems
-        .filter(i => collaboratorScopedItems.includes(i))
-        .filter(i => i.work_item_type === 'Task' && i.parent_id != null && !isDone(i.state) && !isRemoved(i.state))
-        .map(i => i.parent_id!)
-    );
-    return collaboratorScopedItems.filter((i) => {
+    return sprintPendingManagerItems.filter((i) => {
       if (!isManagerLikeItem(i) || i.id == null) return false;
       if (isDone(i.state)) return false;
-      return !childParentIds.has(i.id);
+      // Cenários gerenciais de desvio:
+      // 1) PBI sem nenhuma task filha
+      // 2) PBI ativa com tasks filhas, porém todas já encerradas
+      if (!sprintTaskParentScope.managerParentIdsWithAnyTask.has(i.id)) return true;
+      return !sprintTaskParentScope.managerParentIdsWithOpenTask.has(i.id);
     });
-  }, [collaboratorScopedItems, sprintFilteredItems]);
+  }, [sprintPendingManagerItems, sprintTaskParentScope]);
   const sprintPbisSemTaskCount = sprintPbisSemTask.length;
 
   const sprintTransbordoItems = useMemo(() => {
@@ -1057,14 +1225,27 @@ export default function FabricaDashboard() {
         return AVIAO_REGEX.test(tags);
       }); break;
       case 'sem_task': {
-        const childParentIds = new Set(
+        const pendingManagerIds = new Set(
           collaboratorScopedItems
-            .filter(i => i.work_item_type === 'Task' && i.parent_id != null && !isDone(i.state) && !isRemoved(i.state))
-            .map(i => i.parent_id!)
+            .filter((i) =>
+              i.count_in_kpi !== false &&
+              isManagerLikeItem(i) &&
+              (isFabricaTodo(i.state) || (isFabricaInProgress(i.state) && !isEntregueState(i.state)))
+            )
+            .map((i) => i.id)
+            .filter((id): id is number => id != null)
         );
-        items = items.filter(
-          i => isManagerLikeItem(i) && i.id != null && !isDone(i.state) && !childParentIds.has(i.id)
-        );
+
+        items = items.filter((i) => {
+          if (!isManagerLikeItem(i) || i.id == null || !pendingManagerIds.has(i.id)) return false;
+
+          const isStc = !sprintTaskParentScope.managerParentIdsWithAnyTask.has(i.id);
+          const isCtc = sprintTaskParentScope.managerParentIdsWithAnyTask.has(i.id) && !sprintTaskParentScope.managerParentIdsWithOpenTask.has(i.id);
+
+          if (semTaskContextFilter === 'stc') return isStc;
+          if (semTaskContextFilter === 'ctc') return isCtc;
+          return isStc || isCtc;
+        });
         break;
       }
     }
@@ -1086,7 +1267,7 @@ export default function FabricaDashboard() {
       });
     }
     return items;
-  }, [collaboratorScopedItems, fabKpiFilter, fab.tagsByWorkItemId, previstoFilter]);
+  }, [collaboratorScopedItems, fabKpiFilter, fab.tagsByWorkItemId, previstoFilter, sprintTaskParentScope, semTaskContextFilter]);
 
   const collaboratorViewItems = useMemo(() => (
     collaboratorScopedItems.filter((item) => {
@@ -1112,7 +1293,7 @@ export default function FabricaDashboard() {
 
       const row = acc[shortName] || { todo: 0, in_progress: 0, entregue: 0, done: 0, total: 0 };
       if (isDone(item.state)) row.done += 1;
-      else if (ENTREGUE_STATES.has(item.state || '')) row.entregue += 1;
+      else if (isEntregueState(item.state)) row.entregue += 1;
       else if (isFabricaTodo(item.state)) row.todo += 1;
       else row.in_progress += 1;
       row.total += 1;
@@ -1121,19 +1302,78 @@ export default function FabricaDashboard() {
     }, {});
 
     return Object.entries(counts)
-      .sort(([, a], [, b]) => b.total - a.total)
+      .sort(([, a], [, b]) => (b.in_progress + b.todo) - (a.in_progress + a.todo))
       .slice(0, 10)
       .map(([name, status]) => ({
         name,
         ...status,
         concluido_pct: status.total > 0 ? Math.round(((status.done + status.entregue) / status.total) * 100) : 0,
+        done_pct: status.total > 0 ? Math.round((status.done / status.total) * 100) : 0,
+        entregue_pct: status.total > 0 ? Math.round((status.entregue / status.total) * 100) : 0,
+        in_progress_pct: status.total > 0 ? Math.round((status.in_progress / status.total) * 100) : 0,
+        todo_pct: status.total > 0 ? Math.round((status.todo / status.total) * 100) : 0,
       }));
   }, [collaboratorViewItems]);
+
+  const renderStatusPctLabel = (statusKey: 'todo' | 'in_progress' | 'entregue' | 'done') => (
+    props: {
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      value?: number | string;
+      payload?: Record<string, unknown>;
+    }
+  ) => {
+    const { x = 0, y = 0, width = 0, height = 0, value, payload } = props;
+    const pct = Number(value) || 0;
+    const absoluteCount = Number(payload?.[statusKey]) || 0;
+
+    // Renderiza o % apenas quando há área útil na barra para manter legibilidade.
+    if (pct <= 0 || absoluteCount <= 0 || width < 34 || height < 14 || pct < 14) return null;
+
+    return (
+      <text
+        x={x + width / 2}
+        y={y + height / 2}
+        fill="white"
+        fontSize={10}
+        fontWeight={600}
+        textAnchor="middle"
+        dominantBaseline="central"
+      >
+        {`${pct}%`}
+      </text>
+    );
+  };
 
   const collaboratorViewTotal = useMemo(
     () => collaboratorViewItems.length,
     [collaboratorViewItems]
   );
+
+  const collaboratorStatusMix = useMemo(() => {
+    const totals = collaboratorViewItems.reduce(
+      (acc, item) => {
+        if (isDone(item.state)) acc.done += 1;
+        else if (isEntregueState(item.state)) acc.entregue += 1;
+        else if (isFabricaTodo(item.state)) acc.todo += 1;
+        else acc.in_progress += 1;
+        return acc;
+      },
+      { todo: 0, in_progress: 0, entregue: 0, done: 0 }
+    );
+
+    const total = collaboratorViewItems.length;
+    return {
+      ...totals,
+      total,
+      todoPct: total > 0 ? Math.round((totals.todo / total) * 100) : 0,
+      inProgressPct: total > 0 ? Math.round((totals.in_progress / total) * 100) : 0,
+      entreguePct: total > 0 ? Math.round((totals.entregue / total) * 100) : 0,
+      donePct: total > 0 ? Math.round((totals.done / total) * 100) : 0,
+    };
+  }, [collaboratorViewItems]);
 
   const previstoNaoPrevisto = useMemo(() => {
     const managerItems = collaboratorScopedItems.filter((item) => isManagerLikeItem(item) && item.count_in_kpi !== false);
@@ -1234,7 +1474,20 @@ export default function FabricaDashboard() {
     });
   }, []);
 
-  const toggleFab = (f: FabKpiFilter) => { setFabKpiFilter(prev => prev === f ? 'all' : f); setPage(0); };
+  const toggleFab = (f: FabKpiFilter) => {
+    setFabKpiFilter((prev) => {
+      const next = prev === f ? 'all' : f;
+      if (next !== 'sem_task') setSemTaskContextFilter('all');
+      return next;
+    });
+    setPage(0);
+  };
+
+  const toggleSemTaskContext = (context: Exclude<SemTaskContextFilter, 'all'>) => {
+    setFabKpiFilter('sem_task');
+    setSemTaskContextFilter((prev) => prev === context ? 'all' : context);
+    setPage(0);
+  };
 
   const isBlockCollapsed = useCallback((blockKey: string) => collapsedBlocks.has(blockKey), [collapsedBlocks]);
 
@@ -1259,7 +1512,7 @@ export default function FabricaDashboard() {
       case 'backlog-priorizar': return 'Backlog Priorizar';
       case 'uxui-fila': return 'Fila UX-UI';
       case 'qa-return': return 'Retorno QA';
-      case 'gerencia': return 'Gerência';
+      case 'gerencia': return 'Gerencial';
       default: return activeTab;
     }
   }, [activeTab]);
@@ -1275,7 +1528,10 @@ export default function FabricaDashboard() {
     parts.push(`Aba: ${activeTabLabel}`);
     parts.push(sprintPart);
 
-    if (fabKpiFilter !== 'all') parts.push(`Filtro KPI: ${getFabFilterLabel(fabKpiFilter)}`);
+    if (fabKpiFilter !== 'all') {
+      const semTaskContextLabel = semTaskContextFilter === 'stc' ? ' (STC)' : semTaskContextFilter === 'ctc' ? ' (CTC)' : '';
+      parts.push(`Filtro KPI: ${getFabFilterLabel(fabKpiFilter)}${fabKpiFilter === 'sem_task' ? semTaskContextLabel : ''}`);
+    }
     if (previstoFilter) parts.push(`Visão: ${previstoFilter === 'previsto' ? 'Previsto' : 'Não Previsto'}`);
     if (collaboratorFilter) parts.push(`Colaborador: ${collaboratorFilter}`);
     if (search.trim()) parts.push(`Busca: ${search.trim()}`);
@@ -1306,6 +1562,7 @@ export default function FabricaDashboard() {
     timelogDrilldown.key,
     selectedCollaboratorsCount,
     fab.allCollaborators.length,
+    semTaskContextFilter,
   ]);
 
   const toWorkItemExportRow = useCallback((item: FabricaItem) => ({
@@ -1479,8 +1736,11 @@ export default function FabricaDashboard() {
       </TableCell>
       <TableCell className="text-sm">{item.assigned_to_display || '—'}</TableCell>
       <TableCell>
-        <Badge className={`text-xs font-mono ${stateColors[item.state || ''] || ''}`}>
-          {item.state === 'To Do' ? 'A Fazer' : item.state === 'Done' ? 'Finalizados' : (item.state || '—')}
+        <Badge
+          variant="outline"
+          className={`text-[11px] font-medium ${stateColors[item.state || ''] || 'bg-muted text-muted-foreground border border-border'}`}
+        >
+          {item.state === 'To Do' ? 'A Fazer' : item.state === 'Done' ? 'Done' : (item.state || '—')}
         </Badge>
       </TableCell>
       <TableCell>
@@ -1497,7 +1757,9 @@ export default function FabricaDashboard() {
           );
         })()}
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">{item.iteration_path || '—'}</TableCell>
+      <TableCell className="text-xs text-muted-foreground min-w-[140px] whitespace-nowrap">
+        {item.iteration_path ? (item.iteration_path.split('\\').pop() || item.iteration_path) : '—'}
+      </TableCell>
     </>
   );
 
@@ -1663,8 +1925,12 @@ export default function FabricaDashboard() {
           onExportPDF={handleExportPDF}
         />
         {fabKpiFilter !== 'all' && (
-          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setFabKpiFilter('all')}>
-            Filtro: {filterLabel(fabKpiFilter)} ✕
+          <Badge
+            variant="default"
+            className="gap-1 text-xs cursor-pointer animate-fade-in"
+            onClick={() => { setFabKpiFilter('all'); setSemTaskContextFilter('all'); }}
+          >
+            Filtro: {filterLabel(fabKpiFilter)}{fabKpiFilter === 'sem_task' && semTaskContextFilter !== 'all' ? ` ${semTaskContextFilter.toUpperCase()}` : ''} ✕
           </Badge>
         )}
         {previstoFilter && (
@@ -1696,7 +1962,7 @@ export default function FabricaDashboard() {
                 <AlertTriangle className="h-3.5 w-3.5" />Retorno QA
               </TabsTrigger>
               <TabsTrigger value="gerencia" className="gap-1.5 text-xs h-8">
-                <BarChart3 className="h-3.5 w-3.5" />Gerência
+                <BarChart3 className="h-3.5 w-3.5" />Gerencial
               </TabsTrigger>
             </TabsList>
 
@@ -1737,9 +2003,13 @@ export default function FabricaDashboard() {
                   done={sprintDone}
                   entregue={sprintEntregue}
                   semTask={sprintPbisSemTaskCount}
+                  semTaskNeverChild={sprintPbisSemTaskNeverChildCount}
+                  semTaskChildDone={sprintPbisSemTaskChildDoneCount}
+                  semTaskContextFilter={semTaskContextFilter}
                   isLoading={fab.isLoading}
                   fabKpiFilter={fabKpiFilter}
                   toggleFab={toggleFab}
+                  toggleSemTaskContext={toggleSemTaskContext}
                   sprintEndDate={effectiveRange?.to || null}
                 />
 
@@ -1767,16 +2037,17 @@ export default function FabricaDashboard() {
                           </button>
                         </div>
                       </div>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {collaboratorViewMode === 'tasks'
-                          ? 'Tasks atribuídas por colaborador (Removed desconsiderado), separadas por status.'
-                          : 'PBI/BUG atribuídos por colaborador, separados por status.'}
-                      </p>
                     </CardHeader>
                     <CardContent>
                       <div className="mb-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>Itens nesta visão</span>
+                        <span>Itens nesta visão colaborador</span>
                         <span className="font-medium text-foreground">{collaboratorViewTotal}</span>
+                      </div>
+                      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                        <span className="text-red-500/85">To Do {collaboratorStatusMix.todoPct}%</span>
+                        <span className="text-orange-500/85">Em Desenv. {collaboratorStatusMix.inProgressPct}%</span>
+                        <span className="text-blue-500/85">Entregue {collaboratorStatusMix.entreguePct}%</span>
+                        <span className="text-[hsl(var(--success)/0.85)]">Done {collaboratorStatusMix.donePct}%</span>
                       </div>
                       <ResponsiveContainer width="100%" height={Math.max(200, colabChartData.length * 32)}>
                         <BarChart data={colabChartData} layout="vertical" margin={{ left: 0, right: 16 }} style={{ cursor: 'pointer' }}>
@@ -1786,38 +2057,46 @@ export default function FabricaDashboard() {
                           <RechartsTooltip
                             contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
                             labelStyle={{ color: 'hsl(var(--foreground))' }}
-                            formatter={(value: number, key: string) => {
+                            formatter={(value: number, key: string, ctx: { payload?: { total?: number } }) => {
                               const labelMap: Record<string, string> = {
-                                todo: 'A Fazer',
-                                in_progress: 'Em Progresso',
+                                todo: 'To Do',
+                                in_progress: 'Em Desenvolvimento',
                                 entregue: 'Entregue',
                                 done: 'Done',
                               };
-                              return [value, labelMap[key] || key];
+                              const total = ctx?.payload?.total || 0;
+                              const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+                              return [`${value} (${pct}%)`, labelMap[key] || key];
                             }}
                           />
-                          <Bar dataKey="todo" stackId="collab-status" fill="#f59e0b" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
+                          <Bar dataKey="todo" stackId="collab-status" fill="#f87171" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
                             if (data?.name) {
                               setCollaboratorFilter(prev => prev === data.name ? null : data.name);
                               setPage(0);
                             }
-                          }} />
-                          <Bar dataKey="in_progress" stackId="collab-status" fill="hsl(var(--info))" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
+                          }}>
+                            <LabelList dataKey="todo_pct" content={renderStatusPctLabel('todo')} />
+                          </Bar>
+                          <Bar dataKey="in_progress" stackId="collab-status" fill="#fb923c" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
                             if (data?.name) {
                               setCollaboratorFilter(prev => prev === data.name ? null : data.name);
                               setPage(0);
                             }
-                          }} />
-                          <Bar dataKey="entregue" stackId="collab-status" fill="#10b981" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
+                          }}>
+                            <LabelList dataKey="in_progress_pct" content={renderStatusPctLabel('in_progress')} />
+                          </Bar>
+                          <Bar dataKey="entregue" stackId="collab-status" fill="#60a5fa" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
                             if (data?.name) {
                               setCollaboratorFilter(prev => prev === data.name ? null : data.name);
                               setPage(0);
                             }
-                          }} />
+                          }}>
+                            <LabelList dataKey="entregue_pct" content={renderStatusPctLabel('entregue')} />
+                          </Bar>
                           <Bar
                             dataKey="done"
                             stackId="collab-status"
-                            fill="hsl(var(--success))"
+                            fill="hsl(var(--success) / 0.85)"
                             radius={[0, 6, 6, 0]}
                             cursor="pointer"
                             onClick={(data: { name?: string } | undefined) => {
@@ -1830,7 +2109,7 @@ export default function FabricaDashboard() {
                             {colabChartData.map((entry, idx) => (
                               <Cell
                                 key={idx}
-                                fill={collaboratorFilter === entry.name ? 'hsl(var(--success))' : 'hsl(var(--success) / 0.85)'}
+                                fill={collaboratorFilter === entry.name ? 'hsl(var(--success) / 0.9)' : 'hsl(var(--success) / 0.75)'}
                                 stroke={collaboratorFilter === entry.name ? 'hsl(var(--foreground))' : 'transparent'}
                                 strokeWidth={collaboratorFilter === entry.name ? 2 : 0}
                               />
@@ -1842,6 +2121,7 @@ export default function FabricaDashboard() {
                               className="fill-foreground"
                               fontSize={11}
                             />
+                            <LabelList dataKey="done_pct" content={renderStatusPctLabel('done')} />
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
@@ -2110,7 +2390,7 @@ export default function FabricaDashboard() {
                   </div>
                 ) : (
                   <>
-                    <div className="overflow-auto max-h-[600px]">
+                    <DraggableScrollArea className="max-h-[600px]">
                       <Table>
                         <TableHeader>
                           <TableRow className="bg-muted/30">
@@ -2132,7 +2412,7 @@ export default function FabricaDashboard() {
                                 )}
                               </span>
                             </TableHead>
-                            <TableHead className="text-xs font-semibold">Sprint</TableHead>
+                            <TableHead className="text-xs font-semibold min-w-[140px]">Sprint</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -2184,7 +2464,7 @@ export default function FabricaDashboard() {
                           })}
                         </TableBody>
                       </Table>
-                    </div>
+                    </DraggableScrollArea>
 
                     {allTopLevel.length > PAGE_SIZE && (
                       <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
@@ -2305,7 +2585,7 @@ export default function FabricaDashboard() {
                   </p>
 
                   {filteredReconEntries.length > 0 && (
-                    <div className="overflow-x-auto max-h-[260px] overflow-y-auto border rounded-md">
+                    <DraggableScrollArea className="max-h-[260px] border rounded-md">
                       <table className="w-full text-xs">
                         <thead className="bg-muted sticky top-0">
                           <tr>
@@ -2377,7 +2657,7 @@ export default function FabricaDashboard() {
                           +{filteredReconEntries.length - 100} tarefas — filtre por sprint ou status para refinar
                         </p>
                       )}
-                    </div>
+                    </DraggableScrollArea>
                   )}
                   {filteredReconEntries.length === 0 && !reconLoading && (
                     <p className="text-xs text-muted-foreground text-center py-4">
@@ -2498,7 +2778,7 @@ export default function FabricaDashboard() {
                 <h3 className="font-semibold text-foreground text-sm">Visão Operacional: Backlog para Priorizar</h3>
                 <p className="text-xs text-muted-foreground">Fonte operacional: query 03-Em Fila Backlog para Priorizar (todas as sprints)</p>
               </div>
-              <div className="overflow-auto max-h-[600px]">
+              <DraggableScrollArea className="max-h-[600px]">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/30">
@@ -2530,7 +2810,7 @@ export default function FabricaDashboard() {
                     )}
                   </TableBody>
                 </Table>
-              </div>
+              </DraggableScrollArea>
             </Card>
           </TabsContent>
 
@@ -2541,7 +2821,7 @@ export default function FabricaDashboard() {
                 <h3 className="font-semibold text-foreground text-sm">Visão Operacional: Fila Design / UX-UI</h3>
                 <p className="text-xs text-muted-foreground">Fonte operacional: query 05-Em Fila UX-UI (todas as sprints)</p>
               </div>
-              <div className="overflow-auto max-h-[600px]">
+              <DraggableScrollArea className="max-h-[600px]">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/30">
@@ -2573,7 +2853,7 @@ export default function FabricaDashboard() {
                     )}
                   </TableBody>
                 </Table>
-              </div>
+              </DraggableScrollArea>
             </Card>
           </TabsContent>
 
@@ -2586,11 +2866,11 @@ export default function FabricaDashboard() {
           <TabsContent value="gerencia" className="space-y-4 mt-0">
             <GerenciaTab
               items={collaboratorScopedItems}
+              allItems={fab.allItems}
+              sortedSprints={fab.sortedSprints}
               isLoading={fab.isLoading}
               selectedSprintCodes={selectedSprintCodes}
               hasAllSprints={hasAllSprints}
-              selectedCollaboratorsCount={selectedCollaboratorsCount}
-              totalCollaborators={fab.allCollaborators.length}
               transbordoSummary={{
                 count: sprintTransbordoCount,
                 total: sprintTransbordoTotal,
