@@ -4,7 +4,7 @@ import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
-import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS, getCollaboratorExclusionKeys, isCollaboratorExcluded, normalizeCollaboratorName } from '@/hooks/useFabricaKpis';
+import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS, getCollaboratorExclusionKeys, isCollaboratorExcluded, normalizeCollaboratorName, isFabricaInProgress, isFabricaCountableState } from '@/hooks/useFabricaKpis';
 import { useTimelogUnificado } from '@/hooks/useTimelogUnificado';
 import { useAuth } from '@/hooks/useAuth';
 import { useHubIsAdmin } from '@/hooks/useHubPermissions';
@@ -14,9 +14,7 @@ import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
-import { TransbordoTab } from '@/components/fabrica/TransbordoTab';
-import { SprintBoardTab } from '@/components/fabrica/SprintBoardTab';
-import { QaReturnCard } from '@/components/fabrica/QaReturnCard';
+import { GerenciaTab } from '@/components/fabrica/GerenciaTab';
 import { QaReturnTab } from '@/components/fabrica/QaReturnTab';
 import { useQaReturnKpis } from '@/hooks/useQaReturnKpis';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
@@ -38,7 +36,7 @@ import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dat
 import {
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
   Clock, Gauge, AlertTriangle, Timer, Package, Building2,
-  TrendingUp, BarChart3, Zap, Plane, HeartPulse, Workflow, LayoutGrid, MoreHorizontal,
+  TrendingUp, BarChart3, Zap, HeartPulse, Workflow, LayoutGrid, MoreHorizontal,
   GitMerge, Loader2, ExternalLink, CheckCircle2, Minus, SendHorizonal,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -48,17 +46,11 @@ import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficia
 import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
-type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 type DetailedStatusKey = 'aguardando_deploy' | 'aguardando_teste' | 'done' | 'em_desenvolvimento' | 'em_teste' | 'new' | 'aviao';
 type DetailedScopeMode = 'gestor' | 'tasks';
 
-const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
-
-function isFabricaInProgress(state: string | null | undefined): boolean {
-  return FABRICA_IN_PROGRESS_STATES.has(state || '');
-}
 
 function isFabricaTodo(state: string | null | undefined): boolean {
   return FABRICA_TODO_STATES.has(state || '');
@@ -90,10 +82,6 @@ function getItemTags(item: FabricaItem, tagsByWorkItemId: Record<number, string>
   return item.tags || '';
 }
 
-function isTaskLikeItem(item: FabricaItem): boolean {
-  return item.work_item_type === 'Task' || item.work_item_type === 'Bug';
-}
-
 function isTaskOnlyItem(item: FabricaItem): boolean {
   return item.work_item_type === 'Task';
 }
@@ -110,7 +98,7 @@ function getDetailedStatusKey(item: FabricaItem, tagsByWorkItemId: Record<number
   if (state === 'Em Teste' || TAG_EM_TESTE_REGEX.test(tags)) return 'em_teste';
   if (state === 'Aguardando Teste' || TAG_AGUARDANDO_TESTE_REGEX.test(tags)) return 'aguardando_teste';
   if (DONE_STATES.has(state) || TAG_DONE_REGEX.test(tags)) return 'done';
-  if (FABRICA_IN_PROGRESS_STATES.has(state) || TAG_EM_DESENVOLVIMENTO_REGEX.test(tags)) return 'em_desenvolvimento';
+  if (isFabricaInProgress(state) || TAG_EM_DESENVOLVIMENTO_REGEX.test(tags)) return 'em_desenvolvimento';
   if (state === 'New' || TAG_NEW_REGEX.test(tags)) return 'new';
 
   return null;
@@ -125,66 +113,20 @@ function formatMinutesAsHoursLabel(minutes: number): string {
   return `${hours.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}h`;
 }
 
-function AnimatedNumber({ value, suffix = '' }: { value: number | null; suffix?: string }) {
-  if (value == null) return <span className="text-sm font-normal text-muted-foreground">Sem dados</span>;
-  return <span>{value}{suffix}</span>;
-}
-
-function HeroKpiCard({ label, value, suffix, icon: Icon, description, accent, onClick, isLoading, active, tooltipFormula, tooltipDescription }: {
-  label: string; value: number | string | null; suffix?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  description?: string; accent?: string;
-  onClick?: () => void; isLoading?: boolean; active?: boolean;
-  tooltipFormula?: string; tooltipDescription?: string;
-}) {
-  const hasTooltip = Boolean(tooltipFormula || tooltipDescription);
-
-  if (isLoading) {
-    return (
-      <Card className="p-5">
-        <Skeleton className="h-3 w-20 mb-3" />
-        <Skeleton className="h-7 w-16 mb-2" />
-        <Skeleton className="h-3 w-32" />
-      </Card>
-    );
+function getFabFilterLabel(f: FabKpiFilter) {
+  switch (f) {
+    case 'all': return 'Todos';
+    case 'in_progress': return 'Em Progresso';
+    case 'todo': return 'A Fazer';
+    case 'done': return 'Finalizados';
+    case 'aguardando_teste': return 'Aguardando Teste';
+    case 'aguardando_deploy': return 'Aguardando Deploy';
+    case 'em_teste': return 'Em Teste';
+    case 'em_desenvolvimento': return 'Em Desenvolvimento';
+    case 'new': return 'New';
+    case 'aviao': return 'Avião';
+    case 'sem_task': return 'PBI/BUG sem Task';
   }
-
-  const iconColor = accent ? accent.replace('bg-', 'text-') : 'text-primary';
-  const iconBg = accent ? `${accent}/10` : 'bg-primary/10';
-
-  return (
-    <Card
-      className={`p-5 transition-colors duration-150 ${onClick ? 'cursor-pointer hover:bg-muted/30' : ''} ${active ? 'border-primary bg-primary/5' : ''}`}
-      onClick={onClick}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <div className={`p-1.5 rounded-lg ${iconBg}`}>
-          <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
-        </div>
-        {hasTooltip ? (
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <p className="text-xs font-medium text-muted-foreground underline decoration-dotted cursor-help">{label}</p>
-              </TooltipTrigger>
-              <TooltipContent side="top" align="start" className="max-w-md text-xs leading-relaxed">
-                <p className="font-semibold mb-1">{label}</p>
-                {tooltipFormula && <p className="mb-1"><span className="font-medium">Fórmula:</span> {tooltipFormula}</p>}
-                {tooltipDescription && <p><span className="font-medium">Descrição:</span> {tooltipDescription}</p>}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        )}
-      </div>
-      <p className="text-2xl font-semibold text-foreground tracking-tight">
-        {typeof value === 'number' ? value : value ?? <span className="text-sm font-normal text-muted-foreground">—</span>}
-        {suffix && <span className="text-sm font-normal text-muted-foreground ml-1">{suffix}</span>}
-      </p>
-      {description && <p className="text-[11px] text-muted-foreground/60 mt-1">{description}</p>}
-    </Card>
-  );
 }
 
 function SprintStatusCard({ total, inProgress, toDo, done, semTask, isLoading, fabKpiFilter, toggleFab }: {
@@ -267,11 +209,12 @@ function SprintStatusCard({ total, inProgress, toDo, done, semTask, isLoading, f
   );
 }
 
-function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, delay = 0, onItemClick, activeItemName }: {
+function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, delay = 0, onItemClick, activeItemName, summaryBadge }: {
   title: string; icon: React.ComponentType<{ className?: string }>;
   data: TimelogAggregation[]; isLoading: boolean; emptyMessage: string; delay?: number;
   onItemClick?: (item: TimelogAggregation) => void;
   activeItemName?: string | null;
+  summaryBadge?: string;
 }) {
   const maxHours = data.length > 0 ? data[0].hours : 1;
 
@@ -308,9 +251,14 @@ function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, de
   return (
     <Card className="animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <Icon className="h-4 w-4 text-primary" />{title}
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Icon className="h-4 w-4 text-primary" />{title}
+          </CardTitle>
+          {summaryBadge ? (
+            <Badge variant="outline" className="text-[10px] whitespace-nowrap">{summaryBadge}</Badge>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent className="space-y-2.5">
         {data.slice(0, 8).map((item, idx) => {
@@ -414,7 +362,6 @@ export default function FabricaDashboard() {
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   const [detailedScopeMode, setDetailedScopeMode] = useState<DetailedScopeMode>('gestor');
-  const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
@@ -433,6 +380,35 @@ export default function FabricaDashboard() {
   const PAGE_SIZE = 25;
 
   const localFabItemIds = useMemo(() => fab.allSprintItems.map(i => i.id).filter(Boolean) as number[], [fab.allSprintItems]);
+  const timelogWorkItemIds = useMemo(() => {
+    const managerIds = new Set(
+      fab.items
+        .filter((item) => isManagerLikeItem(item) && item.id != null)
+        .map((item) => item.id as number)
+    );
+
+    const taskIds = fab.items
+      .filter((item) => item.work_item_type === 'Task' && item.id != null && item.parent_id != null && managerIds.has(item.parent_id))
+      .map((item) => item.id as number);
+
+    return Array.from(new Set<number>([...managerIds, ...taskIds]));
+  }, [fab.items]);
+
+  const timelogTaskScopeSet = useMemo(() => {
+    const managerIds = new Set(
+      fab.items
+        .filter((item) => isManagerLikeItem(item) && item.id != null)
+        .map((item) => item.id as number)
+    );
+
+    const source = fab.items.filter((item) => item.work_item_type === 'Task' && item.id != null);
+    return new Set(
+      source
+        .filter((item) => item.parent_id != null && managerIds.has(item.parent_id))
+        .map((item) => item.id as number)
+    );
+  }, [fab.items]);
+
   const { crossSectorResult } = useCrossSectorSearch(search, 'fabrica', localFabItemIds);
 
   // ── Admin & reconciliation ───────────────────────────────────────────────
@@ -447,8 +423,8 @@ export default function FabricaDashboard() {
   const reconFilters = useMemo(() => ({
     dateFrom: effectiveRange?.from?.toISOString?.()?.slice(0, 10) ?? undefined,
     dateTo:   effectiveRange?.to?.toISOString?.()?.slice(0, 10)   ?? undefined,
-    workItemIds: localFabItemIds,
-  }), [effectiveRange, localFabItemIds]);
+    workItemIds: timelogWorkItemIds,
+  }), [effectiveRange, timelogWorkItemIds]);
 
   const { data: reconRows = [], isLoading: reconLoading } = useTimelogUnificado(reconFilters);
 
@@ -482,9 +458,11 @@ export default function FabricaDashboard() {
       ? reconRows.filter((row) => row.user_canonical === timelogDrilldown.userCanonical)
       : reconRows;
 
-    if (!drilldownTaskIdSet) return rows;
-    return rows.filter((row) => drilldownTaskIdSet.has(row.task_id));
-  }, [reconRows, drilldownTaskIdSet, timelogDrilldown.type, timelogDrilldown.userCanonical]);
+    const managerScopedRows = rows.filter((row) => timelogTaskScopeSet.has(row.task_id));
+
+    if (!drilldownTaskIdSet) return managerScopedRows;
+    return managerScopedRows.filter((row) => drilldownTaskIdSet.has(row.task_id));
+  }, [reconRows, drilldownTaskIdSet, timelogDrilldown.type, timelogDrilldown.userCanonical, timelogTaskScopeSet]);
 
   const reconTaskMap = useMemo(() => {
     const m = new Map<number, ReconEntry>();
@@ -492,6 +470,7 @@ export default function FabricaDashboard() {
     for (const it of fab.allSprintItems) {
       if (!it.id) continue;
       if (it.work_item_type && it.work_item_type !== 'Task') continue;
+      if (!timelogTaskScopeSet.has(it.id)) continue;
       if (drilldownTaskIdSet && !drilldownTaskIdSet.has(it.id)) continue;
       m.set(it.id, {
         title: it.title ?? `#${it.id}`,
@@ -531,7 +510,7 @@ export default function FabricaDashboard() {
       e.status = gap <= tol ? 'match' : 'divergent';
     }
     return m;
-  }, [scopedReconRows, fab.allSprintItems, drilldownTaskIdSet]);
+  }, [scopedReconRows, fab.allSprintItems, drilldownTaskIdSet, timelogTaskScopeSet]);
 
   const reconEntriesScoped = useMemo(() => {
     return Array.from(reconTaskMap.entries());
@@ -757,6 +736,7 @@ export default function FabricaDashboard() {
     () => fab.allCollaborators.filter((name) => !isCollaboratorExcluded(name, excludedCollabs)).length,
     [fab.allCollaborators, excludedCollabs]
   );
+  const isCollaboratorFilterActive = selectedCollaboratorsCount < fab.allCollaborators.length;
 
   const selectedSprintsCount = hasAllSprints ? fab.sortedSprints.length : selectedSprintPaths.length;
 
@@ -821,10 +801,14 @@ export default function FabricaDashboard() {
     setPage(0);
   };
 
-  const sprintFilteredItems = useMemo(() => fab.items, [fab.items]);
+  const sprintFilteredItems = useMemo(() => {
+    if (!isCollaboratorFilterActive) return fab.items;
+    // When collaborator filter is active, keep only assigned rows to avoid counting unassigned backlog noise.
+    return fab.items.filter((item) => !!item.assigned_to_display);
+  }, [fab.items, isCollaboratorFilterActive]);
 
   const sprintKpiItems = useMemo(
-    () => sprintFilteredItems.filter((item) => item.count_in_kpi !== false && isManagerLikeItem(item)),
+    () => sprintFilteredItems.filter((item) => item.count_in_kpi !== false && isManagerLikeItem(item) && isFabricaCountableState(item.state)),
     [sprintFilteredItems]
   );
 
@@ -841,8 +825,6 @@ export default function FabricaDashboard() {
   const sprintInProgress = sprintKpiItems.filter(i => isFabricaInProgress(i.state)).length;
   const sprintToDo = sprintKpiItems.filter(i => isFabricaTodo(i.state)).length;
   const sprintDone = sprintKpiItems.filter(i => isDone(i.state)).length;
-  const sprintAguardandoTeste = sprintFilteredItems.filter(i => i.state === 'Aguardando Teste').length;
-
   const sprintTaskItems = useMemo(
     () => sprintFilteredItems.filter((item) => isTaskOnlyItem(item)),
     [sprintFilteredItems]
@@ -928,8 +910,6 @@ export default function FabricaDashboard() {
   );
 
   const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
-  const collaboratorAwareHealthOverview = pbiHealthBatch.overview;
-
   const bottlenecks = usePbiBottlenecks({
     sprintCode: selectedSprintCode,
     dateStart: effectiveRange?.from || null,
@@ -1134,6 +1114,8 @@ export default function FabricaDashboard() {
 
   const toggleFab = (f: FabKpiFilter) => { setFabKpiFilter(prev => prev === f ? 'all' : f); setPage(0); };
 
+  const isBlockCollapsed = useCallback((blockKey: string) => collapsedBlocks.has(blockKey), [collapsedBlocks]);
+
   const toggleBoardSort = (field: 'transbordo') => {
     if (boardSortField === field) {
       setBoardSortDir(d => d === 'desc' ? 'asc' : 'desc');
@@ -1148,70 +1130,195 @@ export default function FabricaDashboard() {
     ? 'Custom'
     : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint');
 
-  const handleExportCSV = () => {
+  const activeTabLabel = useMemo(() => {
+    switch (activeTab) {
+      case 'overview': return 'Visão Geral';
+      case 'timelog': return 'TimeLog';
+      case 'backlog-priorizar': return 'Backlog Priorizar';
+      case 'uxui-fila': return 'Fila UX-UI';
+      case 'qa-return': return 'Retorno QA';
+      case 'gerencia': return 'Gerência';
+      default: return activeTab;
+    }
+  }, [activeTab]);
+
+  const exportFilterContext = useMemo(() => {
+    const parts: string[] = [];
+    const sprintPart = hasAllSprints
+      ? 'Sprints: todas'
+      : selectedSprintCodes.length > 0
+        ? `Sprints: ${selectedSprintCodes.join(', ')}`
+        : 'Sprints: sem seleção';
+
+    parts.push(`Aba: ${activeTabLabel}`);
+    parts.push(sprintPart);
+
+    if (fabKpiFilter !== 'all') parts.push(`Filtro KPI: ${getFabFilterLabel(fabKpiFilter)}`);
+    if (typeFilter) parts.push(`Tipo: ${typeFilter}`);
+    if (collaboratorFilter) parts.push(`Colaborador: ${collaboratorFilter}`);
+    if (search.trim()) parts.push(`Busca: ${search.trim()}`);
+    if (activeTab === 'overview' && ['aguardando_deploy', 'aguardando_teste', 'done', 'em_desenvolvimento', 'em_teste', 'new', 'aviao'].includes(fabKpiFilter)) {
+      parts.push(`Escopo detalhado: ${detailedScopeMode === 'tasks' ? 'Tasks' : 'Gestor'}`);
+    }
     if (activeTab === 'timelog') {
-      exportCSV({
+      const sources = [showVdesk ? 'Vdesk' : null, showDevops ? 'DevOps' : null].filter(Boolean).join(' + ');
+      parts.push(`Fontes: ${sources || 'nenhuma'}`);
+      if (reconFilter !== 'all') parts.push(`Reconciliação: ${reconFilter}`);
+      if (timelogDrilldown.type !== 'none' && timelogDrilldown.key) {
+        parts.push(`Drilldown: ${timelogDrilldown.type} (${timelogDrilldown.key})`);
+      }
+    }
+    parts.push(`Colaboradores ativos: ${selectedCollaboratorsCount}/${fab.allCollaborators.length}`);
+
+    return parts.join(' • ');
+  }, [
+    hasAllSprints,
+    selectedSprintCodes,
+    activeTabLabel,
+    fabKpiFilter,
+    typeFilter,
+    collaboratorFilter,
+    search,
+    activeTab,
+    detailedScopeMode,
+    showVdesk,
+    showDevops,
+    reconFilter,
+    timelogDrilldown.type,
+    timelogDrilldown.key,
+    selectedCollaboratorsCount,
+    fab.allCollaborators.length,
+  ]);
+
+  const toWorkItemExportRow = useCallback((item: FabricaItem) => ({
+    id: item.id,
+    title: item.title,
+    work_item_type: item.work_item_type,
+    assigned_to_display: item.assigned_to_display,
+    state: item.state,
+    priority: item.priority,
+    effort: item.effort,
+    iteration_path: item.iteration_path,
+    parent_id: item.parent_id,
+    parent_title: item.parent_title,
+    web_url: item.web_url,
+  }), []);
+
+  const exportConfig = useMemo(() => {
+    const effectivePeriodLabel = `${periodLabel} • ${exportFilterContext}`;
+
+    if (activeTab === 'timelog') {
+      return {
         title: timelogDrilldown.type === 'collaborator' && timelogDrilldown.key
           ? `TimeLog - ${timelogDrilldown.key}`
           : 'TimeLog',
-        area: 'Fábrica',
-        periodLabel,
+        periodLabel: effectivePeriodLabel,
         columns: ['task_id', 'titulo', 'estado', 'responsavel', 'usuarios_apontamento', 'primeira_data_log', 'ultima_data_log', 'os_amostra', 'horas_devops', 'horas_vdesk', 'gap_horas', 'gap_direcao', 'status_reconciliacao'],
         rows: timelogExportRows,
-      });
-      return;
-    }
-
-    exportCSV({
-      title: 'Sprint Board', area: 'Fábrica', periodLabel,
-      columns: ['id', 'title', 'assigned_to_display', 'state', 'priority', 'iteration_path'],
-      rows: fab.items.map((item) => ({
-        id: item.id,
-        title: item.title,
-        assigned_to_display: item.assigned_to_display,
-        state: item.state,
-        priority: item.priority,
-        iteration_path: item.iteration_path,
-      })),
-    });
-  };
-
-  const handleExportPDF = () => {
-    if (activeTab === 'timelog') {
-      exportPDF({
-        title: timelogDrilldown.type === 'collaborator' && timelogDrilldown.key
-          ? `TimeLog - ${timelogDrilldown.key}`
-          : 'TimeLog',
-        area: 'Fábrica',
-        periodLabel,
         kpis: [
           { label: 'Tasks no escopo', value: timelogExportRows.length },
           { label: 'Horas DevOps', value: formatMinutesAsHoursLabel(timelogTotals.devopsMinutes) },
           { label: 'Horas Vdesk', value: formatMinutesAsHoursLabel(timelogTotals.vdeskMinutes) },
           { label: 'Gap absoluto', value: formatMinutesAsHoursLabel(timelogTotals.gapMinutes) },
         ],
-        columns: ['task_id', 'titulo', 'estado', 'responsavel', 'usuarios_apontamento', 'horas_devops', 'horas_vdesk', 'gap_horas', 'status_reconciliacao'],
-        rows: timelogExportRows,
-      });
-      return;
+      };
     }
 
-    exportPDF({
-      title: 'Dashboard Fábrica', area: 'Fábrica', periodLabel,
+    if (activeTab === 'backlog-priorizar') {
+      return {
+        title: 'Backlog para Priorizar',
+        periodLabel: effectivePeriodLabel,
+        columns: ['id', 'title', 'work_item_type', 'assigned_to_display', 'state', 'priority', 'effort', 'iteration_path', 'web_url'],
+        rows: backlogPriorizarItems.map(toWorkItemExportRow),
+        kpis: [{ label: 'Itens na fila', value: backlogPriorizarItems.length }],
+      };
+    }
+
+    if (activeTab === 'uxui-fila') {
+      return {
+        title: 'Fila Design / UX-UI',
+        periodLabel: effectivePeriodLabel,
+        columns: ['id', 'title', 'work_item_type', 'assigned_to_display', 'state', 'priority', 'effort', 'iteration_path', 'web_url'],
+        rows: uxuiItems.map(toWorkItemExportRow),
+        kpis: [{ label: 'Itens na fila', value: uxuiItems.length }],
+      };
+    }
+
+    if (activeTab === 'qa-return') {
+      return {
+        title: 'Retorno QA',
+        periodLabel: effectivePeriodLabel,
+        columns: ['work_item_id', 'work_item_title', 'work_item_type', 'sprint_code', 'assigned_to_display', 'days_since_return', 'alert_status', 'detected_at', 'transition_date', 'web_url'],
+        rows: qaReturnKpis.openItems.map((item) => ({
+          work_item_id: item.work_item_id,
+          work_item_title: item.work_item_title,
+          work_item_type: item.work_item_type,
+          sprint_code: item.sprint_code,
+          assigned_to_display: item.assigned_to_display,
+          days_since_return: item.days_since_return,
+          alert_status: item.alert_status,
+          detected_at: item.detected_at,
+          transition_date: item.transition_date,
+          web_url: item.web_url,
+        })),
+        kpis: [
+          { label: 'Retornos em aberto', value: qaReturnKpis.openItems.length },
+          { label: 'Retornos no período', value: qaReturnKpis.summary?.total_events ?? 0 },
+        ],
+      };
+    }
+
+    const overviewRows = filteredFabItems.map(toWorkItemExportRow);
+    return {
+      title: 'Visão Geral',
+      periodLabel: effectivePeriodLabel,
+      columns: ['id', 'title', 'work_item_type', 'assigned_to_display', 'state', 'priority', 'effort', 'iteration_path', 'parent_id', 'parent_title', 'web_url'],
+      rows: overviewRows,
       kpis: [
-        { label: 'Total', value: fab.total },
-        { label: 'Em Progresso', value: fab.inProgress },
-        { label: 'A Fazer', value: fab.toDo },
-        { label: 'Finalizados', value: fab.done },
+        { label: 'Itens exportados', value: overviewRows.length },
+        { label: 'Filtro KPI', value: getFabFilterLabel(fabKpiFilter) },
+        { label: 'Sprints selecionadas', value: hasAllSprints ? 'Todas' : selectedSprintCodes.length || 0 },
       ],
-      columns: ['id', 'title', 'assigned_to_display', 'state', 'priority'],
-      rows: fab.items.map((item) => ({
-        id: item.id,
-        title: item.title,
-        assigned_to_display: item.assigned_to_display,
-        state: item.state,
-        priority: item.priority,
-      })),
+    };
+  }, [
+    periodLabel,
+    exportFilterContext,
+    activeTab,
+    timelogDrilldown.type,
+    timelogDrilldown.key,
+    timelogExportRows,
+    timelogTotals.devopsMinutes,
+    timelogTotals.vdeskMinutes,
+    timelogTotals.gapMinutes,
+    backlogPriorizarItems,
+    toWorkItemExportRow,
+    uxuiItems,
+    qaReturnKpis.openItems,
+    qaReturnKpis.summary?.total_events,
+    filteredFabItems,
+    fabKpiFilter,
+    hasAllSprints,
+    selectedSprintCodes.length,
+  ]);
+
+  const handleExportCSV = () => {
+    exportCSV({
+      title: exportConfig.title,
+      area: 'Fábrica',
+      periodLabel: exportConfig.periodLabel,
+      columns: exportConfig.columns,
+      rows: exportConfig.rows,
+    });
+  };
+
+  const handleExportPDF = () => {
+    exportPDF({
+      title: exportConfig.title,
+      area: 'Fábrica',
+      periodLabel: exportConfig.periodLabel,
+      kpis: exportConfig.kpis,
+      columns: exportConfig.columns,
+      rows: exportConfig.rows,
     });
   };
 
@@ -1276,20 +1383,28 @@ export default function FabricaDashboard() {
     </>
   );
 
-  const filterLabel = (f: FabKpiFilter) => {
-    switch (f) {
-      case 'all': return 'Todos';
-      case 'in_progress': return 'Em Progresso';
-      case 'todo': return 'A Fazer';
-      case 'done': return 'Finalizados';
-      case 'aguardando_teste': return 'Aguardando Teste';
-      case 'aguardando_deploy': return 'Aguardando Deploy';
-      case 'em_teste': return 'Em Teste';
-      case 'em_desenvolvimento': return 'Em Desenvolvimento';
-      case 'new': return 'New';
-      case 'aviao': return 'Avião';
-      case 'sem_task': return 'PBI/BUG sem Task';
-    }
+  const filterLabel = (f: FabKpiFilter) => getFabFilterLabel(f);
+
+  const renderSectionToggle = (blockKey: string, label: string) => {
+    const collapsed = isBlockCollapsed(blockKey);
+    return (
+      <div className="flex justify-start items-center gap-1">
+        {collapsed ? (
+          <span className="text-[10px] text-muted-foreground/80">{label}</span>
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          onClick={() => toggleBlockCollapse(blockKey)}
+          title={collapsed ? 'Expandir seção' : 'Minimizar seção'}
+          aria-label={collapsed ? 'Expandir seção' : 'Minimizar seção'}
+        >
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </Button>
+      </div>
+    );
   };
 
   return (
@@ -1300,46 +1415,6 @@ export default function FabricaDashboard() {
     ]}>
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <DashboardLastSyncBadge syncedAt={fab.lastSync} status="ok" />
-        <div className="flex items-center gap-2 flex-wrap">
-          {fab.hasTimeLogs && (
-            <Badge variant="outline" className="gap-1 text-xs animate-fade-in">
-              <Timer className="h-3 w-3" />
-              {Math.round(fab.totalHoursLogged)}h registradas
-            </Badge>
-          )}
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge
-                  variant={fabKpiFilter === 'aviao' ? 'default' : 'secondary'}
-                  className={`gap-1 text-xs animate-fade-in cursor-pointer transition-all hover:scale-105 ${fabKpiFilter === 'aviao' ? 'ring-2 ring-primary' : ''}`}
-                  onClick={() => toggleFab('aviao')}
-                >
-                  <Plane className="h-3.5 w-3.5" />
-                  AVIÃO na sprint: {sprintAviaoCount}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs max-w-[240px]">
-                Itens marcados com a tag AVIAO na sprint selecionada. Clique para filtrar.
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge
-                  variant={fabKpiFilter === 'aguardando_teste' ? 'default' : 'outline'}
-                  className={`gap-1 text-xs animate-fade-in cursor-pointer border-rose-300 text-rose-700 bg-rose-50 transition-all hover:scale-105 ${fabKpiFilter === 'aguardando_teste' ? 'ring-2 ring-primary bg-rose-600 text-white' : ''}`}
-                  onClick={() => toggleFab('aguardando_teste')}
-                >
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Aguardando Teste: {sprintAguardandoTeste}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs max-w-[280px]">
-                Permanece na Fábrica, impacta saúde/gargalo e não entra automaticamente em Qualidade. Clique para filtrar.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -1489,22 +1564,11 @@ export default function FabricaDashboard() {
               <TabsTrigger value="timelog" className="gap-1.5 text-xs h-8">
                 <Timer className="h-3.5 w-3.5" />TimeLog
               </TabsTrigger>
-              <TabsTrigger value="transbordo" className="gap-1.5 text-xs h-8">
-                <AlertTriangle className="h-3.5 w-3.5" />Transbordo
-                {sprintTransbordoCount > 0 && (
-                  <Badge variant={sprintTransbordoPct != null && sprintTransbordoPct > 50 ? 'destructive' : 'secondary'} className="text-[10px] ml-0.5 px-1 py-0">
-                    {sprintTransbordoCount}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="sprint-board" className="gap-1.5 text-xs h-8">
-                <LayoutGrid className="h-3.5 w-3.5" />Sprint Board
-              </TabsTrigger>
               <TabsTrigger value="qa-return" className="gap-1.5 text-xs h-8">
                 <AlertTriangle className="h-3.5 w-3.5" />Retorno QA
               </TabsTrigger>
-              <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs h-8">
-                <HeartPulse className="h-3.5 w-3.5" />Saúde
+              <TabsTrigger value="gerencia" className="gap-1.5 text-xs h-8">
+                <BarChart3 className="h-3.5 w-3.5" />Gerência
               </TabsTrigger>
             </TabsList>
 
@@ -1512,23 +1576,17 @@ export default function FabricaDashboard() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md transition-colors flex-shrink-0 ml-auto
-                  ${['gargalos','por-feature','backlog-priorizar','uxui-fila'].includes(activeTab)
+                  ${['backlog-priorizar','uxui-fila'].includes(activeTab)
                     ? 'bg-background shadow-sm text-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-background/60'}`}>
                   <MoreHorizontal className="h-3.5 w-3.5" />
                   Mais
-                  {['gargalos','por-feature','backlog-priorizar','uxui-fila'].includes(activeTab) && (
+                  {['backlog-priorizar','uxui-fila'].includes(activeTab) && (
                     <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
                   )}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={() => setActiveTab('gargalos')} className={`gap-2 text-xs ${activeTab === 'gargalos' ? 'font-medium text-primary' : ''}`}>
-                  <AlertTriangle className="h-3.5 w-3.5" />Gargalos
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setActiveTab('por-feature')} className={`gap-2 text-xs ${activeTab === 'por-feature' ? 'font-medium text-primary' : ''}`}>
-                  <Workflow className="h-3.5 w-3.5" />Por Feature
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setActiveTab('backlog-priorizar')} className={`gap-2 text-xs ${activeTab === 'backlog-priorizar' ? 'font-medium text-primary' : ''}`}>
                   <ListTodo className="h-3.5 w-3.5" />Backlog Priorizar
                 </DropdownMenuItem>
@@ -1541,67 +1599,72 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {/* Sprint Status consolidado */}
-              <SprintStatusCard
-                total={sprintTotal}
-                inProgress={sprintInProgress}
-                toDo={sprintToDo}
-                done={sprintDone}
-                semTask={sprintPbisSemTaskCount}
-                isLoading={fab.isLoading}
-                fabKpiFilter={fabKpiFilter}
-                toggleFab={toggleFab}
-              />
+            {renderSectionToggle('overview_scope', 'Itens escopo / Status detalhados')}
+            {!isBlockCollapsed('overview_scope') && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {/* Sprint Status consolidado */}
+                <SprintStatusCard
+                  total={sprintTotal}
+                  inProgress={sprintInProgress}
+                  toDo={sprintToDo}
+                  done={sprintDone}
+                  semTask={sprintPbisSemTaskCount}
+                  isLoading={fab.isLoading}
+                  fabKpiFilter={fabKpiFilter}
+                  toggleFab={toggleFab}
+                />
 
-              <Card className="p-4">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <p className="text-xs font-medium text-muted-foreground">STATUS DETALHADOS</p>
-                  <div className="inline-flex rounded-md border border-border overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setDetailedScopeMode('gestor')}
-                      className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${detailedScopeMode === 'gestor' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                    >
-                      Gestor (PBI/BUG)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDetailedScopeMode('tasks')}
-                      className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${detailedScopeMode === 'tasks' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                    >
-                      Tasks
-                    </button>
-                  </div>
-                </div>
-                {detailedScopeMode === 'gestor' && (
-                  <p className="text-[11px] text-muted-foreground mb-2">
-                    Contagem primária em PBI/BUG com exploração das tasks filhas ao aplicar filtro.
-                  </p>
-                )}
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {sprintDetailedStatuses.map((status) => {
-                    const isActive = fabKpiFilter === status.key;
-                    return (
+                <Card className="p-4">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <p className="text-xs font-medium text-muted-foreground">STATUS DETALHADOS</p>
+                    <div className="inline-flex rounded-md border border-border overflow-hidden">
                       <button
-                        key={status.label}
                         type="button"
-                        onClick={() => toggleFab(status.key)}
-                        className={`rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/40 ${isActive ? 'border-primary ring-1 ring-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}
+                        onClick={() => setDetailedScopeMode('gestor')}
+                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${detailedScopeMode === 'gestor' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
                       >
-                        <Badge variant="outline" className={`mb-2 text-[10px] ${stateColors[status.stateColor] || ''}`}>
-                          {status.label}
-                        </Badge>
-                        <div className="text-xl font-semibold leading-none">{status.count}</div>
+                        Gestor (PBI/BUG)
                       </button>
-                    );
-                  })}
-                </div>
-              </Card>
-            </div>
+                      <button
+                        type="button"
+                        onClick={() => setDetailedScopeMode('tasks')}
+                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${detailedScopeMode === 'tasks' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Tasks
+                      </button>
+                    </div>
+                  </div>
+                  {detailedScopeMode === 'gestor' && (
+                    <p className="text-[11px] text-muted-foreground mb-2">
+                      Contagem primária em PBI/BUG com exploração das tasks filhas ao aplicar filtro.
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {sprintDetailedStatuses.map((status) => {
+                      const isActive = fabKpiFilter === status.key;
+                      return (
+                        <button
+                          key={status.label}
+                          type="button"
+                          onClick={() => toggleFab(status.key)}
+                          className={`rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/40 ${isActive ? 'border-primary ring-1 ring-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}
+                        >
+                          <Badge variant="outline" className={`mb-2 text-[10px] ${stateColors[status.stateColor] || ''}`}>
+                            {status.label}
+                          </Badge>
+                          <div className="text-xl font-semibold leading-none">{status.count}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Card>
+              </div>
+            )}
 
             {/* Performance + Riscos */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {renderSectionToggle('overview_perf_risk', 'Performance / Riscos')}
+            {!isBlockCollapsed('overview_perf_risk') && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Performance */}
               {fab.isLoading ? (
                 <Card className="p-6"><Skeleton className="h-3 w-24 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
@@ -1670,7 +1733,7 @@ export default function FabricaDashboard() {
                     <div className="space-y-0 divide-y divide-border">
                       <button
                         className="w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
-                        onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('transbordo')}
+                        onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('gerencia')}
                       >
                         <div className="flex items-center gap-2.5">
                           <div className={`p-1.5 rounded-lg ${transbordoHigh ? 'bg-destructive/10' : 'bg-amber-500/10'}`}>
@@ -1725,10 +1788,13 @@ export default function FabricaDashboard() {
                   </Card>
                 );
               })()}
-            </div>
+              </div>
+            )}
 
             {/* Charts row */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {renderSectionToggle('overview_charts', 'Tasks colaborador / Distribuição tipo')}
+            {!isBlockCollapsed('overview_charts') && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {colabChartData.length > 0 && (
                 <Card className="lg:col-span-2 animate-fade-in" style={{ animationDelay: '500ms' }}>
                   <CardHeader className="pb-2">
@@ -1824,16 +1890,19 @@ export default function FabricaDashboard() {
                   </CardContent>
                 </Card>
               )}
-            </div>
+              </div>
+            )}
 
             {/* Sprint Board */}
-            {fab.isLoading ? (
-              <Card className="overflow-hidden">
-                <div className="p-4 border-b border-border"><Skeleton className="h-5 w-40" /></div>
-                <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-              </Card>
-            ) : (
-              <Card className="overflow-hidden animate-fade-in">
+            {renderSectionToggle('overview_sprint_board', 'Sprint Board')}
+            {!isBlockCollapsed('overview_sprint_board') && (
+              fab.isLoading ? (
+                <Card className="overflow-hidden">
+                  <div className="p-4 border-b border-border"><Skeleton className="h-5 w-40" /></div>
+                  <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+                </Card>
+              ) : (
+                <Card className="overflow-hidden animate-fade-in">
                 <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex-1">
                     <h3 className="font-semibold text-foreground text-sm">Sprint Board</h3>
@@ -1991,7 +2060,8 @@ export default function FabricaDashboard() {
                     )}
                   </>
                 )}
-              </Card>
+                </Card>
+              )
             )}
           </TabsContent>
 
@@ -2005,6 +2075,7 @@ export default function FabricaDashboard() {
                 isLoading={fab.isLoading}
                 emptyMessage="Nenhuma fábrica identificada"
                 delay={500}
+                summaryBadge={fab.hasTimeLogs ? `${Math.round(fab.totalHoursLogged)}h registradas` : undefined}
                 activeItemName={timelogDrilldown.type === 'fabrica' ? timelogDrilldown.key : null}
                 onItemClick={(item) => {
                   const taskIds = fabricaTaskScopeMap.get(item.name) || [];
@@ -2278,202 +2349,6 @@ export default function FabricaDashboard() {
             )}
           </TabsContent>
 
-          {/* ═══════ TAB: Transbordo ═══════ */}
-          <TabsContent value="transbordo" className="space-y-5 mt-0">
-            <TransbordoTab
-              items={sprintTransbordoItems}
-              transbordoPct={sprintTransbordoPct}
-              transbordoCount={sprintTransbordoCount}
-              realOverflowItemCount={sprintRealOverflowItemCount}
-              realOverflowCount={sprintRealOverflowCount}
-              realOverflowPct={sprintRealOverflowPct}
-              transbordoTotal={sprintTransbordoTotal}
-              currentSprint={sprintFilter !== 'all' ? sprintFilter : fab.currentSprint}
-              selectedSprint={sprintFilter}
-              isLoading={fab.isLoading}
-            />
-          </TabsContent>
-
-          {/* ═══════ TAB: Esteira / Saúde ═══════ */}
-          <TabsContent value="esteira-saude" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <HeroKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={ListTodo} onClick={() => setHealthFilter(prev => prev === 'all' ? 'all' : 'all')} active={healthFilter === 'all'} />
-             <HeroKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" onClick={() => setHealthFilter(prev => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
-             <HeroKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" onClick={() => setHealthFilter(prev => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
-             <HeroKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" onClick={() => setHealthFilter(prev => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
-            </div>
-            {healthFilter !== 'all' && (
-              <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setHealthFilter('all')}>
-                Filtro: {healthFilter === 'verde' ? 'Saudável' : healthFilter === 'amarelo' ? 'Atenção' : 'Crítica'} ✕
-              </Badge>
-            )}
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b border-border">
-                <h3 className="font-semibold text-sm">Visão de esteira por item</h3>
-                <p className="text-xs text-muted-foreground">Saúde e estágio atual para PBIs/User Story/Bugs da sprint selecionada.</p>
-              </div>
-              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
-                {sprintFilteredItems
-                  .filter((item) => item.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(item.work_item_type || ''))
-                  .filter((item) => {
-                    if (healthFilter === 'all') return true;
-                    const status = pbiHealthBatch.healthById.get(item.id as number)?.health_status;
-                    return status === healthFilter;
-                  })
-                  .slice(0, 60)
-                  .map((item) => {
-                    const lifecycle = pbiHealthBatch.lifecycleById.get(item.id as number);
-                    return (
-                      <div 
-                        key={`health-${item.id}`} 
-                        className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30 transition-colors"
-                        onClick={() => setDrawerItem(item)}
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            Estágio: {lifecycle?.current_stage || item.state || '—'} • Migrações: {lifecycle?.sprint_migration_count ?? 0} • Overflow: {lifecycle?.overflow_count ?? 0}
-                          </p>
-                        </div>
-                        <PbiHealthBadge status={pbiHealthBatch.healthById.get(item.id as number)?.health_status} indicatorMode="fabrica-abc" />
-                      </div>
-                    );
-                  })}
-                {sprintFilteredItems.filter(i => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || '')).length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-6">Nenhum item monitorável na sprint selecionada. Dados de saúde são populados pela sincronização de esteira.</p>
-                )}
-              </div>
-            </Card>
-          </TabsContent>
-
-          {/* ═══════ TAB: Gargalos ═══════ */}
-          <TabsContent value="gargalos" className="space-y-4 mt-0">
-            {collaboratorAwareHealthOverview && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <HeroKpiCard label="Total monitorados" value={collaboratorAwareHealthOverview.total} icon={ListTodo} />
-                <HeroKpiCard label="Saudável" value={collaboratorAwareHealthOverview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                <HeroKpiCard label="Atenção" value={collaboratorAwareHealthOverview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                <HeroKpiCard label="Crítica" value={collaboratorAwareHealthOverview.vermelho} icon={AlertTriangle} accent="bg-destructive" />
-              </div>
-            )}
-
-            <Card className="p-3 border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <AlertTriangle className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                <p>
-                  <span className="font-semibold text-foreground">O que é esta análise?</span>{' '}
-                  O painel de gargalos mostra quanto tempo os itens permanecem em cada etapa da esteira (Backlog → Design → Fábrica → Qualidade → Deploy).
-                  Valores altos de <strong>Média</strong> indicam lentidão no processo; <strong>Atraso</strong> alto aponta itens que ultrapassaram os limites aceitáveis (ex: Fábrica &gt;14d = atenção, &gt;21d = crítico).
-                </p>
-              </div>
-            </Card>
-
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-sm">Resumo de Gargalos da Fábrica</h3>
-                  <p className="text-xs text-muted-foreground">Duração por etapa da esteira de produção.</p>
-                </div>
-                <Badge variant="outline">{bottlenecks.bottlenecks.length} etapas</Badge>
-              </div>
-              <TooltipProvider>
-                <div className="p-4 space-y-2">
-                  {bottlenecks.bottlenecks.map((row) => (
-                    <div key={`bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
-                      <span className="font-medium text-foreground">{row.stage_label}</span>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Média: {row.avg_days_in_stage}d</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[240px]">
-                          <p className="text-xs">Tempo médio (dias) que os itens permanecem nesta etapa. Valores altos indicam lentidão no processo.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Máx: {row.max_days_in_stage}d</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[240px]">
-                          <p className="text-xs">Maior tempo (dias) que um item ficou nesta etapa. Outliers indicam itens travados.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Em etapa: {row.count_in_stage}</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[240px]">
-                          <p className="text-xs">Quantidade de itens atualmente nesta etapa. Volume alto pode indicar gargalo de capacidade.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Atraso: {row.count_overtime}</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[240px]">
-                          <p className="text-xs">Itens que ultrapassaram o limite de dias aceitável para esta etapa (ex: Fábrica &gt;14d = atenção, &gt;21d = crítico).</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  ))}
-                  {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
-                    <div className="text-center py-8">
-                      <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">Sem dados de gargalo para o filtro atual.</p>
-                      <p className="text-xs text-muted-foreground/60 mt-1">Os dados são populados após a sincronização de esteira (pbi_stage_events).</p>
-                    </div>
-                  )}
-                </div>
-              </TooltipProvider>
-            </Card>
-          </TabsContent>
-
-          {/* ═══════ TAB: Por Feature ═══════ */}
-          <TabsContent value="por-feature" className="space-y-4 mt-0">
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-sm">Saúde por Feature</h3>
-                  <p className="text-xs text-muted-foreground">Agregação por feature/epic para leitura de risco funcional.</p>
-                </div>
-                <Badge variant="outline">{featureSummary.rows.length} grupos</Badge>
-              </div>
-              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
-                {featureSummary.rows.slice(0, 80).map((row, idx) => (
-                  <div key={`feat-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium truncate">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {row.verde_count > 0 && <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px] px-1.5">{row.verde_count}</Badge>}
-                        {row.amarelo_count > 0 && <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-[10px] px-1.5">{row.amarelo_count}</Badge>}
-                        {row.vermelho_count > 0 && <Badge className="bg-red-100 text-red-700 border-red-300 text-[10px] px-1.5">{row.vermelho_count}</Badge>}
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      PBIs: {row.pbi_count} • Bugs: {row.bug_count} 
-                      {row.avg_lead_time_days != null ? ` • Lead Time: ${row.avg_lead_time_days}d` : ''}
-                      {row.overflow_count > 0 ? ` • Overflow: ${row.overflow_count}` : ''}
-                    </p>
-                  </div>
-                ))}
-                {!featureSummary.isLoading && featureSummary.rows.length === 0 && (
-                  <div className="text-center py-8">
-                    <Workflow className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Sem dados de feature para o período selecionado.</p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">Dados preenchidos automaticamente pela hierarquia do DevOps (Feature → PBI) e saúde da esteira.</p>
-                  </div>
-                )}
-              </div>
-            </Card>
-          </TabsContent>
-
-          {/* ═══════ TAB: Sprint Board ═══════ */}
-          <TabsContent value="sprint-board" className="space-y-4 mt-0">
-            <SprintBoardTab
-              allItems={sprintFilteredItems}
-              sortedSprints={fab.sortedSprints}
-              isLoading={fab.isLoading}
-            />
-          </TabsContent>
 
           {/* ═══════ TAB: Backlog Priorizar ═══════ */}
           <TabsContent value="backlog-priorizar" className="space-y-4 mt-0">
@@ -2564,6 +2439,29 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Retorno QA ═══════ */}
           <TabsContent value="qa-return" className="space-y-4 mt-0">
             <QaReturnTab items={qaReturnKpis.openItems} isLoading={qaReturnKpis.isLoading} />
+          </TabsContent>
+
+          {/* ═══════ TAB: Gerência ═══════ */}
+          <TabsContent value="gerencia" className="space-y-4 mt-0">
+            <GerenciaTab
+              items={sprintFilteredItems}
+              isLoading={fab.isLoading}
+              selectedSprintCodes={selectedSprintCodes}
+              hasAllSprints={hasAllSprints}
+              selectedCollaboratorsCount={selectedCollaboratorsCount}
+              totalCollaborators={fab.allCollaborators.length}
+              transbordoSummary={{
+                count: sprintTransbordoCount,
+                total: sprintTransbordoTotal,
+                pct: sprintTransbordoPct,
+                realOverflowItemCount: sprintRealOverflowItemCount,
+                realOverflowCount: sprintRealOverflowCount,
+                realOverflowPct: sprintRealOverflowPct,
+              }}
+              healthOverview={pbiHealthBatch.overview}
+              bottlenecks={bottlenecks.bottlenecks}
+              featureRows={featureSummary.rows}
+            />
           </TabsContent>
         </Tabs>
       )}

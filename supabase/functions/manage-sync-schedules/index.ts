@@ -10,6 +10,8 @@ const PROJECT_REF = (() => {
   return match?.[1] ?? "unknown";
 })();
 
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+
 
 const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; functionName: string }> = {
   devops_sync_all_default: {
@@ -120,6 +122,7 @@ function buildCronCommand(functionName: string) {
     url := 'https://${PROJECT_REF}.supabase.co/functions/v1/${functionName}',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      'Authorization', 'Bearer ${SUPABASE_ANON_KEY}',
       'x-cron-secret', public.get_cron_secret()
     ),
     body := '{}'::jsonb

@@ -5,11 +5,12 @@ Este arquivo foi pensado como versão curta para consulta rápida por usuários 
 ## Fábrica
 
 - `Total`: itens KPI sem dupla contagem de PBI + task filha.
-- `Em progresso`: `In Progress`, `Active`, `Em desenvolvimento`, `Aguardando Teste`.
+- `Em progresso`: `In Progress`, `Active`, `Em desenvolvimento`, `Aguardando Teste`, `Em Teste`, `Aguardando Deploy`.
 - `To do`: `To Do` e `New`.
 - `Done`: `Done`, `Closed`, `Resolved`.
 - `AVIÃO`: item com tag `AVIAO`.
 - `Aguardando Teste`: ainda pertence à Fábrica, não à Qualidade.
+- Base padrão gestor: US/PBI/Bug no escopo da sprint; timelog considera tasks filhas desses itens para reconciliar horas.
 - `Transbordo real`: mudanças relevantes de sprint menos o primeiro compromisso.
 - `Lead time médio`: horas médias por PBI com base em timelog; sem timelog, usa esforço médio.
 - Fonte principal: Azure DevOps.

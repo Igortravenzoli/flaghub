@@ -3,15 +3,40 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 
-const FABRICA_IN_PROGRESS_STATES = new Set(['In Progress', 'Active', 'Em desenvolvimento', 'Aguardando Teste']);
+export const FABRICA_IN_PROGRESS_STATES = new Set([
+  'In Progress',
+  'Active',
+  'Em desenvolvimento',
+  'Aguardando Teste',
+  'Em Teste',
+  'Aguardando Deploy',
+]);
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+const FABRICA_MANAGER_ITEM_TYPES = new Set(['Product Backlog Item', 'User Story', 'Bug']);
+const FABRICA_COUNTABLE_STATES = new Set([
+  ...FABRICA_IN_PROGRESS_STATES,
+  ...FABRICA_TODO_STATES,
+  ...DONE_STATES,
+]);
 
 /** Collaborators excluded by default from Fábrica KPI counts (belong to Design sector) */
 export const KPI_DEFAULT_EXCLUDED_COLLABORATORS = new Set(['ari']);
 
-function isFabricaInProgress(state: string | null | undefined): boolean {
+export function isFabricaInProgress(state: string | null | undefined): boolean {
   return FABRICA_IN_PROGRESS_STATES.has(state || '');
+}
+
+export function isFabricaCountableState(state: string | null | undefined): boolean {
+  return FABRICA_COUNTABLE_STATES.has(state || '');
+}
+
+function isFabricaManagerItem(workItemType: string | null | undefined): boolean {
+  return FABRICA_MANAGER_ITEM_TYPES.has(workItemType || '');
+}
+
+function isFabricaTaskItem(workItemType: string | null | undefined): boolean {
+  return workItemType === 'Task';
 }
 
 function isFabricaTodo(state: string | null | undefined): boolean {
@@ -235,10 +260,26 @@ export function useFabricaKpis(
   const workItemsQuery = useQuery({
     queryKey: ['fabrica', 'work-items-tags', includeWorkItemMeta],
     queryFn: async () => {
-      return fetchAllRows<{ id: number; tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>((from, to) =>
+      return fetchAllRows<{
+        id: number;
+        tags: string | null;
+        title: string | null;
+        parent_id: number | null;
+        assigned_to_display: string | null;
+        area_path: string | null;
+        work_item_type: string | null;
+        iteration_history: any;
+        state: string | null;
+        iteration_path: string | null;
+        priority: number | null;
+        effort: number | null;
+        created_date: string | null;
+        changed_date: string | null;
+        web_url: string | null;
+      }>((from, to) =>
         supabase
           .from('devops_work_items')
-          .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type, iteration_history')
+          .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type, iteration_history, state, iteration_path, priority, effort, created_date, changed_date, web_url')
           .range(from, to)
       );
     },
@@ -276,6 +317,15 @@ export function useFabricaKpis(
     ? nonInfraItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
     : nonInfraItems;
 
+  const nonInfraWorkItems = (workItemsQuery.data || []).filter((wi) => {
+    if (wi.id === EXCLUDED_INFRA_PBI_ID || wi.parent_id === EXCLUDED_INFRA_PBI_ID) return false;
+    return !wi.title?.startsWith(INFRA_PREFIX);
+  });
+
+  const dateScopedWorkItems = (dateFrom && dateTo)
+    ? nonInfraWorkItems.filter((wi) => isInRange(wi.created_date, dateFrom, dateTo) || isInRange(wi.changed_date, dateFrom, dateTo))
+    : nonInfraWorkItems;
+
   const effectiveSprintFilter = Array.isArray(sprintFilter)
     ? sprintFilter.filter(Boolean)
     : (sprintFilter === '__pending__' ? 'all' : sprintFilter);
@@ -290,14 +340,60 @@ export function useFabricaKpis(
     return nonInfraItems.filter(i => i.iteration_path === effectiveSprintFilter);
   })();
 
+  const scopedWorkItems = (() => {
+    if (effectiveSprintFilter === 'all') return dateScopedWorkItems;
+    if (Array.isArray(effectiveSprintFilter)) {
+      const sprintSet = new Set(effectiveSprintFilter);
+      return nonInfraWorkItems.filter((wi) => !!wi.iteration_path && sprintSet.has(wi.iteration_path));
+    }
+    return nonInfraWorkItems.filter((wi) => wi.iteration_path === effectiveSprintFilter);
+  })();
+
+  const viewIds = new Set(items.map((item) => item.id).filter((id): id is number => id != null));
+  const fallbackManagerItems: FabricaItem[] = scopedWorkItems
+    .filter((wi) => isFabricaManagerItem(wi.work_item_type) && !viewIds.has(wi.id))
+    .map((wi) => ({
+      id: wi.id,
+      title: wi.title,
+      work_item_type: wi.work_item_type,
+      state: wi.state,
+      assigned_to_display: wi.assigned_to_display,
+      priority: wi.priority,
+      effort: wi.effort,
+      iteration_path: wi.iteration_path,
+      created_date: wi.created_date,
+      changed_date: wi.changed_date,
+      parent_id: wi.parent_id,
+      parent_title: null,
+      parent_type: null,
+      web_url: wi.web_url,
+      tags: wi.tags,
+      count_in_kpi: true,
+    }));
+
+  const scopedItems = [...items, ...fallbackManagerItems];
+
   const isExcluded = (name: string | null | undefined): boolean => isCollaboratorExcluded(name, excludedCollaborators);
 
-  const filteredItems = items.filter((item) => !isExcluded(item.assigned_to_display));
+  const filteredItems = scopedItems.filter((item) => !isExcluded(item.assigned_to_display));
+
+  // Manager baseline: keep KPI and timelog scope aligned to gestor counting.
+  const managerScopedItems = filteredItems.filter((item) => isFabricaManagerItem(item.work_item_type));
+  const managerScopedIds = new Set(
+    managerScopedItems.map((item) => item.id).filter((id): id is number => id != null)
+  );
+  const managerScopedTaskIds = filteredItems
+    .filter((item) => isFabricaTaskItem(item.work_item_type) && item.id != null && item.parent_id != null && managerScopedIds.has(item.parent_id))
+    .map((item) => item.id as number);
+  const timelogScopeIds = new Set<number>([
+    ...managerScopedIds,
+    ...managerScopedTaskIds,
+  ]);
 
   // Unique collaborator names in the current items
   const allCollaborators: string[] = (() => {
     const set = new Set<string>();
-    for (const item of items) {
+    for (const item of scopedItems) {
       if (item.assigned_to_display) set.add(item.assigned_to_display);
     }
     return [...set].sort((a, b) => a.localeCompare(b));
@@ -305,7 +401,8 @@ export function useFabricaKpis(
 
   // kpiItems: exclude Tasks/Bugs whose parent PBI is also in the view (count_in_kpi flag)
   // AND exclude collaborators that are unchecked in the filter
-  const kpiItems = filteredItems.filter(i => i.count_in_kpi !== false);
+  // AND keep only countable KPI states (exclude Removed/other non-board states)
+  const kpiItems = filteredItems.filter(i => i.count_in_kpi !== false && isFabricaCountableState(i.state));
 
   const total      = kpiItems.length;
   const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length;
@@ -320,8 +417,8 @@ export function useFabricaKpis(
 
   // ── Timelog aggregations ──
   const timeLogs = timeLogsQuery.data || [];
-  // Scope time logs to the work items currently in sprint (when a sprint filter is active)
-  const itemIdsInScope = new Set(filteredItems.map(i => i.id).filter((id): id is number => id != null));
+  // Scope time logs to manager baseline + linked tasks to keep parity with gestor filter.
+  const itemIdsInScope = timelogScopeIds;
   const scopedTimeLogs = timeLogs.filter((tl) => {
     if (tl.work_item_id == null || !itemIdsInScope.has(tl.work_item_id)) return false;
     return !isExcluded(tl.user_name);
@@ -680,7 +777,7 @@ export function useFabricaKpis(
 
   return {
     items: filteredItems,
-    allSprintItems: items,
+    allSprintItems: scopedItems,
     allItems: nonInfraItems,
     total,
     inProgress,
