@@ -835,7 +835,8 @@ export default function FabricaDashboard() {
     const leadTokens = [
       'alexandre diniz',
       'klelbio',
-      'fabio jackson',
+      'jackson s',
+      'fabio h',
     ];
 
     const isLead = (name: string): boolean => {
