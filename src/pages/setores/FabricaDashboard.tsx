@@ -832,17 +832,22 @@ export default function FabricaDashboard() {
   }, []);
 
   const markLeadCollaborators = useCallback(() => {
-    const leadNames = new Set([
+    const leadTokens = [
       'alexandre diniz',
       'klelbio',
       'fabio jackson',
-    ]);
+    ];
+
+    const isLead = (name: string): boolean => {
+      const n = normalizeCollaboratorName(name);
+      return leadTokens.some(lead => n === lead || n.startsWith(lead + ' ') || n.includes(lead));
+    };
 
     setExcludedCollabs(() => {
       const next = new Set<string>();
 
       for (const name of fab.allCollaborators) {
-        if (leadNames.has(normalizeCollaboratorName(name))) continue;
+        if (isLead(name)) continue;
 
         for (const key of getCollaboratorExclusionKeys(name)) {
           next.add(key);
