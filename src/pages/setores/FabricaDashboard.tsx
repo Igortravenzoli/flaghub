@@ -40,17 +40,19 @@ import {
   GitMerge, Loader2, ExternalLink, CheckCircle2, Minus, SendHorizonal,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
 
-type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
+type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'entregue' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
 type DetailedStatusKey = 'aguardando_deploy' | 'aguardando_teste' | 'done' | 'em_desenvolvimento' | 'em_teste' | 'new' | 'aviao';
 type DetailedScopeMode = 'gestor' | 'tasks';
+type CollaboratorViewMode = 'tasks' | 'gestor';
 
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
+const ENTREGUE_STATES = new Set(['Aguardando Teste', 'Em Teste', 'Aguardando Deploy']);
 
 function isFabricaTodo(state: string | null | undefined): boolean {
   return FABRICA_TODO_STATES.has(state || '');
@@ -90,6 +92,15 @@ function isManagerLikeItem(item: FabricaItem): boolean {
   return item.work_item_type === 'Product Backlog Item' || item.work_item_type === 'User Story' || item.work_item_type === 'Bug';
 }
 
+function matchesCollaboratorSelection(item: FabricaItem, collaboratorName: string | null): boolean {
+  if (!collaboratorName) return true;
+
+  const display = item.assigned_to_display || '';
+  const shortName = display.split(' ').slice(0, 2).join(' ');
+
+  return shortName === collaboratorName || display === collaboratorName;
+}
+
 function getDetailedStatusKey(item: FabricaItem, tagsByWorkItemId: Record<number, string>): Exclude<DetailedStatusKey, 'aviao'> | null {
   const state = (item.state || '').trim();
   const tags = getItemTags(item, tagsByWorkItemId);
@@ -118,7 +129,8 @@ function getFabFilterLabel(f: FabKpiFilter) {
     case 'all': return 'Todos';
     case 'in_progress': return 'Em Progresso';
     case 'todo': return 'A Fazer';
-    case 'done': return 'Finalizados';
+    case 'done': return 'Done';
+    case 'entregue': return 'Entregue';
     case 'aguardando_teste': return 'Aguardando Teste';
     case 'aguardando_deploy': return 'Aguardando Deploy';
     case 'em_teste': return 'Em Teste';
@@ -129,21 +141,40 @@ function getFabFilterLabel(f: FabKpiFilter) {
   }
 }
 
-function SprintStatusCard({ total, inProgress, toDo, done, semTask, isLoading, fabKpiFilter, toggleFab }: {
-  total: number; inProgress: number; toDo: number; done: number; semTask: number;
+function SprintStatusCard({ total, inProgress, toDo, done, entregue, semTask, isLoading, fabKpiFilter, toggleFab, sprintEndDate }: {
+  total: number; inProgress: number; toDo: number; done: number; entregue: number; semTask: number;
   isLoading: boolean; fabKpiFilter: FabKpiFilter;
   toggleFab: (f: FabKpiFilter) => void;
+  sprintEndDate?: Date | null;
 }) {
-  const completedPct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const concluidos = done + entregue;
+  const completedPct = total > 0 ? Math.round((concluidos / total) * 100) : 0;
   const donePct = total > 0 ? (done / total) * 100 : 0;
+  const entregPct = total > 0 ? (entregue / total) * 100 : 0;
   const inProgressPct = total > 0 ? (inProgress / total) * 100 : 0;
   const todoPct = total > 0 ? (toDo / total) * 100 : 0;
+  const remainingItems = Math.max(total - concluidos, 0);
+  const daysRemaining = (() => {
+    if (!sprintEndDate) return null;
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(sprintEndDate.getFullYear(), sprintEndDate.getMonth(), sprintEndDate.getDate());
+    return Math.max(0, Math.ceil((endOfDay.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24)));
+  })();
+  const pacePerDay = daysRemaining != null && daysRemaining > 0 ? remainingItems / daysRemaining : remainingItems;
+  const inverseTone = (() => {
+    if (remainingItems === 0) return 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20';
+    if (daysRemaining != null && daysRemaining <= 2 && remainingItems > 0) return 'text-destructive bg-destructive/10 border-destructive/20';
+    if (daysRemaining != null && remainingItems > daysRemaining * 2) return 'text-amber-600 bg-amber-500/10 border-amber-500/20';
+    return 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20';
+  })();
 
   const subItems: { key: FabKpiFilter; label: string; value: number; valueColor: string; dotColor: string }[] = [
-    { key: 'in_progress', label: 'Em Progresso', value: inProgress, valueColor: 'text-[hsl(var(--info))]', dotColor: 'bg-[hsl(var(--info))]' },
-    { key: 'todo',        label: 'A Fazer',      value: toDo,       valueColor: 'text-amber-600 dark:text-amber-400', dotColor: 'bg-amber-400' },
-    { key: 'done',        label: 'Finalizados',  value: done,       valueColor: 'text-[hsl(var(--success))]', dotColor: 'bg-[hsl(var(--success))]' },
-    { key: 'sem_task',    label: 'PBI/BUG sem Task', value: semTask, valueColor: semTask > 0 ? 'text-destructive' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive' : 'bg-border' },
+    { key: 'in_progress', label: 'Em Progresso',     value: inProgress, valueColor: 'text-[hsl(var(--info))]',            dotColor: 'bg-[hsl(var(--info))]' },
+    { key: 'todo',        label: 'A Fazer',           value: toDo,       valueColor: 'text-amber-600 dark:text-amber-400', dotColor: 'bg-amber-400' },
+    { key: 'entregue',    label: 'Entregue',          value: entregue,   valueColor: 'text-emerald-600 dark:text-emerald-400', dotColor: 'bg-emerald-500' },
+    { key: 'done',        label: 'Done',              value: done,       valueColor: 'text-[hsl(var(--success))]',         dotColor: 'bg-[hsl(var(--success))]' },
+    { key: 'sem_task',    label: 'PBI/BUG sem Task',  value: semTask,    valueColor: semTask > 0 ? 'text-destructive' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive' : 'bg-border' },
   ];
 
   if (isLoading) {
@@ -176,18 +207,48 @@ function SprintStatusCard({ total, inProgress, toDo, done, semTask, isLoading, f
           <span className={`text-2xl font-semibold ${completedPct > 0 ? 'text-[hsl(var(--success))]' : 'text-muted-foreground'}`}>
             {completedPct}%
           </span>
+          {entregue > 0 && (
+            <p className="text-[10px] text-muted-foreground/70 mt-0.5">Done + Entregue</p>
+          )}
         </div>
       </div>
 
       {/* Barra de progresso segmentada */}
       <div className="relative h-2 rounded-full bg-muted overflow-hidden mb-5">
         <div className="absolute left-0 top-0 h-full bg-[hsl(var(--success))] transition-all duration-500" style={{ width: `${donePct}%` }} />
-        <div className="absolute top-0 h-full bg-[hsl(var(--info))] transition-all duration-500" style={{ left: `${donePct}%`, width: `${inProgressPct}%` }} />
-        <div className="absolute top-0 h-full bg-amber-400 transition-all duration-500" style={{ left: `${donePct + inProgressPct}%`, width: `${todoPct}%` }} />
+        <div className="absolute top-0 h-full bg-emerald-500 transition-all duration-500" style={{ left: `${donePct}%`, width: `${entregPct}%` }} />
+        <div className="absolute top-0 h-full bg-[hsl(var(--info))] transition-all duration-500" style={{ left: `${donePct + entregPct}%`, width: `${inProgressPct}%` }} />
+        <div className="absolute top-0 h-full bg-amber-400 transition-all duration-500" style={{ left: `${donePct + entregPct + inProgressPct}%`, width: `${todoPct}%` }} />
+      </div>
+
+      <div className={`rounded-md border px-2.5 pt-1.5 pb-1 mb-4 ${inverseTone}`}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap">Acomp. Sprint</span>
+            <span className="text-[11px] text-muted-foreground truncate">
+              {daysRemaining == null
+                ? '—'
+                : remainingItems === 0
+                  ? 'Tudo concluído'
+                  : `${remainingItems} restantes · ${sprintEndDate?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
+            </span>
+          </div>
+          <span className="text-[11px] font-semibold whitespace-nowrap">
+            {daysRemaining == null ? '—' : `${daysRemaining}d · ${pacePerDay.toFixed(1)}/d`}
+          </span>
+        </div>
+        {daysRemaining != null && (
+          <div className="mt-1 h-1 rounded-full bg-background/70 overflow-hidden">
+            <div
+              className={`h-full transition-all duration-500 ${remainingItems === 0 ? 'bg-emerald-500' : daysRemaining <= 2 ? 'bg-destructive' : 'bg-amber-500'}`}
+              style={{ width: `${total > 0 ? Math.min(100, (remainingItems / total) * 100) : 0}%` }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Sub-items clicáveis */}
-      <div className="grid grid-cols-4 gap-2 pt-4 border-t border-border">
+      <div className="grid grid-cols-5 gap-1.5 pt-4 border-t border-border">
         {subItems.map(item => {
           const isActive = fabKpiFilter === item.key;
           return (
@@ -362,8 +423,10 @@ export default function FabricaDashboard() {
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   const [detailedScopeMode, setDetailedScopeMode] = useState<DetailedScopeMode>('gestor');
+  const [collaboratorViewMode, setCollaboratorViewMode] = useState<CollaboratorViewMode>('gestor');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
+  const [collaboratorSearch, setCollaboratorSearch] = useState('');
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
@@ -724,14 +787,6 @@ export default function FabricaDashboard() {
     }
   }, [search, fab.allItems, fab.items, fab.sortedSprints, sprintFilter, searchAutoSwitched, selectedSprintPaths]);
 
-  const colabChartData = useMemo(() =>
-    Object.entries(fab.porColaborador)
-      .sort(([, a], [, b]) => (b as number) - (a as number))
-      .slice(0, 10)
-      .map(([name, count]) => ({ name: name.split(' ').slice(0, 2).join(' '), count })),
-    [fab.porColaborador]
-  );
-
   const selectedCollaboratorsCount = useMemo(
     () => fab.allCollaborators.filter((name) => !isCollaboratorExcluded(name, excludedCollabs)).length,
     [fab.allCollaborators, excludedCollabs]
@@ -776,6 +831,28 @@ export default function FabricaDashboard() {
     setExcludedCollabs(new Set());
   }, []);
 
+  const markLeadCollaborators = useCallback(() => {
+    const leadNames = new Set([
+      'alexandre diniz',
+      'klelbio',
+      'fabio jackson',
+    ]);
+
+    setExcludedCollabs(() => {
+      const next = new Set<string>();
+
+      for (const name of fab.allCollaborators) {
+        if (leadNames.has(normalizeCollaboratorName(name))) continue;
+
+        for (const key of getCollaboratorExclusionKeys(name)) {
+          next.add(key);
+        }
+      }
+
+      return next;
+    });
+  }, [fab.allCollaborators]);
+
   const unmarkAllCollaborators = useCallback(() => {
     const allExcluded = new Set<string>();
     for (const name of fab.allCollaborators) {
@@ -801,49 +878,71 @@ export default function FabricaDashboard() {
     setPage(0);
   };
 
+  const filteredCollaborators = useMemo(() => {
+    const q = collaboratorSearch.trim().toLowerCase();
+    if (!q) return fab.allCollaborators;
+    return fab.allCollaborators.filter((name) => name.toLowerCase().includes(q));
+  }, [fab.allCollaborators, collaboratorSearch]);
+
   const sprintFilteredItems = useMemo(() => {
     if (!isCollaboratorFilterActive) return fab.items;
     // When collaborator filter is active, keep only assigned rows to avoid counting unassigned backlog noise.
     return fab.items.filter((item) => !!item.assigned_to_display);
   }, [fab.items, isCollaboratorFilterActive]);
 
+  const collaboratorScopedItems = useMemo(() => {
+    if (!collaboratorFilter) return sprintFilteredItems;
+
+    const matchedParentIds = new Set<number>();
+
+    for (const item of sprintFilteredItems) {
+      if (!matchesCollaboratorSelection(item, collaboratorFilter)) continue;
+
+      if (isManagerLikeItem(item) && item.id != null) {
+        matchedParentIds.add(item.id);
+      }
+
+      if (isTaskOnlyItem(item) && item.parent_id != null) {
+        matchedParentIds.add(item.parent_id);
+      }
+    }
+
+    return sprintFilteredItems.filter((item) => {
+      if (matchesCollaboratorSelection(item, collaboratorFilter)) return true;
+      return isManagerLikeItem(item) && item.id != null && matchedParentIds.has(item.id);
+    });
+  }, [sprintFilteredItems, collaboratorFilter]);
+
   const sprintKpiItems = useMemo(
-    () => sprintFilteredItems.filter((item) => item.count_in_kpi !== false && isManagerLikeItem(item) && isFabricaCountableState(item.state)),
-    [sprintFilteredItems]
+    () => collaboratorScopedItems.filter((item) => item.count_in_kpi !== false && isManagerLikeItem(item) && isFabricaCountableState(item.state)),
+    [collaboratorScopedItems]
   );
 
-  const typeDistribution = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const item of sprintFilteredItems) {
-      const t = typeLabels[item.work_item_type || ''] || item.work_item_type || 'Outro';
-      map[t] = (map[t] || 0) + 1;
-    }
-    return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, [sprintFilteredItems]);
-
   const sprintTotal = sprintKpiItems.length;
-  const sprintInProgress = sprintKpiItems.filter(i => isFabricaInProgress(i.state)).length;
+  const sprintEntregue = sprintKpiItems.filter(i => ENTREGUE_STATES.has(i.state || '')).length;
+  const sprintInProgress = sprintKpiItems.filter(i => isFabricaInProgress(i.state) && !ENTREGUE_STATES.has(i.state || '')).length;
   const sprintToDo = sprintKpiItems.filter(i => isFabricaTodo(i.state)).length;
   const sprintDone = sprintKpiItems.filter(i => isDone(i.state)).length;
   const sprintTaskItems = useMemo(
-    () => sprintFilteredItems.filter((item) => isTaskOnlyItem(item)),
-    [sprintFilteredItems]
+    () => collaboratorScopedItems.filter((item) => isTaskOnlyItem(item)),
+    [collaboratorScopedItems]
   );
 
   const sprintManagerItems = useMemo(
-    () => sprintFilteredItems.filter((item) => isManagerLikeItem(item)),
-    [sprintFilteredItems]
+    () => collaboratorScopedItems.filter((item) => isManagerLikeItem(item)),
+    [collaboratorScopedItems]
   );
 
   // Itens de gestor (PBI/BUG) sem Task vinculada (anomalia/BO)
   const sprintPbisSemTask = useMemo(() => {
     const childParentIds = new Set(
       sprintFilteredItems
+        .filter(i => collaboratorScopedItems.includes(i))
         .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
         .map(i => i.parent_id!)
     );
-    return sprintFilteredItems.filter((i) => isManagerLikeItem(i) && i.id != null && !childParentIds.has(i.id));
-  }, [sprintFilteredItems]);
+    return collaboratorScopedItems.filter((i) => isManagerLikeItem(i) && i.id != null && !childParentIds.has(i.id));
+  }, [collaboratorScopedItems, sprintFilteredItems]);
   const sprintPbisSemTaskCount = sprintPbisSemTask.length;
 
   const sprintTransbordoItems = useMemo(() => {
@@ -851,15 +950,25 @@ export default function FabricaDashboard() {
     return fab.transbordoItems.filter(i => i.iteration_path === sprintFilter || i.sprintsOverflowed.includes(sprintFilter));
   }, [fab.transbordoItems, sprintFilter]);
 
-  const sprintTransbordoCount = sprintTransbordoItems.length;
-  const sprintTransbordoTotal = sprintFilteredItems.filter(
+  const scopedManagerIds = useMemo(
+    () => new Set(collaboratorScopedItems.filter((item) => isManagerLikeItem(item) && item.id != null).map((item) => item.id as number)),
+    [collaboratorScopedItems]
+  );
+
+  const scopedTransbordoItems = useMemo(
+    () => sprintTransbordoItems.filter((item) => item.id != null && scopedManagerIds.has(item.id)),
+    [sprintTransbordoItems, scopedManagerIds]
+  );
+
+  const sprintTransbordoCount = scopedTransbordoItems.length;
+  const sprintTransbordoTotal = collaboratorScopedItems.filter(
     i => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'User Story'
   ).length;
   const sprintTransbordoPct = sprintTransbordoTotal > 0
     ? Math.round((sprintTransbordoCount / sprintTransbordoTotal) * 100)
     : 0;
-  const sprintRealOverflowItemCount = sprintTransbordoItems.filter((item) => item.realOverflowCount > 0).length;
-  const sprintRealOverflowCount = sprintTransbordoItems.reduce((sum, item) => sum + item.realOverflowCount, 0);
+  const sprintRealOverflowItemCount = scopedTransbordoItems.filter((item) => item.realOverflowCount > 0).length;
+  const sprintRealOverflowCount = scopedTransbordoItems.reduce((sum, item) => sum + item.realOverflowCount, 0);
   const sprintRealOverflowPct = sprintTransbordoTotal > 0
     ? Math.round((sprintRealOverflowItemCount / sprintTransbordoTotal) * 100)
     : 0;
@@ -891,22 +1000,22 @@ export default function FabricaDashboard() {
       counts[key] += 1;
     }
 
+    const entregueCount = counts.aguardando_teste + counts.em_teste + counts.aguardando_deploy;
+
     return [
-      { key: 'aguardando_deploy' as FabKpiFilter, label: 'Aguardando Deploy', stateColor: 'Aguardando Deploy', count: counts.aguardando_deploy },
-      { key: 'aguardando_teste' as FabKpiFilter, label: 'Aguardando Teste', stateColor: 'Aguardando Teste', count: counts.aguardando_teste },
-      { key: 'done' as FabKpiFilter, label: 'Done', stateColor: 'Done', count: counts.done },
       { key: 'em_desenvolvimento' as FabKpiFilter, label: 'Em Desenvolvimento', stateColor: 'Em desenvolvimento', count: counts.em_desenvolvimento },
-      { key: 'em_teste' as FabKpiFilter, label: 'Em Teste', stateColor: 'Em Teste', count: counts.em_teste },
       { key: 'new' as FabKpiFilter, label: 'New', stateColor: 'New', count: counts.new },
+      { key: 'entregue' as FabKpiFilter, label: 'Entregue', stateColor: 'Aguardando Deploy', count: entregueCount },
+      { key: 'done' as FabKpiFilter, label: 'Done', stateColor: 'Done', count: counts.done },
       { key: 'aviao' as FabKpiFilter, label: 'Aviões na Sprint', stateColor: 'Active', count: sprintAviaoCount },
     ];
   }, [detailedScopeMode, sprintManagerItems, sprintTaskItems, fab.tagsByWorkItemId, sprintAviaoCount]);
 
   const pbiHealthIds = useMemo(
-    () => sprintFilteredItems
+    () => collaboratorScopedItems
       .filter((i) => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || ''))
       .map((i) => i.id as number),
-    [sprintFilteredItems]
+    [collaboratorScopedItems]
   );
 
   const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
@@ -965,18 +1074,18 @@ export default function FabricaDashboard() {
   }, [operational.items]);
 
   const filteredFabItems = useMemo(() => {
-    let items = sprintFilteredItems;
+    let items = collaboratorScopedItems;
     const filterByDetailedStatus = (statusKey: Exclude<DetailedStatusKey, 'aviao'>) => {
       if (detailedScopeMode === 'tasks') {
-        return sprintFilteredItems.filter((i) => isTaskOnlyItem(i) && getDetailedStatusKey(i, fab.tagsByWorkItemId) === statusKey);
+        return collaboratorScopedItems.filter((i) => isTaskOnlyItem(i) && getDetailedStatusKey(i, fab.tagsByWorkItemId) === statusKey);
       }
 
-      const managerMatches = sprintFilteredItems.filter(
+      const managerMatches = collaboratorScopedItems.filter(
         (i) => isManagerLikeItem(i) && getDetailedStatusKey(i, fab.tagsByWorkItemId) === statusKey
       );
       const managerIds = new Set(managerMatches.map((i) => i.id).filter((id): id is number => id != null));
 
-      return sprintFilteredItems.filter((i) => {
+      return collaboratorScopedItems.filter((i) => {
         if (isManagerLikeItem(i)) {
           return managerIds.has(i.id as number);
         }
@@ -991,6 +1100,23 @@ export default function FabricaDashboard() {
       case 'in_progress': items = items.filter(i => isFabricaInProgress(i.state)); break;
       case 'todo': items = items.filter(i => isFabricaTodo(i.state)); break;
       case 'done': items = items.filter(i => isDone(i.state)); break;
+      case 'entregue': {
+        if (detailedScopeMode === 'tasks') {
+          items = items.filter(i => isTaskOnlyItem(i) && ENTREGUE_STATES.has(i.state || ''));
+        } else {
+          const entregueMgrs = new Set(
+            collaboratorScopedItems
+              .filter(i => isManagerLikeItem(i) && ENTREGUE_STATES.has(i.state || '') && i.id != null)
+              .map(i => i.id as number)
+          );
+          items = items.filter(i => {
+            if (isManagerLikeItem(i)) return entregueMgrs.has(i.id as number);
+            if (isTaskOnlyItem(i) && i.parent_id != null) return entregueMgrs.has(i.parent_id);
+            return false;
+          });
+        }
+        break;
+      }
       case 'aguardando_teste': items = filterByDetailedStatus('aguardando_teste'); break;
       case 'aguardando_deploy': items = filterByDetailedStatus('aguardando_deploy'); break;
       case 'em_teste': items = filterByDetailedStatus('em_teste'); break;
@@ -1005,7 +1131,7 @@ export default function FabricaDashboard() {
       }); break;
       case 'sem_task': {
         const childParentIds = new Set(
-          sprintFilteredItems
+          collaboratorScopedItems
             .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
             .map(i => i.parent_id!)
         );
@@ -1021,15 +1147,48 @@ export default function FabricaDashboard() {
         return t === typeFilter;
       });
     }
-    if (collaboratorFilter) {
-      items = items.filter(i => {
-        const display = i.assigned_to_display || '';
-        const shortName = display.split(' ').slice(0, 2).join(' ');
-        return shortName === collaboratorFilter || display === collaboratorFilter;
-      });
-    }
     return items;
-  }, [sprintFilteredItems, fabKpiFilter, fab.tagsByWorkItemId, detailedScopeMode, typeFilter, collaboratorFilter]);
+  }, [collaboratorScopedItems, fabKpiFilter, fab.tagsByWorkItemId, detailedScopeMode, typeFilter]);
+
+  const collaboratorViewItems = useMemo(() => (
+    collaboratorScopedItems.filter((item) => (
+      collaboratorViewMode === 'tasks' ? isTaskOnlyItem(item) : isManagerLikeItem(item)
+    ))
+  ), [collaboratorScopedItems, collaboratorViewMode]);
+
+  const colabChartData = useMemo(() => {
+    const counts = collaboratorViewItems.reduce<Record<string, number>>((acc, item) => {
+      if (!item.assigned_to_display) return acc;
+
+      const displayName = item.assigned_to_display || 'Nao atribuido';
+      const shortName = displayName.split(' ').slice(0, 2).join(' ');
+
+      acc[shortName] = (acc[shortName] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(counts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [collaboratorViewItems]);
+
+  const collaboratorViewTotal = useMemo(
+    () => collaboratorViewItems.length,
+    [collaboratorViewItems]
+  );
+
+  const typeDistribution = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const item of filteredFabItems) {
+      const typeName = typeLabels[item.work_item_type || ''] || item.work_item_type || 'Outro';
+      map[typeName] = (map[typeName] || 0) + 1;
+    }
+
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredFabItems]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
@@ -1486,11 +1645,20 @@ export default function FabricaDashboard() {
                 Colaboradores ({selectedCollaboratorsCount}/{fab.allCollaborators.length})
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-2" align="start">
-              <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Colaboradores contabilizados</p>
-              <ScrollArea className="h-[280px]">
+            <PopoverContent className="w-80 p-3" align="start">
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2 px-1">Colaboradores contabilizados</p>
+                  <Input
+                    value={collaboratorSearch}
+                    onChange={(e) => setCollaboratorSearch(e.target.value)}
+                    placeholder="Pesquisar colaborador..."
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <ScrollArea className="h-[240px] rounded-md border border-border/60 p-1">
                 <div className="space-y-1">
-                  {fab.allCollaborators.map(name => {
+                  {filteredCollaborators.map(name => {
                     const isChecked = !isCollaboratorExcluded(name, excludedCollabs);
                     return (
                       <label key={name} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm">
@@ -1505,17 +1673,18 @@ export default function FabricaDashboard() {
                     );
                   })}
                 </div>
-              </ScrollArea>
-              <div className="border-t mt-2 pt-2 flex gap-1">
-                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={markAllCollaborators}>
-                  Marcar todos
-                </Button>
-                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={unmarkAllCollaborators}>
-                  Desmarcar todos
-                </Button>
-                <Button variant="ghost" size="sm" className="text-xs flex-1 h-7" onClick={() => setExcludedCollabs(new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS))}>
-                  Padrão
-                </Button>
+                </ScrollArea>
+                <div className="border-t pt-2 grid grid-cols-3 gap-1">
+                  <Button variant="ghost" size="sm" className="text-[11px] h-8 px-2" onClick={markAllCollaborators}>
+                    Marcar todos
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-[11px] h-8 px-2" onClick={unmarkAllCollaborators}>
+                    Desmarcar todos
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-[11px] h-8 px-2" onClick={markLeadCollaborators}>
+                    Marcar Leads
+                  </Button>
+                </div>
               </div>
             </PopoverContent>
           </Popover>
@@ -1608,10 +1777,12 @@ export default function FabricaDashboard() {
                   inProgress={sprintInProgress}
                   toDo={sprintToDo}
                   done={sprintDone}
+                  entregue={sprintEntregue}
                   semTask={sprintPbisSemTaskCount}
                   isLoading={fab.isLoading}
                   fabKpiFilter={fabKpiFilter}
                   toggleFab={toggleFab}
+                  sprintEndDate={effectiveRange?.to || null}
                 />
 
                 <Card className="p-4">
@@ -1792,17 +1963,44 @@ export default function FabricaDashboard() {
             )}
 
             {/* Charts row */}
-            {renderSectionToggle('overview_charts', 'Tasks colaborador / Distribuição tipo')}
+            {renderSectionToggle('overview_charts', 'Visão colaborador / Distribuição tipo')}
             {!isBlockCollapsed('overview_charts') && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {colabChartData.length > 0 && (
                 <Card className="lg:col-span-2 animate-fade-in" style={{ animationDelay: '500ms' }}>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <Users className="h-4 w-4 text-primary" />Tasks por Colaborador
-                    </CardTitle>
+                    <div className="flex items-start justify-between gap-3">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Users className="h-4 w-4 text-primary" />Visão colaborador
+                      </CardTitle>
+                      <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setCollaboratorViewMode('gestor')}
+                          className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${collaboratorViewMode === 'gestor' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                        >
+                          PBI/BUG
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCollaboratorViewMode('tasks')}
+                          className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${collaboratorViewMode === 'tasks' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                        >
+                          Tasks
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {collaboratorViewMode === 'tasks'
+                        ? 'Contagem por colaborador considerando apenas tasks atribuídas.'
+                        : 'Contagem por colaborador considerando apenas PBI/BUG atribuídos.'}
+                    </p>
                   </CardHeader>
                   <CardContent>
+                    <div className="mb-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Itens nesta visão</span>
+                      <span className="font-medium text-foreground">{collaboratorViewTotal}</span>
+                    </div>
                     <ResponsiveContainer width="100%" height={Math.max(200, colabChartData.length * 32)}>
                       <BarChart data={colabChartData} layout="vertical" margin={{ left: 0, right: 16 }} style={{ cursor: 'pointer' }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
@@ -1831,6 +2029,13 @@ export default function FabricaDashboard() {
                               strokeWidth={collaboratorFilter === entry.name ? 2 : 0}
                             />
                           ))}
+                          <LabelList
+                            dataKey="count"
+                            position="right"
+                            offset={8}
+                            className="fill-foreground"
+                            fontSize={11}
+                          />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -2444,7 +2649,7 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Gerência ═══════ */}
           <TabsContent value="gerencia" className="space-y-4 mt-0">
             <GerenciaTab
-              items={sprintFilteredItems}
+              items={collaboratorScopedItems}
               isLoading={fab.isLoading}
               selectedSprintCodes={selectedSprintCodes}
               hasAllSprints={hasAllSprints}

@@ -60,6 +60,8 @@ function isDoneState(state: string | null | undefined): boolean {
   return state === 'Done' || state === 'Closed' || state === 'Resolved';
 }
 
+const ENTREGUE_STATES = new Set(['Aguardando Teste', 'Em Teste', 'Aguardando Deploy']);
+
 function percent(value: number, total: number): string {
   if (total <= 0) return '0%';
   return `${((value / total) * 100).toFixed(1).replace('.', ',')}%`;
@@ -182,11 +184,17 @@ export function GerenciaTab({
     let aviaoSprint = 0;
     let aviaoAntigo = 0;
 
+    let entregueTotal = 0;
     let doneTotal = 0;
     let doneBug = 0;
     let doneRetornoQa = 0;
     let donePriorizacao = 0;
     let doneAviao = 0;
+
+    let entregueBug = 0;
+    let entregueRetornoQa = 0;
+    let entreguePriorizacao = 0;
+    let entregueAviao = 0;
 
     let priorizadoDone = 0;
     let priorizadoEmDev = 0;
@@ -194,12 +202,21 @@ export function GerenciaTab({
     for (const item of managerItems) {
       const bucket = classifyItem(item, selectedSingleSprintCode);
       const done = isDoneState(item.state);
+      const entregue = ENTREGUE_STATES.has(item.state || '');
 
       if (bucket === 'priorizacao') priorizacao += 1;
       if (bucket === 'bug') bug += 1;
       if (bucket === 'retorno_qa') retornoQa += 1;
       if (bucket === 'aviao_sprint') aviaoSprint += 1;
       if (bucket === 'aviao_antigo') aviaoAntigo += 1;
+
+      if (entregue) {
+        entregueTotal += 1;
+        if (bucket === 'bug') entregueBug += 1;
+        else if (bucket === 'retorno_qa') entregueRetornoQa += 1;
+        else if (bucket === 'priorizacao') entreguePriorizacao += 1;
+        else entregueAviao += 1;
+      }
 
       if (bucket === 'priorizacao') {
         if (done) priorizadoDone += 1;
@@ -221,7 +238,7 @@ export function GerenciaTab({
       total,
       priorizacao,
       naoPriorizado,
-      entregue: doneTotal,
+      entregue: entregueTotal,
       done: doneTotal,
       priorizadoDone,
       priorizadoEmDev,
@@ -229,6 +246,10 @@ export function GerenciaTab({
       retornoQa,
       aviaoSprint,
       aviaoAntigo,
+      entregueBug,
+      entregueRetornoQa,
+      entreguePriorizacao,
+      entregueAviao,
       doneBug,
       doneRetornoQa,
       donePriorizacao,
@@ -335,10 +356,10 @@ export function GerenciaTab({
             <DetailTable
               title="Detalhamento — Entregue"
               rows={[
-                { label: 'Bug', value: metrics.doneBug, total: metrics.entregue },
-                { label: 'Retorno QA', value: metrics.doneRetornoQa, total: metrics.entregue },
-                { label: 'Priorização', value: metrics.donePriorizacao, total: metrics.entregue },
-                { label: 'Avião', value: metrics.doneAviao, total: metrics.entregue },
+                { label: 'Bug', value: metrics.entregueBug, total: metrics.entregue },
+                { label: 'Retorno QA', value: metrics.entregueRetornoQa, total: metrics.entregue },
+                { label: 'Priorização', value: metrics.entreguePriorizacao, total: metrics.entregue },
+                { label: 'Avião', value: metrics.entregueAviao, total: metrics.entregue },
               ]}
             />
             <DetailTable
