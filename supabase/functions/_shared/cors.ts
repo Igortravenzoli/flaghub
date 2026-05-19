@@ -13,9 +13,16 @@ const ALLOWED_ORIGINS = [
   "http://localhost:4173",
 ];
 
+function isAllowedLocalOrigin(origin: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+}
+
 export function getAllowedOrigin(req: Request): string {
   const origin = req.headers.get("Origin") ?? "";
-  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  if (!origin) return ALLOWED_ORIGINS[0];
+  if (ALLOWED_ORIGINS.includes(origin)) return origin;
+  if (isAllowedLocalOrigin(origin)) return origin;
+  return ALLOWED_ORIGINS[0];
 }
 
 export function corsHeaders(req: Request): Record<string, string> {

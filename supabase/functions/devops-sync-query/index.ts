@@ -35,18 +35,35 @@ function getSupabaseAdmin() {
   )
 }
 
-function validateCronSecret(req: Request): boolean {
+async function validateCronSecret(req: Request): Promise<boolean> {
   const cronSecret = req.headers.get('x-cron-secret')
-  const expected = Deno.env.get('CRON_SECRET')
-  return !!cronSecret && !!expected && cronSecret === expected
+  if (!cronSecret) return false
+
+  const expectedEnv = Deno.env.get('CRON_SECRET')
+  if (expectedEnv && cronSecret === expectedEnv) return true
+
+  // Fallback: compare against vault helper to tolerate temporary env drift.
+  try {
+    const admin = getSupabaseAdmin()
+    const { data, error } = await admin.rpc('get_cron_secret')
+    if (error) return false
+    return typeof data === 'string' && data.length > 0 && cronSecret === data
+  } catch {
+    return false
+  }
 }
 
 async function validateAuth(req: Request): Promise<string | null> {
-  if (validateCronSecret(req)) return 'cron'
+  if (await validateCronSecret(req)) return 'cron'
 
   const authHeader = req.headers.get('authorization')
   if (!authHeader?.startsWith('Bearer ')) return null
   const token = authHeader.replace('Bearer ', '')
+
+  // Allow service-to-service calls from internal edge functions.
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (serviceRoleKey && token === serviceRoleKey) return 'service-role-internal'
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
@@ -172,13 +189,21 @@ serve(async (req) => {
     // Auth check
     const userId = await validateAuth(req)
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'Autenticação obrigatória' }), {
+      return new Response(JSON.stringify({
+        error: 'Autenticação obrigatória',
+        debug: {
+          has_cron_header: !!req.headers.get('x-cron-secret'),
+          has_auth_header: !!req.headers.get('authorization'),
+          cron_env_set: !!Deno.env.get('CRON_SECRET'),
+          service_role_env_set: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+        },
+      }), {
         status: 401, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       })
     }
 
     // Admin role check for non-cron callers
-    if (userId !== 'cron') {
+    if (userId !== 'cron' && userId !== 'service-role-internal') {
       const { data: roleRow } = await admin
         .from('hub_user_global_roles')
         .select('role')

@@ -10,6 +10,7 @@ const QUALITY_WIQL_ID = '7b0a8298-5890-42d8-b280-1121b21786da'
 const BATCH_SIZE = 200
 const DEVOPS_API_VERSION = '7.0'
 const WIQL_API_VERSION = '7.1'
+const FALLBACK_ANON_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54bWdwcGZ5bHR3c3FyeWZ4a2JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NDEwMDEsImV4cCI6MjA4NTExNzAwMX0.6TqJwx2_8dbFwbvflSZKVe6MSaagmPosQaxpg0l9Waw'
 
 const CORE_FIELDS = [
   'System.Id', 'System.TeamProject', 'System.WorkItemType', 'System.Title',
@@ -42,6 +43,11 @@ function getSupabaseAdmin() {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
+}
+
+function getAnonJwt() {
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  return anonKey && anonKey.startsWith('eyJ') ? anonKey : FALLBACK_ANON_JWT
 }
 
 function validateCronSecret(req: Request): boolean {
@@ -924,11 +930,13 @@ serve(async (req: Request) => {
     }
 
     const isCron = validateCronSecret(req)
+    const anonJwt = getAnonJwt()
     const forwardHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     }
     if (isCron) {
       forwardHeaders['x-cron-secret'] = Deno.env.get('CRON_SECRET')!
+      forwardHeaders['Authorization'] = `Bearer ${anonJwt}`
     } else {
       forwardHeaders['Authorization'] = req.headers.get('authorization')!
     }
@@ -947,8 +955,13 @@ serve(async (req: Request) => {
             headers: forwardHeaders,
             body: JSON.stringify({ query_id: query.id }),
           })
-          const data = await resp.json()
-          results.push({ query_id: query.id, name: query.name, success: data.success ?? resp.ok })
+          const data = await resp.json().catch(() => ({}))
+          results.push({
+            query_id: query.id,
+            name: query.name,
+            success: data.success ?? resp.ok,
+            error: !resp.ok ? (data?.error ?? `HTTP ${resp.status}`) : undefined,
+          })
         } catch (err) {
           results.push({ query_id: query.id, name: query.name, success: false, error: (err as Error).message })
         }
@@ -1014,6 +1027,7 @@ serve(async (req: Request) => {
 
         if (isCron && cronSecret) {
           qaHeaders['x-cron-secret'] = cronSecret
+          qaHeaders['Authorization'] = `Bearer ${anonJwt}`
           qaResult.auth_mode = 'cron_secret'
         } else {
           const auth = req.headers.get('authorization')
@@ -1085,6 +1099,7 @@ serve(async (req: Request) => {
           items_upserted: succeeded,
           error: failed > 0 ? `${failed} queries falharam` : null,
           meta: {
+            results,
             children: childrenResult,
             iteration_history: iterHistory,
             lifecycle_health: lifecycleHealth,

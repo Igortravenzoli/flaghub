@@ -105,6 +105,38 @@ SELECT cron.schedule(
   ) AS request_id;
   $$
 );
+
+-- 5. VDesk TimeLog — diário às 01:00 UTC
+SELECT cron.schedule(
+  'sync-vdesk-timelog',
+  '0 1 * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://PROJECT_REF.supabase.co/functions/v1/vdesk-sync-timelog',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', public.get_cron_secret()
+    ),
+    body := '{}'::jsonb
+  ) AS request_id;
+  $$
+);
+
+-- 6. DevOps Qualidade — a cada 10 minutos
+SELECT cron.schedule(
+  'sync-devops-qualidade',
+  '*/10 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://PROJECT_REF.supabase.co/functions/v1/devops-sync-qualidade',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', public.get_cron_secret()
+    ),
+    body := '{}'::jsonb
+  ) AS request_id;
+  $$
+);
 ```
 
 ## Observação (retenção)
@@ -122,6 +154,30 @@ SELECT * FROM cron.job;
 
 -- Ver execuções recentes
 SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 20;
+
+-- Verificar SUCESSO REAL via status HTTP do net.http_post
+SELECT
+  jrd.jobid,
+  j.jobname,
+  jrd.start_time,
+  jrd.end_time,
+  jrd.status AS cron_status,
+  r.status_code,
+  CASE WHEN r.status_code BETWEEN 200 AND 299 THEN 'ok' ELSE 'erro_http' END AS http_result,
+  left(coalesce(r.content, ''), 200) AS response_snippet
+FROM cron.job_run_details jrd
+JOIN cron.job j ON j.jobid = jrd.jobid
+LEFT JOIN net._http_response r ON r.id = jrd.return_message::bigint
+WHERE j.jobname IN (
+  'sync-devops-all',
+  'sync-vdesk-clientes',
+  'sync-vdesk-helpdesk',
+  'sync-devops-timelog',
+  'sync-vdesk-timelog',
+  'sync-devops-qualidade'
+)
+ORDER BY jrd.start_time DESC
+LIMIT 50;
 ```
 
 ## 5. Remover jobs (se necessário)
@@ -131,6 +187,8 @@ SELECT cron.unschedule('sync-devops-all');
 SELECT cron.unschedule('sync-vdesk-clientes');
 SELECT cron.unschedule('sync-vdesk-helpdesk');
 SELECT cron.unschedule('sync-devops-timelog');
+SELECT cron.unschedule('sync-vdesk-timelog');
+SELECT cron.unschedule('sync-devops-qualidade');
 ```
 
 ---

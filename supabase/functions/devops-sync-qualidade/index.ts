@@ -29,24 +29,44 @@ async function validateAuth(req: Request): Promise<string | null> {
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
   )
-  const { data, error } = await supabase.auth.getClaims(token)
-  if (error || !data?.claims?.sub) return null
-  return data.claims.sub as string
+  const { data, error } = await supabase.auth.getUser(token)
+  if (error || !data?.user?.id) return null
+  return data.user.id
 }
 
 async function invokeQuerySync(queryId: string): Promise<any> {
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  const fallbackAnonJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54bWdwcGZ5bHR3c3FyeWZ4a2JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NDEwMDEsImV4cCI6MjA4NTExNzAwMX0.6TqJwx2_8dbFwbvflSZKVe6MSaagmPosQaxpg0l9Waw'
+  const authJwt = anonKey && anonKey.startsWith('eyJ') ? anonKey : fallbackAnonJwt
+
+  let cronSecret = Deno.env.get('CRON_SECRET')
+
+  if (!cronSecret) {
+    try {
+      const admin = getSupabaseAdmin()
+      const { data, error } = await admin.rpc('get_cron_secret')
+      if (!error && typeof data === 'string' && data.length > 0) {
+        cronSecret = data
+      }
+    } catch {
+      // keep best-effort fallback to env value
+    }
+  }
+
   const resp = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/devops-sync-query`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-cron-secret': Deno.env.get('CRON_SECRET')!,
+      'Authorization': `Bearer ${authJwt}`,
+      ...(cronSecret ? { 'x-cron-secret': cronSecret } : {}),
     },
     body: JSON.stringify({ query_id: queryId }),
   })
 
   const data = await resp.json().catch(() => ({}))
   if (!resp.ok || data?.success === false) {
-    throw new Error(data?.error || `Falha ao sincronizar query de Qualidade (${resp.status})`)
+    const details = typeof data === 'object' && data !== null ? JSON.stringify(data) : String(data)
+    throw new Error(data?.error ? `${data.error} | details=${details}` : `Falha ao sincronizar query de Qualidade (${resp.status}) | details=${details}`)
   }
   return data
 }

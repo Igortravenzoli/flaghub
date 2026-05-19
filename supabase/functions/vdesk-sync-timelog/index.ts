@@ -63,6 +63,11 @@ interface SyncOptions {
   triggeredBy: string
 }
 
+interface SuggestedRange {
+  fromDate: string
+  toDate: string
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function getSupabaseAdmin() {
   return createClient(
@@ -268,6 +273,43 @@ async function persistPage(sb: ReturnType<typeof getSupabaseAdmin>, rows: Aponta
   return count ?? payload.length
 }
 
+function isoDaysAgo(days: number): string {
+  const base = new Date()
+  base.setDate(base.getDate() - days)
+  return base.toISOString().slice(0, 10)
+}
+
+function shiftIsoDate(isoDate: string, days: number): string {
+  const base = new Date(`${isoDate}T00:00:00`)
+  base.setDate(base.getDate() + days)
+  return base.toISOString().slice(0, 10)
+}
+
+async function getSuggestedRange(sb: ReturnType<typeof getSupabaseAdmin>): Promise<SuggestedRange> {
+  const today = new Date().toISOString().slice(0, 10)
+
+  const { data: lastRun } = await sb
+    .from('timelog_sync_runs')
+    .select('to_date, status')
+    .in('status', ['ok', 'partial'])
+    .not('to_date', 'is', null)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (lastRun?.to_date) {
+    return {
+      fromDate: shiftIsoDate(lastRun.to_date, -1),
+      toDate: today,
+    }
+  }
+
+  return {
+    fromDate: isoDaysAgo(7),
+    toDate: today,
+  }
+}
+
 // ── HTTP handler ────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -275,6 +317,8 @@ serve(async (req) => {
   }
 
   try {
+    const sb = getSupabaseAdmin()
+
     const caller = await validateAuth(req)
     if (!caller) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -304,16 +348,14 @@ serve(async (req) => {
       } catch { /* body opcional */ }
     }
 
-    // Defaults: últimos 7 dias se nada for informado
+    // Defaults: incremental com 1 dia de segurança; fallback para 7 dias na primeira carga
     if (!fromDate || !toDate) {
-      const today = new Date()
-      const past  = new Date(today.getTime() - 7 * 24 * 3600_000)
-      fromDate ??= past.toISOString().slice(0, 10)
-      toDate   ??= today.toISOString().slice(0, 10)
+      const suggestedRange = await getSuggestedRange(sb)
+      fromDate ??= suggestedRange.fromDate
+      toDate   ??= suggestedRange.toDate
     }
 
     // Cria run de auditoria
-    const sb = getSupabaseAdmin()
     const triggeredBy = caller === 'cron' ? 'cron' : `admin:${caller}`
     const { data: run, error: runErr } = await sb
       .from('timelog_sync_runs')

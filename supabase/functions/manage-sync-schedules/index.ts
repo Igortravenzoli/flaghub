@@ -11,6 +11,7 @@ const PROJECT_REF = (() => {
 })();
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const FALLBACK_ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54bWdwcGZ5bHR3c3FyeWZ4a2JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NDEwMDEsImV4cCI6MjA4NTExNzAwMX0.6TqJwx2_8dbFwbvflSZKVe6MSaagmPosQaxpg0l9Waw";
 
 
 const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; functionName: string }> = {
@@ -33,6 +34,12 @@ const MANAGED_JOBS: Record<string, { cronName: string; defaultSchedule: string; 
     cronName: "sync-devops-timelog",
     defaultSchedule: "*/15 * * * *",
     functionName: "devops-sync-timelog",
+  },
+
+  "vdesk-sync-timelog": {
+    cronName: "sync-vdesk-timelog",
+    defaultSchedule: "0 */12 * * *",
+    functionName: "vdesk-sync-timelog",
   },
 
   "devops-sync-qualidade": {
@@ -118,11 +125,12 @@ async function requirePrivilegedUser(req: Request): Promise<string> {
 }
 
 function buildCronCommand(functionName: string) {
+  const anonJwt = SUPABASE_ANON_KEY.startsWith("eyJ") ? SUPABASE_ANON_KEY : FALLBACK_ANON_JWT;
   return `SELECT net.http_post(
     url := 'https://${PROJECT_REF}.supabase.co/functions/v1/${functionName}',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer ${SUPABASE_ANON_KEY}',
+      'Authorization', 'Bearer ${anonJwt}',
       'x-cron-secret', public.get_cron_secret()
     ),
     body := '{}'::jsonb
