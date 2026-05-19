@@ -40,19 +40,19 @@ import {
   GitMerge, Loader2, ExternalLink, CheckCircle2, Minus, SendHorizonal,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'entregue' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
-type DetailedStatusKey = 'aguardando_deploy' | 'aguardando_teste' | 'done' | 'em_desenvolvimento' | 'em_teste' | 'new' | 'aviao';
-type DetailedScopeMode = 'gestor' | 'tasks';
 type CollaboratorViewMode = 'tasks' | 'gestor';
+type PrevistoFilter = 'previsto' | 'nao_previsto';
 
 const FABRICA_TODO_STATES = new Set(['To Do', 'New']);
 const DONE_STATES = new Set(['Done', 'Closed', 'Resolved']);
 const ENTREGUE_STATES = new Set(['Aguardando Teste', 'Em Teste', 'Aguardando Deploy']);
+const RETORNO_QA_REGEX = /retorno\s*(de)?\s*qa/i;
 
 function isFabricaTodo(state: string | null | undefined): boolean {
   return FABRICA_TODO_STATES.has(state || '');
@@ -60,6 +60,10 @@ function isFabricaTodo(state: string | null | undefined): boolean {
 
 function isDone(state: string | null | undefined): boolean {
   return DONE_STATES.has(state || '');
+}
+
+function isRemoved(state: string | null | undefined): boolean {
+  return (state || '').trim().toLowerCase() === 'removed';
 }
 
 const integrations: Integration[] = [
@@ -72,16 +76,17 @@ const typeLabels = TYPE_LABELS;
 const stateColors = STATE_COLORS;
 
 const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
-const TAG_AGUARDANDO_DEPLOY_REGEX = /(^|;)\s*(AGUARDANDO\s*DEPLOY|DEPLOY)\s*(;|$)/i;
-const TAG_AGUARDANDO_TESTE_REGEX = /(^|;)\s*(AGUARDANDO\s*TESTE|QA\s*PENDENTE)\s*(;|$)/i;
-const TAG_EM_TESTE_REGEX = /(^|;)\s*(EM\s*TESTE|TESTE|TESTING|IN\s*TEST)\s*(;|$)/i;
-const TAG_EM_DESENVOLVIMENTO_REGEX = /(^|;)\s*(EM\s*DESENVOLVIMENTO|DESENVOLVIMENTO|IN\s*PROGRESS|ACTIVE|DEV)\s*(;|$)/i;
-const TAG_DONE_REGEX = /(^|;)\s*(DONE|RESOLVED|CLOSED|FINALIZADO)\s*(;|$)/i;
-const TAG_NEW_REGEX = /(^|;)\s*(NEW|TODO|TO\s*DO|BACKLOG)\s*(;|$)/i;
 
 function getItemTags(item: FabricaItem, tagsByWorkItemId: Record<number, string>): string {
   if (item.id && tagsByWorkItemId[item.id]) return tagsByWorkItemId[item.id];
   return item.tags || '';
+}
+
+function isNaoPrevistoManagerItem(item: FabricaItem, tagsByWorkItemId: Record<number, string>): boolean {
+  if (!isManagerLikeItem(item)) return false;
+  if (item.work_item_type === 'Bug') return true;
+  const tags = getItemTags(item, tagsByWorkItemId);
+  return RETORNO_QA_REGEX.test(tags) || AVIAO_REGEX.test(tags);
 }
 
 function isTaskOnlyItem(item: FabricaItem): boolean {
@@ -99,20 +104,6 @@ function matchesCollaboratorSelection(item: FabricaItem, collaboratorName: strin
   const shortName = display.split(' ').slice(0, 2).join(' ');
 
   return shortName === collaboratorName || display === collaboratorName;
-}
-
-function getDetailedStatusKey(item: FabricaItem, tagsByWorkItemId: Record<number, string>): Exclude<DetailedStatusKey, 'aviao'> | null {
-  const state = (item.state || '').trim();
-  const tags = getItemTags(item, tagsByWorkItemId);
-
-  if (state === 'Aguardando Deploy' || TAG_AGUARDANDO_DEPLOY_REGEX.test(tags)) return 'aguardando_deploy';
-  if (state === 'Em Teste' || TAG_EM_TESTE_REGEX.test(tags)) return 'em_teste';
-  if (state === 'Aguardando Teste' || TAG_AGUARDANDO_TESTE_REGEX.test(tags)) return 'aguardando_teste';
-  if (DONE_STATES.has(state) || TAG_DONE_REGEX.test(tags)) return 'done';
-  if (isFabricaInProgress(state) || TAG_EM_DESENVOLVIMENTO_REGEX.test(tags)) return 'em_desenvolvimento';
-  if (state === 'New' || TAG_NEW_REGEX.test(tags)) return 'new';
-
-  return null;
 }
 
 function formatHoursFromMinutes(minutes: number): number {
@@ -137,7 +128,7 @@ function getFabFilterLabel(f: FabKpiFilter) {
     case 'em_desenvolvimento': return 'Em Desenvolvimento';
     case 'new': return 'New';
     case 'aviao': return 'Avião';
-    case 'sem_task': return 'PBI/BUG sem Task';
+    case 'sem_task': return 'US/BUG sem Task';
   }
 }
 
@@ -170,11 +161,11 @@ function SprintStatusCard({ total, inProgress, toDo, done, entregue, semTask, is
   })();
 
   const subItems: { key: FabKpiFilter; label: string; value: number; valueColor: string; dotColor: string }[] = [
-    { key: 'in_progress', label: 'Em Progresso',     value: inProgress, valueColor: 'text-[hsl(var(--info))]',            dotColor: 'bg-[hsl(var(--info))]' },
-    { key: 'todo',        label: 'A Fazer',           value: toDo,       valueColor: 'text-amber-600 dark:text-amber-400', dotColor: 'bg-amber-400' },
+    { key: 'in_progress', label: 'Em Desenvolvimento', value: inProgress, valueColor: 'text-[hsl(var(--info))]',            dotColor: 'bg-[hsl(var(--info))]' },
+    { key: 'todo',        label: 'To Do',             value: toDo,       valueColor: 'text-amber-600 dark:text-amber-400', dotColor: 'bg-amber-400' },
     { key: 'entregue',    label: 'Entregue',          value: entregue,   valueColor: 'text-emerald-600 dark:text-emerald-400', dotColor: 'bg-emerald-500' },
     { key: 'done',        label: 'Done',              value: done,       valueColor: 'text-[hsl(var(--success))]',         dotColor: 'bg-[hsl(var(--success))]' },
-    { key: 'sem_task',    label: 'PBI/BUG sem Task',  value: semTask,    valueColor: semTask > 0 ? 'text-destructive' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive' : 'bg-border' },
+    { key: 'sem_task',    label: 'US/BUG sem Task',   value: semTask,    valueColor: semTask > 0 ? 'text-destructive' : 'text-muted-foreground', dotColor: semTask > 0 ? 'bg-destructive' : 'bg-border' },
   ];
 
   if (isLoading) {
@@ -422,9 +413,8 @@ export default function FabricaDashboard() {
   const [searchAutoSwitched, setSearchAutoSwitched] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
-  const [detailedScopeMode, setDetailedScopeMode] = useState<DetailedScopeMode>('gestor');
   const [collaboratorViewMode, setCollaboratorViewMode] = useState<CollaboratorViewMode>('gestor');
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [previstoFilter, setPrevistoFilter] = useState<PrevistoFilter | null>(null);
   const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
   const [collaboratorSearch, setCollaboratorSearch] = useState('');
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
@@ -869,18 +859,8 @@ export default function FabricaDashboard() {
     setExcludedCollabs(allExcluded);
   }, [fab.allCollaborators]);
 
-  const TYPE_COLORS: Record<string, string> = {
-    'PBI': 'hsl(var(--primary))',
-    'Task': 'hsl(var(--info))',
-    'Bug': 'hsl(0, 72%, 51%)',
-    'Story': 'hsl(280, 65%, 60%)',
-  };
-
-  const getTypeColor = (typeName: string, idx: number) =>
-    TYPE_COLORS[typeName] || CHART_COLORS[idx % CHART_COLORS.length];
-
-  const toggleTypeFilter = (typeName: string) => {
-    setTypeFilter(prev => prev === typeName ? null : typeName);
+  const togglePrevistoFilter = (value: PrevistoFilter) => {
+    setPrevistoFilter(prev => prev === value ? null : value);
     setPage(0);
   };
 
@@ -944,10 +924,14 @@ export default function FabricaDashboard() {
     const childParentIds = new Set(
       sprintFilteredItems
         .filter(i => collaboratorScopedItems.includes(i))
-        .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
+        .filter(i => i.work_item_type === 'Task' && i.parent_id != null && !isDone(i.state) && !isRemoved(i.state))
         .map(i => i.parent_id!)
     );
-    return collaboratorScopedItems.filter((i) => isManagerLikeItem(i) && i.id != null && !childParentIds.has(i.id));
+    return collaboratorScopedItems.filter((i) => {
+      if (!isManagerLikeItem(i) || i.id == null) return false;
+      if (isDone(i.state)) return false;
+      return !childParentIds.has(i.id);
+    });
   }, [collaboratorScopedItems, sprintFilteredItems]);
   const sprintPbisSemTaskCount = sprintPbisSemTask.length;
 
@@ -978,44 +962,6 @@ export default function FabricaDashboard() {
   const sprintRealOverflowPct = sprintTransbordoTotal > 0
     ? Math.round((sprintRealOverflowItemCount / sprintTransbordoTotal) * 100)
     : 0;
-
-  const sprintAviaoCount = useMemo(() => {
-    const source = detailedScopeMode === 'gestor' ? sprintManagerItems : sprintTaskItems;
-    return source.filter(i => {
-      if (!i.id) return false;
-      const tags = getItemTags(i, fab.tagsByWorkItemId);
-      return AVIAO_REGEX.test(tags);
-    }).length;
-  }, [detailedScopeMode, sprintManagerItems, sprintTaskItems, fab.tagsByWorkItemId]);
-
-  const sprintDetailedStatuses = useMemo(() => {
-    const counts: Record<Exclude<DetailedStatusKey, 'aviao'>, number> = {
-      aguardando_deploy: 0,
-      aguardando_teste: 0,
-      done: 0,
-      em_desenvolvimento: 0,
-      em_teste: 0,
-      new: 0,
-    };
-
-    const source = detailedScopeMode === 'gestor' ? sprintManagerItems : sprintTaskItems;
-
-    for (const item of source) {
-      const key = getDetailedStatusKey(item, fab.tagsByWorkItemId);
-      if (!key) continue;
-      counts[key] += 1;
-    }
-
-    const entregueCount = counts.aguardando_teste + counts.em_teste + counts.aguardando_deploy;
-
-    return [
-      { key: 'em_desenvolvimento' as FabKpiFilter, label: 'Em Desenvolvimento', stateColor: 'Em desenvolvimento', count: counts.em_desenvolvimento },
-      { key: 'new' as FabKpiFilter, label: 'New', stateColor: 'New', count: counts.new },
-      { key: 'entregue' as FabKpiFilter, label: 'Entregue', stateColor: 'Aguardando Deploy', count: entregueCount },
-      { key: 'done' as FabKpiFilter, label: 'Done', stateColor: 'Done', count: counts.done },
-      { key: 'aviao' as FabKpiFilter, label: 'Aviões na Sprint', stateColor: 'Active', count: sprintAviaoCount },
-    ];
-  }, [detailedScopeMode, sprintManagerItems, sprintTaskItems, fab.tagsByWorkItemId, sprintAviaoCount]);
 
   const pbiHealthIds = useMemo(
     () => collaboratorScopedItems
@@ -1081,23 +1027,15 @@ export default function FabricaDashboard() {
 
   const filteredFabItems = useMemo(() => {
     let items = collaboratorScopedItems;
-    const filterByDetailedStatus = (statusKey: Exclude<DetailedStatusKey, 'aviao'>) => {
-      if (detailedScopeMode === 'tasks') {
-        return collaboratorScopedItems.filter((i) => isTaskOnlyItem(i) && getDetailedStatusKey(i, fab.tagsByWorkItemId) === statusKey);
-      }
-
+    const filterByState = (states: string[]) => {
       const managerMatches = collaboratorScopedItems.filter(
-        (i) => isManagerLikeItem(i) && getDetailedStatusKey(i, fab.tagsByWorkItemId) === statusKey
+        (i) => isManagerLikeItem(i) && states.includes((i.state || '').trim())
       );
       const managerIds = new Set(managerMatches.map((i) => i.id).filter((id): id is number => id != null));
 
       return collaboratorScopedItems.filter((i) => {
-        if (isManagerLikeItem(i)) {
-          return managerIds.has(i.id as number);
-        }
-        if (isTaskOnlyItem(i) && i.parent_id != null) {
-          return managerIds.has(i.parent_id);
-        }
+        if (isManagerLikeItem(i) && i.id != null) return managerIds.has(i.id);
+        if (isTaskOnlyItem(i) && i.parent_id != null) return managerIds.has(i.parent_id);
         return false;
       });
     };
@@ -1106,77 +1044,90 @@ export default function FabricaDashboard() {
       case 'in_progress': items = items.filter(i => isFabricaInProgress(i.state)); break;
       case 'todo': items = items.filter(i => isFabricaTodo(i.state)); break;
       case 'done': items = items.filter(i => isDone(i.state)); break;
-      case 'entregue': {
-        if (detailedScopeMode === 'tasks') {
-          items = items.filter(i => isTaskOnlyItem(i) && ENTREGUE_STATES.has(i.state || ''));
-        } else {
-          const entregueMgrs = new Set(
-            collaboratorScopedItems
-              .filter(i => isManagerLikeItem(i) && ENTREGUE_STATES.has(i.state || '') && i.id != null)
-              .map(i => i.id as number)
-          );
-          items = items.filter(i => {
-            if (isManagerLikeItem(i)) return entregueMgrs.has(i.id as number);
-            if (isTaskOnlyItem(i) && i.parent_id != null) return entregueMgrs.has(i.parent_id);
-            return false;
-          });
-        }
-        break;
-      }
-      case 'aguardando_teste': items = filterByDetailedStatus('aguardando_teste'); break;
-      case 'aguardando_deploy': items = filterByDetailedStatus('aguardando_deploy'); break;
-      case 'em_teste': items = filterByDetailedStatus('em_teste'); break;
-      case 'em_desenvolvimento': items = filterByDetailedStatus('em_desenvolvimento'); break;
-      case 'new': items = filterByDetailedStatus('new'); break;
+      case 'entregue': items = filterByState(['Aguardando Teste', 'Em Teste', 'Aguardando Deploy']); break;
+      case 'aguardando_teste': items = filterByState(['Aguardando Teste']); break;
+      case 'aguardando_deploy': items = filterByState(['Aguardando Deploy']); break;
+      case 'em_teste': items = filterByState(['Em Teste']); break;
+      case 'em_desenvolvimento': items = filterByState(['Em desenvolvimento', 'In Progress', 'Active']); break;
+      case 'new': items = filterByState(['New']); break;
       case 'aviao': items = items.filter(i => {
         if (!i.id) return false;
-        if (detailedScopeMode === 'tasks' && !isTaskOnlyItem(i)) return false;
-        if (detailedScopeMode === 'gestor' && !isManagerLikeItem(i)) return false;
+        if (!isManagerLikeItem(i)) return false;
         const tags = getItemTags(i, fab.tagsByWorkItemId);
         return AVIAO_REGEX.test(tags);
       }); break;
       case 'sem_task': {
         const childParentIds = new Set(
           collaboratorScopedItems
-            .filter(i => i.work_item_type === 'Task' && i.parent_id != null)
+            .filter(i => i.work_item_type === 'Task' && i.parent_id != null && !isDone(i.state) && !isRemoved(i.state))
             .map(i => i.parent_id!)
         );
         items = items.filter(
-          i => isManagerLikeItem(i) && i.id != null && !childParentIds.has(i.id)
+          i => isManagerLikeItem(i) && i.id != null && !isDone(i.state) && !childParentIds.has(i.id)
         );
         break;
       }
     }
-    if (typeFilter) {
-      items = items.filter(i => {
-        const t = typeLabels[i.work_item_type || ''] || i.work_item_type || 'Outro';
-        return t === typeFilter;
+    if (previstoFilter) {
+      const managerMatchIds = new Set(
+        collaboratorScopedItems
+          .filter((i) => isManagerLikeItem(i) && i.id != null)
+          .filter((i) => {
+            const naoPrevisto = isNaoPrevistoManagerItem(i, fab.tagsByWorkItemId);
+            return previstoFilter === 'nao_previsto' ? naoPrevisto : !naoPrevisto;
+          })
+          .map((i) => i.id as number)
+      );
+
+      items = items.filter((i) => {
+        if (isManagerLikeItem(i) && i.id != null) return managerMatchIds.has(i.id);
+        if (isTaskOnlyItem(i) && i.parent_id != null) return managerMatchIds.has(i.parent_id);
+        return false;
       });
     }
     return items;
-  }, [collaboratorScopedItems, fabKpiFilter, fab.tagsByWorkItemId, detailedScopeMode, typeFilter]);
+  }, [collaboratorScopedItems, fabKpiFilter, fab.tagsByWorkItemId, previstoFilter]);
 
   const collaboratorViewItems = useMemo(() => (
-    collaboratorScopedItems.filter((item) => (
-      collaboratorViewMode === 'tasks' ? isTaskOnlyItem(item) : isManagerLikeItem(item)
-    ))
+    collaboratorScopedItems.filter((item) => {
+      if (collaboratorViewMode === 'tasks') {
+        return isTaskOnlyItem(item) && !isRemoved(item.state);
+      }
+      return isManagerLikeItem(item);
+    })
   ), [collaboratorScopedItems, collaboratorViewMode]);
 
   const colabChartData = useMemo(() => {
-    const counts = collaboratorViewItems.reduce<Record<string, number>>((acc, item) => {
+    const counts = collaboratorViewItems.reduce<Record<string, {
+      todo: number;
+      in_progress: number;
+      entregue: number;
+      done: number;
+      total: number;
+    }>>((acc, item) => {
       if (!item.assigned_to_display) return acc;
 
       const displayName = item.assigned_to_display || 'Nao atribuido';
       const shortName = displayName.split(' ').slice(0, 2).join(' ');
 
-      acc[shortName] = (acc[shortName] || 0) + 1;
+      const row = acc[shortName] || { todo: 0, in_progress: 0, entregue: 0, done: 0, total: 0 };
+      if (isDone(item.state)) row.done += 1;
+      else if (ENTREGUE_STATES.has(item.state || '')) row.entregue += 1;
+      else if (isFabricaTodo(item.state)) row.todo += 1;
+      else row.in_progress += 1;
+      row.total += 1;
+      acc[shortName] = row;
       return acc;
     }, {});
 
     return Object.entries(counts)
-      .sort(([, a], [, b]) => b - a)
+      .sort(([, a], [, b]) => b.total - a.total)
       .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
+      .map(([name, status]) => ({
+        name,
+        ...status,
+        concluido_pct: status.total > 0 ? Math.round(((status.done + status.entregue) / status.total) * 100) : 0,
+      }));
   }, [collaboratorViewItems]);
 
   const collaboratorViewTotal = useMemo(
@@ -1184,17 +1135,23 @@ export default function FabricaDashboard() {
     [collaboratorViewItems]
   );
 
-  const typeDistribution = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const item of filteredFabItems) {
-      const typeName = typeLabels[item.work_item_type || ''] || item.work_item_type || 'Outro';
-      map[typeName] = (map[typeName] || 0) + 1;
+  const previstoNaoPrevisto = useMemo(() => {
+    const managerItems = collaboratorScopedItems.filter((item) => isManagerLikeItem(item) && item.count_in_kpi !== false);
+    let previsto = 0;
+    let naoPrevisto = 0;
+    for (const item of managerItems) {
+      if (isNaoPrevistoManagerItem(item, fab.tagsByWorkItemId)) naoPrevisto += 1;
+      else previsto += 1;
     }
-
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredFabItems]);
+    const total = previsto + naoPrevisto;
+    return {
+      previsto,
+      naoPrevisto,
+      total,
+      previstoPct: total > 0 ? Math.round((previsto / total) * 100) : 0,
+      naoPrevistoPct: total > 0 ? Math.round((naoPrevisto / total) * 100) : 0,
+    };
+  }, [collaboratorScopedItems, fab.tagsByWorkItemId]);
 
   const { parentRows, childrenMap, orphanRows } = useMemo(() => {
     const q = search.toLowerCase();
@@ -1319,12 +1276,9 @@ export default function FabricaDashboard() {
     parts.push(sprintPart);
 
     if (fabKpiFilter !== 'all') parts.push(`Filtro KPI: ${getFabFilterLabel(fabKpiFilter)}`);
-    if (typeFilter) parts.push(`Tipo: ${typeFilter}`);
+    if (previstoFilter) parts.push(`Visão: ${previstoFilter === 'previsto' ? 'Previsto' : 'Não Previsto'}`);
     if (collaboratorFilter) parts.push(`Colaborador: ${collaboratorFilter}`);
     if (search.trim()) parts.push(`Busca: ${search.trim()}`);
-    if (activeTab === 'overview' && ['aguardando_deploy', 'aguardando_teste', 'done', 'em_desenvolvimento', 'em_teste', 'new', 'aviao'].includes(fabKpiFilter)) {
-      parts.push(`Escopo detalhado: ${detailedScopeMode === 'tasks' ? 'Tasks' : 'Gestor'}`);
-    }
     if (activeTab === 'timelog') {
       const sources = [showVdesk ? 'Vdesk' : null, showDevops ? 'DevOps' : null].filter(Boolean).join(' + ');
       parts.push(`Fontes: ${sources || 'nenhuma'}`);
@@ -1341,11 +1295,10 @@ export default function FabricaDashboard() {
     selectedSprintCodes,
     activeTabLabel,
     fabKpiFilter,
-    typeFilter,
+    previstoFilter,
     collaboratorFilter,
     search,
     activeTab,
-    detailedScopeMode,
     showVdesk,
     showDevops,
     reconFilter,
@@ -1714,9 +1667,9 @@ export default function FabricaDashboard() {
             Filtro: {filterLabel(fabKpiFilter)} ✕
           </Badge>
         )}
-        {typeFilter && (
-          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setTypeFilter(null)}>
-            Tipo: {typeFilter} ✕
+        {previstoFilter && (
+          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setPrevistoFilter(null)}>
+            Visão: {previstoFilter === 'previsto' ? 'Previsto' : 'Não Previsto'} ✕
           </Badge>
         )}
         {collaboratorFilter && (
@@ -1774,10 +1727,9 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
-            {renderSectionToggle('overview_scope', 'Itens escopo / Status detalhados')}
+            {renderSectionToggle('overview_scope', 'Itens no escopo')}
             {!isBlockCollapsed('overview_scope') && (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {/* Sprint Status consolidado */}
                 <SprintStatusCard
                   total={sprintTotal}
                   inProgress={sprintInProgress}
@@ -1791,316 +1743,294 @@ export default function FabricaDashboard() {
                   sprintEndDate={effectiveRange?.to || null}
                 />
 
-                <Card className="p-4">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <p className="text-xs font-medium text-muted-foreground">STATUS DETALHADOS</p>
-                    <div className="inline-flex rounded-md border border-border overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setDetailedScopeMode('gestor')}
-                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${detailedScopeMode === 'gestor' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                      >
-                        Gestor (PBI/BUG)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDetailedScopeMode('tasks')}
-                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${detailedScopeMode === 'tasks' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                      >
-                        Tasks
-                      </button>
-                    </div>
-                  </div>
-                  {detailedScopeMode === 'gestor' && (
-                    <p className="text-[11px] text-muted-foreground mb-2">
-                      Contagem primária em PBI/BUG com exploração das tasks filhas ao aplicar filtro.
-                    </p>
-                  )}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {sprintDetailedStatuses.map((status) => {
-                      const isActive = fabKpiFilter === status.key;
-                      return (
-                        <button
-                          key={status.label}
-                          type="button"
-                          onClick={() => toggleFab(status.key)}
-                          className={`rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/40 ${isActive ? 'border-primary ring-1 ring-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}
-                        >
-                          <Badge variant="outline" className={`mb-2 text-[10px] ${stateColors[status.stateColor] || ''}`}>
-                            {status.label}
-                          </Badge>
-                          <div className="text-xl font-semibold leading-none">{status.count}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Card>
+                {colabChartData.length > 0 ? (
+                  <Card className="animate-fade-in" style={{ animationDelay: '500ms' }}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                          <Users className="h-4 w-4 text-primary" />Visão colaborador
+                        </CardTitle>
+                        <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setCollaboratorViewMode('gestor')}
+                            className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${collaboratorViewMode === 'gestor' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                          >
+                            PBI/BUG
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCollaboratorViewMode('tasks')}
+                            className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${collaboratorViewMode === 'tasks' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                          >
+                            Tasks
+                          </button>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {collaboratorViewMode === 'tasks'
+                          ? 'Tasks atribuídas por colaborador (Removed desconsiderado), separadas por status.'
+                          : 'PBI/BUG atribuídos por colaborador, separados por status.'}
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="mb-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Itens nesta visão</span>
+                        <span className="font-medium text-foreground">{collaboratorViewTotal}</span>
+                      </div>
+                      <ResponsiveContainer width="100%" height={Math.max(200, colabChartData.length * 32)}>
+                        <BarChart data={colabChartData} layout="vertical" margin={{ left: 0, right: 16 }} style={{ cursor: 'pointer' }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                          <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
+                          <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={110} />
+                          <RechartsTooltip
+                            contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                            labelStyle={{ color: 'hsl(var(--foreground))' }}
+                            formatter={(value: number, key: string) => {
+                              const labelMap: Record<string, string> = {
+                                todo: 'A Fazer',
+                                in_progress: 'Em Progresso',
+                                entregue: 'Entregue',
+                                done: 'Done',
+                              };
+                              return [value, labelMap[key] || key];
+                            }}
+                          />
+                          <Bar dataKey="todo" stackId="collab-status" fill="#f59e0b" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
+                            if (data?.name) {
+                              setCollaboratorFilter(prev => prev === data.name ? null : data.name);
+                              setPage(0);
+                            }
+                          }} />
+                          <Bar dataKey="in_progress" stackId="collab-status" fill="hsl(var(--info))" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
+                            if (data?.name) {
+                              setCollaboratorFilter(prev => prev === data.name ? null : data.name);
+                              setPage(0);
+                            }
+                          }} />
+                          <Bar dataKey="entregue" stackId="collab-status" fill="#10b981" radius={[0, 0, 0, 0]} cursor="pointer" onClick={(data: { name?: string } | undefined) => {
+                            if (data?.name) {
+                              setCollaboratorFilter(prev => prev === data.name ? null : data.name);
+                              setPage(0);
+                            }
+                          }} />
+                          <Bar
+                            dataKey="done"
+                            stackId="collab-status"
+                            fill="hsl(var(--success))"
+                            radius={[0, 6, 6, 0]}
+                            cursor="pointer"
+                            onClick={(data: { name?: string } | undefined) => {
+                              if (data?.name) {
+                                setCollaboratorFilter(prev => prev === data.name ? null : data.name);
+                                setPage(0);
+                              }
+                            }}
+                          >
+                            {colabChartData.map((entry, idx) => (
+                              <Cell
+                                key={idx}
+                                fill={collaboratorFilter === entry.name ? 'hsl(var(--success))' : 'hsl(var(--success) / 0.85)'}
+                                stroke={collaboratorFilter === entry.name ? 'hsl(var(--foreground))' : 'transparent'}
+                                strokeWidth={collaboratorFilter === entry.name ? 2 : 0}
+                              />
+                            ))}
+                            <LabelList
+                              dataKey="total"
+                              position="right"
+                              offset={8}
+                              className="fill-foreground"
+                              fontSize={11}
+                            />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="p-6">
+                    <p className="text-xs text-muted-foreground">Sem dados para a visão colaborador no filtro atual.</p>
+                  </Card>
+                )}
               </div>
             )}
 
             {/* Performance + Riscos */}
             {renderSectionToggle('overview_perf_risk', 'Performance / Riscos')}
             {!isBlockCollapsed('overview_perf_risk') && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Performance */}
-              {fab.isLoading ? (
-                <Card className="p-6"><Skeleton className="h-3 w-24 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
-              ) : (
-                <Card className="p-6">
-                  <p className="text-xs font-medium text-muted-foreground mb-4">PERFORMANCE</p>
-                  <div className="space-y-0 divide-y divide-border">
-                    <div className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-primary/10">
-                          <Clock className="h-3.5 w-3.5 text-primary" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Lead Time Médio</p>
-                          <p className="text-[11px] text-muted-foreground/70">
-                            {fab.leadTimeSource === 'effort' ? 'Effort médio / PBI' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-2xl font-semibold text-foreground">
-                          {fab.leadTimeMedio ?? <span className="text-muted-foreground text-base">—</span>}
-                        </span>
-                        {fab.leadTimeMedio != null && (
-                          <span className="text-xs text-muted-foreground ml-1">{fab.leadTimeSource === 'effort' ? 'pts' : 'h'}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-[hsl(var(--info))]/10">
-                          <Gauge className="h-3.5 w-3.5 text-[hsl(var(--info))]" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">Velocidade Média</p>
-                          <p className="text-[11px] text-muted-foreground/70">
-                            {fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-2xl font-semibold text-foreground">
-                          {fab.velocidadeMedia ?? <span className="text-muted-foreground text-base">—</span>}
-                        </span>
-                        {fab.velocidadeMedia != null && (
-                          <span className="text-xs text-muted-foreground ml-1">{fab.velocidadeSource === 'effort' ? 'pts' : 'h'}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              )}
-
-              {/* Riscos */}
-              {fab.isLoading || qaReturnKpis.isLoading ? (
-                <Card className="p-6"><Skeleton className="h-3 w-16 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
-              ) : (() => {
-                const transbordoHigh = sprintTransbordoPct != null && sprintTransbordoPct > 50;
-                const qaOpen = qaReturnKpis.summary?.open_events ?? 0;
-                const qaTotal = qaReturnKpis.summary?.total_events ?? 0;
-                const qaAvg = qaReturnKpis.summary?.avg_days_open;
-                const qaMax = qaReturnKpis.summary?.max_days_open;
-                return (
-                  <Card className="p-6">
-                    <p className="text-xs font-medium text-muted-foreground mb-4">RISCOS</p>
-                    <div className="space-y-0 divide-y divide-border">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {previstoNaoPrevisto.total > 0 && (
+                  <Card className="p-6 animate-fade-in" style={{ animationDelay: '600ms' }}>
+                    <p className="text-xs font-medium text-muted-foreground mb-4">VISÃO PREVISTO X NÃO PREVISTO</p>
+                    <div className="relative">
+                      <div className="pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 border-t border-border" />
                       <button
-                        className="w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
-                        onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('gerencia')}
+                        type="button"
+                        onClick={() => togglePrevistoFilter('previsto')}
+                        className={`relative z-10 w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors ${previstoFilter === 'previsto' ? 'bg-primary/10' : ''}`}
                       >
                         <div className="flex items-center gap-2.5">
-                          <div className={`p-1.5 rounded-lg ${transbordoHigh ? 'bg-destructive/10' : 'bg-amber-500/10'}`}>
-                            <AlertTriangle className={`h-3.5 w-3.5 ${transbordoHigh ? 'text-destructive' : 'text-amber-500'}`} />
+                          <div className="p-1.5 rounded-lg bg-primary/10">
+                            <TrendingUp className="h-3.5 w-3.5 text-primary" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-foreground">Transbordo</p>
+                            <p className="text-sm font-medium text-foreground">Previsto</p>
+                            <p className="text-[11px] text-muted-foreground/70">Itens priorizados do escopo</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-2xl font-semibold text-foreground">{previstoNaoPrevisto.previsto}</span>
+                          <p className="text-[11px] text-muted-foreground">{previstoNaoPrevisto.previstoPct}%</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => togglePrevistoFilter('nao_previsto')}
+                        className={`relative z-10 w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors ${previstoFilter === 'nao_previsto' ? 'bg-primary/10' : ''}`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-amber-500/10">
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Não Previsto</p>
+                            <p className="text-[11px] text-muted-foreground/70">Bug, Retorno QA ou Avião</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-2xl font-semibold text-foreground">{previstoNaoPrevisto.naoPrevisto}</span>
+                          <p className="text-[11px] text-muted-foreground">{previstoNaoPrevisto.naoPrevistoPct}%</p>
+                        </div>
+                      </button>
+                    </div>
+                    <div className="mt-3 text-[11px] text-muted-foreground">
+                      Total monitorado nesta visão: <span className="font-medium text-foreground">{previstoNaoPrevisto.total}</span>
+                    </div>
+                  </Card>
+                )}
+
+                {fab.isLoading ? (
+                  <Card className="p-6"><Skeleton className="h-3 w-24 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
+                ) : (
+                  <Card className="p-6">
+                    <p className="text-xs font-medium text-muted-foreground mb-4">PERFORMANCE</p>
+                    <div className="space-y-0 divide-y divide-border">
+                      <div className="flex items-center justify-between py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-primary/10">
+                            <Clock className="h-3.5 w-3.5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Lead Time Médio</p>
                             <p className="text-[11px] text-muted-foreground/70">
-                              {sprintTransbordoCount > 0 ? `${sprintTransbordoCount} de ${sprintTransbordoTotal} itens` : 'Itens não entregues na sprint'}
+                              {fab.leadTimeSource === 'effort' ? 'Effort médio / PBI' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
                             </p>
                           </div>
                         </div>
-                        <span className={`text-2xl font-semibold ${transbordoHigh ? 'text-destructive' : sprintTransbordoPct != null && sprintTransbordoPct > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-                          {sprintTransbordoPct != null ? `${sprintTransbordoPct}%` : '—'}
-                        </span>
-                      </button>
-                      <button
-                        className="w-full text-left flex items-start justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
-                        onClick={() => setActiveTab('qa-return')}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className={`p-1.5 rounded-lg ${qaOpen > 0 ? 'bg-destructive/10' : 'bg-muted'}`}>
-                            <AlertTriangle className={`h-3.5 w-3.5 ${qaOpen > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">Retorno QA</p>
-                            <p className="text-[11px] text-muted-foreground/70">{qaTotal} total no período</p>
-                          </div>
-                        </div>
-                        <div className="text-right space-y-1">
-                          <div className="flex items-baseline gap-1.5 justify-end">
-                            <span className="text-2xl font-semibold text-foreground">{qaTotal}</span>
-                            {qaOpen > 0 && (
-                              <span className="text-sm font-medium text-destructive">{qaOpen} abertos</span>
-                            )}
-                          </div>
-                          {qaOpen > 0 && (qaAvg != null || qaMax != null) && (
-                            <div className="flex gap-3 justify-end">
-                              {qaAvg != null && (
-                                <span className="text-[11px] text-muted-foreground">méd. {qaAvg.toFixed(1)}d</span>
-                              )}
-                              {qaMax != null && (
-                                <span className={`text-[11px] font-medium ${qaMax > 14 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                  máx. {qaMax}d
-                                </span>
-                              )}
-                            </div>
+                        <div className="text-right">
+                          <span className="text-2xl font-semibold text-foreground">
+                            {fab.leadTimeMedio ?? <span className="text-muted-foreground text-base">—</span>}
+                          </span>
+                          {fab.leadTimeMedio != null && (
+                            <span className="text-xs text-muted-foreground ml-1">{fab.leadTimeSource === 'effort' ? 'pts' : 'h'}</span>
                           )}
                         </div>
-                      </button>
-                    </div>
-                  </Card>
-                );
-              })()}
-              </div>
-            )}
-
-            {/* Charts row */}
-            {renderSectionToggle('overview_charts', 'Visão colaborador / Distribuição tipo')}
-            {!isBlockCollapsed('overview_charts') && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {colabChartData.length > 0 && (
-                <Card className="lg:col-span-2 animate-fade-in" style={{ animationDelay: '500ms' }}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <Users className="h-4 w-4 text-primary" />Visão colaborador
-                      </CardTitle>
-                      <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setCollaboratorViewMode('gestor')}
-                          className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${collaboratorViewMode === 'gestor' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                        >
-                          PBI/BUG
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCollaboratorViewMode('tasks')}
-                          className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${collaboratorViewMode === 'tasks' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                        >
-                          Tasks
-                        </button>
+                      </div>
+                      <div className="flex items-center justify-between py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-[hsl(var(--info))]/10">
+                            <Gauge className="h-3.5 w-3.5 text-[hsl(var(--info))]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Velocidade Média</p>
+                            <p className="text-[11px] text-muted-foreground/70">
+                              {fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-2xl font-semibold text-foreground">
+                            {fab.velocidadeMedia ?? <span className="text-muted-foreground text-base">—</span>}
+                          </span>
+                          {fab.velocidadeMedia != null && (
+                            <span className="text-xs text-muted-foreground ml-1">{fab.velocidadeSource === 'effort' ? 'pts' : 'h'}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {collaboratorViewMode === 'tasks'
-                        ? 'Contagem por colaborador considerando apenas tasks atribuídas.'
-                        : 'Contagem por colaborador considerando apenas PBI/BUG atribuídos.'}
-                    </p>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="mb-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>Itens nesta visão</span>
-                      <span className="font-medium text-foreground">{collaboratorViewTotal}</span>
-                    </div>
-                    <ResponsiveContainer width="100%" height={Math.max(200, colabChartData.length * 32)}>
-                      <BarChart data={colabChartData} layout="vertical" margin={{ left: 0, right: 16 }} style={{ cursor: 'pointer' }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                        <XAxis type="number" fontSize={11} stroke="hsl(var(--muted-foreground))" />
-                        <YAxis type="category" dataKey="name" fontSize={11} stroke="hsl(var(--muted-foreground))" width={110} />
-                        <RechartsTooltip
-                          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                          labelStyle={{ color: 'hsl(var(--foreground))' }}
-                        />
-                        <Bar
-                          dataKey="count"
-                          radius={[0, 6, 6, 0]}
-                          cursor="pointer"
-                          onClick={(data: { name?: string } | undefined) => {
-                            if (data?.name) {
-                              setCollaboratorFilter(prev => prev === data.name ? null : data.name);
-                              setPage(0);
-                            }
-                          }}
-                        >
-                          {colabChartData.map((entry, idx) => (
-                            <Cell
-                              key={idx}
-                              fill={collaboratorFilter === entry.name ? 'hsl(var(--primary))' : 'hsl(var(--primary) / 0.7)'}
-                              stroke={collaboratorFilter === entry.name ? 'hsl(var(--foreground))' : 'transparent'}
-                              strokeWidth={collaboratorFilter === entry.name ? 2 : 0}
-                            />
-                          ))}
-                          <LabelList
-                            dataKey="count"
-                            position="right"
-                            offset={8}
-                            className="fill-foreground"
-                            fontSize={11}
-                          />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              )}
+                  </Card>
+                )}
 
-              {typeDistribution.length > 0 && (
-                <Card className="animate-fade-in" style={{ animationDelay: '600ms' }}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-primary" />Distribuição por Tipo
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie
-                          data={typeDistribution}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={80}
-                          paddingAngle={3}
-                          dataKey="value"
-                          cursor="pointer"
-                          onClick={(_, idx) => toggleTypeFilter(typeDistribution[idx].name)}
+                {fab.isLoading || qaReturnKpis.isLoading ? (
+                  <Card className="p-6"><Skeleton className="h-3 w-16 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
+                ) : (() => {
+                  const transbordoHigh = sprintTransbordoPct != null && sprintTransbordoPct > 50;
+                  const qaOpen = qaReturnKpis.summary?.open_events ?? 0;
+                  const qaTotal = qaReturnKpis.summary?.total_events ?? 0;
+                  const qaAvg = qaReturnKpis.summary?.avg_days_open;
+                  const qaMax = qaReturnKpis.summary?.max_days_open;
+                  return (
+                    <Card className="p-6">
+                      <p className="text-xs font-medium text-muted-foreground mb-4">RISCOS</p>
+                      <div className="space-y-0 divide-y divide-border">
+                        <button
+                          className="w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
+                          onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('gerencia')}
                         >
-                          {typeDistribution.map((entry, idx) => (
-                            <Cell
-                              key={idx}
-                              fill={getTypeColor(entry.name, idx)}
-                              opacity={typeFilter && typeFilter !== entry.name ? 0.3 : 1}
-                              stroke={typeFilter === entry.name ? 'hsl(var(--foreground))' : 'transparent'}
-                              strokeWidth={typeFilter === entry.name ? 2 : 0}
-                            />
-                          ))}
-                        </Pie>
-                        <RechartsTooltip
-                          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="flex flex-wrap gap-2 justify-center mt-2">
-                      {typeDistribution.map((t, idx) => (
-                        <div
-                          key={t.name}
-                          className={`flex items-center gap-1.5 text-xs cursor-pointer rounded-md px-2 py-1 transition-all ${typeFilter === t.name ? 'ring-2 ring-primary bg-muted' : 'hover:bg-muted/50'}`}
-                          onClick={() => toggleTypeFilter(t.name)}
+                          <div className="flex items-center gap-2.5">
+                            <div className={`p-1.5 rounded-lg ${transbordoHigh ? 'bg-destructive/10' : 'bg-amber-500/10'}`}>
+                              <AlertTriangle className={`h-3.5 w-3.5 ${transbordoHigh ? 'text-destructive' : 'text-amber-500'}`} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">Transbordo</p>
+                              <p className="text-[11px] text-muted-foreground/70">
+                                {sprintTransbordoCount > 0 ? `${sprintTransbordoCount} de ${sprintTransbordoTotal} itens` : 'Itens não entregues na sprint'}
+                              </p>
+                            </div>
+                          </div>
+                          <span className={`text-2xl font-semibold ${transbordoHigh ? 'text-destructive' : sprintTransbordoPct != null && sprintTransbordoPct > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                            {sprintTransbordoPct != null ? `${sprintTransbordoPct}%` : '—'}
+                          </span>
+                        </button>
+                        <button
+                          className="w-full text-left flex items-start justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
+                          onClick={() => setActiveTab('qa-return')}
                         >
-                          <div className="h-2.5 w-2.5 rounded-sm" style={{ background: getTypeColor(t.name, idx) }} />
-                          {t.name === 'PBI' ? <Package className="h-3 w-3 text-muted-foreground" /> : t.name === 'Task' ? <ListTodo className="h-3 w-3 text-muted-foreground" /> : t.name === 'Bug' ? <Bug className="h-3 w-3 text-muted-foreground" /> : null}
-                          <span className="text-muted-foreground">{t.name}: {t.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                          <div className="flex items-center gap-2.5">
+                            <div className={`p-1.5 rounded-lg ${qaOpen > 0 ? 'bg-destructive/10' : 'bg-muted'}`}>
+                              <AlertTriangle className={`h-3.5 w-3.5 ${qaOpen > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">Retorno QA</p>
+                              <p className="text-[11px] text-muted-foreground/70">{qaTotal} total no período</p>
+                            </div>
+                          </div>
+                          <div className="text-right space-y-1">
+                            <div className="flex items-baseline gap-1.5 justify-end">
+                              <span className="text-2xl font-semibold text-foreground">{qaTotal}</span>
+                              {qaOpen > 0 && (
+                                <span className="text-sm font-medium text-destructive">{qaOpen} abertos</span>
+                              )}
+                            </div>
+                            {qaOpen > 0 && (qaAvg != null || qaMax != null) && (
+                              <div className="flex gap-3 justify-end">
+                                {qaAvg != null && (
+                                  <span className="text-[11px] text-muted-foreground">méd. {qaAvg.toFixed(1)}d</span>
+                                )}
+                                {qaMax != null && (
+                                  <span className={`text-[11px] font-medium ${qaMax > 14 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                    máx. {qaMax}d
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      </div>
+                    </Card>
+                  );
+                })()}
               </div>
             )}
 
