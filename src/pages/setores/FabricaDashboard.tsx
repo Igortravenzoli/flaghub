@@ -50,13 +50,13 @@ type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'entregue' | 'agua
 type SemTaskContextFilter = 'all' | 'stc' | 'ctc';
 type CollaboratorViewMode = 'tasks' | 'gestor';
 type PrevistoFilter = 'previsto' | 'nao_previsto';
-type NewEntryReadFilter = 'all' | 'unread' | 'read';
+type NewEntryReadFilter = 'all' | 'unread';
 
 const normalizeState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 const FABRICA_TODO_STATES = new Set(['to do', 'new']);
 const DONE_STATES = new Set(['done', 'closed', 'resolved']);
 const ENTREGUE_STATES = new Set(['aguardando teste', 'em teste', 'aguardando deploy']);
-const RETORNO_QA_REGEX = /retorno\s*(de)?\s*qa/i;
+const RETORNO_QA_REGEX = /(^|;)\s*retorno\s*(de\s*)?qa\s*(;|$)/i;
 
 function isFabricaTodo(state: string | null | undefined): boolean {
   return FABRICA_TODO_STATES.has(normalizeState(state));
@@ -91,7 +91,7 @@ const stateColors: Record<string, string> = {
   'Resolved': 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
 };
 
-const AVIAO_REGEX = /(^|;)\s*AVIAO\s*(;|$)/i;
+const AVIAO_REGEX = /(^|;)\s*AVI[AÃ]O\s*(;|$)/i;
 
 function getItemTags(item: FabricaItem, tagsByWorkItemId: Record<number, string>): string {
   if (item.id && tagsByWorkItemId[item.id]) return tagsByWorkItemId[item.id];
@@ -1529,8 +1529,7 @@ export default function FabricaDashboard() {
     const matchesReadFilter = (item: FabricaItem): boolean => {
       if (item.id == null) return false;
       if (!newEntrySignalsById.has(item.id)) return false;
-      const isRead = newEntriesReadIds.has(item.id);
-      return newEntryReadFilter === 'read' ? isRead : !isRead;
+      return !newEntriesReadIds.has(item.id);
     };
 
     const filteredParents: FabricaItem[] = [];
@@ -2460,29 +2459,13 @@ export default function FabricaDashboard() {
                         </Badge>
                       ))}
                     </div>
-                    <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => { setNewEntryReadFilter('all'); setPage(0); }}
-                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${newEntryReadFilter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                      >
-                        Todos
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setNewEntryReadFilter('unread'); setPage(0); }}
-                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${newEntryReadFilter === 'unread' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                      >
-                        Não lidos
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setNewEntryReadFilter('read'); setPage(0); }}
-                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${newEntryReadFilter === 'read' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                      >
-                        Lidos
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setNewEntryReadFilter((prev) => (prev === 'unread' ? 'all' : 'unread')); setPage(0); }}
+                      className={`px-2.5 py-1 text-[11px] font-medium transition-colors border border-border rounded-md shrink-0 ${newEntryReadFilter === 'unread' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                    >
+                      Não lidas
+                    </button>
                     <div className="relative w-full sm:w-56">
                       <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                       <Input

@@ -94,11 +94,11 @@ function percentNum(value: number, total: number): number {
 }
 
 function includesRetornoQa(tags: string | null | undefined): boolean {
-  return /retorno\s*(de\s*)?qa/i.test(tags || '');
+  return /(^|;)\s*retorno\s*(de\s*)?qa\s*(;|$)/i.test(tags || '');
 }
 
 function includesAviao(tags: string | null | undefined): boolean {
-  return /avi[aã]o/i.test(tags || '');
+  return /(^|;)\s*avi[aã]o\s*(;|$)/i.test(tags || '');
 }
 
 type Bucket = 'priorizacao' | 'bug' | 'retorno_qa' | 'aviao_sprint' | 'aviao_antigo';
