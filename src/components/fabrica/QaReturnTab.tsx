@@ -117,17 +117,16 @@ function AlertBadge({ item }: { item: QaReturnOpenItem }) {
 }
 
 export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturnTabProps) {
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
 
   const filteredItems = useMemo(() => {
     let result = items;
-
     if (statusFilter !== 'all') {
       result = result.filter(item => item.alert_status?.toLowerCase() === statusFilter.toLowerCase());
     }
-
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(item =>
@@ -137,26 +136,23 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
         item.sprint_code?.toLowerCase().includes(q)
       );
     }
-
     return result;
   }, [items, search, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const pagedItems = filteredItems.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  const summary = useMemo(() => {
-    const total = summaryData?.total_events ?? items.length;
-    const open = summaryData?.open_events ?? items.length;
-    const closed = Math.max(total - open, 0);
-    const avgDays = items.length > 0
-      ? (items.reduce((sum, i) => sum + (i.days_since_return || 0), 0) / items.length).toFixed(1)
-      : '0';
-    const maxDays = items.length > 0
-      ? Math.max(...items.map(i => i.days_since_return || 0))
-      : 0;
+  // Métricas separadas para clareza
+  const totalRetornos = summaryData?.total_events ?? items.length;
+  const emAndamento = summaryData?.open_events ?? items.length;
+  const encerrados = Math.max(totalRetornos - emAndamento, 0);
+  const avgDays = items.length > 0
+    ? (items.reduce((sum, i) => sum + (i.days_since_return || 0), 0) / items.length).toFixed(1)
+    : '0';
+  const maxDays = items.length > 0
+    ? Math.max(...items.map(i => i.days_since_return || 0))
+    : 0;
 
-    return { total, open, closed, avgDays, maxDays };
-  }, [items, summaryData]);
 
   if (isLoading) {
     return (
@@ -176,40 +172,34 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card>
           <div className="p-4">
-            <p className="text-xs text-muted-foreground font-medium mb-1">Total Retornos</p>
-            <p className="text-2xl font-bold text-foreground">{summary.total}</p>
+            <p className="text-xs text-muted-foreground font-medium mb-1">Total de Retornos QA (abertos + encerrados)</p>
+            <p className="text-2xl font-bold text-foreground">{totalRetornos}</p>
           </div>
         </Card>
         <Card>
           <div className="p-4">
             <p className="text-xs text-muted-foreground font-medium mb-1">Em andamento</p>
-            <p className={`text-2xl font-bold ${summary.open > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
-              {summary.open}
-            </p>
+            <p className={`text-2xl font-bold ${emAndamento > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{emAndamento}</p>
             <p className="text-[11px] text-muted-foreground mt-1">retornos QA abertos</p>
           </div>
         </Card>
         <Card>
           <div className="p-4">
             <p className="text-xs text-muted-foreground font-medium mb-1">Encerrados</p>
-            <p className={`text-2xl font-bold ${summary.closed > 0 ? 'text-blue-700' : 'text-muted-foreground'}`}>
-              {summary.closed}
-            </p>
+            <p className={`text-2xl font-bold ${encerrados > 0 ? 'text-blue-700' : 'text-muted-foreground'}`}>{encerrados}</p>
             <p className="text-[11px] text-muted-foreground mt-1">retornos QA fechados no período</p>
           </div>
         </Card>
         <Card>
           <div className="p-4">
-            <p className="text-xs text-muted-foreground font-medium mb-1">Media Dias</p>
-            <p className="text-2xl font-bold text-foreground">{summary.avgDays}</p>
+            <p className="text-xs text-muted-foreground font-medium mb-1">Média Dias (abertos)</p>
+            <p className="text-2xl font-bold text-foreground">{avgDays}</p>
           </div>
         </Card>
         <Card>
           <div className="p-4">
-            <p className="text-xs text-muted-foreground font-medium mb-1">Maximo Dias</p>
-            <p className={`text-2xl font-bold ${summary.maxDays > 14 ? 'text-destructive' : 'text-foreground'}`}>
-              {summary.maxDays}
-            </p>
+            <p className="text-xs text-muted-foreground font-medium mb-1">Máximo Dias (abertos)</p>
+            <p className={`text-2xl font-bold ${maxDays > 14 ? 'text-destructive' : 'text-foreground'}`}>{maxDays}</p>
           </div>
         </Card>
       </div>
