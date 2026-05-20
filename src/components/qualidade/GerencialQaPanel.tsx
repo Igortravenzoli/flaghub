@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useGerencialQa, useQaDesempenho, type GerencialQaRow } from '@/hooks/useGerencialQa';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ import {
   CheckCircle2, XCircle, Clock, ShieldCheck,
   Users, TrendingUp, Info, AlertTriangle,
 } from 'lucide-react';
+import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
 
 function KpiCard({ label, value, icon: Icon, tooltip, variant = 'default' }: {
   label: string; value: string | number; icon: React.ElementType;
@@ -48,17 +49,47 @@ function KpiCard({ label, value, icon: Icon, tooltip, variant = 'default' }: {
 
 const HEALTH_COLORS = { verde: '#10b981', amarelo: '#eab308', vermelho: '#ef4444' };
 
-export function GerencialQaPanel() {
+interface GerencialQaPanelProps {
+  lockedSprintCode?: string | null;
+  dateStart?: Date;
+  dateEnd?: Date;
+}
+
+function toIsoDate(d?: Date): string | undefined {
+  if (!d) return undefined;
+  return d.toISOString().slice(0, 10);
+}
+
+export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }: GerencialQaPanelProps) {
   const [selectedSprints, setSelectedSprints] = useState<string[]>([]);
+  const dateStartIso = toIsoDate(dateStart);
+  const dateEndIso = toIsoDate(dateEnd);
 
-  const { data: qaRows, isLoading: qaLoading } = useGerencialQa();
-  const { data: desempenho, isLoading: desLoading } = useQaDesempenho();
+  const { data: qaRows, isLoading: qaLoading } = useGerencialQa(lockedSprintCode || undefined, dateStartIso, dateEndIso);
+  const { data: desempenho, isLoading: desLoading } = useQaDesempenho(lockedSprintCode || undefined, dateStartIso, dateEndIso);
 
-  const sprints = useMemo(() => (qaRows || []).map(r => r.sprint_code).filter(Boolean), [qaRows]);
+  const sprints = useMemo(
+    () => Array.from(new Set((qaRows || []).map(r => r.sprint_code).filter(Boolean))),
+    [qaRows]
+  );
+
+  const currentSprint = useMemo(() => {
+    const code = getCurrentOfficialSprintCode();
+    return sprints.includes(code) ? code : null;
+  }, [sprints]);
+
+  useEffect(() => {
+    if (lockedSprintCode) {
+      setSelectedSprints([lockedSprintCode]);
+      return;
+    }
+    if (selectedSprints.length > 0) return;
+    setSelectedSprints(sprints);
+  }, [lockedSprintCode, selectedSprints.length, sprints]);
 
   const filteredRows = useMemo(() => {
     if (!qaRows?.length) return [];
-    if (selectedSprints.length === 0) return qaRows;
+    if (selectedSprints.length === 0) return [];
     return qaRows.filter(r => selectedSprints.includes(r.sprint_code));
   }, [qaRows, selectedSprints]);
 
@@ -122,10 +153,14 @@ export function GerencialQaPanel() {
           sprints={sprints}
           selected={selectedSprints}
           onChange={setSelectedSprints}
+          currentSprint={currentSprint}
+          disabled={!!lockedSprintCode}
         />
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Info className="h-3.5 w-3.5" />
-          Métricas históricas por sprint de encerramento
+          {lockedSprintCode
+            ? `Filtro de sprint herdado da aba do setor (${lockedSprintCode})`
+            : 'Métricas históricas por sprint de encerramento'}
         </div>
       </div>
 

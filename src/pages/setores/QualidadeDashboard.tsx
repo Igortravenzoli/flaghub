@@ -55,6 +55,13 @@ function isQaDefaultCollab(name: string): boolean {
   const n = normalizeQaName(name);
   return QA_DEFAULT_COLLAB_PATTERNS.some(p => n.includes(p));
 }
+
+function sprintSortValue(path: string): number {
+  const label = (path?.split('\\').pop() || path || '').toUpperCase();
+  const m = label.match(/^S(\d+)-(\d{4})$/);
+  if (!m) return Number.MIN_SAFE_INTEGER;
+  return Number(m[2]) * 100 + Number(m[1]);
+}
 type QaHealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const integrations: Integration[] = [
@@ -172,9 +179,14 @@ export default function QualidadeDashboard() {
     [allItems, allDoneItems]
   );
   const { sortedSprints } = useSprintFilter(sprintSeedItems);
+  const sprintOptionsDesc = useMemo(
+    () => [...sortedSprints].sort((a, b) => sprintSortValue(b) - sprintSortValue(a)),
+    [sortedSprints]
+  );
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [gerencialTab, setGerencialTab] = useState('executivo');
   const [tableSearch, setTableSearch] = useState('');
 
   const localItemIds = useMemo(() => allItems.map(i => i.id).filter(Boolean) as number[], [allItems]);
@@ -255,20 +267,20 @@ export default function QualidadeDashboard() {
   );
 
   useEffect(() => {
-    if (sortedSprints.length === 0) return;
+    if (sprintOptionsDesc.length === 0) return;
     if (sprintFilter === '__pending__') {
       const officialCurrentCode = getCurrentOfficialSprintCode();
-      const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
-      setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+      const currentSprintPath = sprintOptionsDesc.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+      setSprintFilter(currentSprintPath || sprintOptionsDesc[0]);
       return;
     }
     if (sprintFilter === 'all') return;
-    if (!sortedSprints.includes(sprintFilter)) {
+    if (!sprintOptionsDesc.includes(sprintFilter)) {
       const officialCurrentCode = getCurrentOfficialSprintCode();
-      const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
-      setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+      const currentSprintPath = sprintOptionsDesc.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
+      setSprintFilter(currentSprintPath || sprintOptionsDesc[0]);
     }
-  }, [sortedSprints, sprintFilter]);
+  }, [sprintOptionsDesc, sprintFilter]);
 
   const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
   const sprintScopedDoneItems = useMemo(
@@ -472,14 +484,14 @@ export default function QualidadeDashboard() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        {sortedSprints.length > 0 && (
+        {sprintOptionsDesc.length > 0 && (
           <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setCustomActive(false); setKpiFilter('all'); }}>
             <SelectTrigger className="w-[220px] h-8 text-xs">
               <SelectValue placeholder="Sprint" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as sprints</SelectItem>
-              {[...sortedSprints].reverse().map(sp => (
+              {sprintOptionsDesc.map(sp => (
                 <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
               ))}
             </SelectContent>
@@ -552,9 +564,6 @@ export default function QualidadeDashboard() {
             <TabsTrigger value="overview" className="gap-1.5 text-xs"><FileCheck className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
             <TabsTrigger value="retrabalho" className="gap-1.5 text-xs"><RotateCcw className="h-3.5 w-3.5" />Retrabalho</TabsTrigger>
             <TabsTrigger value="gerencial" className="gap-1.5 text-xs"><TrendingUp className="h-3.5 w-3.5" />Gerencial</TabsTrigger>
-            <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
-            <TabsTrigger value="gargalos" className="gap-1.5 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Gargalos</TabsTrigger>
-            <TabsTrigger value="por-feature" className="gap-1.5 text-xs"><Workflow className="h-3.5 w-3.5" />Por Feature</TabsTrigger>
           </TabsList>
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
@@ -924,164 +933,176 @@ export default function QualidadeDashboard() {
           </TabsContent>
 
           <TabsContent value="gerencial" className="space-y-4 mt-0">
-            <GerencialQaPanel />
-          </TabsContent>
+            <Tabs value={gerencialTab} onValueChange={setGerencialTab} className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="executivo" className="gap-1.5 text-xs"><TrendingUp className="h-3.5 w-3.5" />Executivo</TabsTrigger>
+                <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
+                <TabsTrigger value="gargalos" className="gap-1.5 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Gargalos</TabsTrigger>
+                <TabsTrigger value="por-feature" className="gap-1.5 text-xs"><Workflow className="h-3.5 w-3.5" />Por Feature</TabsTrigger>
+              </TabsList>
 
-          {/* ═══════ TAB: Esteira / Saúde ═══════ */}
-          <TabsContent value="esteira-saude" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={FileCheck} isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter('all')} active={healthFilter === 'all'} />
-              <DashboardKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
-              <DashboardKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
-              <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
-            </div>
+              <TabsContent value="executivo" className="space-y-4 mt-0">
+                <GerencialQaPanel
+                  lockedSprintCode={selectedSprintCode}
+                  dateStart={effectiveRange.from}
+                  dateEnd={effectiveRange.to}
+                />
+              </TabsContent>
 
-            <Card className="overflow-hidden">
-              <div className="p-4 border-b border-border">
-                <h3 className="font-semibold text-sm">Itens na esteira de Qualidade</h3>
-                <p className="text-xs text-muted-foreground">Saúde e estado de cada item. {healthFilter !== 'all' ? `Filtro ativo: ${healthFilterLabel(healthFilter)}.` : 'Clique nos KPIs para filtrar.'}</p>
-              </div>
-              <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
-                {healthFilteredItems.length > 0 ? healthFilteredItems
-                  .slice(0, 80)
-                  .map((item) => {
-                    const lifecycle = item.id ? pbiHealthBatch.lifecycleById.get(item.id) : null;
-                    const health = item.id ? pbiHealthBatch.healthById.get(item.id)?.health_status : null;
-                    return (
-                      <div 
-                        key={`qa-health-${item.id}`} 
-                        className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30 transition-colors"
-                        onClick={() => setDrawerItem(item)}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px] flex-shrink-0">{item.work_item_type || '—'}</Badge>
-                            <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
+              <TabsContent value="esteira-saude" className="space-y-4 mt-0">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={FileCheck} isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter('all')} active={healthFilter === 'all'} />
+                  <DashboardKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
+                  <DashboardKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
+                  <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
+                </div>
+
+                <Card className="overflow-hidden">
+                  <div className="p-4 border-b border-border">
+                    <h3 className="font-semibold text-sm">Itens na esteira de Qualidade</h3>
+                    <p className="text-xs text-muted-foreground">Saúde e estado de cada item. {healthFilter !== 'all' ? `Filtro ativo: ${healthFilterLabel(healthFilter)}.` : 'Clique nos KPIs para filtrar.'}</p>
+                  </div>
+                  <div className="p-4 space-y-2 max-h-[460px] overflow-auto">
+                    {healthFilteredItems.length > 0 ? healthFilteredItems
+                      .slice(0, 80)
+                      .map((item) => {
+                        const lifecycle = item.id ? pbiHealthBatch.lifecycleById.get(item.id) : null;
+                        const health = item.id ? pbiHealthBatch.healthById.get(item.id)?.health_status : null;
+                        return (
+                          <div
+                            key={`qa-health-${item.id}`}
+                            className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2 cursor-pointer hover:bg-muted/30 transition-colors"
+                            onClick={() => setDrawerItem(item)}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-[10px] flex-shrink-0">{item.work_item_type || '—'}</Badge>
+                                <p className="text-sm font-medium truncate">#{item.id} • {item.title}</p>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                {item.state || '—'} • {item.assigned_to_display || 'Sem responsável'}
+                                {lifecycle ? ` • Estágio: ${lifecycle.current_stage || '—'}` : ''}
+                                {(item.qa_retorno_count ?? 0) > 0 ? ` • Retorno QA: ${item.qa_retorno_count}x` : ''}
+                              </p>
+                            </div>
+                            <PbiHealthBadge status={health} />
                           </div>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">
-                            {item.state || '—'} • {item.assigned_to_display || 'Sem responsável'}
-                            {lifecycle ? ` • Estágio: ${lifecycle.current_stage || '—'}` : ''}
-                            {(item.qa_retorno_count ?? 0) > 0 ? ` • Retorno QA: ${item.qa_retorno_count}x` : ''}
-                          </p>
-                        </div>
-                        <PbiHealthBadge status={health} />
+                        );
+                      }) : (
+                      <div className="text-center py-8">
+                        <HeartPulse className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Nenhum item na fila de qualidade para o filtro selecionado.</p>
+                        <p className="text-xs text-muted-foreground/60 mt-1">Dados de saúde são populados pela sincronização de esteira.</p>
                       </div>
-                    );
-                  }) : (
-                  <div className="text-center py-8">
-                    <HeartPulse className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Nenhum item na fila de qualidade para o filtro selecionado.</p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">Dados de saúde são populados pela sincronização de esteira.</p>
+                    )}
+                  </div>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="gargalos" className="space-y-4 mt-0">
+                {bottlenecks.overview && (
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <DashboardKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
+                    <DashboardKpiCard label="Saudável" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
+                    <DashboardKpiCard label="Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
+                    <DashboardKpiCard label="Crítica" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
                   </div>
                 )}
-              </div>
-            </Card>
-          </TabsContent>
-
-          {/* ═══════ TAB: Gargalos ═══════ */}
-          <TabsContent value="gargalos" className="space-y-4 mt-0">
-            {bottlenecks.overview && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <DashboardKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
-                <DashboardKpiCard label="Saudável" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                <DashboardKpiCard label="Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                <DashboardKpiCard label="Crítica" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
-              </div>
-            )}
-            <Card className="p-3 border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20 mb-2">
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <AlertTriangle className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                <p>
-                  <span className="font-semibold text-foreground">O que é esta análise?</span>{' '}
-                  O painel de gargalos mostra quanto tempo os itens permanecem em cada etapa da esteira de qualidade.
-                  Valores altos de <strong>Média</strong> indicam lentidão; <strong>Atraso</strong> alto aponta itens que ultrapassaram os limites aceitáveis (ex: Qualidade &gt;5d = atenção, &gt;10d = crítico).
-                </p>
-              </div>
-            </Card>
-
-            <Card className="p-4 space-y-2">
-              <h3 className="font-semibold text-sm">Gargalos de Qualidade</h3>
-              <TooltipProvider>
-                {bottlenecks.bottlenecks.map((row) => (
-                  <div key={`qa-bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
-                    <span className="font-medium text-foreground">{row.stage_label}</span>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Média: {row.avg_days_in_stage}d</span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[240px]">
-                        <p className="text-xs">Tempo médio (dias) que os itens permanecem nesta etapa. Valores altos indicam lentidão no processo.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Máx: {row.max_days_in_stage}d</span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[240px]">
-                        <p className="text-xs">Maior tempo (dias) que um item ficou nesta etapa. Outliers indicam itens travados.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Em etapa: {row.count_in_stage}</span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[240px]">
-                        <p className="text-xs">Quantidade de itens atualmente nesta etapa. Volume alto pode indicar gargalo de capacidade.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Atraso: {row.count_overtime}</span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[240px]">
-                        <p className="text-xs">Itens que ultrapassaram o limite de dias aceitável para esta etapa (ex: Qualidade &gt;5d = atenção, &gt;10d = crítico).</p>
-                      </TooltipContent>
-                    </Tooltip>
+                <Card className="p-3 border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20 mb-2">
+                  <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <AlertTriangle className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <p>
+                      <span className="font-semibold text-foreground">O que é esta análise?</span>{' '}
+                      O painel de gargalos mostra quanto tempo os itens permanecem em cada etapa da esteira de qualidade.
+                      Valores altos de <strong>Média</strong> indicam lentidão; <strong>Atraso</strong> alto aponta itens que ultrapassaram os limites aceitáveis (ex: Qualidade &gt;5d = atenção, &gt;10d = crítico).
+                    </p>
                   </div>
-                ))}
-              </TooltipProvider>
-              {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
-                <div className="text-center py-8">
-                  <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Sem gargalos para o período selecionado.</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">Os dados são populados após a sincronização de esteira (pbi_stage_events).</p>
-                </div>
-              )}
-            </Card>
-          </TabsContent>
+                </Card>
 
-          {/* ═══════ TAB: Por Feature ═══════ */}
-          <TabsContent value="por-feature" className="space-y-4 mt-0">
-            <Card className="p-4 space-y-2">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold text-sm">Distribuição por Feature</h3>
-                <Badge variant="outline">{featureSummary.rows.length} grupos</Badge>
-              </div>
-              {featureSummary.rows.slice(0, 80).map((row, idx) => (
-                <div key={`qa-feature-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium truncate">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {row.verde_count > 0 && <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">✅ {row.verde_count}</Badge>}
-                      {row.amarelo_count > 0 && <Badge className="bg-amber-100 text-amber-700 border border-amber-300 text-[10px] px-1.5">⚠️ {row.amarelo_count}</Badge>}
-                      {row.vermelho_count > 0 && <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">🔴 {row.vermelho_count}</Badge>}
+                <Card className="p-4 space-y-2">
+                  <h3 className="font-semibold text-sm">Gargalos de Qualidade</h3>
+                  <TooltipProvider>
+                    {bottlenecks.bottlenecks.map((row) => (
+                      <div key={`qa-bn-${row.stage_key}`} className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border border-border/60 p-2 text-xs">
+                        <span className="font-medium text-foreground">{row.stage_label}</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Média: {row.avg_days_in_stage}d</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            <p className="text-xs">Tempo médio (dias) que os itens permanecem nesta etapa. Valores altos indicam lentidão no processo.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Máx: {row.max_days_in_stage}d</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            <p className="text-xs">Maior tempo (dias) que um item ficou nesta etapa. Outliers indicam itens travados.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Em etapa: {row.count_in_stage}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            <p className="text-xs">Quantidade de itens atualmente nesta etapa. Volume alto pode indicar gargalo de capacidade.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">Atraso: {row.count_overtime}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[240px]">
+                            <p className="text-xs">Itens que ultrapassaram o limite de dias aceitável para esta etapa (ex: Qualidade &gt;5d = atenção, &gt;10d = crítico).</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    ))}
+                  </TooltipProvider>
+                  {!bottlenecks.isLoading && bottlenecks.bottlenecks.length === 0 && (
+                    <div className="text-center py-8">
+                      <AlertTriangle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Sem gargalos para o período selecionado.</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">Os dados são populados após a sincronização de esteira (pbi_stage_events).</p>
                     </div>
+                  )}
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="por-feature" className="space-y-4 mt-0">
+                <Card className="p-4 space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-sm">Distribuição por Feature</h3>
+                    <Badge variant="outline">{featureSummary.rows.length} grupos</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    PBIs: {row.pbi_count} • Bugs: {row.bug_count}
-                    {row.avg_lead_time_days != null ? ` • Lead Time: ${row.avg_lead_time_days}d` : ''}
-                    {row.overflow_count > 0 ? ` • Overflow: ${row.overflow_count}` : ''}
-                  </p>
-                </div>
-              ))}
-              {!featureSummary.isLoading && featureSummary.rows.length === 0 && (
-                <div className="text-center py-8">
-                  <Workflow className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Sem dados de feature para o filtro atual.</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">Dados preenchidos automaticamente pela hierarquia do DevOps (Feature → PBI) e saúde da esteira.</p>
-                </div>
-              )}
-            </Card>
+                  {featureSummary.rows.slice(0, 80).map((row, idx) => (
+                    <div key={`qa-feature-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium truncate">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {row.verde_count > 0 && <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">✅ {row.verde_count}</Badge>}
+                          {row.amarelo_count > 0 && <Badge className="bg-amber-100 text-amber-700 border border-amber-300 text-[10px] px-1.5">⚠️ {row.amarelo_count}</Badge>}
+                          {row.vermelho_count > 0 && <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">🔴 {row.vermelho_count}</Badge>}
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PBIs: {row.pbi_count} • Bugs: {row.bug_count}
+                        {row.avg_lead_time_days != null ? ` • Lead Time: ${row.avg_lead_time_days}d` : ''}
+                        {row.overflow_count > 0 ? ` • Overflow: ${row.overflow_count}` : ''}
+                      </p>
+                    </div>
+                  ))}
+                  {!featureSummary.isLoading && featureSummary.rows.length === 0 && (
+                    <div className="text-center py-8">
+                      <Workflow className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Sem dados de feature para o filtro atual.</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">Dados preenchidos automaticamente pela hierarquia do DevOps (Feature → PBI) e saúde da esteira.</p>
+                    </div>
+                  )}
+                </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
       )}

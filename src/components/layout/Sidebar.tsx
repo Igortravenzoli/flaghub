@@ -23,7 +23,6 @@ import {
   Lock,
   Download,
   Mail,
-  BarChart3,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -52,9 +51,7 @@ const sectorItems: NavItem[] = [
   { label: 'Fábrica', path: '/setor/fabrica', icon: Factory, areaKey: 'fabrica' },
   { label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones, areaKey: 'tickets_os' },
   { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server, areaKey: 'infraestrutura' },
-  { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck, areaKey: 'qualidade', children: [
-    { label: 'Gerencial', path: '/setor/qualidade/gerencial', icon: BarChart3, areaKey: 'qualidade' },
-  ] },
+  { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck, areaKey: 'qualidade' },
 ];
 
 const adminItems: NavItem[] = [
