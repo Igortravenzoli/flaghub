@@ -143,9 +143,9 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
   const pagedItems = filteredItems.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // Métricas separadas para clareza
-  const totalRetornos = summaryData?.total_events ?? items.length;
   const emAndamento = summaryData?.open_events ?? items.length;
-  const encerrados = Math.max(totalRetornos - emAndamento, 0);
+  const totalRetornos = summaryData?.total_events ?? emAndamento;
+  const encerrados = (summaryData?.total_events ?? 0) - emAndamento;
   const avgDays = items.length > 0
     ? (items.reduce((sum, i) => sum + (i.days_since_return || 0), 0) / items.length).toFixed(1)
     : '0';
