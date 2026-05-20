@@ -103,9 +103,14 @@ function includesAviao(tags: string | null | undefined): boolean {
 
 type Bucket = 'priorizacao' | 'bug' | 'retorno_qa' | 'aviao_sprint' | 'aviao_antigo';
 
-function classifyItem(item: FabricaItem, selectedSprintCode: string | null): Bucket {
+function classifyItem(
+  item: FabricaItem,
+  selectedSprintCode: string | null,
+): Bucket {
   const tags = item.tags || '';
-  if (includesRetornoQa(tags)) return 'retorno_qa';
+  if (includesRetornoQa(tags)) {
+    return 'retorno_qa';
+  }
   if (includesAviao(tags)) {
     if (!selectedSprintCode) return 'aviao_sprint';
     const current = normalizeSprintCode(item.iteration_path);

@@ -2992,7 +2992,7 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Retorno QA ═══════ */}
           <TabsContent value="qa-return" className="space-y-4 mt-0">
-            <QaReturnTab items={qaReturnKpis.openItems} isLoading={qaReturnKpis.isLoading} />
+            <QaReturnTab items={qaReturnKpis.openItems} isLoading={qaReturnKpis.isLoading} summary={qaReturnKpis.summary} />
           </TabsContent>
 
           {/* ═══════ TAB: Gerência ═══════ */}

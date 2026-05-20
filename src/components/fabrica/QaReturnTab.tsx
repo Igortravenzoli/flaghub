@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertTriangle, Search, ChevronLeft, ChevronRight, ExternalLink, AlertCircle,
 } from 'lucide-react';
-import { QaReturnOpenItem } from '@/hooks/useQaReturnKpis';
+import { QaReturnOpenItem, QaReturnSummary } from '@/hooks/useQaReturnKpis';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -19,6 +19,7 @@ const PAGE_SIZE = 25;
 interface QaReturnTabProps {
   items: QaReturnOpenItem[];
   isLoading: boolean;
+  summary?: QaReturnSummary | null;
 }
 
 function isDispatchConfirmed(item: QaReturnOpenItem): boolean {
@@ -115,7 +116,7 @@ function AlertBadge({ item }: { item: QaReturnOpenItem }) {
   );
 }
 
-export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
+export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturnTabProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
@@ -144,9 +145,9 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
   const pagedItems = filteredItems.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const summary = useMemo(() => {
-    const total = items.length;
-    const sent = items.filter(isDispatchConfirmed).length;
-    const unconfirmed = items.filter((item) => !isDispatchConfirmed(item)).length;
+    const total = summaryData?.total_events ?? items.length;
+    const open = summaryData?.open_events ?? items.length;
+    const closed = Math.max(total - open, 0);
     const avgDays = items.length > 0
       ? (items.reduce((sum, i) => sum + (i.days_since_return || 0), 0) / items.length).toFixed(1)
       : '0';
@@ -154,8 +155,8 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
       ? Math.max(...items.map(i => i.days_since_return || 0))
       : 0;
 
-    return { total, sent, unconfirmed, avgDays, maxDays };
-  }, [items]);
+    return { total, open, closed, avgDays, maxDays };
+  }, [items, summaryData]);
 
   if (isLoading) {
     return (
@@ -181,20 +182,20 @@ export function QaReturnTab({ items, isLoading }: QaReturnTabProps) {
         </Card>
         <Card>
           <div className="p-4">
-            <p className="text-xs text-muted-foreground font-medium mb-1">Abertos</p>
-            <p className={`text-2xl font-bold ${summary.sent > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
-              {summary.sent}
+            <p className="text-xs text-muted-foreground font-medium mb-1">Em andamento</p>
+            <p className={`text-2xl font-bold ${summary.open > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+              {summary.open}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-1">alertas enviados</p>
+            <p className="text-[11px] text-muted-foreground mt-1">retornos QA abertos</p>
           </div>
         </Card>
         <Card>
           <div className="p-4">
-            <p className="text-xs text-muted-foreground font-medium mb-1">Sem confirmacao</p>
-            <p className={`text-2xl font-bold ${summary.unconfirmed > 0 ? 'text-orange-700' : 'text-muted-foreground'}`}>
-              {summary.unconfirmed}
+            <p className="text-xs text-muted-foreground font-medium mb-1">Encerrados</p>
+            <p className={`text-2xl font-bold ${summary.closed > 0 ? 'text-blue-700' : 'text-muted-foreground'}`}>
+              {summary.closed}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-1">pendente de confirmacao</p>
+            <p className="text-[11px] text-muted-foreground mt-1">retornos QA fechados no período</p>
           </div>
         </Card>
         <Card>
