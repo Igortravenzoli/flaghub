@@ -49,6 +49,7 @@ type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'entregue' | 'agua
 type SemTaskContextFilter = 'all' | 'stc' | 'ctc';
 type CollaboratorViewMode = 'tasks' | 'gestor';
 type PrevistoFilter = 'previsto' | 'nao_previsto';
+type NewEntryReadFilter = 'all' | 'unread' | 'read';
 
 const normalizeState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 const FABRICA_TODO_STATES = new Set(['to do', 'new']);
@@ -127,6 +128,10 @@ function formatHoursFromMinutes(minutes: number): number {
 function formatMinutesAsHoursLabel(minutes: number): string {
   const hours = formatHoursFromMinutes(minutes);
   return `${hours.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}h`;
+}
+
+function formatShortDateTime(value: Date): string {
+  return `${value.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${value.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function DraggableScrollArea({ className, children }: { className?: string; children: React.ReactNode }) {
@@ -505,7 +510,20 @@ export default function FabricaDashboard() {
   const [collaboratorSearch, setCollaboratorSearch] = useState('');
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
+  const [newEntryReadFilter, setNewEntryReadFilter] = useState<NewEntryReadFilter>('all');
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
+  const [newEntriesReadIds, setNewEntriesReadIds] = useState<Set<number>>(() => {
+    if (typeof window === 'undefined') return new Set<number>();
+    try {
+      const raw = window.localStorage.getItem('fabrica.new-entries.read.v1');
+      if (!raw) return new Set<number>();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return new Set<number>();
+      return new Set(parsed.filter((value): value is number => typeof value === 'number'));
+    } catch {
+      return new Set<number>();
+    }
+  });
 
   const toggleBlockCollapse = (blockKey: string) => {
     setCollapsedBlocks(prev => {
@@ -815,6 +833,11 @@ export default function FabricaDashboard() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('fabrica.excluded-collabs.v1', JSON.stringify(Array.from(excludedCollabs)));
   }, [excludedCollabs]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('fabrica.new-entries.read.v1', JSON.stringify(Array.from(newEntriesReadIds)));
+  }, [newEntriesReadIds]);
 
   useEffect(() => {
     if (fabKpiFilter !== 'sem_task' && semTaskContextFilter !== 'all') {
@@ -1269,6 +1292,55 @@ export default function FabricaDashboard() {
     return items;
   }, [collaboratorScopedItems, fabKpiFilter, fab.tagsByWorkItemId, previstoFilter, sprintTaskParentScope, semTaskContextFilter]);
 
+  const itemsById = useMemo(() => {
+    const map = new Map<number, FabricaItem>();
+    for (const item of collaboratorScopedItems) {
+      if (item.id != null) map.set(item.id, item);
+    }
+    return map;
+  }, [collaboratorScopedItems]);
+
+  const sprintStartForNewEntries = useMemo(() => {
+    if (selectedSprintCodes.length !== 1) return null;
+    const range = getOfficialSprintRange(selectedSprintCodes[0]);
+    return range?.from ?? effectiveRange?.from ?? null;
+  }, [selectedSprintCodes, effectiveRange]);
+
+  const newEntrySignalsById = useMemo(() => {
+    const map = new Map<number, { categoryLabel: string; createdAt: Date }>();
+    if (!sprintStartForNewEntries) return map;
+
+    for (const item of filteredFabItems) {
+      if (item.id == null || !item.created_date) continue;
+      const createdAt = new Date(item.created_date);
+      if (Number.isNaN(createdAt.getTime()) || createdAt < sprintStartForNewEntries) continue;
+
+      const baseItem = item.work_item_type === 'Task' && item.parent_id != null
+        ? (itemsById.get(item.parent_id) ?? item)
+        : item;
+      const tags = getItemTags(baseItem, fab.tagsByWorkItemId);
+      const isRetornoQa = RETORNO_QA_REGEX.test(tags);
+      const isAviao = AVIAO_REGEX.test(tags);
+      const isNaoPrevisto = baseItem.work_item_type === 'Bug' || isRetornoQa || isAviao;
+
+      let categoryLabel = 'Novo na sprint';
+      if (isRetornoQa) categoryLabel = 'Retorno QA';
+      else if (isAviao) categoryLabel = 'Avião';
+      else if (isNaoPrevisto) categoryLabel = 'Não previsto';
+
+      map.set(item.id, { categoryLabel, createdAt });
+    }
+    return map;
+  }, [filteredFabItems, sprintStartForNewEntries, itemsById, fab.tagsByWorkItemId]);
+
+  const unreadNewEntryCount = useMemo(() => {
+    let count = 0;
+    for (const id of newEntrySignalsById.keys()) {
+      if (!newEntriesReadIds.has(id)) count += 1;
+    }
+    return count;
+  }, [newEntrySignalsById, newEntriesReadIds]);
+
   const collaboratorViewItems = useMemo(() => (
     collaboratorScopedItems.filter((item) => {
       if (collaboratorViewMode === 'tasks') {
@@ -1443,6 +1515,38 @@ export default function FabricaDashboard() {
     return { parentRows: filteredParents, childrenMap: filteredCMap, orphanRows: filteredOrphans };
   }, [filteredFabItems, search]);
 
+  const { boardParentRows, boardChildrenMap, boardOrphanRows } = useMemo(() => {
+    if (newEntryReadFilter === 'all') {
+      return { boardParentRows: parentRows, boardChildrenMap: childrenMap, boardOrphanRows: orphanRows };
+    }
+
+    const matchesReadFilter = (item: FabricaItem): boolean => {
+      if (item.id == null) return false;
+      if (!newEntrySignalsById.has(item.id)) return false;
+      const isRead = newEntriesReadIds.has(item.id);
+      return newEntryReadFilter === 'read' ? isRead : !isRead;
+    };
+
+    const filteredParents: FabricaItem[] = [];
+    const filteredChildrenMap = new Map<number, FabricaItem[]>();
+
+    for (const parent of parentRows) {
+      const rawChildren = childrenMap.get(parent.id!) || [];
+      const filteredChildren = rawChildren.filter(matchesReadFilter);
+      if (matchesReadFilter(parent) || filteredChildren.length > 0) {
+        filteredParents.push(parent);
+        if (filteredChildren.length > 0) filteredChildrenMap.set(parent.id!, filteredChildren);
+      }
+    }
+
+    const filteredOrphans = orphanRows.filter(matchesReadFilter);
+    return {
+      boardParentRows: filteredParents,
+      boardChildrenMap: filteredChildrenMap,
+      boardOrphanRows: filteredOrphans,
+    };
+  }, [parentRows, childrenMap, orphanRows, newEntryReadFilter, newEntrySignalsById, newEntriesReadIds]);
+
   const transbordoMap = useMemo(() => {
     const m = new Map<number, number>();
     for (const t of fab.transbordoItems) {
@@ -1452,7 +1556,7 @@ export default function FabricaDashboard() {
   }, [fab.transbordoItems]);
 
   const allTopLevel = useMemo(() => {
-    const items = [...parentRows, ...orphanRows];
+    const items = [...boardParentRows, ...boardOrphanRows];
     if (boardSortField === 'transbordo') {
       items.sort((a, b) => {
         const ta = transbordoMap.get(a.id!) || 0;
@@ -1461,7 +1565,7 @@ export default function FabricaDashboard() {
       });
     }
     return items;
-  }, [parentRows, orphanRows, boardSortField, boardSortDir, transbordoMap]);
+  }, [boardParentRows, boardOrphanRows, boardSortField, boardSortDir, transbordoMap]);
   const totalPages = Math.max(1, Math.ceil(allTopLevel.length / PAGE_SIZE));
   const pagedTopLevel = allTopLevel.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -1709,8 +1813,22 @@ export default function FabricaDashboard() {
     ...(drawerItem.parent_title ? [{ label: 'Parent', value: drawerItem.parent_title }] : []),
   ] : [];
 
-  const renderItemCells = (item: FabricaItem, indent = false) => (
-    <>
+  const toggleNewEntryRead = useCallback((itemId: number) => {
+    setNewEntriesReadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  }, []);
+
+  const renderItemCells = (item: FabricaItem, indent = false, hasUnreadDescendant = false) => {
+    const entrySignal = item.id != null ? newEntrySignalsById.get(item.id) : null;
+    const isRead = item.id != null ? newEntriesReadIds.has(item.id) : false;
+    const showUnreadDescendantBadge = !entrySignal && hasUnreadDescendant;
+
+    return (
+      <>
       <TableCell className="font-mono text-xs w-16">
         {item.web_url ? (
           <a href={item.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-mono" onClick={e => e.stopPropagation()}>{item.id}</a>
@@ -1722,7 +1840,7 @@ export default function FabricaDashboard() {
         </Badge>
       </TableCell>
       <TableCell className={`max-w-[350px] truncate text-sm ${indent ? 'pl-8' : ''}`}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-start gap-2">
           {item.id ? (
             <PbiHealthBadge
               status={pbiHealthBatch.healthById.get(item.id)?.health_status}
@@ -1731,7 +1849,45 @@ export default function FabricaDashboard() {
               className="text-[10px] px-1.5 py-0"
             />
           ) : null}
-          <span className="truncate">{item.title || '—'}</span>
+          <div className="min-w-0 flex-1">
+            <span className={`truncate block ${(entrySignal && !isRead) || showUnreadDescendantBadge ? 'font-semibold text-amber-700 dark:text-amber-300' : ''}`}>{item.title || '—'}</span>
+            {(entrySignal || showUnreadDescendantBadge) && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {entrySignal ? (
+                  <>
+                    <Badge variant="outline" className={`text-[10px] ${isRead ? 'text-muted-foreground border-border' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'}`}>
+                      {isRead ? 'Lido' : 'Novo'}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
+                      {entrySignal.categoryLabel}
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                      Inclusão: {formatShortDateTime(entrySignal.createdAt)}
+                    </span>
+                    {item.id != null && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-[10px]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleNewEntryRead(item.id!);
+                        }}
+                      >
+                        <Check className="h-3 w-3 mr-1" />
+                        {isRead ? 'Marcar não lido' : 'Marcar lido'}
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
+                    Contém não lido (task)
+                  </Badge>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </TableCell>
       <TableCell className="text-sm">{item.assigned_to_display || '—'}</TableCell>
@@ -1761,7 +1917,8 @@ export default function FabricaDashboard() {
         {item.iteration_path ? (item.iteration_path.split('\\').pop() || item.iteration_path) : '—'}
       </TableCell>
     </>
-  );
+    );
+  };
 
   const filterLabel = (f: FabKpiFilter) => getFabFilterLabel(f);
 
@@ -1995,7 +2152,7 @@ export default function FabricaDashboard() {
           <TabsContent value="overview" className="space-y-4 mt-0">
             {renderSectionToggle('overview_scope', 'Itens no escopo')}
             {!isBlockCollapsed('overview_scope') && (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                 <SprintStatusCard
                   total={sprintTotal}
                   inProgress={sprintInProgress}
@@ -2132,14 +2289,8 @@ export default function FabricaDashboard() {
                     <p className="text-xs text-muted-foreground">Sem dados para a visão colaborador no filtro atual.</p>
                   </Card>
                 )}
-              </div>
-            )}
 
-            {/* Performance + Riscos */}
-            {renderSectionToggle('overview_perf_risk', 'Performance / Riscos')}
-            {!isBlockCollapsed('overview_perf_risk') && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {previstoNaoPrevisto.total > 0 && (
+                {previstoNaoPrevisto.total > 0 ? (
                   <Card className="p-6 animate-fade-in" style={{ animationDelay: '600ms' }}>
                     <p className="text-xs font-medium text-muted-foreground mb-4">VISÃO PREVISTO X NÃO PREVISTO</p>
                     <div className="relative">
@@ -2188,132 +2339,13 @@ export default function FabricaDashboard() {
                       Total monitorado nesta visão: <span className="font-medium text-foreground">{previstoNaoPrevisto.total}</span>
                     </div>
                   </Card>
-                )}
-
-                {fab.isLoading ? (
-                  <Card className="p-6"><Skeleton className="h-3 w-24 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
                 ) : (
                   <Card className="p-6">
-                    <p className="text-xs font-medium text-muted-foreground mb-4">PERFORMANCE</p>
-                    <div className="space-y-0 divide-y divide-border">
-                      <div className="flex items-center justify-between py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="p-1.5 rounded-lg bg-primary/10">
-                            <Clock className="h-3.5 w-3.5 text-primary" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">Lead Time Médio</p>
-                            <p className="text-[11px] text-muted-foreground/70">
-                              {fab.leadTimeSource === 'effort' ? 'Effort médio / PBI' : fab.leadTimeSource === 'timelog' ? 'Horas trabalhadas / PBI' : 'Effort / PBI'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-2xl font-semibold text-foreground">
-                            {fab.leadTimeMedio ?? <span className="text-muted-foreground text-base">—</span>}
-                          </span>
-                          {fab.leadTimeMedio != null && (
-                            <span className="text-xs text-muted-foreground ml-1">{fab.leadTimeSource === 'effort' ? 'pts' : 'h'}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="p-1.5 rounded-lg bg-[hsl(var(--info))]/10">
-                            <Gauge className="h-3.5 w-3.5 text-[hsl(var(--info))]" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">Velocidade Média</p>
-                            <p className="text-[11px] text-muted-foreground/70">
-                              {fab.velocidadeSource === 'effort' ? `Effort / Sprint (${fab.sprintCount} sprints)` : fab.velocidadeSource === 'timelog' ? `Horas / Sprint (${fab.sprintCount})` : 'Effort ou Horas / Sprint'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-2xl font-semibold text-foreground">
-                            {fab.velocidadeMedia ?? <span className="text-muted-foreground text-base">—</span>}
-                          </span>
-                          {fab.velocidadeMedia != null && (
-                            <span className="text-xs text-muted-foreground ml-1">{fab.velocidadeSource === 'effort' ? 'pts' : 'h'}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    <p className="text-xs text-muted-foreground">Sem itens para visão previsto/não previsto no filtro atual.</p>
                   </Card>
                 )}
-
-                {fab.isLoading || qaReturnKpis.isLoading ? (
-                  <Card className="p-6"><Skeleton className="h-3 w-16 mb-5" /><Skeleton className="h-14 w-full mb-3" /><Skeleton className="h-14 w-full" /></Card>
-                ) : (() => {
-                  const transbordoHigh = sprintTransbordoPct != null && sprintTransbordoPct > 50;
-                  const qaOpen = qaReturnKpis.summary?.open_events ?? 0;
-                  const qaTotal = qaReturnKpis.summary?.total_events ?? 0;
-                  const qaAvg = qaReturnKpis.summary?.avg_days_open;
-                  const qaMax = qaReturnKpis.summary?.max_days_open;
-                  return (
-                    <Card className="p-6">
-                      <p className="text-xs font-medium text-muted-foreground mb-4">RISCOS</p>
-                      <div className="space-y-0 divide-y divide-border">
-                        <button
-                          className="w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
-                          onClick={() => sprintTransbordoItems.length > 0 && setActiveTab('gerencia')}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className={`p-1.5 rounded-lg ${transbordoHigh ? 'bg-destructive/10' : 'bg-amber-500/10'}`}>
-                              <AlertTriangle className={`h-3.5 w-3.5 ${transbordoHigh ? 'text-destructive' : 'text-amber-500'}`} />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-foreground">Transbordo</p>
-                              <p className="text-[11px] text-muted-foreground/70">
-                                {sprintTransbordoCount > 0 ? `${sprintTransbordoCount} de ${sprintTransbordoTotal} itens` : 'Itens não entregues na sprint'}
-                              </p>
-                            </div>
-                          </div>
-                          <span className={`text-2xl font-semibold ${transbordoHigh ? 'text-destructive' : sprintTransbordoPct != null && sprintTransbordoPct > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-                            {sprintTransbordoPct != null ? `${sprintTransbordoPct}%` : '—'}
-                          </span>
-                        </button>
-                        <button
-                          className="w-full text-left flex items-start justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
-                          onClick={() => setActiveTab('qa-return')}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className={`p-1.5 rounded-lg ${qaOpen > 0 ? 'bg-destructive/10' : 'bg-muted'}`}>
-                              <AlertTriangle className={`h-3.5 w-3.5 ${qaOpen > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-foreground">Retorno QA</p>
-                              <p className="text-[11px] text-muted-foreground/70">{qaTotal} total no período</p>
-                            </div>
-                          </div>
-                          <div className="text-right space-y-1">
-                            <div className="flex items-baseline gap-1.5 justify-end">
-                              <span className="text-2xl font-semibold text-foreground">{qaTotal}</span>
-                              {qaOpen > 0 && (
-                                <span className="text-sm font-medium text-destructive">{qaOpen} abertos</span>
-                              )}
-                            </div>
-                            {qaOpen > 0 && (qaAvg != null || qaMax != null) && (
-                              <div className="flex gap-3 justify-end">
-                                {qaAvg != null && (
-                                  <span className="text-[11px] text-muted-foreground">méd. {qaAvg.toFixed(1)}d</span>
-                                )}
-                                {qaMax != null && (
-                                  <span className={`text-[11px] font-medium ${qaMax > 14 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                    máx. {qaMax}d
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </button>
-                      </div>
-                    </Card>
-                  );
-                })()}
               </div>
             )}
-
             {/* Sprint Board */}
             {renderSectionToggle('overview_sprint_board', 'Sprint Board')}
             {!isBlockCollapsed('overview_sprint_board') && (
@@ -2326,8 +2358,15 @@ export default function FabricaDashboard() {
                 <Card className="overflow-hidden animate-fade-in">
                 <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-foreground text-sm">Sprint Board</h3>
-                    <p className="text-xs text-muted-foreground">{filteredFabItems.length} itens • {parentRows.filter(p => childrenMap.has(p.id!)).length} PBIs com tasks</p>
+                    <h3 className="font-semibold text-foreground text-sm flex items-center gap-2">
+                      Sprint Board
+                      {unreadNewEntryCount > 0 && (
+                        <Badge variant="outline" className="text-[10px] bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300">
+                          {unreadNewEntryCount} novas não lidas
+                        </Badge>
+                      )}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">{allTopLevel.length} itens exibidos • {boardParentRows.filter(p => boardChildrenMap.has(p.id!)).length} PBIs com tasks</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="hidden md:flex gap-1">
@@ -2341,6 +2380,29 @@ export default function FabricaDashboard() {
                           {filterLabel(f)}
                         </Badge>
                       ))}
+                    </div>
+                    <div className="inline-flex rounded-md border border-border overflow-hidden shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => { setNewEntryReadFilter('all'); setPage(0); }}
+                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${newEntryReadFilter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setNewEntryReadFilter('unread'); setPage(0); }}
+                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${newEntryReadFilter === 'unread' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Não lidos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setNewEntryReadFilter('read'); setPage(0); }}
+                        className={`px-2.5 py-1 text-[11px] font-medium transition-colors border-l border-border ${newEntryReadFilter === 'read' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Lidos
+                      </button>
                     </div>
                     <div className="relative w-full sm:w-56">
                       <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
@@ -2417,15 +2479,17 @@ export default function FabricaDashboard() {
                         </TableHeader>
                         <TableBody>
                           {pagedTopLevel.map(item => {
-                            const children = childrenMap.get(item.id!) || [];
+                            const children = boardChildrenMap.get(item.id!) || [];
                             const hasChildren = children.length > 0;
                             const isExpanded = expandedPbis.has(item.id!);
+                            const parentIsUnreadNew = item.id != null && newEntrySignalsById.has(item.id) && !newEntriesReadIds.has(item.id);
+                            const parentHasUnreadChild = children.some((child) => child.id != null && newEntrySignalsById.has(child.id) && !newEntriesReadIds.has(child.id));
 
                             return (
                               <>{/* Parent row */}
                                 <TableRow
                                   key={`p-${item.id!}`}
-                                  className={`hover:bg-muted/30 transition-colors cursor-pointer ${hasChildren ? 'font-medium' : ''}`}
+                                  className={`hover:bg-muted/30 transition-colors cursor-pointer ${hasChildren ? 'font-medium' : ''} ${(parentIsUnreadNew || parentHasUnreadChild) ? 'bg-amber-500/10 border-l-2 border-l-amber-500/70' : ''}`}
                                   onClick={() => setDrawerItem(item)}
                                 >
                                   <TableCell className="w-8 px-2">
@@ -2443,22 +2507,25 @@ export default function FabricaDashboard() {
                                       </Button>
                                     ) : <span className="inline-block w-6" />}
                                   </TableCell>
-                                  {renderItemCells(item)}
+                                  {renderItemCells(item, false, parentHasUnreadChild)}
                                 </TableRow>
 
                                 {/* Child rows */}
-                                {hasChildren && isExpanded && children.map(child => (
-                                  <TableRow
-                                    key={`c-${child.id!}`}
-                                    className="hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5 border-l-2 border-l-primary/20"
-                                    onClick={() => setDrawerItem(child)}
-                                  >
-                                    <TableCell className="w-8 px-2">
-                                      <span className="inline-block w-6 text-center text-muted-foreground/40 text-xs">└</span>
-                                    </TableCell>
-                                    {renderItemCells(child, true)}
-                                  </TableRow>
-                                ))}
+                                {hasChildren && isExpanded && children.map(child => {
+                                  const childIsUnreadNew = child.id != null && newEntrySignalsById.has(child.id) && !newEntriesReadIds.has(child.id);
+                                  return (
+                                    <TableRow
+                                      key={`c-${child.id!}`}
+                                      className={`hover:bg-muted/20 transition-colors cursor-pointer bg-muted/5 border-l-2 ${childIsUnreadNew ? 'border-l-amber-500/70 bg-amber-500/10' : 'border-l-primary/20'}`}
+                                      onClick={() => setDrawerItem(child)}
+                                    >
+                                      <TableCell className="w-8 px-2">
+                                        <span className="inline-block w-6 text-center text-muted-foreground/40 text-xs">└</span>
+                                      </TableCell>
+                                      {renderItemCells(child, true)}
+                                    </TableRow>
+                                  );
+                                })}
                               </>
                             );
                           })}
@@ -2882,6 +2949,24 @@ export default function FabricaDashboard() {
               healthOverview={pbiHealthBatch.overview}
               bottlenecks={bottlenecks.bottlenecks}
               featureRows={featureSummary.rows}
+              performance={{
+                leadTimeMedio: fab.leadTimeMedio,
+                leadTimeSource: fab.leadTimeSource,
+                velocidadeMedia: fab.velocidadeMedia,
+                velocidadeSource: fab.velocidadeSource,
+                sprintCount: fab.sprintCount,
+                isLoading: fab.isLoading,
+              }}
+              risks={{
+                transbordoPct: sprintTransbordoPct,
+                transbordoCount: sprintTransbordoCount,
+                transbordoTotal: sprintTransbordoTotal,
+                qaOpen: qaReturnKpis.summary?.open_events ?? 0,
+                qaTotal: qaReturnKpis.summary?.total_events ?? 0,
+                qaAvg: qaReturnKpis.summary?.avg_days_open ?? null,
+                qaMax: qaReturnKpis.summary?.max_days_open ?? null,
+                onQaClick: () => setActiveTab('qa-return'),
+              }}
             />
           </TabsContent>
         </Tabs>

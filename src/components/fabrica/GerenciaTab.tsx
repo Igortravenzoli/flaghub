@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend } from 'recharts';
+import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, Line } from 'recharts';
 import {
   ChevronDown,
   ChevronRight,
@@ -16,6 +16,7 @@ import {
   BarChart3,
   X,
 } from 'lucide-react';
+import { Clock, Gauge, TrendingUp } from 'lucide-react';
 
 type GerenciaTabProps = {
   items: FabricaItem[];
@@ -42,6 +43,28 @@ type GerenciaTabProps = {
   };
   bottlenecks: PbiBottleneckRow[];
   featureRows: FeaturePbiSummaryRow[];
+  performance?: GerenciaPerformance;
+  risks?: GerenciaRisks;
+};
+
+type GerenciaPerformance = {
+  leadTimeMedio: number | null;
+  leadTimeSource: string;
+  velocidadeMedia: number | null;
+  velocidadeSource: string;
+  sprintCount: number;
+  isLoading: boolean;
+};
+
+type GerenciaRisks = {
+  transbordoPct: number | null;
+  transbordoCount: number;
+  transbordoTotal: number;
+  qaOpen: number;
+  qaTotal: number;
+  qaAvg: number | null;
+  qaMax: number | null;
+  onQaClick?: () => void;
 };
 
 function normalizeSprintCode(value: string | null | undefined): string {
@@ -71,7 +94,7 @@ function percentNum(value: number, total: number): number {
 }
 
 function includesRetornoQa(tags: string | null | undefined): boolean {
-  return /retorno\s*de\s*qa/i.test(tags || '');
+  return /retorno\s*(de\s*)?qa/i.test(tags || '');
 }
 
 function includesAviao(tags: string | null | undefined): boolean {
@@ -198,6 +221,8 @@ export function GerenciaTab({
   healthOverview,
   bottlenecks,
   featureRows,
+  performance,
+  risks,
 }: GerenciaTabProps) {
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
   const [selectedDrilldown, setSelectedDrilldown] = useState<{ key: DrilldownKey; label: string } | null>(null);
@@ -311,24 +336,47 @@ export function GerenciaTab({
         (i) => i.iteration_path === sprintPath && i.count_in_kpi !== false && isManagerLike(i),
       );
       const total = sprintItems.length;
-      let priorizacao = 0, naoPriorizado = 0, entregue = 0, done = 0;
+      let priorizacao = 0, bug = 0, retornoQa = 0, aviao = 0, entregue = 0, done = 0;
       for (const item of sprintItems) {
         const bucket = classifyItem(item, sprintCode);
-        if (bucket === 'priorizacao') priorizacao++; else naoPriorizado++;
+        if (bucket === 'priorizacao') priorizacao++;
+        else if (bucket === 'bug') bug++;
+        else if (bucket === 'retorno_qa') retornoQa++;
+        else aviao++;
         if (ENTREGUE_STATES.has(item.state || '')) entregue++;
         if (isDoneState(item.state)) done++;
       }
+      const naoPriorizado = bug + retornoQa + aviao;
+      const entregueP = percentNum(entregue, total);
+      const doneP = percentNum(done, total);
       if (histogramMode === 'percentual') {
         return {
           sprint: sprintCode,
           total,
           Priorizado: percentNum(priorizacao, total),
-          'NÃ£o Priorizado': percentNum(naoPriorizado, total),
+          NaoPriorizado: percentNum(naoPriorizado, total),
           Entregue: percentNum(entregue, total),
           Done: percentNum(done, total),
+          NPBug: percentNum(bug, total),
+          NPRetornoQA: percentNum(retornoQa, total),
+          NPAviao: percentNum(aviao, total),
+          EntregueP: entregueP,
+          DoneP: doneP,
         };
       }
-      return { sprint: sprintCode, total, Priorizado: priorizacao, 'NÃ£o Priorizado': naoPriorizado, Entregue: entregue, Done: done };
+      return {
+        sprint: sprintCode,
+        total,
+        Priorizado: priorizacao,
+        NaoPriorizado: naoPriorizado,
+        Entregue: entregue,
+        Done: done,
+        NPBug: bug,
+        NPRetornoQA: retornoQa,
+        NPAviao: aviao,
+        EntregueP: entregueP,
+        DoneP: doneP,
+      };
     });
   }, [comparisonSprints, allItems, histogramMode]);
 
@@ -473,7 +521,6 @@ export function GerenciaTab({
               ]}
             />
           </div>
-
           {/* Drilldown table — shown when a card/sub-item is active */}
           {selectedDrilldown && (
             <Card className="animate-fade-in">
@@ -545,7 +592,7 @@ export function GerenciaTab({
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                Evolução KPIs
+                Visão Gerencial das Sprints
                 <span className="text-xs font-normal text-muted-foreground">
                   {comparisonData.map((d) => d.sprint).join(' · ')}
                 </span>
@@ -574,22 +621,29 @@ export function GerenciaTab({
             ) : (
               <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={comparisonData} margin={{ top: 8, right: 20, left: 0, bottom: 0 }}>
+                  <ComposedChart data={comparisonData} margin={{ top: 8, right: 48, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                     <XAxis dataKey="sprint" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} unit={histogramMode === 'percentual' ? '%' : ''} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} unit={histogramMode === 'percentual' ? '%' : ''} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
                     <RechartsTooltip
                       contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
                       formatter={(value: number, name: string) => [
-                        histogramMode === 'percentual' ? `${value}%` : value, name,
+                        name === 'Entregue %' || name === 'Done %' ? `${value}%` : (histogramMode === 'percentual' ? `${value}%` : value),
+                        name,
                       ]}
                     />
                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                    <Bar dataKey="Priorizado" fill="hsl(210,90%,55%)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Não Priorizado" fill="hsl(0,72%,56%)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Entregue" fill="hsl(210,70%,68%)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Done" fill="hsl(142,60%,45%)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
+                    <Bar dataKey="Priorizado" name="Priorizado" yAxisId="left" fill="hsl(210,90%,55%)" />
+                    <Bar dataKey="NaoPriorizado" name="Não Priorizado" yAxisId="left" fill="hsl(0,72%,56%)" />
+                    <Bar dataKey="Entregue" name="Entregue" yAxisId="left" fill="hsl(210,70%,68%)" />
+                    <Bar dataKey="Done" name="Done" yAxisId="left" fill="hsl(142,60%,45%)" />
+                    <Bar dataKey="NPBug" name="Subcat NP: Bug" stackId="np_sub" yAxisId="left" fill="hsl(0,72%,46%)" />
+                    <Bar dataKey="NPRetornoQA" name="Subcat NP: Retorno QA" stackId="np_sub" yAxisId="left" fill="hsl(38,92%,45%)" />
+                    <Bar dataKey="NPAviao" name="Subcat NP: Avião" stackId="np_sub" yAxisId="left" fill="hsl(270,60%,52%)" radius={[4, 4, 0, 0]} />
+                    <Line dataKey="EntregueP" name="Entregue %" yAxisId="right" type="monotone" stroke="hsl(210,70%,68%)" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line dataKey="DoneP" name="Done %" yAxisId="right" type="monotone" stroke="hsl(142,60%,45%)" strokeWidth={2} dot={{ r: 3 }} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             )}
@@ -598,6 +652,89 @@ export function GerenciaTab({
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Performance & Riscos — shown when props are provided by parent */}
+      {(performance || risks) && renderSectionHeader('gerencia_perf_risk', 'Performance & Riscos', <TrendingUp className="h-4 w-4" />)}
+      {(performance || risks) && !isCollapsed('gerencia_perf_risk') && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {performance && (
+            <Card className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Performance</p>
+              {performance.isLoading ? (
+                <div className="space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+              ) : (
+                <div className="divide-y divide-border">
+                  <div className="flex items-center justify-between py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5 text-primary" />
+                      <div>
+                        <p className="text-sm font-medium">Lead Time Médio</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {performance.leadTimeSource === 'timelog' ? 'Horas / PBI' : 'Effort / PBI'}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-2xl font-bold">
+                      {performance.leadTimeMedio != null ? performance.leadTimeMedio : <span className="text-muted-foreground text-base">—</span>}
+                      {performance.leadTimeMedio != null && <span className="text-xs text-muted-foreground ml-1">{performance.leadTimeSource === 'timelog' ? 'h' : 'pts'}</span>}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Gauge className="h-3.5 w-3.5 text-blue-500" />
+                      <div>
+                        <p className="text-sm font-medium">Velocidade Média</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {performance.velocidadeSource === 'timelog' ? `Horas / Sprint (${performance.sprintCount})` : `Effort / Sprint (${performance.sprintCount})`}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-2xl font-bold">
+                      {performance.velocidadeMedia != null ? performance.velocidadeMedia : <span className="text-muted-foreground text-base">—</span>}
+                      {performance.velocidadeMedia != null && <span className="text-xs text-muted-foreground ml-1">{performance.velocidadeSource === 'timelog' ? 'h' : 'pts'}</span>}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+          {risks && (
+            <Card className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Riscos</p>
+              <div className="divide-y divide-border">
+                <div className="flex items-center justify-between py-2.5">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className={`h-3.5 w-3.5 ${risks.transbordoPct != null && risks.transbordoPct > 50 ? 'text-destructive' : 'text-amber-500'}`} />
+                    <div>
+                      <p className="text-sm font-medium">Transbordo</p>
+                      <p className="text-[11px] text-muted-foreground">{risks.transbordoCount} de {risks.transbordoTotal} itens</p>
+                    </div>
+                  </div>
+                  <span className={`text-2xl font-bold ${risks.transbordoPct != null && risks.transbordoPct > 50 ? 'text-destructive' : risks.transbordoPct != null && risks.transbordoPct > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                    {risks.transbordoPct != null ? `${risks.transbordoPct}%` : '—'}
+                  </span>
+                </div>
+                <button type="button" className="w-full text-left flex items-center justify-between py-2.5 hover:bg-muted/20 rounded px-1 -mx-1 transition-colors" onClick={risks.onQaClick}>
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className={`h-3.5 w-3.5 ${risks.qaOpen > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+                    <div>
+                      <p className="text-sm font-medium">Retorno QA</p>
+                      <p className="text-[11px] text-muted-foreground">{risks.qaTotal} total no período</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-2xl font-bold">{risks.qaTotal}</span>
+                    {risks.qaOpen > 0 && <p className="text-xs text-destructive">{risks.qaOpen} abertos</p>}
+                    {risks.qaOpen > 0 && risks.qaAvg != null && (
+                      <p className="text-[11px] text-muted-foreground">méd. {risks.qaAvg.toFixed(1)}d{risks.qaMax != null ? ` · máx. ${risks.qaMax}d` : ''}</p>
+                    )}
+                  </div>
+                </button>
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {renderSectionHeader('gerencia_transbordo', 'Transbordo', <AlertTriangle className="h-4 w-4" />)}
