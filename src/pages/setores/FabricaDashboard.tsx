@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
@@ -512,18 +513,8 @@ export default function FabricaDashboard() {
   const [boardSortDir, setBoardSortDir] = useState<'asc' | 'desc'>('desc');
   const [newEntryReadFilter, setNewEntryReadFilter] = useState<NewEntryReadFilter>('all');
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
-  const [newEntriesReadIds, setNewEntriesReadIds] = useState<Set<number>>(() => {
-    if (typeof window === 'undefined') return new Set<number>();
-    try {
-      const raw = window.localStorage.getItem('fabrica.new-entries.read.v1');
-      if (!raw) return new Set<number>();
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return new Set<number>();
-      return new Set(parsed.filter((value): value is number => typeof value === 'number'));
-    } catch {
-      return new Set<number>();
-    }
-  });
+  const [newEntriesReadIds, setNewEntriesReadIds] = useState<Set<number>>(new Set());
+  const [isLoadingReadState, setIsLoadingReadState] = useState(true);
 
   const toggleBlockCollapse = (blockKey: string) => {
     setCollapsedBlocks(prev => {
@@ -834,10 +825,25 @@ export default function FabricaDashboard() {
     window.localStorage.setItem('fabrica.excluded-collabs.v1', JSON.stringify(Array.from(excludedCollabs)));
   }, [excludedCollabs]);
 
+  // Load read entries from Supabase on mount
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('fabrica.new-entries.read.v1', JSON.stringify(Array.from(newEntriesReadIds)));
-  }, [newEntriesReadIds]);
+    const loadReadEntries = async () => {
+      try {
+        const { data, error } = await supabase.from('fabrica_read_entries').select('work_item_id').eq('is_read', true);
+        if (error) {
+          console.error('Failed to load read entries:', error);
+          return;
+        }
+        const ids = (data || []).map(row => row.work_item_id);
+        setNewEntriesReadIds(new Set(ids));
+      } catch (err) {
+        console.error('Error loading read entries:', err);
+      } finally {
+        setIsLoadingReadState(false);
+      }
+    };
+    loadReadEntries();
+  }, []);
 
   useEffect(() => {
     if (fabKpiFilter !== 'sem_task' && semTaskContextFilter !== 'all') {
@@ -1813,23 +1819,69 @@ export default function FabricaDashboard() {
     ...(drawerItem.parent_title ? [{ label: 'Parent', value: drawerItem.parent_title }] : []),
   ] : [];
 
-  const toggleNewEntryRead = useCallback((itemId: number) => {
+  const toggleNewEntryRead = useCallback(async (itemId: number) => {
+    const isCurrentlyRead = newEntriesReadIds.has(itemId);
+    const newIsRead = !isCurrentlyRead;
+    
+    // Optimistic update
     setNewEntriesReadIds((prev) => {
       const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
+      if (newIsRead) next.add(itemId);
+      else next.delete(itemId);
       return next;
     });
-  }, []);
 
-  const markUnreadChildrenAsRead = useCallback((childrenIds: number[]) => {
+    // Persist to Supabase
+    try {
+      const { error } = await supabase.from('fabrica_read_entries').upsert(
+        { work_item_id: itemId, is_read: newIsRead },
+        { onConflict: 'work_item_id' }
+      );
+      if (error) {
+        console.error('Failed to update read state:', error);
+        // Revert optimistic update on error
+        setNewEntriesReadIds((prev) => {
+          const next = new Set(prev);
+          if (isCurrentlyRead) next.add(itemId);
+          else next.delete(itemId);
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error('Error updating read state:', err);
+    }
+  }, [newEntriesReadIds]);
+
+  const markUnreadChildrenAsRead = useCallback(async (childrenIds: number[]) => {
+    // Optimistic update
     setNewEntriesReadIds((prev) => {
       const next = new Set(prev);
       for (const childId of childrenIds) {
-        if (!next.has(childId)) next.add(childId);
+        next.add(childId);
       }
       return next;
     });
+
+    // Persist to Supabase
+    try {
+      const { error } = await supabase.from('fabrica_read_entries').upsert(
+        childrenIds.map(id => ({ work_item_id: id, is_read: true })),
+        { onConflict: 'work_item_id' }
+      );
+      if (error) {
+        console.error('Failed to mark children as read:', error);
+        // Revert optimistic update on error
+        setNewEntriesReadIds((prev) => {
+          const next = new Set(prev);
+          for (const childId of childrenIds) {
+            next.delete(childId);
+          }
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error('Error marking children as read:', err);
+    }
   }, []);
 
   const renderItemCells = (item: FabricaItem, indent = false, hasUnreadDescendant = false, unreadChildrenIds: number[] = []) => {
@@ -1860,12 +1912,12 @@ export default function FabricaDashboard() {
             />
           ) : null}
           <div className="min-w-0 flex-1">
-            <span className={`truncate block ${(entrySignal && !isRead) || showUnreadDescendantBadge ? 'font-semibold text-amber-700 dark:text-amber-300' : ''}`}>{item.title || '—'}</span>
+            <span className={`truncate block ${(entrySignal && !isRead) || showUnreadDescendantBadge ? 'font-semibold text-amber-700 dark:text-amber-300' : (entrySignal && isRead) ? 'line-through text-muted-foreground' : ''}`}>{item.title || '—'}</span>
             {(entrySignal || showUnreadDescendantBadge) && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {entrySignal ? (
                   <>
-                    <Badge variant="outline" className={`text-[10px] ${isRead ? 'text-muted-foreground border-border' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'}`}>
+                    <Badge variant="outline" className={`text-[10px] font-medium ${isRead ? 'bg-muted text-muted-foreground border-border' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40'}`}>
                       {isRead ? 'Lido' : 'Novo'}
                     </Badge>
                     <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
