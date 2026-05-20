@@ -1822,7 +1822,17 @@ export default function FabricaDashboard() {
     });
   }, []);
 
-  const renderItemCells = (item: FabricaItem, indent = false, hasUnreadDescendant = false) => {
+  const markUnreadChildrenAsRead = useCallback((childrenIds: number[]) => {
+    setNewEntriesReadIds((prev) => {
+      const next = new Set(prev);
+      for (const childId of childrenIds) {
+        if (!next.has(childId)) next.add(childId);
+      }
+      return next;
+    });
+  }, []);
+
+  const renderItemCells = (item: FabricaItem, indent = false, hasUnreadDescendant = false, unreadChildrenIds: number[] = []) => {
     const entrySignal = item.id != null ? newEntrySignalsById.get(item.id) : null;
     const isRead = item.id != null ? newEntriesReadIds.has(item.id) : false;
     const showUnreadDescendantBadge = !entrySignal && hasUnreadDescendant;
@@ -1881,9 +1891,26 @@ export default function FabricaDashboard() {
                     )}
                   </>
                 ) : (
-                  <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
-                    Contém não lido (task)
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40">
+                      Contém não lido (task)
+                    </Badge>
+                    {unreadChildrenIds.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-[10px]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markUnreadChildrenAsRead(unreadChildrenIds);
+                        }}
+                      >
+                        <Check className="h-3 w-3 mr-1" />
+                        Marcar {unreadChildrenIds.length} como lido
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -2483,7 +2510,11 @@ export default function FabricaDashboard() {
                             const hasChildren = children.length > 0;
                             const isExpanded = expandedPbis.has(item.id!);
                             const parentIsUnreadNew = item.id != null && newEntrySignalsById.has(item.id) && !newEntriesReadIds.has(item.id);
-                            const parentHasUnreadChild = children.some((child) => child.id != null && newEntrySignalsById.has(child.id) && !newEntriesReadIds.has(child.id));
+                            const unreadChildrenIds = children
+                              .filter((child) => child.id != null && newEntrySignalsById.has(child.id) && !newEntriesReadIds.has(child.id))
+                              .map((child) => child.id!)
+                              .filter((id) => id > 0);
+                            const parentHasUnreadChild = unreadChildrenIds.length > 0;
 
                             return (
                               <>{/* Parent row */}
@@ -2507,7 +2538,7 @@ export default function FabricaDashboard() {
                                       </Button>
                                     ) : <span className="inline-block w-6" />}
                                   </TableCell>
-                                  {renderItemCells(item, false, parentHasUnreadChild)}
+                                  {renderItemCells(item, false, parentHasUnreadChild, unreadChildrenIds)}
                                 </TableRow>
 
                                 {/* Child rows */}
