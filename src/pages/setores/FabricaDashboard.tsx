@@ -1912,7 +1912,7 @@ export default function FabricaDashboard() {
             />
           ) : null}
           <div className="min-w-0 flex-1">
-            <span className={`truncate block ${(entrySignal && !isRead) || showUnreadDescendantBadge ? 'font-semibold text-amber-700 dark:text-amber-300' : (entrySignal && isRead) ? 'line-through text-muted-foreground' : ''}`}>{item.title || '—'}</span>
+            <span className={`truncate block ${(entrySignal && !isRead) || showUnreadDescendantBadge ? 'font-semibold text-amber-700 dark:text-amber-300' : ''}`}>{item.title || '—'}</span>
             {(entrySignal || showUnreadDescendantBadge) && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {entrySignal ? (

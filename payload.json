@@ -1,0 +1,31 @@
+﻿{
+    "query":  {
+                  "value":  "-- ============================================================================\r\n-- Migration: 20260520150000_fabrica_read_entries.sql\r\n-- Create table to persist read/unread state for FÃ¡brica dashboard entries\r\n-- Global state: not per-user, shared across all browsers\r\n-- ============================================================================\r\n\r\nCREATE TABLE IF NOT EXISTS public.fabrica_read_entries (\r\n  work_item_id INTEGER PRIMARY KEY,\r\n  is_read BOOLEAN NOT NULL DEFAULT false,\r\n  marked_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),\r\n  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),\r\n  \r\n  CONSTRAINT fk_work_item_id FOREIGN KEY (work_item_id)\r\n    REFERENCES public.vw_fabrica_kpis(id) ON DELETE CASCADE\r\n);\r\n\r\n-- Create index for faster lookups\r\nCREATE INDEX IF NOT EXISTS idx_fabrica_read_entries_is_read \r\nON public.fabrica_read_entries(is_read);\r\n\r\n-- Create index for ordered queries\r\nCREATE INDEX IF NOT EXISTS idx_fabrica_read_entries_updated_at \r\nON public.fabrica_read_entries(updated_at DESC);\r\n\r\n-- Enable RLS but allow public read (no authentication needed for dashboard)\r\nALTER TABLE public.fabrica_read_entries ENABLE ROW LEVEL SECURITY;\r\n\r\n-- Policy: Allow anyone to SELECT\r\nCREATE POLICY \"Allow public read\" ON public.fabrica_read_entries\r\n  FOR SELECT USING (true);\r\n\r\n-- Policy: Allow INSERT/UPDATE (public, not authenticated)\r\nCREATE POLICY \"Allow public insert update\" ON public.fabrica_read_entries\r\n  FOR INSERT WITH CHECK (true);\r\n\r\nCREATE POLICY \"Allow public update\" ON public.fabrica_read_entries\r\n  FOR UPDATE USING (true) WITH CHECK (true);\r\n\r\n-- Grant permissions\r\nGRANT SELECT, INSERT, UPDATE ON public.fabrica_read_entries TO anon;\r\nGRANT SELECT, INSERT, UPDATE ON public.fabrica_read_entries TO authenticated;\r\n",
+                  "PSPath":  "C:\\Users\\igor.cardoso.FLAG\\OneDrive - FLAG INTELLIWAN (ISV)\\Área de Trabalho\\Mode.IA\\Projetos_Flag\\Portal FlagHub\\FlagHub\\supabase\\migrations\\20260520150000_fabrica_read_entries.sql",
+                  "PSParentPath":  "C:\\Users\\igor.cardoso.FLAG\\OneDrive - FLAG INTELLIWAN (ISV)\\Área de Trabalho\\Mode.IA\\Projetos_Flag\\Portal FlagHub\\FlagHub\\supabase\\migrations",
+                  "PSChildName":  "20260520150000_fabrica_read_entries.sql",
+                  "PSDrive":  {
+                                  "CurrentLocation":  "Users\\igor.cardoso.FLAG\\OneDrive - FLAG INTELLIWAN (ISV)\\Área de Trabalho\\Mode.IA\\Projetos_Flag\\Portal FlagHub\\FlagHub",
+                                  "Name":  "C",
+                                  "Provider":  "Microsoft.PowerShell.Core\\FileSystem",
+                                  "Root":  "C:\\",
+                                  "Description":  "",
+                                  "MaximumSize":  null,
+                                  "Credential":  "System.Management.Automation.PSCredential",
+                                  "DisplayRoot":  null
+                              },
+                  "PSProvider":  {
+                                     "ImplementingType":  "Microsoft.PowerShell.Commands.FileSystemProvider",
+                                     "HelpFile":  "System.Management.Automation.dll-Help.xml",
+                                     "Name":  "FileSystem",
+                                     "PSSnapIn":  "Microsoft.PowerShell.Core",
+                                     "ModuleName":  "Microsoft.PowerShell.Core",
+                                     "Module":  null,
+                                     "Description":  "",
+                                     "Capabilities":  52,
+                                     "Home":  "C:\\Users\\igor.cardoso.FLAG",
+                                     "Drives":  "C D N V"
+                                 },
+                  "ReadCount":  1
+              }
+}
