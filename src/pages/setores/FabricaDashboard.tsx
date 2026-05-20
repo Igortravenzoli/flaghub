@@ -1850,7 +1850,7 @@ export default function FabricaDashboard() {
     } catch (err) {
       console.error('Error updating read state:', err);
     }
-  }, [newEntriesReadIds]);
+  }, []);
 
   const markUnreadChildrenAsRead = useCallback(async (childrenIds: number[]) => {
     // Optimistic update
