@@ -646,7 +646,7 @@ async function run(
       .update({
         alert_status: alertStatus,
         alert_channel_type: alertChannelType,
-        alert_sent_at: alertStatus !== 'pending' && alertStatus !== 'skipped'
+        alert_sent_at: alertStatus === 'sent' || alertStatus === 'fallback_sent'
           ? new Date().toISOString()
           : null,
         lead_teams_user_id: teamsUserId,
