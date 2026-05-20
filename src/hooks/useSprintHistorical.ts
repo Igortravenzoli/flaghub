@@ -24,6 +24,20 @@ export interface SprintHistoricalData {
   snapshot_datetime: string;
   captured_by: string;
   notes: string | null;
+  qa_done_items: number;
+  qa_items_with_return: number;
+  qa_return_cycles_total: number;
+  qa_return_rate_pct: number;
+  qa_avg_return_cycles: number;
+}
+
+export interface SprintBackfillResult {
+  sprint_code: string;
+  status: string;
+  snapshot_id: string | null;
+  qa_done_items: number | null;
+  qa_items_with_return: number | null;
+  qa_return_cycles_total: number | null;
 }
 
 export interface SprintSnapshot {
@@ -57,7 +71,7 @@ export function useSprintHistorical(sprintCode: string | null) {
     queryFn: async () => {
       if (!sprintCode) return null;
       
-      const { data, error } = await supabase.rpc('rpc_get_sprint_historical', {
+      const { data, error } = await supabase.rpc('rpc_get_sprint_historical_v2', {
         p_sprint_code: sprintCode,
       });
       
@@ -123,5 +137,22 @@ export function useCaptureSprintSnapshot() {
     
     if (error) throw error;
     return data?.[0];
+  };
+}
+
+/**
+ * Retroprocessa snapshots para todas as sprints encerradas de um ano.
+ * Mantem compatibilidade com a rotina atual e adiciona suporte historico para QA.
+ */
+export function useBackfillClosedSprintSnapshots() {
+  return async (year: number, forceReprocess = false, notes?: string) => {
+    const { data, error } = await supabase.rpc('rpc_backfill_closed_sprint_snapshots', {
+      p_year: year,
+      p_force_reprocess: forceReprocess,
+      p_notes: notes || null,
+    });
+
+    if (error) throw error;
+    return (data || []) as SprintBackfillResult[];
   };
 }

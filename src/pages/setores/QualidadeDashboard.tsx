@@ -17,6 +17,7 @@ import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
 import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
+import { GerencialQaPanel } from '@/components/qualidade/GerencialQaPanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -27,12 +28,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileCheck, Clock, TrendingUp, BarChart3, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo, Users, Filter } from 'lucide-react';
+import { FileCheck, Clock, TrendingUp, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo, Users, Filter } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
+import { countQaReturnsFromStateHistory, computeQaReworkMetrics, filterDoneItemsBySprintAndYear, isIterationPathFromYear } from '@/lib/qaRework';
 
 type QaKpiFilter = 'all' | 'em_teste' | 'deploy' | 'com_retorno' | 'aviao';
 
@@ -62,6 +64,7 @@ const integrations: Integration[] = [
 const QUALITY_TEST_STATES = new Set(['Em Teste', 'Aguardando Deploy']);
 const QUALITY_TESTING_STATES = new Set(['Em Teste']);
 const QUALITY_DEPLOY_STATES = new Set(['Aguardando Deploy']);
+const QA_REWORK_YEAR = 2026;
 
 const columns: DataTableColumn<QualidadeItem>[] = [
   { key: 'id', header: 'ID', className: 'font-mono text-xs w-16', render: r => r.web_url ? (
@@ -109,25 +112,9 @@ export default function QualidadeDashboard() {
   const base = useQualidadeKpis(undefined, undefined, 'all');
   const { allItems, lastSync, isLoading, isError } = base;
 
-  // ── States classification for rework detection ──
-  // QA states: states that represent "in testing"
-  const QA_ORIGIN_STATES = useMemo(() => new Set([
-    'Em Teste', 'In Test', 'Testing', 'em teste',
-  ]), []);
-  // DEV destination states: states that represent "returned to development"
-  const DEV_DEST_STATES = useMemo(() => new Set([
-    'Em desenvolvimento', 'Em Desenvolvimento', 'In Progress', 'In Development',
-    'To Do', 'New', 'Committed', 'Prioritized', 'Active', 'Approved',
-    'em desenvolvimento', 'in progress',
-  ]), []);
-  // Done/closed states
-  const DONE_STATES = useMemo(() => new Set([
-    'Done', 'Closed', 'Resolved', 'done', 'closed', 'resolved',
-  ]), []);
-
   // Fetch ALL Done items + compute rework from state_history directly
   const reworkQuery = useQuery({
-    queryKey: ['qualidade', 'rework-done-v3'],
+    queryKey: ['qualidade', 'rework-done-v4', QA_REWORK_YEAR],
     queryFn: async () => {
       const DONE_STATES = ['Done', 'Closed', 'Resolved'];
       const PAGE = 1000;
@@ -153,39 +140,8 @@ export default function QualidadeDashboard() {
       const allDoneItems = results.flatMap(r => r.data || []);
       if (allDoneItems.length === 0) return [];
 
-      // QA origin state set (case-insensitive matching via normalized)
-      const qaOriginNorm = new Set(['em teste', 'in test', 'testing']);
-      // Dev destination state set
-      const devDestNorm = new Set([
-        'em desenvolvimento', 'in progress', 'in development',
-        'to do', 'new', 'committed', 'prioritized', 'active', 'approved',
-      ]);
-
-      return allDoneItems.map((w: any): QualidadeItem => {
-        let totalRetornoQa = 0;
-        let ultimoResponsavel: string | null = null;
-        let ultimoRetornoEm: string | null = null;
-        let ultimoEstadoDestino: string | null = null;
-
-        if (w.state_history && Array.isArray(w.state_history)) {
-          for (const entry of w.state_history) {
-            const oldVal = (entry?.oldValue || '').toLowerCase().trim();
-            const newVal = (entry?.newValue || '').toLowerCase().trim();
-            // Detect: leaving a QA state and going to a DEV state
-            if (qaOriginNorm.has(oldVal) && devDestNorm.has(newVal)) {
-              totalRetornoQa++;
-              // revisedBy is the person who performed this transition (QA person returning)
-              const who = typeof entry?.revisedBy === 'string'
-                ? entry.revisedBy
-                : (entry?.revisedBy?.displayName || entry?.revisedBy?.uniqueName || null);
-              if (who) ultimoResponsavel = who;
-              if (entry?.revisedDate) ultimoRetornoEm = entry.revisedDate;
-              // Store the original-case newValue
-              ultimoEstadoDestino = entry?.newValue || null;
-            }
-          }
-        }
-
+      const enrichedDoneItems = allDoneItems.map((w: any): QualidadeItem => {
+        const retorno = countQaReturnsFromStateHistory(w.state_history);
         return {
           id: w.id,
           title: w.title,
@@ -198,18 +154,24 @@ export default function QualidadeDashboard() {
           changed_date: w.changed_date,
           iteration_path: w.iteration_path,
           web_url: w.web_url,
-          qa_retorno_count: totalRetornoQa,
-          returned_by: ultimoResponsavel,
-          ultimo_responsavel_retorno_qa: ultimoResponsavel,
-          ultimo_retorno_qa_em: ultimoRetornoEm,
-          ultimo_estado_destino_retorno: ultimoEstadoDestino,
+          qa_retorno_count: retorno.count,
+          returned_by: retorno.lastReturnBy,
+          ultimo_responsavel_retorno_qa: retorno.lastReturnBy,
+          ultimo_retorno_qa_em: retorno.lastReturnAt,
+          ultimo_estado_destino_retorno: retorno.lastDestinationState,
         };
       });
+
+      return filterDoneItemsBySprintAndYear(enrichedDoneItems, QA_REWORK_YEAR, null);
     },
     staleTime: 5 * 60 * 1000,
   });
   const allDoneItems = reworkQuery.data || [];
-  const { sortedSprints } = useSprintFilter(allItems);
+  const sprintSeedItems = useMemo(
+    () => [...allItems, ...allDoneItems].filter((item) => isIterationPathFromYear(item.iteration_path, QA_REWORK_YEAR)),
+    [allItems, allDoneItems]
+  );
+  const { sortedSprints } = useSprintFilter(sprintSeedItems);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -309,6 +271,10 @@ export default function QualidadeDashboard() {
   }, [sortedSprints, sprintFilter]);
 
   const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
+  const sprintScopedDoneItems = useMemo(
+    () => filterDoneItemsBySprintAndYear(allDoneItems, QA_REWORK_YEAR, selectedSprintCode),
+    [allDoneItems, selectedSprintCode]
+  );
   const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
   const effectiveRange = customActive && customRange
     ? customRange
@@ -585,6 +551,7 @@ export default function QualidadeDashboard() {
           <TabsList className="bg-muted/50 p-1">
             <TabsTrigger value="overview" className="gap-1.5 text-xs"><FileCheck className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
             <TabsTrigger value="retrabalho" className="gap-1.5 text-xs"><RotateCcw className="h-3.5 w-3.5" />Retrabalho</TabsTrigger>
+            <TabsTrigger value="gerencial" className="gap-1.5 text-xs"><TrendingUp className="h-3.5 w-3.5" />Gerencial</TabsTrigger>
             <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
             <TabsTrigger value="gargalos" className="gap-1.5 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Gargalos</TabsTrigger>
             <TabsTrigger value="por-feature" className="gap-1.5 text-xs"><Workflow className="h-3.5 w-3.5" />Por Feature</TabsTrigger>
@@ -766,34 +733,22 @@ export default function QualidadeDashboard() {
                   Filtro: {reworkCollabMode === 'default' ? 'Padrão QA' : `${reworkSelectedCount} selecionados`} ✕
                 </Badge>
               )}
+              <Badge variant="outline" className="text-xs">
+                Escopo: Done em {QA_REWORK_YEAR}{selectedSprintCode ? ` • ${selectedSprintCode}` : ' • Todas as sprints'}
+              </Badge>
             </div>
 
             {(() => {
-              // All done items with rework (historical, not limited by date for the main view)
-              const allWithRework = allDoneItems.filter(i => (i.qa_retorno_count ?? 0) >= reworkMinCount);
-              // Apply collaborator filter
-              const collabFiltered = filterReworkByCollab(allWithRework);
-              // Optionally apply date range for date-scoped KPIs
-              const rangeFrom = effectiveRange.from;
-              const rangeTo = effectiveRange.to;
-              const dateFiltered = collabFiltered.filter(i => {
-                const cd = i.changed_date ? new Date(i.changed_date) : null;
-                return cd && cd >= rangeFrom && cd <= rangeTo;
-              });
-
-              const totalDoneInRange = filterReworkByCollab(allDoneItems).filter(i => {
-                const cd = i.changed_date ? new Date(i.changed_date) : null;
-                return cd && cd >= rangeFrom && cd <= rangeTo;
-              }).length;
-              const totalReworkItems = dateFiltered.length;
-              const totalReworkCycles = dateFiltered.reduce((sum, i) => sum + (i.qa_retorno_count ?? 0), 0);
-              const reworkRate = totalDoneInRange > 0 ? Math.round((totalReworkItems / totalDoneInRange) * 100) : 0;
-              const avgCycles = totalReworkItems > 0 ? Math.round((totalReworkCycles / totalReworkItems) * 10) / 10 : 0;
-              const sorted = [...dateFiltered].sort((a, b) => (b.qa_retorno_count ?? 0) - (a.qa_retorno_count ?? 0));
+              const reworkMetrics = computeQaReworkMetrics(sprintScopedDoneItems);
+              const doneWithRework = sprintScopedDoneItems.filter((i) => (i.qa_retorno_count ?? 0) > 0);
+              const collabFilteredDoneWithRework = filterReworkByCollab(doneWithRework);
+              const sorted = [...collabFilteredDoneWithRework]
+                .filter((i) => (i.qa_retorno_count ?? 0) >= reworkMinCount)
+                .sort((a, b) => (b.qa_retorno_count ?? 0) - (a.qa_retorno_count ?? 0));
 
               // Chart: ranking of returners (top 15)
               const returnerCountMap = new Map<string, number>();
-              for (const item of dateFiltered) {
+              for (const item of collabFilteredDoneWithRework) {
                 const who = item.ultimo_responsavel_retorno_qa;
                 if (who) returnerCountMap.set(who, (returnerCountMap.get(who) || 0) + 1);
               }
@@ -808,7 +763,7 @@ export default function QualidadeDashboard() {
 
               // Chart: distribution by return count
               const distMap = new Map<number, number>();
-              for (const item of dateFiltered) {
+              for (const item of collabFilteredDoneWithRework) {
                 const c = item.qa_retorno_count ?? 0;
                 distMap.set(c, (distMap.get(c) || 0) + 1);
               }
@@ -831,18 +786,18 @@ export default function QualidadeDashboard() {
               return (
                 <>
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                    <DashboardKpiCard label="Done (Período)" value={totalDoneInRange} icon={FileCheck} isLoading={reworkQuery.isLoading} />
-                    <DashboardKpiCard label={`Com ${reworkMinCount}+ Retorno(s)`} value={totalReworkItems} icon={RotateCcw} accent="bg-destructive" isLoading={reworkQuery.isLoading} delay={80} />
-                    <DashboardKpiCard label="Total Ciclos" value={totalReworkCycles} suffix="x" icon={RotateCcw} accent="bg-[hsl(43,85%,46%)]" isLoading={reworkQuery.isLoading} delay={160} />
-                    <DashboardKpiCard label="Taxa Retrabalho" value={`${reworkRate}%`} icon={AlertTriangle} accent={reworkRate > 20 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} isLoading={reworkQuery.isLoading} delay={240} />
-                    <DashboardKpiCard label="Média Ciclos" value={avgCycles} suffix="x" icon={TrendingUp} isLoading={reworkQuery.isLoading} delay={320} />
+                    <DashboardKpiCard label="Itens concluídos" value={reworkMetrics.totalConcluidos} icon={FileCheck} isLoading={reworkQuery.isLoading} />
+                    <DashboardKpiCard label="Itens com retorno QA" value={reworkMetrics.itensComRetornoQa} icon={RotateCcw} accent="bg-destructive" isLoading={reworkQuery.isLoading} delay={80} />
+                    <DashboardKpiCard label="Ciclos totais de retorno" value={reworkMetrics.ciclosTotaisRetornoQa} suffix="x" icon={RotateCcw} accent="bg-[hsl(43,85%,46%)]" isLoading={reworkQuery.isLoading} delay={160} />
+                    <DashboardKpiCard label="% com retorno QA" value={`${reworkMetrics.percentualComRetornoQa}%`} icon={AlertTriangle} accent={reworkMetrics.percentualComRetornoQa > 20 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} isLoading={reworkQuery.isLoading} delay={240} />
+                    <DashboardKpiCard label="Média por item afetado" value={reworkMetrics.mediaRetornoPorItemAfetado} suffix="x" icon={TrendingUp} isLoading={reworkQuery.isLoading} delay={320} />
                   </div>
 
-                  {reworkRate > 20 && (
+                  {reworkMetrics.percentualComRetornoQa > 20 && (
                     <Card className="border-l-4 border-l-destructive p-3">
                       <p className="text-sm text-destructive font-semibold flex items-center gap-2">
                         <AlertTriangle className="h-4 w-4" />
-                        Alerta: {reworkRate}% dos itens Done passaram por retrabalho — indica gargalo no processo Dev→Teste
+                        Alerta: {reworkMetrics.percentualComRetornoQa}% dos itens concluídos tiveram retorno QA — indica gargalo no processo Dev→Teste
                       </p>
                     </Card>
                   )}
@@ -966,6 +921,10 @@ export default function QualidadeDashboard() {
                 </>
               );
             })()}
+          </TabsContent>
+
+          <TabsContent value="gerencial" className="space-y-4 mt-0">
+            <GerencialQaPanel />
           </TabsContent>
 
           {/* ═══════ TAB: Esteira / Saúde ═══════ */}
