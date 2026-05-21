@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
-import { TrendingUp, TrendingDown, Target, BarChart3, FileText, ShieldCheck, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, BarChart3, FileText, Activity, Building2 } from 'lucide-react';
 import { useComercialVendas, ComercialVenda } from '@/hooks/useComercialVendas';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -87,6 +86,37 @@ export function PipeDriveTab() {
 
   const sentiment = getDealValueSentiment(mesesComDados);
 
+  const kpiCards = useMemo(() => ([
+    {
+      key: 'deals',
+      label: 'Total negócios',
+      value: stats.totalDeals,
+      icon: FileText,
+      accent: 'text-sky-600 bg-sky-500/12 border-sky-500/20',
+    },
+    {
+      key: 'orgs',
+      label: 'Organizações',
+      value: stats.orgs.length,
+      icon: Building2,
+      accent: 'text-violet-600 bg-violet-500/12 border-violet-500/20',
+    },
+    {
+      key: 'media',
+      label: 'Média mensal',
+      value: `${mediaAtingimento}%`,
+      icon: Target,
+      accent: 'text-emerald-600 bg-emerald-500/12 border-emerald-500/20',
+    },
+    {
+      key: 'meta',
+      label: 'Meses na meta',
+      value: `${mesesComDados.filter((m) => m.atingiuMeta).length}/${mesesComDados.length}`,
+      icon: TrendingUp,
+      accent: 'text-amber-600 bg-amber-500/12 border-amber-500/20',
+    },
+  ]), [mediaAtingimento, mesesComDados, stats.orgs.length, stats.totalDeals]);
+
   const drawerFields: DrawerField[] = drawerItem ? [
     { label: 'Negócio', value: drawerItem.deal_title },
     { label: 'Organização', value: drawerItem.organization },
@@ -99,41 +129,102 @@ export function PipeDriveTab() {
 
   return (
     <div className="space-y-6">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <DashboardKpiCard
-          label="Total Negócios"
-          value={stats.totalDeals}
-          icon={FileText}
-          isLoading={isLoading}
-        />
-        <DashboardKpiCard
-          label="Organizações"
-          value={stats.orgs.length}
-          icon={BarChart3}
-          isLoading={isLoading}
-          delay={80}
-        />
-        <DashboardKpiCard
-          label="Média Ating. Mensal"
-          value={`${mediaAtingimento}%`}
-          icon={Target}
-          isLoading={isLoading}
-          delay={160}
-        />
-        <DashboardKpiCard
-          label="Meses Acima Média"
-          value={`${mesesComDados.filter((m) => m.atingiuMeta).length}/${mesesComDados.length}`}
-          icon={TrendingUp}
-          isLoading={isLoading}
-          delay={240}
-        />
+      <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_1fr] gap-4 items-stretch">
+        <div className="grid gap-4 min-h-[352px] xl:grid-rows-[auto_1fr]">
+          <Card className="border bg-card">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Resumo do Fechamento</p>
+                <p className="text-xs text-muted-foreground">Negócios, organizações e leitura da meta mensal</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4">
+              {kpiCards.map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.key}
+                    className={`flex min-h-[116px] flex-col justify-between px-4 py-4 text-left ${index < kpiCards.length - 1 ? 'lg:border-r lg:border-border' : ''} ${index < 2 ? 'border-b border-border lg:border-b-0' : ''}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        {item.label}
+                      </span>
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${item.accent}`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-3xl font-semibold tracking-tight text-foreground">
+                        {isLoading ? '...' : item.value}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card className="border bg-card">
+            <div className="grid h-full grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
+              <div className="flex flex-col justify-between px-4 py-4">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Situação comercial</p>
+                  <p className={`text-2xl font-semibold ${sentiment.accent}`}>{isLoading ? '...' : sentiment.label}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">{sentiment.description}</p>
+              </div>
+
+              <div className="flex flex-col justify-between px-4 py-4">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Meta mensal</p>
+                  <p className="text-2xl font-semibold text-foreground">R$ 110K</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Referência de 100% para o gráfico mensal</p>
+              </div>
+
+              <div className="flex flex-col justify-between px-4 py-4">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fechamentos lidos</p>
+                  <p className="text-2xl font-semibold text-foreground">{isLoading ? '...' : stats.vendasPorMes.length}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Meses com base para leitura do atingimento</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card className="p-4 min-h-[352px]">
+          <div className="mb-1">
+            <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Meta Mensal</h3>
+            <p className="text-xs text-muted-foreground">Referência: meta mensal = R$ 110K (100%)</p>
+          </div>
+          <div className="h-[280px] mt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.vendasPorMes} margin={{ left: 10, right: 20, top: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="mes" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+                <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+                <Tooltip content={<CustomTooltipMensal />} />
+                <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
+                <Bar dataKey="percentualMeta" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                  {stats.vendasPorMes.map((entry, i) => {
+                    if (entry.percentualMeta < 50) return <Cell key={i} fill="hsl(var(--destructive))" />;
+                    const intensity = Math.min(1, Math.max(0, (entry.percentualMeta - 50) / 100));
+                    const lightness = 55 - intensity * 20;
+                    const saturation = 45 + intensity * 30;
+                    return <Cell key={i} fill={`hsl(142, ${saturation}%, ${lightness}%)`} />;
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Vendas por Org — horizontal bar */}
-        <Card className="lg:col-span-3 p-4">
+      <Card className="p-4">
           <div className="flex items-center justify-between mb-1">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Vendas por Organização</h3>
@@ -161,58 +252,6 @@ export function PipeDriveTab() {
             </ResponsiveContainer>
           </div>
         </Card>
-
-        {/* Summary card — abstract sentiment instead of raw value */}
-        <Card className="lg:col-span-2 p-6 flex flex-col items-center justify-center text-center">
-          <p className="text-xs text-muted-foreground mb-2">Situação Comercial (Deal Value)</p>
-          <div className={`p-3 rounded-full bg-muted/50 mb-3`}>
-            <sentiment.icon className={`h-8 w-8 ${sentiment.accent}`} />
-          </div>
-          <p className={`text-2xl font-bold tracking-tight ${sentiment.accent}`}>{sentiment.label}</p>
-          <p className="text-xs text-muted-foreground mt-2">{sentiment.description}</p>
-          <div className="flex items-center gap-2 mt-4">
-            <Badge variant="outline" className="text-[10px] gap-1">
-              <ShieldCheck className="h-3 w-3" />
-              Valores protegidos
-            </Badge>
-            <Badge variant="outline" className="text-[10px]">
-              {stats.totalDeals} negócios
-            </Badge>
-          </div>
-        </Card>
-      </div>
-
-      {/* Negócios por mês */}
-      {stats.vendasPorMes.length > 0 && (
-        <Card className="p-4">
-          <div className="mb-1">
-            <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Meta Mensal</h3>
-            <p className="text-xs text-muted-foreground">Referência: meta mensal = R$ 110K (100%)</p>
-          </div>
-          <div className="h-[240px] mt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.vendasPorMes} margin={{ left: 10, right: 20, top: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="mes" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-                <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-                <Tooltip content={<CustomTooltipMensal />} />
-                <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
-                <Bar dataKey="percentualMeta" radius={[4, 4, 0, 0]} maxBarSize={60}>
-                  {stats.vendasPorMes.map((entry, i) => {
-                    // Graduated green based on relative performance
-                    // Only use red for extremely low values (< 50%)
-                    if (entry.percentualMeta < 50) return <Cell key={i} fill="hsl(var(--destructive))" />;
-                    const intensity = Math.min(1, Math.max(0, (entry.percentualMeta - 50) / 100)); // 0..1 scale from 50% to 150%
-                    const lightness = 55 - intensity * 20; // 55% → 35% (darker = stronger)
-                    const saturation = 45 + intensity * 30; // 45% → 75%
-                    return <Cell key={i} fill={`hsl(142, ${saturation}%, ${lightness}%)`} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      )}
 
       {/* Data table */}
       {!isLoading && items.length === 0 ? (

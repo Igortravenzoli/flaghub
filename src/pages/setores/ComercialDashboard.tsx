@@ -12,17 +12,19 @@ import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers } from 'lucide-react';
+import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers, MoreHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import { CHART_COLORS } from '@/lib/chartColors';
 import type { Integration } from '@/components/setores/SectorIntegrations';
-import { MovimentacaoTab } from '@/components/comercial/MovimentacaoTab';
+import MovimentacaoTab from '@/components/comercial/MovimentacaoTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
 import { PipeDriveTab } from '@/components/comercial/PipeDriveTab';
+import MetasTab from '@/components/comercial/MetasTab';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
@@ -95,6 +97,32 @@ export default function ComercialDashboard() {
     () => getDateBoundsFromItems(clients, [(c) => c.synced_at]),
     [clients]
   );
+
+  const clientInsights = useMemo(() => {
+    const semBandeira = clients.filter((client) => !client.bandeira || !client.bandeira.trim()).length;
+    const multissistema = clients.filter((client) => {
+      const systems = client.sistemas_label
+        ?.split(',')
+        .map((system) => system.trim())
+        .filter(Boolean) ?? [];
+      return systems.length > 1;
+    }).length;
+    const mediaSistemas = clients.length > 0
+      ? Math.round((clients.reduce((total, client) => {
+          const systems = client.sistemas_label
+            ?.split(',')
+            .map((system) => system.trim())
+            .filter(Boolean) ?? [];
+          return total + systems.length;
+        }, 0) / clients.length) * 10) / 10
+      : 0;
+
+    return {
+      semBandeira,
+      multissistema,
+      mediaSistemas,
+    };
+  }, [clients]);
 
   const operacionalItems = operational.items.filter(i => i.query_name === '04-Em Fila Comercial');
   const pbiHealthIds = useMemo(
@@ -188,97 +216,168 @@ export default function ComercialDashboard() {
       {isError ? (
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />
       ) : (
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="bg-muted/50 p-1">
-            <TabsTrigger value="visao-clientes" className="text-xs">Visão Clientes</TabsTrigger>
-            <TabsTrigger value="ganho-perda" className="text-xs">Ganho/Perda</TabsTrigger>
-            <TabsTrigger value="fechamento-comercial" className="text-xs">Fechamento Comercial</TabsTrigger>
-            <TabsTrigger value="esteira-saude" className="text-xs">Esteira / Saúde</TabsTrigger>
-            <TabsTrigger value="pesquisa" className="text-xs">Pesquisa Satisfação</TabsTrigger>
-          </TabsList>
+          <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1 w-full overflow-x-auto">
+            <TabsList className="bg-transparent p-0 h-auto gap-0.5 flex-shrink-0">
+              <TabsTrigger value="visao-clientes" className="text-xs h-8">Visão Clientes</TabsTrigger>
+              <TabsTrigger value="ganho-perda" className="text-xs h-8">Ganho/Perda</TabsTrigger>
+              <TabsTrigger value="fechamento-comercial" className="text-xs h-8">Fechamento Comercial</TabsTrigger>
+              <TabsTrigger value="pesquisa" className="text-xs h-8">Pesquisa Satisfação</TabsTrigger>
+              <TabsTrigger value="metas" className="text-xs h-8">Metas</TabsTrigger>
+            </TabsList>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md transition-colors flex-shrink-0 ml-auto
+                  ${activeTab === 'esteira-saude'
+                    ? 'bg-background shadow-sm text-foreground font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background/60'}`}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  Mais
+                  {activeTab === 'esteira-saude' && (
+                    <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem
+                  onClick={() => setActiveTab('esteira-saude')}
+                  className={`gap-2 text-xs ${activeTab === 'esteira-saude' ? 'font-medium text-primary' : ''}`}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  Esteira / Saúde
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           <TabsContent value="visao-clientes" className="space-y-4 mt-0">
-            <Card className="p-5 border transition-colors duration-150">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">BASE DE CLIENTES</p>
-                  <p className="text-3xl font-semibold text-foreground font-mono mt-0.5">{isLoading ? '—' : totalClientes}</p>
-                </div>
-                <UserCheck className="h-8 w-8 text-muted-foreground/40" />
-              </div>
-              <div className="grid grid-cols-2 divide-x divide-border border-t pt-3 -mx-5 px-5">
-                <button
-                  onClick={() => handleKpiClick('ativo')}
-                  className={`flex flex-col items-center py-2 rounded-l transition-colors hover:bg-muted/30 ${statusFilter === 'ativo' ? 'bg-primary/5' : ''}`}
-                >
-                  <p className="text-2xl font-semibold font-mono">{isLoading ? '—' : stats.ativos}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Ativos</p>
-                </button>
-                <button
-                  onClick={() => handleKpiClick('bloqueado')}
-                  className={`flex flex-col items-center py-2 rounded-r transition-colors hover:bg-muted/30 ${statusFilter === 'bloqueado' ? 'bg-primary/5' : ''}`}
-                >
-                  <p className="text-2xl font-semibold text-destructive font-mono">{isLoading ? '—' : stats.bloqueados}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Bloqueados</p>
-                </button>
-              </div>
-            </Card>
-
-            {/* Chart: Clientes Ativos por Bandeira */}
-            {(() => {
-              const ativosClients = (statusFilter === 'todos' || statusFilter === 'ativo')
-                ? clients.filter(c => c.status?.toLowerCase() === 'ativo')
-                : [];
-              const bandeiraMap = new Map<string, number>();
-              ativosClients.forEach(c => {
-                const b = c.bandeira || 'Sem bandeira';
-                bandeiraMap.set(b, (bandeiraMap.get(b) || 0) + 1);
-              });
-              const chartData = Array.from(bandeiraMap.entries())
-                .map(([name, count]) => ({ name, count }))
-                .sort((a, b) => b.count - a.count);
-              const handleBarClick = (data: any) => {
-                if (data?.name) {
-                  setSelectedBandeira(prev => prev === data.name ? null : data.name);
-                }
-              };
-              return chartData.length > 0 && !isLoading ? (
-                <Card className="p-4 space-y-2">
-                  <div className="flex items-center justify-between">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="grid gap-4 min-h-[340px] xl:grid-rows-[auto_1fr]">
+                <Card className="p-5 border transition-colors duration-150">
+                  <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
-                      <p className="text-xs text-muted-foreground">{ativosClients.length} clientes ativos em {chartData.length} bandeiras</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">BASE DE CLIENTES</p>
+                      <p className="text-3xl font-semibold text-foreground font-mono mt-0.5">{isLoading ? '—' : totalClientes}</p>
                     </div>
-                    {selectedBandeira && (
-                      <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedBandeira(null)}>
-                        {selectedBandeira} ✕
-                      </Badge>
-                    )}
+                    <UserCheck className="h-8 w-8 text-muted-foreground/40" />
                   </div>
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
-                        <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                        <Tooltip
-                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                          formatter={(value: number) => [value, 'Clientes']}
-                        />
-                        <Bar dataKey="count" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
-                          {chartData.map((entry, i) => (
-                            <Cell
-                              key={i}
-                              fill={CHART_COLORS[i % CHART_COLORS.length]}
-                              opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.3 : 1}
-                            />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <div className="grid grid-cols-2 divide-x divide-border border-t pt-3 -mx-5 px-5">
+                    <button
+                      onClick={() => handleKpiClick('ativo')}
+                      className={`flex flex-col items-center py-2 rounded-l transition-colors hover:bg-muted/30 ${statusFilter === 'ativo' ? 'bg-primary/5' : ''}`}
+                    >
+                      <p className="text-2xl font-semibold font-mono">{isLoading ? '—' : stats.ativos}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Ativos</p>
+                    </button>
+                    <button
+                      onClick={() => handleKpiClick('bloqueado')}
+                      className={`flex flex-col items-center py-2 rounded-r transition-colors hover:bg-muted/30 ${statusFilter === 'bloqueado' ? 'bg-primary/5' : ''}`}
+                    >
+                      <p className="text-2xl font-semibold text-destructive font-mono">{isLoading ? '—' : stats.bloqueados}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Bloqueados</p>
+                    </button>
                   </div>
                 </Card>
-              ) : null;
-            })()}
+
+                <Card className="border bg-card">
+                  <div className="grid h-full grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
+                    <div className="flex flex-col justify-between px-4 py-4">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Bandeiras ativas</p>
+                        <p className="text-2xl font-semibold text-foreground">{isLoading ? '—' : bandeiras.length}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Cobertura comercial dentro da carteira listada no período</p>
+                    </div>
+
+                    <div className="flex flex-col justify-between px-4 py-4">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Multissistema</p>
+                        <p className="text-2xl font-semibold text-foreground">{isLoading ? '—' : clientInsights.multissistema}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Clientes listados com mais de um sistema associado</p>
+                    </div>
+
+                    <div className="flex flex-col justify-between px-4 py-4">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Sem bandeira</p>
+                        <p className={`text-2xl font-semibold ${clientInsights.semBandeira > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {isLoading ? '—' : clientInsights.semBandeira}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {isLoading ? 'Carteira atual' : clientInsights.semBandeira > 0 ? `Média de ${clientInsights.mediaSistemas} sistemas por cliente na carteira atual` : `Carteira limpa, com média de ${clientInsights.mediaSistemas} sistemas por cliente`}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Chart: Clientes Ativos por Bandeira */}
+              {(() => {
+                const ativosClients = (statusFilter === 'todos' || statusFilter === 'ativo')
+                  ? clients.filter(c => c.status?.toLowerCase() === 'ativo')
+                  : [];
+                const bandeiraMap = new Map<string, number>();
+                ativosClients.forEach(c => {
+                  const b = c.bandeira || 'Sem bandeira';
+                  bandeiraMap.set(b, (bandeiraMap.get(b) || 0) + 1);
+                });
+                const chartData = Array.from(bandeiraMap.entries())
+                  .map(([name, count]) => ({ name, count }))
+                  .sort((a, b) => b.count - a.count);
+                const handleBarClick = (data: any) => {
+                  if (data?.name) {
+                    setSelectedBandeira(prev => prev === data.name ? null : data.name);
+                  }
+                };
+                return (
+                  <Card className="p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
+                        <p className="text-xs text-muted-foreground">{ativosClients.length} clientes ativos em {chartData.length} bandeiras</p>
+                      </div>
+                      {selectedBandeira && (
+                        <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedBandeira(null)}>
+                          {selectedBandeira} ✕
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="h-[260px]">
+                      {chartData.length > 0 && !isLoading ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={chartData} margin={{ top: 8, right: 16, bottom: 40, left: 0 }}>
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
+                            <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                            <Tooltip
+                              contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                              formatter={(value: number) => [value, 'Clientes']}
+                            />
+                            <Bar dataKey="count" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                              {chartData.map((entry, i) => (
+                                <Cell
+                                  key={i}
+                                  fill={CHART_COLORS[i % CHART_COLORS.length]}
+                                  opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.3 : 1}
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                          Sem dados de clientes ativos para o período selecionado.
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })()}
+            </div>
 
             <div className="flex items-center gap-2 mt-1 mb-1">
               <span className="text-xs text-muted-foreground">Filtrar:</span>
@@ -312,8 +411,13 @@ export default function ComercialDashboard() {
             })()}
           </TabsContent>
 
+
           <TabsContent value="ganho-perda" className="space-y-4 mt-0">
             <MovimentacaoTab />
+          </TabsContent>
+
+          <TabsContent value="metas" className="space-y-4 mt-0">
+            <MetasTab />
           </TabsContent>
 
           <TabsContent value="fechamento-comercial" className="space-y-4 mt-0">

@@ -29,6 +29,7 @@ export interface DataTableColumn<T> {
 interface DashboardDataTableProps<T> {
   title?: string;
   subtitle?: string;
+  headerActions?: React.ReactNode;
   columns: DataTableColumn<T>[];
   data: T[];
   isLoading?: boolean;
@@ -130,6 +131,7 @@ function MultiSelectFilter({
 export function DashboardDataTable<T extends Record<string, any>>({
   title,
   subtitle,
+  headerActions,
   columns,
   data,
   isLoading,
@@ -291,8 +293,13 @@ export function DashboardDataTable<T extends Record<string, any>>({
             {title && <h3 className="font-semibold text-foreground text-sm">{title}</h3>}
             {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
           </div>
+          {headerActions && (
+            <div className="flex items-center gap-2 sm:order-2">
+              {headerActions}
+            </div>
+          )}
           {searchable && (
-            <div className="relative w-full sm:w-64">
+            <div className="relative w-full sm:w-64 sm:order-3">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder={searchPlaceholder}

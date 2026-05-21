@@ -22,17 +22,17 @@ AS $$
   -- Atualizar pbi_lifecycle_summary com contagem de eventos QA por work_item
   UPDATE pbi_lifecycle_summary pls
   SET
-    qa_return_count = COALESCE(event_counts.count, 0),
+    qa_return_count = COALESCE(event_counts.event_count, 0),
     updated_at = now()
   FROM (
     SELECT
       work_item_id,
-      COUNT(DISTINCT detected_at, work_item_id) as count
+      COUNT(DISTINCT detected_at) as event_count
     FROM devops_qa_return_events dqre
     GROUP BY work_item_id
   ) event_counts
   WHERE pls.work_item_id = event_counts.work_item_id
-    AND pls.qa_return_count != event_counts.count;
+    AND pls.qa_return_count != event_counts.event_count;
 
   -- Resetar items com qa_return_count > 0 que não têm eventos
   UPDATE pbi_lifecycle_summary pls
