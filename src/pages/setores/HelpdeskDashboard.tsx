@@ -35,6 +35,12 @@ import { CHART_COLORS } from '@/lib/chartColors';
 // Lazy load ticket sub-pages for tab embedding
 const DashboardPage = lazy(() => import('@/pages/Dashboard'));
 const TicketBuscaPage = lazy(() => import('@/pages/TicketBuscaComponente'));
+const TechLeadPanel = lazy(() =>
+  import('@/components/techlead/TechLeadPanel').then((m) => ({ default: m.TechLeadPanel })),
+);
+const GestaoSlaPanel = lazy(() =>
+  import('@/components/techlead/GestaoSlaPanel').then((m) => ({ default: m.GestaoSlaPanel })),
+);
 
 const integrations: Integration[] = [
   { name: 'VDesk Helpdesk API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Dashboard Helpdesk' },
@@ -314,11 +320,23 @@ export default function HelpdeskDashboard() {
       icon: <Search className="h-3.5 w-3.5" />,
       content: <Suspense fallback={tabFallback}><TicketBuscaPage /></Suspense>,
     },
+    {
+      id: 'techlead',
+      label: 'TechLead',
+      icon: <TrendingUp className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><TechLeadPanel /></Suspense>,
+    },
+    {
+      id: 'gestao-sla',
+      label: 'Gestão SLA',
+      icon: <BarChart3 className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><GestaoSlaPanel /></Suspense>,
+    },
   ];
 
   return (
     <SectorLayout
-      title="Helpdesk"
+      title="Customer Service"
       subtitle="KPIs de Atendimento — VDesk"
       lastUpdate=""
       integrations={integrations}

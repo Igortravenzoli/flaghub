@@ -47,9 +47,9 @@ const navItems: NavItem[] = [
 
 const sectorItems: NavItem[] = [
   { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp, areaKey: 'comercial' },
-  { label: 'Customer Service', path: '/setor/customer-service', icon: LayoutGrid, areaKey: 'customer-service' },
+  { label: 'Customer Service', path: '/setor/helpdesk', icon: Headphones, areaKey: 'tickets_os' },
   { label: 'Fábrica', path: '/setor/fabrica', icon: Factory, areaKey: 'fabrica' },
-  { label: 'Helpdesk', path: '/setor/helpdesk', icon: Headphones, areaKey: 'tickets_os' },
+  { label: 'Produtos', path: '/setor/customer-service', icon: LayoutGrid, areaKey: 'customer-service' },
   { label: 'Infraestrutura', path: '/setor/infraestrutura', icon: Server, areaKey: 'infraestrutura' },
   { label: 'Qualidade', path: '/setor/qualidade', icon: ShieldCheck, areaKey: 'qualidade' },
 ];
