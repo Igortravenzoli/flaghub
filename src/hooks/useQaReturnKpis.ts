@@ -27,7 +27,7 @@ export interface QaReturnByAssignee {
   last_return_at: string | null
 }
 
-export interface QaReturnOpenItem {
+export interface QaReturnItem {
   id: number
   work_item_id: number
   work_item_title: string | null
@@ -37,12 +37,18 @@ export interface QaReturnOpenItem {
   assigned_to_email: string | null
   detected_at: string
   transition_date: string | null
+  resolved_at: string | null
+  is_open: boolean
+  detection_method: string | null
   days_since_return: number
   alert_status: string
   alert_sent_at: string | null
   alert_channel_type: 'teams_1on1' | 'teams_webhook' | 'none' | null
   alert_error: string | null
   web_url: string | null
+  parent_id: number | null
+  parent_title: string | null
+  parent_type: string | null
 }
 
 // ── Individual hooks ──────────────────────────────────────────────────────────
@@ -96,13 +102,13 @@ export function useQaReturnByAssignee() {
   })
 }
 
-export function useQaReturnOpenItems() {
+export function useQaReturnItems() {
   return useQuery({
-    queryKey: ['qa-return-open-items'],
-    queryFn: async (): Promise<QaReturnOpenItem[]> => {
+    queryKey: ['qa-return-items'],
+    queryFn: async (): Promise<QaReturnItem[]> => {
       const { data, error } = await (supabase as any).rpc('rpc_qa_return_open_items')
       if (error) throw error
-      return (data ?? []) as QaReturnOpenItem[]
+      return (data ?? []) as QaReturnItem[]
     },
     staleTime: 2 * 60 * 1000,
     placeholderData: keepPreviousData,
@@ -111,29 +117,57 @@ export function useQaReturnOpenItems() {
 
 // ── Composite hook ────────────────────────────────────────────────────────────
 
-export function useQaReturnKpis(sprintCode?: string | null) {
+export function useQaReturnKpis(sprintCode?: string | null, dateFrom?: Date | null, dateTo?: Date | null) {
   const summary = useQaReturnSummary(sprintCode)
   const bySprint = useQaReturnBySprint()
   const byAssignee = useQaReturnByAssignee()
-  const openItems = useQaReturnOpenItems()
+  const itemsQuery = useQaReturnItems()
+
+  const itemsScoped = (() => {
+    const items = itemsQuery.data ?? []
+
+    const sprintFiltered = sprintCode
+      ? items.filter((item) => (item.sprint_code || '').trim().toLowerCase() === sprintCode.trim().toLowerCase())
+      : items
+
+    if (!dateFrom || !dateTo) return sprintFiltered
+
+    const from = new Date(dateFrom)
+    from.setHours(0, 0, 0, 0)
+    const to = new Date(dateTo)
+    to.setHours(23, 59, 59, 999)
+
+    return sprintFiltered.filter((item) => {
+      const ref = item.transition_date ?? item.detected_at
+      if (!ref) return false
+      const dt = new Date(ref)
+      if (Number.isNaN(dt.getTime())) return false
+      return dt >= from && dt <= to
+    })
+  })()
+
+  const openItemsScoped = itemsScoped.filter((item) => item.is_open)
+  const closedItemsScoped = itemsScoped.filter((item) => !item.is_open)
 
   const isLoading =
-    summary.isLoading || bySprint.isLoading || byAssignee.isLoading || openItems.isLoading
+    summary.isLoading || bySprint.isLoading || byAssignee.isLoading || itemsQuery.isLoading
   const isError =
-    summary.isError || bySprint.isError || byAssignee.isError || openItems.isError
+    summary.isError || bySprint.isError || byAssignee.isError || itemsQuery.isError
 
   return {
     summary: summary.data ?? null,
     bySprint: bySprint.data ?? [],
     byAssignee: byAssignee.data ?? [],
-    openItems: openItems.data ?? [],
+    items: itemsScoped,
+    openItems: openItemsScoped,
+    closedItems: closedItemsScoped,
     isLoading,
     isError,
     refetch: () => {
       void summary.refetch()
       void bySprint.refetch()
       void byAssignee.refetch()
-      void openItems.refetch()
+      void itemsQuery.refetch()
     },
   }
 }

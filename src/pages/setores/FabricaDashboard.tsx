@@ -495,7 +495,8 @@ export default function FabricaDashboard() {
     '03-Em Fila Backlog para Priorizar',
     '05-Em Fila UX-UI',
   ]);
-  const qaReturnKpis = useQaReturnKpis(selectedSprintCode);
+  // Alinha grid e contadores de QA ao mesmo recorte (sprint + range efetivo)
+  const qaReturnKpis = useQaReturnKpis(selectedSprintCode, effectiveRange?.from ?? null, effectiveRange?.to ?? null);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<FabricaItem | null>(null);
   const [fabKpiFilter, setFabKpiFilter] = useState<FabKpiFilter>('all');
@@ -1339,14 +1340,6 @@ export default function FabricaDashboard() {
     return map;
   }, [filteredFabItems, sprintStartForNewEntries, itemsById, fab.tagsByWorkItemId]);
 
-  const unreadNewEntryCount = useMemo(() => {
-    let count = 0;
-    for (const id of newEntrySignalsById.keys()) {
-      if (!newEntriesReadIds.has(id)) count += 1;
-    }
-    return count;
-  }, [newEntrySignalsById, newEntriesReadIds]);
-
   const collaboratorViewItems = useMemo(() => (
     collaboratorScopedItems.filter((item) => {
       if (collaboratorViewMode === 'tasks') {
@@ -1520,6 +1513,20 @@ export default function FabricaDashboard() {
 
     return { parentRows: filteredParents, childrenMap: filteredCMap, orphanRows: filteredOrphans };
   }, [filteredFabItems, search]);
+
+  const unreadNewEntryCount = useMemo(() => {
+    const isUnread = (item: FabricaItem) => item.id != null && newEntrySignalsById.has(item.id) && !newEntriesReadIds.has(item.id);
+
+    let count = 0;
+    for (const parent of parentRows) {
+      if (isUnread(parent)) count += 1;
+      const children = childrenMap.get(parent.id!) || [];
+      count += children.filter(isUnread).length;
+    }
+
+    count += orphanRows.filter(isUnread).length;
+    return count;
+  }, [parentRows, childrenMap, orphanRows, newEntrySignalsById, newEntriesReadIds]);
 
   const { boardParentRows, boardChildrenMap, boardOrphanRows } = useMemo(() => {
     if (newEntryReadFilter === 'all') {
@@ -1730,24 +1737,29 @@ export default function FabricaDashboard() {
 
     if (activeTab === 'qa-return') {
       return {
-        title: 'Retorno QA',
+        title: 'Retorno QA - Historico real e somente tag',
         periodLabel: effectivePeriodLabel,
-        columns: ['work_item_id', 'work_item_title', 'work_item_type', 'sprint_code', 'assigned_to_display', 'days_since_return', 'alert_status', 'detected_at', 'transition_date', 'web_url'],
-        rows: qaReturnKpis.openItems.map((item) => ({
+        columns: ['work_item_id', 'work_item_title', 'parent_id', 'parent_title', 'work_item_type', 'detection_method', 'is_open', 'sprint_code', 'assigned_to_display', 'days_since_return', 'alert_status', 'detected_at', 'transition_date', 'resolved_at', 'web_url'],
+        rows: qaReturnKpis.items.map((item) => ({
           work_item_id: item.work_item_id,
           work_item_title: item.work_item_title,
+          parent_id: item.parent_id,
+          parent_title: item.parent_title,
           work_item_type: item.work_item_type,
+          detection_method: item.detection_method,
+          is_open: item.is_open,
           sprint_code: item.sprint_code,
           assigned_to_display: item.assigned_to_display,
           days_since_return: item.days_since_return,
           alert_status: item.alert_status,
           detected_at: item.detected_at,
           transition_date: item.transition_date,
+          resolved_at: item.resolved_at,
           web_url: item.web_url,
         })),
         kpis: [
           { label: 'Retornos em aberto', value: qaReturnKpis.openItems.length },
-          { label: 'Retornos no período', value: qaReturnKpis.summary?.total_events ?? 0 },
+          { label: 'Total de Retornos QA', value: qaReturnKpis.summary?.total_events ?? qaReturnKpis.items.length },
         ],
       };
     }
@@ -2194,7 +2206,7 @@ export default function FabricaDashboard() {
                 <Timer className="h-3.5 w-3.5" />TimeLog
               </TabsTrigger>
               <TabsTrigger value="qa-return" className="gap-1.5 text-xs h-8">
-                <AlertTriangle className="h-3.5 w-3.5" />Retorno QA
+                <AlertTriangle className="h-3.5 w-3.5" />Retorno QA real
               </TabsTrigger>
               <TabsTrigger value="gerencia" className="gap-1.5 text-xs h-8">
                 <BarChart3 className="h-3.5 w-3.5" />Gerencial
@@ -2439,9 +2451,18 @@ export default function FabricaDashboard() {
                     <h3 className="font-semibold text-foreground text-sm flex items-center gap-2">
                       Sprint Board
                       {unreadNewEntryCount > 0 && (
-                        <Badge variant="outline" className="text-[10px] bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300">
-                          {unreadNewEntryCount} novas não lidas
-                        </Badge>
+                        <button
+                          type="button"
+                          onClick={() => { setNewEntryReadFilter((prev) => (prev === 'unread' ? 'all' : 'unread')); setPage(0); }}
+                          className="inline-flex"
+                        >
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] transition-colors ${newEntryReadFilter === 'unread' ? 'bg-primary text-primary-foreground border-primary' : 'bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300'}`}
+                          >
+                            {unreadNewEntryCount} novas não lidas
+                          </Badge>
+                        </button>
                       )}
                     </h3>
                     <p className="text-xs text-muted-foreground">{allTopLevel.length} itens exibidos • {boardParentRows.filter(p => boardChildrenMap.has(p.id!)).length} PBIs com tasks</p>
@@ -2459,13 +2480,6 @@ export default function FabricaDashboard() {
                         </Badge>
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => { setNewEntryReadFilter((prev) => (prev === 'unread' ? 'all' : 'unread')); setPage(0); }}
-                      className={`px-2.5 py-1 text-[11px] font-medium transition-colors border border-border rounded-md shrink-0 ${newEntryReadFilter === 'unread' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                    >
-                      Não lidas
-                    </button>
                     <div className="relative w-full sm:w-56">
                       <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                       <Input
@@ -2992,7 +3006,7 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Retorno QA ═══════ */}
           <TabsContent value="qa-return" className="space-y-4 mt-0">
-            <QaReturnTab items={qaReturnKpis.openItems} isLoading={qaReturnKpis.isLoading} summary={qaReturnKpis.summary} />
+            <QaReturnTab items={qaReturnKpis.items} isLoading={qaReturnKpis.isLoading} summary={qaReturnKpis.summary} />
           </TabsContent>
 
           {/* ═══════ TAB: Gerência ═══════ */}

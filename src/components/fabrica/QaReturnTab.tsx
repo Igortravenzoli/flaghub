@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertTriangle, Search, ChevronLeft, ChevronRight, ExternalLink, AlertCircle,
 } from 'lucide-react';
-import { QaReturnOpenItem, QaReturnSummary } from '@/hooks/useQaReturnKpis';
+import { QaReturnItem, QaReturnSummary } from '@/hooks/useQaReturnKpis';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -17,19 +17,21 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 const PAGE_SIZE = 25;
 
 interface QaReturnTabProps {
-  items: QaReturnOpenItem[];
+  items: QaReturnItem[];
   isLoading: boolean;
   summary?: QaReturnSummary | null;
 }
 
-function isDispatchConfirmed(item: QaReturnOpenItem): boolean {
+type QaReturnScopeFilter = 'all' | 'open' | 'closed';
+
+function isDispatchConfirmed(item: QaReturnItem): boolean {
   const status = item.alert_status?.toLowerCase();
   const validStatus = status === 'sent' || status === 'fallback_sent';
   const validChannel = item.alert_channel_type === 'teams_1on1' || item.alert_channel_type === 'teams_webhook';
   return validStatus && validChannel && Boolean(item.alert_sent_at);
 }
 
-function getAlertLabel(item: QaReturnOpenItem): string {
+function getAlertLabel(item: QaReturnItem): string {
   if (isDispatchConfirmed(item)) {
     return item.alert_status?.toLowerCase() === 'fallback_sent' ? 'Enviado no Flaghub' : 'Enviado';
   }
@@ -49,7 +51,7 @@ function getAlertLabel(item: QaReturnOpenItem): string {
   }
 }
 
-function getStatusColor(item: QaReturnOpenItem): string {
+function getStatusColor(item: QaReturnItem): string {
   if (isDispatchConfirmed(item)) {
     return item.alert_status?.toLowerCase() === 'fallback_sent'
       ? 'bg-sky-100 text-sky-700 border border-sky-300'
@@ -82,14 +84,24 @@ function formatDateTime(value: string | null | undefined): string {
   });
 }
 
-function getAlertTarget(item: QaReturnOpenItem): string {
+function getAlertTarget(item: QaReturnItem): string {
   if (item.alert_channel_type === 'teams_webhook') return 'Canal Flaghub';
   if (item.assigned_to_email) return item.assigned_to_email;
   if (item.assigned_to_display) return item.assigned_to_display;
   return 'Destino nao identificado';
 }
 
-function AlertBadge({ item }: { item: QaReturnOpenItem }) {
+function getOriginLabel(item: QaReturnItem): string {
+  return item.detection_method?.toLowerCase() === 'tag' ? 'Somente tag' : 'Historico real';
+}
+
+function getOriginBadgeClass(item: QaReturnItem): string {
+  return item.detection_method?.toLowerCase() === 'tag'
+    ? 'bg-amber-100 text-amber-700 border border-amber-300'
+    : 'bg-emerald-100 text-emerald-700 border border-emerald-300';
+}
+
+function AlertBadge({ item }: { item: QaReturnItem }) {
   const label = getAlertLabel(item);
   const hasDispatchContext = Boolean(item.alert_sent_at || item.alert_error || item.alert_channel_type);
 
@@ -120,10 +132,18 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [scopeFilter, setScopeFilter] = useState<QaReturnScopeFilter>('all');
   const [page, setPage] = useState(0);
+
+  const openItems = useMemo(() => items.filter((item) => item.is_open), [items]);
 
   const filteredItems = useMemo(() => {
     let result = items;
+    if (scopeFilter === 'open') {
+      result = result.filter((item) => item.is_open);
+    } else if (scopeFilter === 'closed') {
+      result = result.filter((item) => !item.is_open);
+    }
     if (statusFilter !== 'all') {
       result = result.filter(item => item.alert_status?.toLowerCase() === statusFilter.toLowerCase());
     }
@@ -133,25 +153,35 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
         String(item.work_item_id).includes(q) ||
         item.work_item_title?.toLowerCase().includes(q) ||
         item.assigned_to_display?.toLowerCase().includes(q) ||
-        item.sprint_code?.toLowerCase().includes(q)
+        item.sprint_code?.toLowerCase().includes(q) ||
+        item.parent_title?.toLowerCase().includes(q) ||
+        String(item.parent_id || '').includes(q)
       );
     }
     return result;
-  }, [items, search, statusFilter]);
+  }, [items, scopeFilter, search, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const pagedItems = filteredItems.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // Métricas separadas para clareza
-  const emAndamento = summaryData?.open_events ?? items.length;
-  const totalRetornos = summaryData?.total_events ?? emAndamento;
-  const encerrados = (summaryData?.total_events ?? 0) - emAndamento;
-  const avgDays = items.length > 0
-    ? (items.reduce((sum, i) => sum + (i.days_since_return || 0), 0) / items.length).toFixed(1)
+  const emAndamento = summaryData?.open_events ?? openItems.length;
+  const totalRetornos = summaryData?.total_events ?? items.length;
+  const encerrados = Math.max(totalRetornos - emAndamento, 0);
+  const avgDays = openItems.length > 0
+    ? (openItems.reduce((sum, i) => sum + (i.days_since_return || 0), 0) / openItems.length).toFixed(1)
     : '0';
-  const maxDays = items.length > 0
-    ? Math.max(...items.map(i => i.days_since_return || 0))
+  const maxDays = openItems.length > 0
+    ? Math.max(...openItems.map(i => i.days_since_return || 0))
     : 0;
+
+  const activateScope = (nextScope: QaReturnScopeFilter) => {
+    setScopeFilter(nextScope);
+    setPage(0);
+  };
+
+  const metricCardClass = (active: boolean) =>
+    `transition-all ${active ? 'ring-2 ring-primary bg-primary/5' : 'hover:border-primary/30 hover:shadow-sm'}`;
 
 
   if (isLoading) {
@@ -169,25 +199,46 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
 
   return (
     <div className="space-y-4">
+      <Card className="border-amber-200 bg-amber-50/70">
+        <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground">Escopo desta aba</p>
+            <p className="text-xs text-muted-foreground">
+              Historico real valida a transicao do status. Somente tag identifica itens marcados com a tag Retorno QA sem confirmacao da transicao no historico.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300">Historico real</Badge>
+            <Badge className="bg-amber-100 text-amber-700 border border-amber-300">Somente tag</Badge>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Card>
+        <Card className={metricCardClass(scopeFilter === 'all')}>
           <div className="p-4">
-            <p className="text-xs text-muted-foreground font-medium mb-1">Total de Retornos QA (abertos + encerrados)</p>
-            <p className="text-2xl font-bold text-foreground">{totalRetornos}</p>
+            <button type="button" className="w-full text-left" onClick={() => activateScope('all')}>
+              <p className="text-xs text-muted-foreground font-medium mb-1">Total de Retornos QA</p>
+              <p className="text-2xl font-bold text-foreground">{totalRetornos}</p>
+            </button>
           </div>
         </Card>
-        <Card>
+        <Card className={metricCardClass(scopeFilter === 'open')}>
           <div className="p-4">
-            <p className="text-xs text-muted-foreground font-medium mb-1">Em andamento</p>
-            <p className={`text-2xl font-bold ${emAndamento > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{emAndamento}</p>
-            <p className="text-[11px] text-muted-foreground mt-1">retornos QA abertos</p>
+            <button type="button" className="w-full text-left" onClick={() => activateScope('open')}>
+              <p className="text-xs text-muted-foreground font-medium mb-1">Em andamento</p>
+              <p className={`text-2xl font-bold ${emAndamento > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{emAndamento}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">retornos QA abertos</p>
+            </button>
           </div>
         </Card>
-        <Card>
+        <Card className={metricCardClass(scopeFilter === 'closed')}>
           <div className="p-4">
-            <p className="text-xs text-muted-foreground font-medium mb-1">Encerrados</p>
-            <p className={`text-2xl font-bold ${encerrados > 0 ? 'text-blue-700' : 'text-muted-foreground'}`}>{encerrados}</p>
-            <p className="text-[11px] text-muted-foreground mt-1">retornos QA fechados no período</p>
+            <button type="button" className="w-full text-left" onClick={() => activateScope('closed')}>
+              <p className="text-xs text-muted-foreground font-medium mb-1">Encerrados</p>
+              <p className={`text-2xl font-bold ${encerrados > 0 ? 'text-blue-700' : 'text-muted-foreground'}`}>{encerrados}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">retornos QA fechados no período</p>
+            </button>
           </div>
         </Card>
         <Card>
@@ -216,7 +267,7 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Buscar por ID, titulo, responsavel..."
+                placeholder="Buscar por ID, titulo, responsavel ou PBI..."
                 value={search}
                 onChange={e => {
                   setSearch(e.target.value);
@@ -259,7 +310,9 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
                     <TableRow className="bg-muted/30">
                       <TableHead className="text-xs font-semibold w-16">ID</TableHead>
                       <TableHead className="text-xs font-semibold">Titulo</TableHead>
+                      <TableHead className="text-xs font-semibold">PBI relacionado</TableHead>
                       <TableHead className="text-xs font-semibold w-24">Tipo</TableHead>
+                      <TableHead className="text-xs font-semibold w-28">Origem</TableHead>
                       <TableHead className="text-xs font-semibold w-20">Sprint</TableHead>
                       <TableHead className="text-xs font-semibold w-32">Responsavel</TableHead>
                       <TableHead className="text-xs font-semibold w-36">Retorno</TableHead>
@@ -280,10 +333,23 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
                           )}
                         </TableCell>
                         <TableCell className="text-sm max-w-[250px] truncate">{item.work_item_title || '-'}</TableCell>
+                        <TableCell className="text-xs max-w-[220px]">
+                          {item.parent_id ? (
+                            <div className="space-y-0.5">
+                              <p className="font-medium text-foreground truncate">#{item.parent_id} {item.parent_title || 'PBI sem titulo'}</p>
+                              <p className="text-[11px] text-muted-foreground">{item.parent_type || 'Item pai'}</p>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-xs">
                           <Badge variant="outline">
                             {item.work_item_type === 'Product Backlog Item' ? 'PBI' : item.work_item_type || '-'}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <Badge className={getOriginBadgeClass(item)}>{getOriginLabel(item)}</Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">{item.sprint_code || '-'}</TableCell>
                         <TableCell className="text-xs">
@@ -297,7 +363,9 @@ export function QaReturnTab({ items, isLoading, summary: summaryData }: QaReturn
                           <div className="space-y-0.5">
                             <p className="font-medium text-foreground">{formatDateTime(item.transition_date ?? item.detected_at)}</p>
                             <p className="text-[11px] text-muted-foreground">
-                              {item.transition_date ? 'volta para desenvolvimento' : 'deteccao sem historico da transicao'}
+                              {item.transition_date
+                                ? (item.is_open ? 'volta para desenvolvimento' : `encerrado em ${formatDateTime(item.resolved_at)}`)
+                                : 'deteccao sem historico da transicao'}
                             </p>
                           </div>
                         </TableCell>

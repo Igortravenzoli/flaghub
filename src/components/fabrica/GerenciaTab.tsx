@@ -486,7 +486,7 @@ export function GerenciaTab({
               onSubClick={(k) => handleDrilldown(k, k)}
               subItems={[
                 { key: 'np_bug', label: 'Bug', value: metrics.bug, total: metrics.naoPriorizado, valueColor: 'text-destructive' },
-                { key: 'np_retorno_qa', label: 'Retorno QA', value: metrics.retornoQa, total: metrics.naoPriorizado, valueColor: 'text-amber-600' },
+                { key: 'np_retorno_qa', label: 'Retorno QA (tag)', value: metrics.retornoQa, total: metrics.naoPriorizado, valueColor: 'text-amber-600' },
                 { key: 'np_aviao_sprint', label: selectedSingleSprintCode ? `Avião ${selectedSingleSprintCode}` : 'Avião', value: metrics.aviaoSprint, total: metrics.naoPriorizado },
                 { key: 'np_aviao_antigo', label: 'Avião Antigo', value: metrics.aviaoAntigo, total: metrics.naoPriorizado },
               ]}
@@ -503,7 +503,7 @@ export function GerenciaTab({
               onSubClick={(k) => handleDrilldown(k, k)}
               subItems={[
                 { key: 'entregue_bug', label: 'Bug', value: metrics.entregueBug, total: metrics.entregue, valueColor: 'text-destructive' },
-                { key: 'entregue_retorno_qa', label: 'Retorno QA', value: metrics.entregueRetornoQa, total: metrics.entregue, valueColor: 'text-amber-600' },
+                { key: 'entregue_retorno_qa', label: 'Retorno QA (tag)', value: metrics.entregueRetornoQa, total: metrics.entregue, valueColor: 'text-amber-600' },
                 { key: 'entregue_priorizacao', label: 'Priorização', value: metrics.entreguePriorizacao, total: metrics.entregue, valueColor: 'text-blue-600' },
                 { key: 'entregue_aviao', label: 'Avião', value: metrics.entregueAviao, total: metrics.entregue },
               ]}
@@ -520,7 +520,7 @@ export function GerenciaTab({
               onSubClick={(k) => handleDrilldown(k, k)}
               subItems={[
                 { key: 'done_bug', label: 'Bug', value: metrics.doneBug, total: metrics.done, valueColor: 'text-destructive' },
-                { key: 'done_retorno_qa', label: 'Retorno QA', value: metrics.doneRetornoQa, total: metrics.done, valueColor: 'text-amber-600' },
+                { key: 'done_retorno_qa', label: 'Retorno QA (tag)', value: metrics.doneRetornoQa, total: metrics.done, valueColor: 'text-amber-600' },
                 { key: 'done_priorizacao', label: 'Priorização', value: metrics.donePriorizacao, total: metrics.done, valueColor: 'text-blue-600' },
                 { key: 'done_aviao', label: 'Avião', value: metrics.doneAviao, total: metrics.done },
               ]}
