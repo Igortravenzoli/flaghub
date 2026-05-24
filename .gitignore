@@ -47,3 +47,5 @@ supabase/.temp/
 
 # Local parallel worktrees/agent state
 .claude/
+.vercel
+.env*.local
