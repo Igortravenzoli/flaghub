@@ -100,18 +100,18 @@ function buildMocks(): Record<string, unknown> {
 
   /* Por Sistema */
   const sistemas = [
-    { sistema: 'FlexxSales', totalRegistros: 312, totalMinutos: 8450, tempoMedioMinutos: 27.1 },
-    { sistema: 'Datacenter', totalRegistros: 245, totalMinutos: 5340, tempoMedioMinutos: 21.8 },
-    { sistema: 'AvanteSales', totalRegistros: 198, totalMinutos: 4230, tempoMedioMinutos: 21.4 },
-    { sistema: 'QuickOne', totalRegistros: 167, totalMinutos: 3120, tempoMedioMinutos: 18.7 },
-    { sistema: 'FlexxGPS', totalRegistros: 143, totalMinutos: 2890, tempoMedioMinutos: 20.2 },
-    { sistema: 'AvanteShelf', totalRegistros: 128, totalMinutos: 2640, tempoMedioMinutos: 20.6 },
-    { sistema: 'SmartSales', totalRegistros: 95, totalMinutos: 1980, tempoMedioMinutos: 20.8 },
-    { sistema: 'FlexxPromo', totalRegistros: 82, totalMinutos: 1560, tempoMedioMinutos: 19.0 },
-    { sistema: 'Decision', totalRegistros: 67, totalMinutos: 1230, tempoMedioMinutos: 18.4 },
-    { sistema: 'OlaPDV', totalRegistros: 54, totalMinutos: 980, tempoMedioMinutos: 18.1 },
-    { sistema: 'EstoqueCheck', totalRegistros: 43, totalMinutos: 780, tempoMedioMinutos: 18.1 },
-    { sistema: 'FlexxTools', totalRegistros: 38, totalMinutos: 690, tempoMedioMinutos: 18.2 },
+    { nomeSistema: 'FlexxSales', totalRegistros: 312, totalMinutos: 8450, tempoMedioMinutos: 27.1 },
+    { nomeSistema: 'Datacenter', totalRegistros: 245, totalMinutos: 5340, tempoMedioMinutos: 21.8 },
+    { nomeSistema: 'AvanteSales', totalRegistros: 198, totalMinutos: 4230, tempoMedioMinutos: 21.4 },
+    { nomeSistema: 'QuickOne', totalRegistros: 167, totalMinutos: 3120, tempoMedioMinutos: 18.7 },
+    { nomeSistema: 'FlexxGPS', totalRegistros: 143, totalMinutos: 2890, tempoMedioMinutos: 20.2 },
+    { nomeSistema: 'AvanteShelf', totalRegistros: 128, totalMinutos: 2640, tempoMedioMinutos: 20.6 },
+    { nomeSistema: 'SmartSales', totalRegistros: 95, totalMinutos: 1980, tempoMedioMinutos: 20.8 },
+    { nomeSistema: 'FlexxPromo', totalRegistros: 82, totalMinutos: 1560, tempoMedioMinutos: 19.0 },
+    { nomeSistema: 'Decision', totalRegistros: 67, totalMinutos: 1230, tempoMedioMinutos: 18.4 },
+    { nomeSistema: 'OlaPDV', totalRegistros: 54, totalMinutos: 980, tempoMedioMinutos: 18.1 },
+    { nomeSistema: 'EstoqueCheck', totalRegistros: 43, totalMinutos: 780, tempoMedioMinutos: 18.1 },
+    { nomeSistema: 'FlexxTools', totalRegistros: 38, totalMinutos: 690, tempoMedioMinutos: 18.2 },
   ];
 
   /* SLA Flag */

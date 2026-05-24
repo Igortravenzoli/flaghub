@@ -67,7 +67,7 @@ export interface TechLeadPorClienteResponse {
 }
 
 export interface PorSistemaItem {
-  sistema: string;
+  nomeSistema: string;
   totalRegistros: number;
   totalMinutos: number;
   tempoMedioMinutos: number;

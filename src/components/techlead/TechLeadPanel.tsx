@@ -212,7 +212,7 @@ function PorSistemaList({ data, isLoading }: { data: PorSistemaItem[]; isLoading
           <XAxis type="number" className="text-xs" tick={{ fontSize: 10 }} />
           <YAxis
             type="category"
-            dataKey="sistema"
+            dataKey="nomeSistema"
             width={120}
             tick={{ fontSize: 10 }}
             className="text-xs"
@@ -554,8 +554,8 @@ export function TechLeadPanel() {
                       {[...(porSistema.data?.sistemas ?? [])]
                         .sort((a, b) => b.totalRegistros - a.totalRegistros)
                         .map((s) => (
-                          <tr key={s.sistema} className="border-b border-border/50 hover:bg-muted/20">
-                            <td className="py-1.5 px-2 font-medium">{s.sistema}</td>
+                          <tr key={s.nomeSistema} className="border-b border-border/50 hover:bg-muted/20">
+                            <td className="py-1.5 px-2 font-medium">{s.nomeSistema}</td>
                             <td className="py-1.5 px-2 text-right font-mono">{s.totalRegistros}</td>
                             <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">{fmtMin(s.totalMinutos)}</td>
                             <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">{fmtMin(Math.round(s.tempoMedioMinutos))}</td>
