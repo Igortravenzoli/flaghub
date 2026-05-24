@@ -197,7 +197,55 @@ function buildMocks(): Record<string, unknown> {
     status: { ttr: 'OK', pct24h: 'ALERT' },
   };
 
+  /* HelpDesk Dashboard mock */
+  const hdConsultores = ALL.map(c => {
+    const prod = baseProd[c];
+    const totalRegistros = Math.round(prod * diasUteis * 8 + Math.random() * 10);
+    const totalMinutos = Math.round(totalRegistros * (18 + Math.random() * 12));
+    return { consultor: c, totalRegistros, totalMinutos };
+  });
+  const hdTotalRegistros = hdConsultores.reduce((s, c) => s + c.totalRegistros, 0);
+  const hdTotalMinutos   = hdConsultores.reduce((s, c) => s + c.totalMinutos, 0);
+  const hdPorDia = weekdays.map(dia => ({
+    dataRegistro: dia,
+    totalRegistros: Math.round(hdTotalRegistros / diasUteis * (0.8 + Math.random() * 0.4)),
+    totalMinutos:   Math.round(hdTotalMinutos   / diasUteis * (0.8 + Math.random() * 0.4)),
+  }));
+
+  const helpdeskDashboard = {
+    success: true,
+    message: '[MOCK] Dados simulados',
+    timestamp: new Date().toISOString(),
+    periodo: { dataInicio: ini, dataFim: fim, tipo: 'custom', dias: diasUteis },
+    registrosPorConsultor: hdConsultores,
+    tipoChamadoTempoMedio: [
+      { tipoChamado: 'Dúvida',   totalRegistros: Math.round(hdTotalRegistros * 0.38), tempoMedioMinutos: 16.2 },
+      { tipoChamado: 'Suporte',  totalRegistros: Math.round(hdTotalRegistros * 0.29), tempoMedioMinutos: 22.7 },
+      { tipoChamado: 'Bug',      totalRegistros: Math.round(hdTotalRegistros * 0.19), tempoMedioMinutos: 31.4 },
+      { tipoChamado: 'Melhoria', totalRegistros: Math.round(hdTotalRegistros * 0.09), tempoMedioMinutos: 45.1 },
+      { tipoChamado: 'Outros',   totalRegistros: Math.round(hdTotalRegistros * 0.05), tempoMedioMinutos: 18.0 },
+    ],
+    registrosPorSistema: sistemas.map(s => ({ nomeSistema: s.sistema, totalRegistros: s.totalRegistros })),
+    registrosPorBandeira: [
+      { bandeira: 'Nestlé',   totalRegistros: Math.round(hdTotalRegistros * 0.52) },
+      { bandeira: 'Heineken', totalRegistros: Math.round(hdTotalRegistros * 0.21) },
+      { bandeira: 'BRF',      totalRegistros: Math.round(hdTotalRegistros * 0.15) },
+      { bandeira: 'Ambev',    totalRegistros: Math.round(hdTotalRegistros * 0.12) },
+    ],
+    registrosPorCliente: clientes.map(c => ({ cliente: c.apelido, totalRegistros: c.totalRegistros })),
+    horasTotaisPorDia: hdPorDia,
+    acumulado: { totalRegistros: hdTotalRegistros, totalMinutos: hdTotalMinutos },
+    ocorrenciasPorTipo: [
+      { tipo: 'Dúvida',   total: Math.round(hdTotalRegistros * 0.38) },
+      { tipo: 'Suporte',  total: Math.round(hdTotalRegistros * 0.29) },
+      { tipo: 'Bug',      total: Math.round(hdTotalRegistros * 0.19) },
+      { tipo: 'Melhoria', total: Math.round(hdTotalRegistros * 0.09) },
+      { tipo: 'Outros',   total: Math.round(hdTotalRegistros * 0.05) },
+    ],
+  };
+
   return {
+    '/api/helpdesk/dashboard': helpdeskDashboard,
     '/api/techlead/acumulado': {
       success: true,
       message: '[MOCK] Dados simulados',
