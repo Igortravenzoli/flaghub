@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
@@ -15,13 +15,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import {
   Users, Monitor, UserCheck, Clock, TrendingUp, Upload, Phone, Flag,
-  BarChart3, Calendar,
+  BarChart3, Calendar, Search, ArrowUpDown, ChevronUp, ChevronDown,
 } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import { CHART_COLORS } from '@/lib/chartColors';
 
@@ -200,43 +201,16 @@ function PorClienteList({ data, isLoading }: { data: PorClienteItem[]; isLoading
   );
 }
 
-function PorSistemaList({ data, isLoading }: { data: PorSistemaItem[]; isLoading: boolean }) {
-  if (isLoading) return <Skeleton className="h-64 w-full" />;
-  if (!data.length) return <DashboardEmptyState description="Sem registros para o período." />;
-  const sorted = [...data].sort((a, b) => b.totalRegistros - a.totalRegistros).slice(0, 20);
-  return (
-    <div className="h-80">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={sorted} layout="vertical" margin={{ left: 5, right: 20 }}>
-          <CartesianGrid strokeDasharray="3 3" className="opacity-20" horizontal={false} />
-          <XAxis type="number" className="text-xs" tick={{ fontSize: 10 }} />
-          <YAxis
-            type="category"
-            dataKey="nomeSistema"
-            width={120}
-            tick={{ fontSize: 10 }}
-            className="text-xs"
-          />
-          <Tooltip
-            formatter={(v: number, name: string) => [
-              name === 'totalRegistros' ? v : fmtMin(v as number),
-              name === 'totalRegistros' ? 'Registros' : 'Tempo Total',
-            ]}
-            contentStyle={{ fontSize: 12 }}
-          />
-          <Bar dataKey="totalRegistros" name="totalRegistros" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={14} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 export function TechLeadPanel() {
   const filters = useDashboardFilters('mes_atual');
   const { toast } = useToast();
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [selectedSistema, setSelectedSistema] = useState<PorSistemaItem | null>(null);
+  const [sistemaSearch, setSistemaSearch] = useState('');
+  const [sistemaSortKey, setSistemaSortKey] = useState<keyof PorSistemaItem>('totalRegistros');
+  const [sistemaSortDir, setSistemaSortDir] = useState<'asc' | 'desc'>('desc');
 
   const acumulado = useTechLeadAcumulado(filters.dateFrom, filters.dateTo);
   const sistemas = useTechLeadConsultorSistemas(filters.dateFrom, filters.dateTo);
@@ -244,6 +218,26 @@ export function TechLeadPanel() {
   const porDia = useTechLeadPorDia(filters.dateFrom, filters.dateTo);
   const porCliente = useTechLeadPorCliente(filters.dateFrom, filters.dateTo);
   const porSistema = useTechLeadPorSistema(filters.dateFrom, filters.dateTo);
+
+  const filteredSistemas = useMemo(() => {
+    const list = [...(porSistema.data?.sistemas ?? [])];
+    const searched = sistemaSearch.trim()
+      ? list.filter(s => s.nomeSistema.toLowerCase().includes(sistemaSearch.toLowerCase()))
+      : list;
+    return searched.sort((a, b) => {
+      const av = a[sistemaSortKey];
+      const bv = b[sistemaSortKey];
+      const cmp = typeof av === 'string'
+        ? (av as string).localeCompare(bv as string)
+        : (av as number) - (bv as number);
+      return sistemaSortDir === 'desc' ? -cmp : cmp;
+    });
+  }, [porSistema.data?.sistemas, sistemaSearch, sistemaSortKey, sistemaSortDir]);
+
+  const handleSistemaSort = (key: keyof PorSistemaItem) => {
+    if (sistemaSortKey === key) setSistemaSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSistemaSortKey(key); setSistemaSortDir('desc'); }
+  };
 
   const ac = acumulado.data;
 
@@ -439,29 +433,106 @@ export function TechLeadPanel() {
 
         {/* Tab: Infra */}
         <TabsContent value="infra">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Monitor className="h-4 w-4 text-primary" />
-                Consultores Infra
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ConsultorTable data={infra.data?.consultores ?? []} isLoading={infra.isLoading} />
-              {infra.data && (
-                <div className="mt-4 grid grid-cols-2 gap-3 pt-4 border-t border-border">
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Total Registros</p>
-                    <p className="text-xl font-bold font-mono">{infra.data.totalRegistros}</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Esquerda: tabela */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Monitor className="h-4 w-4 text-primary" />
+                  Consultores Infra
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ConsultorTable data={infra.data?.consultores ?? []} isLoading={infra.isLoading} />
+              </CardContent>
+            </Card>
+
+            {/* Direita: KPIs + gráfico + mini-cards */}
+            <div className="space-y-4">
+              {/* KPI summary */}
+              <div className="grid grid-cols-2 gap-3">
+                <Card className="p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Total Registros</p>
+                  {infra.isLoading
+                    ? <Skeleton className="h-8 w-20 mt-1" />
+                    : <p className="text-2xl font-bold font-mono mt-0.5">{infra.data?.totalRegistros ?? '—'}</p>
+                  }
+                </Card>
+                <Card className="p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Tempo VDESK</p>
+                  {infra.isLoading
+                    ? <Skeleton className="h-8 w-20 mt-1" />
+                    : <p className="text-2xl font-bold font-mono mt-0.5">{infra.data ? fmtSeg(infra.data.totalTempoSegundos) : '—'}</p>
+                  }
+                </Card>
+              </div>
+
+              {/* Comparativo gráfico */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                    Comparativo — Registros &amp; Produtividade
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {infra.isLoading ? (
+                    <Skeleton className="h-40 w-full" />
+                  ) : !infra.data?.consultores.length ? (
+                    <DashboardEmptyState description="Sem dados de infra." />
+                  ) : (
+                    <div className="h-40">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={infra.data.consultores} margin={{ left: -10, right: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
+                          <XAxis dataKey="consultor" tick={{ fontSize: 11 }} />
+                          <YAxis yAxisId="reg" orientation="left" tick={{ fontSize: 10 }} />
+                          <YAxis yAxisId="prod" orientation="right" tick={{ fontSize: 10 }} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                          <Tooltip
+                            contentStyle={{ fontSize: 12 }}
+                            formatter={(v: number, name: string) =>
+                              name === 'Produtividade' ? [`${v.toFixed(1)}%`, name] : [v, name]
+                            }
+                          />
+                          <Bar yAxisId="reg" dataKey="totalRegistros" name="Registros" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={26} />
+                          <Bar yAxisId="prod" dataKey="produtividade" name="Produtividade" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} barSize={26} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Mini-cards por consultor */}
+              {!infra.isLoading && (infra.data?.consultores ?? []).map((c, i) => (
+                <Card key={c.consultor} className="p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-semibold">{c.consultor}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {c.totalRegistros} registros · {fmtSeg(c.totalTempoSegundos)}
+                      </p>
+                    </div>
+                    <Badge
+                      variant={c.produtividade >= 80 ? 'default' : c.produtividade >= 50 ? 'secondary' : 'outline'}
+                      className="font-mono text-xs"
+                    >
+                      {pct(c.produtividade)}
+                    </Badge>
                   </div>
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Tempo VDESK</p>
-                    <p className="text-xl font-bold font-mono">{fmtSeg(infra.data.totalTempoSegundos)}</p>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${Math.min(100, c.produtividade)}%`,
+                        background: CHART_COLORS[i % CHART_COLORS.length],
+                      }}
+                    />
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                </Card>
+              ))}
+            </div>
+          </div>
         </TabsContent>
 
         {/* Tab: Por Dia */}
@@ -530,43 +601,191 @@ export function TechLeadPanel() {
 
         {/* Tab: Sistemas Detalhe */}
         <TabsContent value="sistemas-detalhe">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-primary" />
-                Chamados por Sistema
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PorSistemaList data={porSistema.data?.sistemas ?? []} isLoading={porSistema.isLoading} />
-              {!porSistema.isLoading && (porSistema.data?.sistemas.length ?? 0) > 0 && (
-                <div className="mt-4 overflow-x-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+            {/* ESQUERDA: gráfico clicável */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-primary" />
+                    Chamados por Sistema
+                  </CardTitle>
+                  {selectedSistema && (
+                    <button
+                      onClick={() => setSelectedSistema(null)}
+                      className="text-[10px] text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      Limpar seleção
+                    </button>
+                  )}
+                </div>
+                {selectedSistema && (
+                  <Badge variant="secondary" className="mt-1 w-fit text-xs font-normal">
+                    {selectedSistema.nomeSistema} selecionado
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent>
+                {porSistema.isLoading ? (
+                  <Skeleton className="h-80 w-full" />
+                ) : !porSistema.data?.sistemas.length ? (
+                  <DashboardEmptyState description="Sem registros para o período." />
+                ) : (() => {
+                  const chartData = [...porSistema.data.sistemas]
+                    .sort((a, b) => b.totalRegistros - a.totalRegistros)
+                    .slice(0, 15);
+                  return (
+                    <>
+                      <div className="h-80" style={{ cursor: 'pointer' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={chartData}
+                            layout="vertical"
+                            margin={{ left: 5, right: 24 }}
+                            onClick={(e: any) => {
+                              const name = e?.activePayload?.[0]?.payload?.nomeSistema;
+                              if (!name) return;
+                              const found = porSistema.data!.sistemas.find(s => s.nomeSistema === name) ?? null;
+                              setSelectedSistema(prev => prev?.nomeSistema === name ? null : found);
+                            }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" className="opacity-20" horizontal={false} />
+                            <XAxis type="number" className="text-xs" tick={{ fontSize: 10 }} />
+                            <YAxis type="category" dataKey="nomeSistema" width={110} tick={{ fontSize: 10 }} className="text-xs" />
+                            <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [v, 'Registros']} />
+                            <Bar dataKey="totalRegistros" name="Registros" radius={[0, 6, 6, 0]} barSize={16}>
+                              {chartData.map((s, i) => (
+                                <Cell
+                                  key={s.nomeSistema}
+                                  fill={selectedSistema?.nomeSistema === s.nomeSistema
+                                    ? 'hsl(var(--primary))'
+                                    : CHART_COLORS[i % CHART_COLORS.length]}
+                                  opacity={selectedSistema && selectedSistema.nomeSistema !== s.nomeSistema ? 0.3 : 1}
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Painel de detalhe do sistema selecionado */}
+                      {selectedSistema && (() => {
+                        const totalReg = porSistema.data!.sistemas.reduce((s, x) => s + x.totalRegistros, 0);
+                        const share = totalReg > 0 ? ((selectedSistema.totalRegistros / totalReg) * 100).toFixed(1) : '0';
+                        return (
+                          <div className="mt-3 p-3 rounded-lg border border-primary/40 bg-primary/5">
+                            <p className="text-xs font-semibold text-primary mb-2">{selectedSistema.nomeSistema}</p>
+                            <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                              <div>
+                                <p className="text-base font-bold font-mono">{selectedSistema.totalRegistros}</p>
+                                <p className="text-[10px] text-muted-foreground">Registros</p>
+                              </div>
+                              <div>
+                                <p className="text-base font-bold font-mono">{fmtMin(selectedSistema.totalMinutos)}</p>
+                                <p className="text-[10px] text-muted-foreground">Tempo Total</p>
+                              </div>
+                              <div>
+                                <p className="text-base font-bold font-mono">{fmtMin(Math.round(selectedSistema.tempoMedioMinutos))}</p>
+                                <p className="text-[10px] text-muted-foreground">TM / OS</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs">
+                              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${share}%` }} />
+                              </div>
+                              <span className="font-mono font-semibold shrink-0">{share}% do total</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+
+            {/* DIREITA: tabela filtrável + ordenável */}
+            <Card className="flex flex-col">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Monitor className="h-4 w-4 text-primary" />
+                  Detalhes por Sistema
+                  <span className="ml-auto text-xs font-normal text-muted-foreground">
+                    {filteredSistemas.length} sistema{filteredSistemas.length !== 1 ? 's' : ''}
+                  </span>
+                </CardTitle>
+                <div className="relative mt-1">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Filtrar sistema..."
+                    value={sistemaSearch}
+                    onChange={e => setSistemaSearch(e.target.value)}
+                    className="h-7 pl-7 text-xs"
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="p-0 flex-1 min-h-0">
+                <ScrollArea className="h-[460px]">
                   <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-border text-muted-foreground">
-                        <th className="text-left py-1.5 px-2">Sistema</th>
-                        <th className="text-right py-1.5 px-2">Registros</th>
-                        <th className="text-right py-1.5 px-2">Tempo Total</th>
-                        <th className="text-right py-1.5 px-2">TM por OS</th>
+                    <thead className="sticky top-0 bg-card z-10 border-b border-border">
+                      <tr className="text-muted-foreground">
+                        {(
+                          [
+                            { key: 'nomeSistema' as keyof PorSistemaItem, label: 'Sistema', cls: 'text-left pl-3' },
+                            { key: 'totalRegistros' as keyof PorSistemaItem, label: 'Reg.', cls: 'text-right' },
+                            { key: 'totalMinutos' as keyof PorSistemaItem, label: 'Tempo', cls: 'text-right' },
+                            { key: 'tempoMedioMinutos' as keyof PorSistemaItem, label: 'TM/OS', cls: 'text-right pr-3' },
+                          ] as const
+                        ).map(col => (
+                          <th
+                            key={col.key}
+                            onClick={() => handleSistemaSort(col.key)}
+                            className={`py-2 px-2 font-medium cursor-pointer select-none hover:text-foreground transition-colors ${col.cls}`}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {col.label}
+                              {sistemaSortKey === col.key
+                                ? sistemaSortDir === 'asc'
+                                  ? <ChevronUp className="h-3 w-3" />
+                                  : <ChevronDown className="h-3 w-3" />
+                                : <ArrowUpDown className="h-3 w-3 opacity-25" />
+                              }
+                            </span>
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {[...(porSistema.data?.sistemas ?? [])]
-                        .sort((a, b) => b.totalRegistros - a.totalRegistros)
-                        .map((s) => (
-                          <tr key={s.nomeSistema} className="border-b border-border/50 hover:bg-muted/20">
-                            <td className="py-1.5 px-2 font-medium">{s.nomeSistema}</td>
-                            <td className="py-1.5 px-2 text-right font-mono">{s.totalRegistros}</td>
-                            <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">{fmtMin(s.totalMinutos)}</td>
-                            <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">{fmtMin(Math.round(s.tempoMedioMinutos))}</td>
-                          </tr>
-                        ))}
+                      {filteredSistemas.map(s => (
+                        <tr
+                          key={s.nomeSistema}
+                          onClick={() => setSelectedSistema(prev => prev?.nomeSistema === s.nomeSistema ? null : s)}
+                          className={`border-b border-border/50 cursor-pointer transition-colors
+                            ${selectedSistema?.nomeSistema === s.nomeSistema
+                              ? 'bg-primary/10 hover:bg-primary/15'
+                              : 'hover:bg-muted/30'}`}
+                        >
+                          <td className="py-2 pl-3 pr-2 font-medium">{s.nomeSistema}</td>
+                          <td className="py-2 px-2 text-right font-mono">{s.totalRegistros}</td>
+                          <td className="py-2 px-2 text-right font-mono text-muted-foreground">{fmtMin(s.totalMinutos)}</td>
+                          <td className="py-2 pl-2 pr-3 text-right font-mono text-muted-foreground">{fmtMin(Math.round(s.tempoMedioMinutos))}</td>
+                        </tr>
+                      ))}
+                      {filteredSistemas.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-10 text-center text-muted-foreground">
+                            Nenhum sistema encontrado
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+          </div>
         </TabsContent>
       </Tabs>
     </div>
