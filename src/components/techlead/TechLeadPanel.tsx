@@ -102,10 +102,11 @@ function PorDiaGrid({ data, isLoading }: { data: PorDiaItem[]; isLoading: boolea
   if (!data.length) return <DashboardEmptyState description="Sem registros para o período." />;
 
   const consultores = [...new Set(data.map((d) => d.consultor))].sort();
-  const dias = [...new Set(data.map((d) => d.dataRegistro))].sort();
+  // dataRegistro chega como ISO datetime do .NET ("2026-05-01T00:00:00") — fatia apenas a data
+  const dias = [...new Set(data.map((d) => d.dataRegistro.slice(0, 10)))].sort();
 
   const map = new Map<string, PorDiaItem>();
-  data.forEach((d) => map.set(`${d.consultor}|${d.dataRegistro}`, d));
+  data.forEach((d) => map.set(`${d.consultor}|${d.dataRegistro.slice(0, 10)}`, d));
 
   return (
     <ScrollArea className="h-96">
@@ -115,7 +116,7 @@ function PorDiaGrid({ data, isLoading }: { data: PorDiaItem[]; isLoading: boolea
             <tr>
               <th className="sticky left-0 bg-card border border-border px-2 py-1 font-medium text-left min-w-[100px]">Consultor</th>
               {dias.map((d) => {
-                const dt = new Date(d + 'T00:00:00');
+                const dt = new Date(d + 'T12:00:00'); // noon para evitar problema de fuso
                 return (
                   <th key={d} className="border border-border px-2 py-1 font-medium text-center min-w-[72px] whitespace-nowrap">
                     {dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
@@ -170,12 +171,12 @@ function PorClienteList({ data, isLoading }: { data: PorClienteItem[]; isLoading
     <ScrollArea className="h-80">
       <div className="space-y-2 pr-2">
         {sorted.map((c, i) => (
-          <div key={c.apelido} className="flex items-center gap-3">
+          <div key={c.cliente} className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground w-5 text-right font-mono">{i + 1}</span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-0.5">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-sm font-medium truncate">{c.apelido}</span>
+                  <span className="text-sm font-medium truncate">{c.cliente}</span>
                   {c.bandeira && (
                     <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">{c.bandeira}</Badge>
                   )}

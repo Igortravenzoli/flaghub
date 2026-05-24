@@ -84,18 +84,18 @@ function buildMocks(): Record<string, unknown> {
 
   /* Por Cliente */
   const clientes = [
-    { apelido: 'Nestlé Brás', bandeira: 'Nestlé', totalRegistros: 234 },
-    { apelido: 'Nestlé Caçapava', bandeira: 'Nestlé', totalRegistros: 187 },
-    { apelido: 'Nestlé Marília', bandeira: 'Nestlé', totalRegistros: 156 },
-    { apelido: 'Heineken SP', bandeira: 'Heineken', totalRegistros: 134 },
-    { apelido: 'Nestlé Feira', bandeira: 'Nestlé', totalRegistros: 98 },
-    { apelido: 'Heineken RJ', bandeira: 'Heineken', totalRegistros: 87 },
-    { apelido: 'Nestlé Palmeiras', bandeira: 'Nestlé', totalRegistros: 76 },
-    { apelido: 'Nestlé Uberlândia', bandeira: 'Nestlé', totalRegistros: 64 },
-    { apelido: 'BRF Vitória', bandeira: 'BRF', totalRegistros: 58 },
-    { apelido: 'Nestlé Goiânia', bandeira: 'Nestlé', totalRegistros: 47 },
-    { apelido: 'Ambev MG', bandeira: 'Ambev', totalRegistros: 43 },
-    { apelido: 'BRF Curitiba', bandeira: 'BRF', totalRegistros: 39 },
+    { cliente: 'Nestlé Brás', bandeira: 'Nestlé', totalRegistros: 234 },
+    { cliente: 'Nestlé Caçapava', bandeira: 'Nestlé', totalRegistros: 187 },
+    { cliente: 'Nestlé Marília', bandeira: 'Nestlé', totalRegistros: 156 },
+    { cliente: 'Heineken SP', bandeira: 'Heineken', totalRegistros: 134 },
+    { cliente: 'Nestlé Feira', bandeira: 'Nestlé', totalRegistros: 98 },
+    { cliente: 'Heineken RJ', bandeira: 'Heineken', totalRegistros: 87 },
+    { cliente: 'Nestlé Palmeiras', bandeira: 'Nestlé', totalRegistros: 76 },
+    { cliente: 'Nestlé Uberlândia', bandeira: 'Nestlé', totalRegistros: 64 },
+    { cliente: 'BRF Vitória', bandeira: 'BRF', totalRegistros: 58 },
+    { cliente: 'Nestlé Goiânia', bandeira: 'Nestlé', totalRegistros: 47 },
+    { cliente: 'Ambev MG', bandeira: 'Ambev', totalRegistros: 43 },
+    { cliente: 'BRF Curitiba', bandeira: 'BRF', totalRegistros: 39 },
   ];
 
   /* Por Sistema */

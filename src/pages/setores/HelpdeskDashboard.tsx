@@ -251,17 +251,12 @@ export default function HelpdeskDashboard() {
     }
   };
 
-  const { data: tableData, title: tableTitle } = getActiveTableData();
+  const { title: tableTitle } = getActiveTableData();
 
   const consultorColumns: DataTableColumn<ConsultorKpi>[] = [
     { key: 'nome', header: 'Consultor', className: 'font-medium' },
     { key: 'totalRegistros', header: 'Registros', className: 'text-right' },
     { key: 'totalMinutos', header: 'Minutos', className: 'text-right', render: (r) => r.totalMinutos.toLocaleString('pt-BR') },
-  ];
-
-  const grupoColumns: DataTableColumn<RegistroPorGrupo>[] = [
-    { key: 'nome', header: 'Nome', className: 'font-medium' },
-    { key: 'quantidade', header: 'Quantidade', className: 'text-right' },
   ];
 
   const tipoColumns: DataTableColumn<TipoChamadoKpi>[] = [
@@ -280,6 +275,11 @@ export default function HelpdeskDashboard() {
   const top10Consultores = filteredConsultores
     .slice()
     .sort((a, b) => b.totalRegistros - a.totalRegistros)
+    .slice(0, 10);
+
+  const top10ConsultoresMinutos = filteredConsultores
+    .slice()
+    .sort((a, b) => b.totalMinutos - a.totalMinutos)
     .slice(0, 10);
 
   const top10Sistemas = registrosPorSistema
@@ -528,8 +528,8 @@ export default function HelpdeskDashboard() {
 
                 {/* Tab: Consultores */}
                 <TabsContent value="consultores">
-                  <div className="grid grid-cols-1 gap-4">
-                    {/* Bar chart - top consultores */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Esquerda: Top 10 por Registros */}
                     <Card>
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -563,7 +563,90 @@ export default function HelpdeskDashboard() {
                         </div>
                       </CardContent>
                     </Card>
+
+                    {/* Direita: Top 10 por Minutos */}
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-primary" />
+                          Top 10 Consultores por Minutos
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={top10ConsultoresMinutos} layout="vertical" margin={{ left: 5, right: 20 }}>
+                              <CartesianGrid strokeDasharray="3 3" className="opacity-20" horizontal={false} />
+                              <XAxis type="number" className="text-xs" tick={{ fontSize: 10 }} />
+                              <YAxis
+                                type="category"
+                                dataKey="nome"
+                                width={90}
+                                tick={{ fontSize: 11 }}
+                                className="text-xs"
+                              />
+                              <Tooltip
+                                content={({ active, payload, label }) => {
+                                  if (!active || !payload?.length) return null;
+                                  const min = payload[0]?.value as number ?? 0;
+                                  const h = Math.floor(min / 60);
+                                  const m = min % 60;
+                                  return (
+                                    <div className="bg-popover border border-border rounded-lg shadow-xl px-3 py-2 text-xs">
+                                      <p className="font-semibold text-foreground mb-1">{label}</p>
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full" style={{ background: payload[0]?.color }} />
+                                        <span className="text-muted-foreground">Tempo:</span>
+                                        <span className="font-medium text-foreground">
+                                          {h > 0 ? `${h}h ${m}m` : `${m}m`}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                }}
+                              />
+                              <Bar
+                                dataKey="totalMinutos"
+                                name="Minutos"
+                                fill="hsl(var(--chart-2))"
+                                radius={[0, 6, 6, 0]}
+                                barSize={18}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </div>
+
+                  {/* Tabela detalhada — apenas na aba Consultores */}
+                  {!isLoading && hasData && (
+                    <div className="mt-4">
+                      {activeView === 'chamados' ? (
+                        <DashboardDataTable
+                          title={tableTitle}
+                          subtitle={`${tipoChamadoTempoMedio.length} tipos`}
+                          columns={tipoColumns}
+                          data={tipoChamadoTempoMedio}
+                          isLoading={isLoading}
+                          getRowKey={(r) => r.tipo}
+                          onRowClick={(r) => setDrawerItem(r)}
+                          searchPlaceholder="Buscar tipo..."
+                        />
+                      ) : (
+                        <DashboardDataTable
+                          title={tableTitle}
+                          subtitle={`${filteredConsultores.length} consultores${selectedConsultants.length > 0 ? ' (filtrado)' : ''}`}
+                          columns={consultorColumns}
+                          data={filteredConsultores}
+                          isLoading={isLoading}
+                          getRowKey={(r) => r.nome}
+                          onRowClick={(r) => setDrawerItem(r)}
+                          searchPlaceholder="Buscar consultor..."
+                        />
+                      )}
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* Tab: Sistemas */}
@@ -799,45 +882,6 @@ export default function HelpdeskDashboard() {
             </div>
           )}
 
-          {/* === Data Table === */}
-          {!isLoading && hasData && (
-            <div className="mt-6">
-              {activeView === 'chamados' ? (
-                <DashboardDataTable
-                  title={tableTitle}
-                  subtitle={`${tipoChamadoTempoMedio.length} tipos`}
-                  columns={tipoColumns}
-                  data={tipoChamadoTempoMedio}
-                  isLoading={isLoading}
-                  getRowKey={(r) => r.tipo}
-                  onRowClick={(r) => setDrawerItem(r)}
-                  searchPlaceholder="Buscar tipo..."
-                />
-              ) : activeView === 'consultores' || !activeView ? (
-                <DashboardDataTable
-                  title={tableTitle}
-                  subtitle={`${filteredConsultores.length} consultores${selectedConsultants.length > 0 ? ' (filtrado)' : ''}`}
-                  columns={consultorColumns}
-                  data={filteredConsultores}
-                  isLoading={isLoading}
-                  getRowKey={(r) => r.nome}
-                  onRowClick={(r) => setDrawerItem(r)}
-                  searchPlaceholder="Buscar consultor..."
-                />
-              ) : (
-                <DashboardDataTable
-                  title={tableTitle}
-                  subtitle={`${(tableData as RegistroPorGrupo[]).length} itens`}
-                  columns={grupoColumns}
-                  data={tableData as RegistroPorGrupo[]}
-                  isLoading={isLoading}
-                  getRowKey={(r) => r.nome}
-                  onRowClick={(r) => setDrawerItem(r)}
-                  searchPlaceholder="Buscar..."
-                />
-              )}
-            </div>
-          )}
         </>
       )}
 

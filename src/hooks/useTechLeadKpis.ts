@@ -54,7 +54,7 @@ export interface TechLeadPorDiaResponse {
 }
 
 export interface PorClienteItem {
-  apelido: string;
+  cliente: string;
   bandeira: string;
   totalRegistros: number;
 }
