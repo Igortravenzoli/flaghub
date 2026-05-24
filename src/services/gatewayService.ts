@@ -41,7 +41,6 @@ function buildMocks(): Record<string, unknown> {
       totalRegistros,
       totalTempoSegundos,
       produtividade: +(prod * 100).toFixed(1),
-      totalCentralSegundos: Math.round(Math.random() * 3600 * 2),
     };
   });
 
@@ -54,7 +53,6 @@ function buildMocks(): Record<string, unknown> {
       totalRegistros,
       totalTempoSegundos,
       produtividade: +(prod * 100).toFixed(1),
-      totalCentralSegundos: Math.round(3600 + Math.random() * 5400),
     };
   });
 
@@ -75,10 +73,10 @@ function buildMocks(): Record<string, unknown> {
       const totalReg = Math.round(prod * 9 + Math.random() * 3);
       registrosPorDia.push({
         consultor: c,
-        data: dia,
+        dataRegistro: dia,
         diaSemana: diaSemanaNome,
         totalRegistros: totalReg,
-        sumMinutos,
+        totalTempoSegundos: sumMinutos * 60,
         produtividadeDia: +(prod * 100).toFixed(1),
       });
     }
@@ -128,12 +126,57 @@ function buildMocks(): Record<string, unknown> {
       ttrMedioAbertoDias: 4.2,
       abertos5Dias: 23,
       abertos30Dias: 8,
+      abertos180Dias: 5,
       totalFechados60Dias: 312,
       ttrMedioFechadoDias: 3.1,
       pctEncerrados24h: 51.3,
     },
     status: { ttr: 'ALERT', pct24h: 'OK' },
   };
+
+  /* Nestlé Histórico */
+  const meses = ['05/2025','06/2025','07/2025','08/2025','09/2025','10/2025','11/2025','12/2025','01/2026','02/2026','03/2026','04/2026','05/2026'];
+  const slaNestleHistorico = {
+    success: true,
+    message: '[MOCK]',
+    metas: { metaTTRDias: 3.9, metaTTR24hPct: 48.0 },
+    series: meses.map((mes, i) => ({
+      mes,
+      totalFechados: Math.round(120 + Math.sin(i * 0.7) * 30 + Math.random() * 20),
+      ttrMedioDias: +(4.5 + Math.sin(i * 0.5) * 1.5 + Math.random() * 0.5).toFixed(2),
+      pctEncerrados24h: +(45 + Math.sin(i * 0.8) * 10 + Math.random() * 5).toFixed(1),
+    })),
+  };
+
+  /* Detalhe OS Flag */
+  const mockFlagOs = Array.from({ length: 87 }, (_, i) => ({
+    os: 10000 + i,
+    apelido: ['Nestlé Brás','Nestlé Caçapava','Heineken SP','BRF Vitória','Ambev MG'][i % 5],
+    codigoPuxada: null,
+    erroPadrao: ['Erro de acesso','Lentidão','Crash sistema',null][i % 4],
+    dtOs: new Date(Date.now() - (i * 1.5 + Math.random() * 2) * 86400000).toISOString(),
+    dtBaixaOs: null,
+    diasAberto: Math.round(i * 1.5 + Math.random() * 2),
+    ticket: i % 3 === 0 ? `INC${String(i).padStart(7,'0')}` : null,
+    sistema: ['FlexxSales','Datacenter','AvanteSales','QuickOne'][i % 4],
+    criticidade: ['Alta','Média','Baixa'][i % 3],
+    desvioLancamento: i * 1.5 > 180,
+  }));
+
+  /* Detalhe OS Nestlé */
+  const mockNestleOs = Array.from({ length: 45 }, (_, i) => ({
+    os: 20000 + i,
+    apelido: ['Nestlé Brás','Nestlé Caçapava','Nestlé Marília','Nestlé Goiânia'][i % 4],
+    codigoPuxada: null,
+    erroPadrao: ['Erro de acesso','Lentidão',null][i % 3],
+    dtOs: new Date(Date.now() - (i * 1.2 + Math.random() * 3) * 86400000).toISOString(),
+    dtBaixaOs: null,
+    diasAberto: Math.round(i * 1.2 + Math.random() * 3),
+    ticket: `INC${String(i + 100).padStart(7,'0')}`,
+    sistema: ['FlexxSales','AvanteSales','QuickOne','Decision'][i % 4],
+    criticidade: ['Alta','Média'][i % 2],
+    desvioLancamento: false,
+  }));
 
   /* SLA Nestlé */
   const slaNestle = {
@@ -174,7 +217,6 @@ function buildMocks(): Record<string, unknown> {
       consultores: consultorSistemas,
       totalRegistros: consultorSistemas.reduce((s, c) => s + c.totalRegistros, 0),
       totalTempoSegundos: consultorSistemas.reduce((s, c) => s + c.totalTempoSegundos, 0),
-      totalCentralSegundos: consultorSistemas.reduce((s, c) => s + c.totalCentralSegundos, 0),
     },
     '/api/techlead/resumo-consultor-infra': {
       success: true,
@@ -184,7 +226,6 @@ function buildMocks(): Record<string, unknown> {
       consultores: consultorInfra,
       totalRegistros: consultorInfra.reduce((s, c) => s + c.totalRegistros, 0),
       totalTempoSegundos: consultorInfra.reduce((s, c) => s + c.totalTempoSegundos, 0),
-      totalCentralSegundos: consultorInfra.reduce((s, c) => s + c.totalCentralSegundos, 0),
     },
     '/api/techlead/por-dia': {
       success: true,
@@ -209,6 +250,9 @@ function buildMocks(): Record<string, unknown> {
     },
     '/api/gestao/sla-flag': slaFlag,
     '/api/gestao/sla-nestle': slaNestle,
+    '/api/gestao/sla-nestle-historico': slaNestleHistorico,
+    '/api/gestao/sla-flag-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockFlagOs.length, items: mockFlagOs },
+    '/api/gestao/sla-nestle-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockNestleOs.length, items: mockNestleOs },
   };
 }
 

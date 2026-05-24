@@ -72,7 +72,6 @@ function ConsultorTable({ data, isLoading }: { data: ConsultorItem[]; isLoading:
             <th className="text-left py-2 px-3 font-medium">Consultor</th>
             <th className="text-right py-2 px-3 font-medium">Registros</th>
             <th className="text-right py-2 px-3 font-medium">Tempo VDESK</th>
-            <th className="text-right py-2 px-3 font-medium">Tempo Central</th>
             <th className="text-right py-2 px-3 font-medium">Produtividade</th>
           </tr>
         </thead>
@@ -82,9 +81,6 @@ function ConsultorTable({ data, isLoading }: { data: ConsultorItem[]; isLoading:
               <td className="py-2 px-3 font-medium">{c.consultor}</td>
               <td className="py-2 px-3 text-right font-mono">{c.totalRegistros}</td>
               <td className="py-2 px-3 text-right font-mono text-muted-foreground">{fmtSeg(c.totalTempoSegundos)}</td>
-              <td className="py-2 px-3 text-right font-mono text-muted-foreground">
-                {c.totalCentralSegundos > 0 ? fmtSeg(c.totalCentralSegundos) : '—'}
-              </td>
               <td className="py-2 px-3 text-right">
                 <Badge
                   variant={c.produtividade >= 80 ? 'default' : c.produtividade >= 50 ? 'secondary' : 'outline'}
@@ -106,10 +102,10 @@ function PorDiaGrid({ data, isLoading }: { data: PorDiaItem[]; isLoading: boolea
   if (!data.length) return <DashboardEmptyState description="Sem registros para o período." />;
 
   const consultores = [...new Set(data.map((d) => d.consultor))].sort();
-  const dias = [...new Set(data.map((d) => d.data))].sort();
+  const dias = [...new Set(data.map((d) => d.dataRegistro))].sort();
 
   const map = new Map<string, PorDiaItem>();
-  data.forEach((d) => map.set(`${d.consultor}|${d.data}`, d));
+  data.forEach((d) => map.set(`${d.consultor}|${d.dataRegistro}`, d));
 
   return (
     <ScrollArea className="h-96">
@@ -250,10 +246,6 @@ export function TechLeadPanel() {
 
   const ac = acumulado.data;
 
-  const top10Sistemas = [...(sistemas.data?.consultores ?? [])].sort(
-    (a, b) => b.totalRegistros - a.totalRegistros,
-  );
-
   async function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -361,10 +353,10 @@ export function TechLeadPanel() {
       )}
 
       {/* Tabs */}
-      <Tabs defaultValue="sistemas" className="w-full">
+      <Tabs defaultValue="consultores" className="w-full">
         <TabsList className="mb-4 h-9 flex-wrap">
-          <TabsTrigger value="sistemas" className="text-xs gap-1.5">
-            <Users className="h-3.5 w-3.5" /> Sistemas
+          <TabsTrigger value="consultores" className="text-xs gap-1.5">
+            <Users className="h-3.5 w-3.5" /> Consultores
           </TabsTrigger>
           <TabsTrigger value="infra" className="text-xs gap-1.5">
             <Monitor className="h-3.5 w-3.5" /> Infra
@@ -380,44 +372,19 @@ export function TechLeadPanel() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Tab: Sistemas */}
-        <TabsContent value="sistemas">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" />
-                  Consultores Sistemas
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ConsultorTable data={sistemas.data?.consultores ?? []} isLoading={sistemas.isLoading} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Top por Registros</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-72">
-                  {sistemas.isLoading ? (
-                    <Skeleton className="h-full w-full" />
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={top10Sistemas} layout="vertical" margin={{ left: 5, right: 20 }}>
-                        <CartesianGrid strokeDasharray="3 3" className="opacity-20" horizontal={false} />
-                        <XAxis type="number" tick={{ fontSize: 10 }} />
-                        <YAxis type="category" dataKey="consultor" width={90} tick={{ fontSize: 11 }} />
-                        <Tooltip contentStyle={{ fontSize: 12 }} />
-                        <Bar dataKey="totalRegistros" name="Registros" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} barSize={18} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        {/* Tab: Consultores */}
+        <TabsContent value="consultores">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                Consultores Sistemas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ConsultorTable data={sistemas.data?.consultores ?? []} isLoading={sistemas.isLoading} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Tab: Infra */}
@@ -432,7 +399,7 @@ export function TechLeadPanel() {
             <CardContent>
               <ConsultorTable data={infra.data?.consultores ?? []} isLoading={infra.isLoading} />
               {infra.data && (
-                <div className="mt-4 grid grid-cols-3 gap-3 pt-4 border-t border-border">
+                <div className="mt-4 grid grid-cols-2 gap-3 pt-4 border-t border-border">
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground">Total Registros</p>
                     <p className="text-xl font-bold font-mono">{infra.data.totalRegistros}</p>
@@ -440,10 +407,6 @@ export function TechLeadPanel() {
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground">Tempo VDESK</p>
                     <p className="text-xl font-bold font-mono">{fmtSeg(infra.data.totalTempoSegundos)}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground">Tempo Central</p>
-                    <p className="text-xl font-bold font-mono">{fmtSeg(infra.data.totalCentralSegundos)}</p>
                   </div>
                 </div>
               )}

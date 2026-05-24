@@ -11,7 +11,7 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
   Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
-  Ticket, Search,
+  Ticket, Search, Settings2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,9 @@ const TechLeadPanel = lazy(() =>
 );
 const GestaoSlaPanel = lazy(() =>
   import('@/components/techlead/GestaoSlaPanel').then((m) => ({ default: m.GestaoSlaPanel })),
+);
+const ImplantacoesPanel = lazy(() =>
+  import('@/components/techlead/ImplantacoesPanel').then((m) => ({ default: m.ImplantacoesPanel })),
 );
 
 const integrations: Integration[] = [
@@ -331,6 +334,12 @@ export default function HelpdeskDashboard() {
       label: 'Gestão SLA',
       icon: <BarChart3 className="h-3.5 w-3.5" />,
       content: <Suspense fallback={tabFallback}><GestaoSlaPanel /></Suspense>,
+    },
+    {
+      id: 'implantacoes',
+      label: 'Implantações',
+      icon: <Settings2 className="h-3.5 w-3.5" />,
+      content: <Suspense fallback={tabFallback}><ImplantacoesPanel /></Suspense>,
     },
   ];
 

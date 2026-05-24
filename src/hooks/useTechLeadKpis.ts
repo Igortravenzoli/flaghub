@@ -23,7 +23,6 @@ export interface ConsultorItem {
   totalRegistros: number;
   totalTempoSegundos: number;
   produtividade: number;
-  totalCentralSegundos: number;
 }
 
 export interface TechLeadConsultorResponse {
@@ -33,15 +32,14 @@ export interface TechLeadConsultorResponse {
   consultores: ConsultorItem[];
   totalRegistros: number;
   totalTempoSegundos: number;
-  totalCentralSegundos: number;
 }
 
 export interface PorDiaItem {
   consultor: string;
-  data: string;
+  dataRegistro: string;
   diaSemana: string;
   totalRegistros: number;
-  sumMinutos: number;
+  totalTempoSegundos: number;
   produtividadeDia: number;
 }
 
