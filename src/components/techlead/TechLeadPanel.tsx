@@ -375,17 +375,66 @@ export function TechLeadPanel() {
 
         {/* Tab: Consultores */}
         <TabsContent value="consultores">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Users className="h-4 w-4 text-primary" />
-                Consultores Sistemas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ConsultorTable data={sistemas.data?.consultores ?? []} isLoading={sistemas.isLoading} />
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Users className="h-4 w-4 text-primary" />
+                  Consultores Sistemas
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ConsultorTable data={sistemas.data?.consultores ?? []} isLoading={sistemas.isLoading} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-primary" />
+                  Registros por Consultor
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {sistemas.isLoading ? (
+                  <Skeleton className="h-64 w-full" />
+                ) : !sistemas.data?.consultores.length ? (
+                  <DashboardEmptyState description="Sem registros para o período." />
+                ) : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={[...(sistemas.data.consultores)].sort((a, b) => b.totalRegistros - a.totalRegistros)}
+                        layout="vertical"
+                        margin={{ left: 5, right: 24 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" className="opacity-20" horizontal={false} />
+                        <XAxis type="number" className="text-xs" tick={{ fontSize: 10 }} />
+                        <YAxis
+                          type="category"
+                          dataKey="consultor"
+                          width={90}
+                          tick={{ fontSize: 11 }}
+                          className="text-xs"
+                        />
+                        <Tooltip
+                          contentStyle={{ fontSize: 12 }}
+                          formatter={(v: number) => [v, 'Registros']}
+                        />
+                        <Bar
+                          dataKey="totalRegistros"
+                          name="Registros"
+                          fill="hsl(var(--primary))"
+                          radius={[0, 6, 6, 0]}
+                          barSize={18}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Tab: Infra */}

@@ -1,11 +1,9 @@
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
-import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
-import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
-import { useHelpdeskKpis, ConsultorKpi, RegistroPorGrupo, TipoChamadoKpi } from '@/hooks/useHelpdeskKpis';
+import { useHelpdeskKpis } from '@/hooks/useHelpdeskKpis';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
@@ -165,14 +163,10 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-type ActiveView = 'consultores' | 'sistemas' | 'bandeiras' | 'clientes' | 'chamados' | null;
-
 export default function HelpdeskDashboard() {
   const filters = useDashboardFilters('hoje');
   const kpis = useHelpdeskKpis(filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
-  const [activeView, setActiveView] = useState<ActiveView>(null);
-  const [drawerItem, setDrawerItem] = useState<any>(null);
   const [selectedConsultants, setSelectedConsultants] = useState<string[]>(loadConsultantFilter);
   const [chartTab, setChartTab] = useState('consultores');
   const [selectedDay, setSelectedDay] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -218,10 +212,6 @@ export default function HelpdeskDashboard() {
     [registrosPorConsultor]
   );
 
-  const handleKpiClick = (view: ActiveView) => {
-    setActiveView(prev => prev === view ? null : view);
-  };
-
   const handleExportCSV = () => exportCSV({
     title: 'Helpdesk KPIs', area: 'Helpdesk', periodLabel: filters.presetLabel,
     columns: ['nome', 'quantidade', 'totalMinutos'],
@@ -238,36 +228,6 @@ export default function HelpdeskDashboard() {
     columns: ['nome', 'totalRegistros', 'totalMinutos'],
     rows: filteredConsultores as any[],
   });
-
-  // Table data
-  const getActiveTableData = () => {
-    switch (activeView) {
-      case 'consultores': return { data: filteredConsultores, title: 'Registros por Consultor' };
-      case 'sistemas': return { data: registrosPorSistema, title: 'Registros por Sistema' };
-      case 'bandeiras': return { data: registrosPorBandeira, title: 'Registros por Bandeira' };
-      case 'clientes': return { data: registrosPorCliente, title: 'Registros por Cliente' };
-      case 'chamados': return { data: tipoChamadoTempoMedio, title: 'Tipo de Chamado x Tempo Médio' };
-      default: return { data: filteredConsultores, title: 'Registros por Consultor' };
-    }
-  };
-
-  const { title: tableTitle } = getActiveTableData();
-
-  const consultorColumns: DataTableColumn<ConsultorKpi>[] = [
-    { key: 'nome', header: 'Consultor', className: 'font-medium' },
-    { key: 'totalRegistros', header: 'Registros', className: 'text-right' },
-    { key: 'totalMinutos', header: 'Minutos', className: 'text-right', render: (r) => r.totalMinutos.toLocaleString('pt-BR') },
-  ];
-
-  const tipoColumns: DataTableColumn<TipoChamadoKpi>[] = [
-    { key: 'tipo', header: 'Tipo', className: 'font-medium' },
-    { key: 'quantidade', header: 'Quantidade', className: 'text-right' },
-    { key: 'tempoMedio', header: 'Tempo Médio (min)', className: 'text-right', render: (r) => r.tempoMedio.toFixed(1) },
-  ];
-
-  const drawerFields: DrawerField[] = drawerItem ? Object.entries(drawerItem).map(([key, value]) => ({
-    label: key, value: String(value ?? '—'),
-  })) : [];
 
   const hasData = totalRegistros > 0 || registrosPorConsultor.length > 0;
 
@@ -429,7 +389,16 @@ export default function HelpdeskDashboard() {
           <Skeleton className="h-48 w-full rounded-xl" />
         </div>
       ) : !hasData ? (
-        <DashboardEmptyState description="Nenhum dado de helpdesk encontrado. Execute o sync via Admin > Sync Central para carregar os dados da API." />
+        <div className="flex flex-col items-center gap-4 py-14 text-center">
+          <FileText className="h-10 w-10 text-muted-foreground/30" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Não existem dados no período selecionado</p>
+            <p className="text-xs text-muted-foreground mt-1">Nenhum registro de helpdesk encontrado para este intervalo.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => filters.setPreset('mes_anterior')}>
+            Ver Mês Anterior
+          </Button>
+        </div>
       ) : (
         <>
           {/* === KPI Cards consolidados === */}
@@ -452,20 +421,17 @@ export default function HelpdeskDashboard() {
                     <FileText className="h-8 w-8 text-muted-foreground/40" />
                   </div>
                   <div className="grid grid-cols-3 divide-x divide-border border-t pt-3 -mx-5 px-5">
-                    <button
-                      onClick={() => handleKpiClick('chamados')}
-                      className={`flex flex-col items-center py-2 rounded-l transition-colors hover:bg-muted/30 ${activeView === 'chamados' ? 'bg-primary/5' : ''}`}
-                    >
+                    <div className="flex flex-col items-center py-2 rounded-l">
                       <p className="text-lg font-semibold font-mono">{filteredTotalHoras}h</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Horas Acum.</p>
-                    </button>
+                    </div>
                     <div className="flex flex-col items-center py-2">
                       <p className="text-lg font-semibold font-mono">{dayHoras}h</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Horas {diaLabel}</p>
                     </div>
                     <button
-                      onClick={() => handleKpiClick('consultores')}
-                      className={`flex flex-col items-center py-2 rounded-r transition-colors hover:bg-muted/30 ${activeView === 'consultores' ? 'bg-primary/5' : ''}`}
+                      onClick={() => setChartTab('consultores')}
+                      className="flex flex-col items-center py-2 rounded-r transition-colors hover:bg-muted/30"
                     >
                       <p className="text-lg font-semibold font-mono">{selectedConsultants.length || totalConsultores}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Consultores</p>
@@ -478,24 +444,24 @@ export default function HelpdeskDashboard() {
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">COBERTURA</p>
                   <div className="grid grid-cols-3 divide-x divide-border">
                     <button
-                      onClick={() => handleKpiClick('sistemas')}
-                      className={`flex flex-col items-center py-3 rounded-l transition-colors hover:bg-muted/30 ${activeView === 'sistemas' ? 'bg-primary/5' : ''}`}
+                      onClick={() => setChartTab('sistemas')}
+                      className="flex flex-col items-center py-3 rounded-l transition-colors hover:bg-muted/30"
                     >
                       <Monitor className="h-4 w-4 text-muted-foreground mb-2" />
                       <p className="text-2xl font-semibold font-mono">{registrosPorSistema.length}</p>
                       <p className="text-xs text-muted-foreground mt-1">Sistemas</p>
                     </button>
                     <button
-                      onClick={() => handleKpiClick('bandeiras')}
-                      className={`flex flex-col items-center py-3 transition-colors hover:bg-muted/30 ${activeView === 'bandeiras' ? 'bg-primary/5' : ''}`}
+                      onClick={() => setChartTab('detalhes')}
+                      className="flex flex-col items-center py-3 transition-colors hover:bg-muted/30"
                     >
                       <Flag className="h-4 w-4 text-muted-foreground mb-2" />
                       <p className="text-2xl font-semibold font-mono">{registrosPorBandeira.length}</p>
                       <p className="text-xs text-muted-foreground mt-1">Bandeiras</p>
                     </button>
                     <button
-                      onClick={() => handleKpiClick('clientes')}
-                      className={`flex flex-col items-center py-3 rounded-r transition-colors hover:bg-muted/30 ${activeView === 'clientes' ? 'bg-primary/5' : ''}`}
+                      onClick={() => setChartTab('sistemas')}
+                      className="flex flex-col items-center py-3 rounded-r transition-colors hover:bg-muted/30"
                     >
                       <UserCheck className="h-4 w-4 text-muted-foreground mb-2" />
                       <p className="text-2xl font-semibold font-mono">{registrosPorCliente.length}</p>
@@ -619,34 +585,6 @@ export default function HelpdeskDashboard() {
                     </Card>
                   </div>
 
-                  {/* Tabela detalhada — apenas na aba Consultores */}
-                  {!isLoading && hasData && (
-                    <div className="mt-4">
-                      {activeView === 'chamados' ? (
-                        <DashboardDataTable
-                          title={tableTitle}
-                          subtitle={`${tipoChamadoTempoMedio.length} tipos`}
-                          columns={tipoColumns}
-                          data={tipoChamadoTempoMedio}
-                          isLoading={isLoading}
-                          getRowKey={(r) => r.tipo}
-                          onRowClick={(r) => setDrawerItem(r)}
-                          searchPlaceholder="Buscar tipo..."
-                        />
-                      ) : (
-                        <DashboardDataTable
-                          title={tableTitle}
-                          subtitle={`${filteredConsultores.length} consultores${selectedConsultants.length > 0 ? ' (filtrado)' : ''}`}
-                          columns={consultorColumns}
-                          data={filteredConsultores}
-                          isLoading={isLoading}
-                          getRowKey={(r) => r.nome}
-                          onRowClick={(r) => setDrawerItem(r)}
-                          searchPlaceholder="Buscar consultor..."
-                        />
-                      )}
-                    </div>
-                  )}
                 </TabsContent>
 
                 {/* Tab: Sistemas */}
@@ -737,7 +675,7 @@ export default function HelpdeskDashboard() {
 
                 {/* Tab: Tendência */}
                 <TabsContent value="tendencia">
-                  <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {/* Historical registros trend from snapshots */}
                     {historicoTrend.length > 1 && (
                       <Card>
@@ -746,7 +684,7 @@ export default function HelpdeskDashboard() {
                             <TrendingUp className="h-4 w-4 text-primary" />
                             Evolução de Registros por Dia (Histórico de Sincronizações)
                           </CardTitle>
-                          <p className="text-xs text-muted-foreground">Cada ponto representa o último snapshot do dia</p>
+                          <p className="text-xs text-muted-foreground">Registros criados por dia no período selecionado</p>
                         </CardHeader>
                         <CardContent>
                           <div className="h-72">
@@ -885,12 +823,6 @@ export default function HelpdeskDashboard() {
         </>
       )}
 
-      <DashboardDrawer
-        open={!!drawerItem}
-        onClose={() => setDrawerItem(null)}
-        title="Detalhes"
-        fields={drawerFields}
-      />
     </SectorLayout>
   );
 }
