@@ -60,9 +60,13 @@ const tableColumnFilters: ColumnFilter[] = [
 interface Props {
   dateFrom?: Date;
   dateTo?: Date;
+  canViewValues?: boolean;
+  showValues?: boolean;
+  bandeiras?: string[];
+  sistemas?: string[];
 }
 
-export default function MovimentacaoTab({ dateFrom, dateTo }: Props) {
+export default function MovimentacaoTab({ dateFrom, dateTo, canViewValues = false, showValues = false, bandeiras = [], sistemas = [] }: Props) {
   const [anoFilter, setAnoFilter] = useState<string>(String(new Date().getFullYear()));
   const [drawerItem, setDrawerItem] = useState<MovimentacaoCliente | null>(null);
   const [tipoFilter, setTipoFilter] = useState<string | null>(null);
@@ -73,22 +77,25 @@ export default function MovimentacaoTab({ dateFrom, dateTo }: Props) {
   const { mutateAsync: deleteMovimentacao } = useComercialMovimentacaoDelete();
   const { items: rawItems, allItems, isLoading, isError, refetch } = useComercialMovimentacao('todos', dateFrom, dateTo);
 
-  // Filter by year
+  // Filter by year + hide risco for non-privileged viewers
   const items = useMemo(() => {
     let filtered = rawItems;
+    if (!canViewValues) {
+      filtered = filtered.filter(i => i.tipo !== 'risco');
+    }
     if (anoFilter !== 'todos') {
       const year = parseInt(anoFilter);
       filtered = filtered.filter((i) => {
-      if (i.ano_referencia) return i.ano_referencia === year;
-      if (i.data_evento) return new Date(i.data_evento).getFullYear() === year;
-      return false;
-    });
+        if (i.ano_referencia) return i.ano_referencia === year;
+        if (i.data_evento) return new Date(i.data_evento).getFullYear() === year;
+        return false;
+      });
     }
     if (tipoFilter) {
       filtered = filtered.filter((i) => i.tipo === tipoFilter);
     }
     return filtered;
-  }, [rawItems, anoFilter, tipoFilter]);
+  }, [rawItems, anoFilter, tipoFilter, canViewValues]);
 
   // Recalculate stats for filtered items
   const stats = useMemo(() => {
@@ -235,50 +242,26 @@ export default function MovimentacaoTab({ dateFrom, dateTo }: Props) {
     { label: 'Sistema', value: drawerItem.sistema },
     { label: 'Categoria', value: drawerItem.motivo },
     { label: 'Observação', value: drawerItem.status_encerramento },
-    { label: 'Valor Mensal', value: drawerItem.valor_mensal ? `R$ ${drawerItem.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—' },
+    ...(canViewValues ? [{
+      label: 'Valor Mensal',
+      value: showValues
+        ? (drawerItem.valor_mensal ? `R$ ${drawerItem.valor_mensal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—')
+        : 'R$ •••',
+    }] : []),
     { label: 'Ano Referência', value: drawerItem.ano_referencia },
     { label: 'Data', value: drawerItem.data_evento ? new Date(drawerItem.data_evento).toLocaleDateString('pt-BR') : '—' },
   ] : [];
 
-  const kpiCards = useMemo(() => ([
-    {
-      key: 'ganho',
-      label: 'Ganhos',
-      value: stats.totalGanhos,
-      icon: TrendingUp,
-      accent: 'text-emerald-600 bg-emerald-500/12 border-emerald-500/20',
-    },
-    {
-      key: 'perda',
-      label: 'Perdas',
-      value: stats.totalPerdas,
-      icon: TrendingDown,
-      accent: 'text-rose-600 bg-rose-500/12 border-rose-500/20',
-    },
-    {
-      key: 'risco',
-      label: 'Em risco',
-      value: stats.totalRiscos,
-      icon: AlertTriangle,
-      accent: 'text-amber-600 bg-amber-500/12 border-amber-500/20',
-    },
-    {
-      key: 'total',
-      label: 'Total',
-      value: stats.totalGanhos + stats.totalPerdas,
-      icon: BarChart3,
-      accent: 'text-sky-600 bg-sky-500/12 border-sky-500/20',
-    },
-    {
-      key: 'saldo',
-      label: 'Saldo',
-      value: stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes),
-      icon: BarChart3,
-      accent: stats.saldoClientes >= 0
-        ? 'text-emerald-600 bg-emerald-500/12 border-emerald-500/20'
-        : 'text-rose-600 bg-rose-500/12 border-rose-500/20',
-    },
-  ]), [stats]);
+  const kpiCards = useMemo(() => {
+    const cards = [
+      { key: 'ganho', label: 'Ganhos', value: stats.totalGanhos, icon: TrendingUp, accent: 'text-emerald-600 bg-emerald-500/12 border-emerald-500/20' },
+      { key: 'perda', label: 'Perdas', value: stats.totalPerdas, icon: TrendingDown, accent: 'text-rose-600 bg-rose-500/12 border-rose-500/20' },
+      ...(canViewValues ? [{ key: 'risco', label: 'Em risco', value: stats.totalRiscos, icon: AlertTriangle, accent: 'text-amber-600 bg-amber-500/12 border-amber-500/20' }] : []),
+      { key: 'total', label: 'Total', value: stats.totalGanhos + stats.totalPerdas, icon: BarChart3, accent: 'text-sky-600 bg-sky-500/12 border-sky-500/20' },
+      { key: 'saldo', label: 'Saldo', value: stats.saldoClientes >= 0 ? `+${stats.saldoClientes}` : String(stats.saldoClientes), icon: BarChart3, accent: stats.saldoClientes >= 0 ? 'text-emerald-600 bg-emerald-500/12 border-emerald-500/20' : 'text-rose-600 bg-rose-500/12 border-rose-500/20' },
+    ];
+    return cards;
+  }, [stats, canViewValues]);
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
@@ -305,10 +288,7 @@ export default function MovimentacaoTab({ dateFrom, dateTo }: Props) {
 
       <MovimentacaoFormDialog
         open={showManualDialog}
-        onClose={() => {
-          setShowManualDialog(false);
-          setEditingItem(null);
-        }}
+        onClose={() => { setShowManualDialog(false); setEditingItem(null); }}
         onSubmit={handleManualSubmit}
         initialData={editingItem ? {
           cliente_codigo: editingItem.cliente_codigo != null ? String(editingItem.cliente_codigo) : '',
@@ -323,6 +303,9 @@ export default function MovimentacaoTab({ dateFrom, dateTo }: Props) {
           data_evento: editingItem.data_evento || undefined,
         } : undefined}
         mode={editingItem ? 'edit' : 'create'}
+        bandeiras={bandeiras}
+        sistemas={sistemas}
+        canViewValues={canViewValues}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.15fr_1fr] gap-4 items-stretch">

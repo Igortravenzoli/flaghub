@@ -69,7 +69,12 @@ function getDealValueSentiment(mesesComDados: { percentualMeta: number; atingiuM
   return { label: 'Abaixo da Média', description: `${acima}/${mesesComDados.length} meses acima da meta mensal`, icon: TrendingDown, accent: 'text-destructive' };
 }
 
-export function PipeDriveTab() {
+interface PipeDriveTabProps {
+  canViewValues?: boolean;
+  showValues?: boolean;
+}
+
+export function PipeDriveTab({ canViewValues = false, showValues = false }: PipeDriveTabProps) {
   const { items, stats, isLoading, isError, refetch } = useComercialVendas();
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [drawerItem, setDrawerItem] = useState<ComercialVenda | null>(null);
@@ -180,7 +185,11 @@ export function PipeDriveTab() {
               <div className="flex flex-col justify-between px-4 py-4">
                 <div className="space-y-1">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Meta mensal</p>
-                  <p className="text-2xl font-semibold text-foreground">R$ 110K</p>
+                  <p className="text-2xl font-semibold text-foreground font-mono">
+                    {canViewValues
+                      ? (showValues ? 'R$ 110K' : <span className="text-muted-foreground tracking-widest">R$ •••</span>)
+                      : '—'}
+                  </p>
                 </div>
                 <p className="text-xs text-muted-foreground">Referência de 100% para o gráfico mensal</p>
               </div>

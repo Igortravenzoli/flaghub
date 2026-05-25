@@ -1,25 +1,150 @@
 import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { MetasFormDialog, MetaFormData } from "./MetasFormDialog";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from "recharts";
+import { MetasFormDialog, MetaFormData } from "./MetasFormDialog";
 import {
   useComercialMetas,
   useCreateMetaComercial,
   useUpdateMetaComercial,
   useDeleteMetaComercial,
 } from "@/hooks/useComercialMetas";
+import { useComercialVendas } from "@/hooks/useComercialVendas";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  CartesianGrid, ReferenceLine, Legend,
+} from "recharts";
+import { TrendingUp, TrendingDown, Minus, AlertTriangle } from "lucide-react";
 
-const MetasTab: React.FC = () => {
+interface MetasTabProps {
+  canViewValues?: boolean;
+  showValues?: boolean;
+}
+
+const STATUS_LABELS: Record<MetaFormData["status"], string> = {
+  ativo: "Ativo",
+  em_lancamento: "Em Lançamento",
+  batido_meta: "Meta Batida",
+  nao_batido: "Meta Não Batida",
+};
+
+const STATUS_COLORS: Record<MetaFormData["status"], string> = {
+  ativo: "#0ea5e9",
+  em_lancamento: "#f59e0b",
+  batido_meta: "#16a34a",
+  nao_batido: "#ef4444",
+};
+
+function pct(realizado: number, meta: number): number {
+  if (meta <= 0) return 0;
+  return Math.round((realizado / meta) * 1000) / 10;
+}
+
+function PctBar({ value, className }: { value: number; className?: string }) {
+  const capped = Math.min(value, 100);
+  const color = value >= 100 ? "#16a34a" : value >= 70 ? "#f59e0b" : "#ef4444";
+  return (
+    <div className={`flex items-center gap-2 ${className}`}>
+      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${capped}%`, backgroundColor: color }} />
+      </div>
+      <span className="text-xs font-mono w-12 text-right" style={{ color }}>{value.toFixed(1)}%</span>
+    </div>
+  );
+}
+
+function CustomTooltipProduto({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  const meta = payload.find((p: any) => p.dataKey === "metaQty")?.value ?? 0;
+  const realizado = payload.find((p: any) => p.dataKey === "realizadoQty")?.value ?? 0;
+  const p = pct(realizado, meta);
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md space-y-1">
+      <p className="font-medium text-foreground">{label}</p>
+      <p className="text-muted-foreground">Meta: <span className="font-mono text-foreground">{meta}</span></p>
+      <p className="text-muted-foreground">Realizado: <span className="font-mono text-foreground">{realizado}</span></p>
+      <p className="text-muted-foreground">Atingimento: <span className="font-mono" style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}>{p.toFixed(1)}%</span></p>
+    </div>
+  );
+}
+
+const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues = false }) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedMes, setSelectedMes] = useState<string>("");
+
   const { data: metas = [], isLoading, isError, refetch } = useComercialMetas();
+  const { stats: vendasStats, isLoading: vendasLoading } = useComercialVendas();
   const createMeta = useCreateMetaComercial();
   const updateMeta = useUpdateMetaComercial();
   const deleteMeta = useDeleteMetaComercial();
 
   const currentFormData = editingId ? metas.find((m) => m.id === editingId) : undefined;
+
+  // Derive available months and default to latest
+  const meses = useMemo(() => {
+    const unique = [...new Set(metas.map(m => m.mes))].sort();
+    return unique;
+  }, [metas]);
+
+  const activeMes = selectedMes || meses[meses.length - 1] || "";
+
+  // Metas for selected month
+  const metasMes = useMemo(
+    () => metas.filter(m => m.mes === activeMes),
+    [metas, activeMes]
+  );
+
+  // Chart data: per product, meta vs realizado for selected month
+  const chartData = useMemo(() => {
+    return metasMes.map(m => {
+      const metaQty = parseFloat(m.valor) || 0;
+      const realizadoQty = parseInt(m.realizado) || 0;
+      const label = m.nome_indicador.length > 22 ? m.nome_indicador.slice(0, 22) + "…" : m.nome_indicador;
+      return {
+        produto: label,
+        produtoFull: m.nome_indicador,
+        metaQty,
+        realizadoQty,
+        pctAtingimento: pct(realizadoQty, metaQty),
+      };
+    });
+  }, [metasMes]);
+
+  // Aggregated KPIs for selected month
+  const kpisMes = useMemo(() => {
+    const totalMeta = metasMes.reduce((s, m) => s + (parseFloat(m.valor) || 0), 0);
+    const totalRealizado = metasMes.reduce((s, m) => s + (parseInt(m.realizado) || 0), 0);
+    const totalR$ = canViewValues
+      ? metasMes.reduce((s, m) => {
+          const qty = parseFloat(m.valor) || 0;
+          const vu = parseFloat(m.valor_unitario) || 0;
+          return s + qty * vu;
+        }, 0)
+      : null;
+    const realizadoR$ = canViewValues
+      ? metasMes.reduce((s, m) => {
+          const qty = parseInt(m.realizado) || 0;
+          const vu = parseFloat(m.valor_unitario) || 0;
+          return s + qty * vu;
+        }, 0)
+      : null;
+    const batidas = metasMes.filter(m => {
+      const metaQty = parseFloat(m.valor) || 0;
+      const realizadoQty = parseInt(m.realizado) || 0;
+      return metaQty > 0 && realizadoQty >= metaQty;
+    }).length;
+    return { totalMeta, totalRealizado, totalR$, realizadoR$, batidas, total: metasMes.length };
+  }, [metasMes, canViewValues]);
+
+  // Meta Faturamento: from PipeDrive stats (latest month with data)
+  const faturamentoStats = useMemo(() => {
+    const comDados = vendasStats.vendasPorMes.filter(m => m.percentualMeta > 0);
+    const latest = comDados[comDados.length - 1];
+    const mesesBatidos = comDados.filter(m => m.atingiuMeta).length;
+    return { latest, mesesBatidos, total: comDados.length };
+  }, [vendasStats]);
 
   async function handleSubmit(meta: MetaFormData) {
     try {
@@ -30,21 +155,17 @@ const MetasTab: React.FC = () => {
       }
       setEditingId(null);
       setDialogOpen(false);
-    } catch (error) {
-      console.error(error);
+    } catch {
       window.alert('Falha ao salvar meta. Verifique a conexão com o Supabase.');
     }
   }
 
   async function handleDelete(id: string) {
+    if (!window.confirm('Excluir esta meta?')) return;
     try {
       await deleteMeta.mutateAsync(id);
-      if (editingId === id) {
-        setEditingId(null);
-        setDialogOpen(false);
-      }
-    } catch (error) {
-      console.error(error);
+      if (editingId === id) { setEditingId(null); setDialogOpen(false); }
+    } catch {
       window.alert('Falha ao excluir meta.');
     }
   }
@@ -52,214 +173,324 @@ const MetasTab: React.FC = () => {
   async function handleStatusChange(id: string, status: MetaFormData["status"]) {
     const base = metas.find((m) => m.id === id);
     if (!base) return;
-
     try {
-      await updateMeta.mutateAsync({
-        id,
-        payload: { ...base, status },
-      });
-    } catch (error) {
-      console.error(error);
+      await updateMeta.mutateAsync({ id, payload: { ...base, status } });
+    } catch {
       window.alert('Falha ao atualizar status da meta.');
     }
   }
 
-  function openCreateDialog() {
-    setEditingId(null);
-    setDialogOpen(true);
-  }
+  function openCreateDialog() { setEditingId(null); setDialogOpen(true); }
+  function openEditDialog(id: string) { setEditingId(id); setDialogOpen(true); }
 
-  function openEditDialog(id: string) {
-    setEditingId(id);
-    setDialogOpen(true);
-  }
-
-  const chartData = useMemo(() => {
-    const counts = metas.reduce<Record<string, number>>((acc, meta) => {
-      acc[meta.status] = (acc[meta.status] || 0) + 1;
-      return acc;
-    }, {});
-
-    const labels: Record<MetaFormData["status"], string> = {
-      ativo: "Ativo",
-      em_lancamento: "Em Lançamento",
-      batido_meta: "Meta Batida",
-      nao_batido: "Meta Não Batida",
-    };
-
-    const colors: Record<MetaFormData["status"], string> = {
-      ativo: "#0ea5e9",
-      em_lancamento: "#f59e0b",
-      batido_meta: "#16a34a",
-      nao_batido: "#ef4444",
-    };
-
-    return (Object.keys(labels) as MetaFormData["status"][]).map((key) => ({
-      key,
-      status: labels[key],
-      quantidade: counts[key] || 0,
-      cor: colors[key],
-    }));
-  }, [metas]);
-
-  const categoriaChartData = useMemo(() => {
-    const counts = metas.reduce<Record<MetaFormData["tipo"], number>>(
-      (acc, meta) => {
-        acc[meta.tipo] = (acc[meta.tipo] || 0) + 1;
-        return acc;
-      },
-      { produto: 0, acao_comercial: 0 },
-    );
-
-    return [
-      { key: "produto", categoria: "Produto", quantidade: counts.produto, cor: "#14b8a6" },
-      { key: "acao_comercial", categoria: "Ação Comercial", quantidade: counts.acao_comercial, cor: "#f97316" },
-    ];
-  }, [metas]);
-
-  const tipoLabel: Record<MetaFormData["tipo"], string> = {
-    produto: "Produto",
-    acao_comercial: "Ação Comercial",
-  };
+  const faturamentoPct = faturamentoStats.latest?.percentualMeta ?? 0;
+  const faturamentoCor = faturamentoPct >= 100 ? "#16a34a" : faturamentoPct >= 70 ? "#f59e0b" : "#ef4444";
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">Gestão de Metas Comerciais</h2>
-        <Button variant="default" onClick={openCreateDialog}>
-          + Nova Meta
-        </Button>
+    <div className="p-4 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold">Metas Comerciais</h2>
+          <p className="text-sm text-muted-foreground">Acompanhamento por produto e faturamento</p>
+        </div>
+        <Button variant="default" onClick={openCreateDialog}>+ Nova Meta</Button>
       </div>
-      <div className="text-gray-500 mb-4">Cadastro manual por produto, com acompanhamento de status da meta.</div>
 
       {isError && (
-        <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 text-destructive px-3 py-2 text-sm">
-          Não foi possível carregar metas do Supabase.
-          <Button type="button" variant="link" className="h-auto p-0 ml-2" onClick={() => refetch()}>
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 text-destructive px-3 py-2 text-sm flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Não foi possível carregar metas.
+          <Button type="button" variant="link" className="h-auto p-0 ml-1 text-destructive" onClick={() => refetch()}>
             Tentar novamente
           </Button>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      {/* ── Pillar 1: Meta Faturamento ────────────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_2fr] gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Quantidade de Metas por Status</CardTitle>
+            <CardTitle className="text-sm font-semibold">Meta de Faturamento</CardTitle>
+            <p className="text-xs text-muted-foreground">Referência: R$ 110K mensal (PipeDrive)</p>
           </CardHeader>
-          <CardContent>
-            <div className="h-[240px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="status" tick={{ fontSize: 12 }} />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip formatter={(value: number) => [`${value}`, "Quantidade"]} />
-                  <Legend verticalAlign="bottom" height={20} />
-                  <Bar dataKey="quantidade" radius={[6, 6, 0, 0]}>
-                    {chartData.map((entry) => (
-                      <Cell key={entry.key} fill={entry.cor} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Quantidade de Metas por Categoria</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[240px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={categoriaChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="categoria" tick={{ fontSize: 12 }} />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip formatter={(value: number) => [`${value}`, "Quantidade"]} />
-                  <Legend verticalAlign="bottom" height={20} />
-                  <Bar dataKey="quantidade" radius={[6, 6, 0, 0]}>
-                    {categoriaChartData.map((entry) => (
-                      <Cell key={entry.key} fill={entry.cor} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="overflow-x-auto rounded-md border">
-        <table className="min-w-full border text-sm">
-          <thead>
-            <tr className="bg-muted">
-              <th className="px-3 py-2 border text-left">Produto</th>
-              <th className="px-3 py-2 border text-left">Categoria</th>
-              <th className="px-3 py-2 border text-left">Status da Meta</th>
-              <th className="px-3 py-2 border text-left">Mês Referência</th>
-              <th className="px-3 py-2 border text-left">Início</th>
-              <th className="px-3 py-2 border text-left">Fim</th>
-              <th className="px-3 py-2 border text-left">Quantidade</th>
-              <th className="px-3 py-2 border text-left">Observação</th>
-              <th className="px-3 py-2 border text-left">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={9} className="text-center text-muted-foreground py-4">Carregando metas...</td>
-              </tr>
-            ) : metas.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="text-center text-muted-foreground py-4">Nenhuma meta cadastrada.</td>
-              </tr>
+          <CardContent className="space-y-4">
+            {vendasLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : !faturamentoStats.latest ? (
+              <p className="text-sm text-muted-foreground">Sem fechamentos registrados.</p>
             ) : (
-              metas.map((meta, idx) => (
-                <tr key={meta.id}>
-                  <td className="px-3 py-2 border">{meta.nome_indicador}</td>
-                  <td className="px-3 py-2 border">{tipoLabel[meta.tipo]}</td>
-                  <td className="px-3 py-2 border min-w-[220px]">
-                    <Select value={meta.status} onValueChange={(v) => handleStatusChange(meta.id, v as MetaFormData["status"])}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ativo">Ativo</SelectItem>
-                        <SelectItem value="em_lancamento">Em Lançamento</SelectItem>
-                        <SelectItem value="batido_meta">Meta Batida</SelectItem>
-                        <SelectItem value="nao_batido">Meta Não Batida</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="px-3 py-2 border">{meta.mes}</td>
-                  <td className="px-3 py-2 border">{meta.data_inicio_meta || "—"}</td>
-                  <td className="px-3 py-2 border">{meta.data_fim_meta || "—"}</td>
-                  <td className="px-3 py-2 border">{meta.valor}</td>
-                  <td className="px-3 py-2 border">{meta.observacao || '—'}</td>
-                  <td className="px-3 py-2 border">
-                    <div className="flex items-center gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => openEditDialog(meta.id)}>
-                        Editar
-                      </Button>
-                      <Button type="button" variant="destructive" size="sm" onClick={() => handleDelete(meta.id)}>
-                        Excluir
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              <>
+                <div className="space-y-1">
+                  <div className="flex items-end justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      {faturamentoStats.latest.mes}
+                    </span>
+                    <span className="text-3xl font-bold font-mono" style={{ color: faturamentoCor }}>
+                      {faturamentoPct.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="h-3 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${Math.min(faturamentoPct, 100)}%`, backgroundColor: faturamentoCor }}
+                    />
+                  </div>
+                  {canViewValues && (
+                    <p className="text-xs text-muted-foreground text-right">
+                      {showValues
+                        ? `R$ ${(faturamentoPct / 100 * 110000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} / R$ 110.000`
+                        : <span className="font-mono tracking-widest">R$ ••• / R$ •••</span>
+                      }
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Meses na meta</p>
+                    <p className="text-xl font-bold text-foreground mt-1">{faturamentoStats.mesesBatidos}/{faturamentoStats.total}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Média mensal</p>
+                    <p className="text-xl font-bold text-foreground mt-1">
+                      {faturamentoStats.total > 0
+                        ? (vendasStats.vendasPorMes.filter(m => m.percentualMeta > 0).reduce((s, m) => s + m.percentualMeta, 0) / faturamentoStats.total).toFixed(1)
+                        : '0'}%
+                    </p>
+                  </div>
+                </div>
+              </>
             )}
-          </tbody>
-        </table>
+          </CardContent>
+        </Card>
+
+        {/* ── Pillar 2 header KPIs ────────────────────────── */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">Meta Produto</CardTitle>
+                <p className="text-xs text-muted-foreground">Acompanhamento por quantidade</p>
+              </div>
+              {meses.length > 0 && (
+                <Select value={activeMes} onValueChange={setSelectedMes}>
+                  <SelectTrigger className="w-[130px] h-8 text-xs">
+                    <SelectValue placeholder="Mês" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {meses.map(m => (
+                      <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground py-4">Carregando...</p>
+            ) : metasMes.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">
+                {meses.length === 0 ? 'Nenhuma meta cadastrada.' : `Sem metas para ${activeMes}.`}
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total meta</p>
+                  <p className="text-xl font-bold text-foreground mt-1">{kpisMes.totalMeta.toLocaleString('pt-BR')}</p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Realizado</p>
+                  <p className="text-xl font-bold mt-1" style={{ color: pct(kpisMes.totalRealizado, kpisMes.totalMeta) >= 100 ? "#16a34a" : "#f59e0b" }}>
+                    {kpisMes.totalRealizado.toLocaleString('pt-BR')}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Atingimento</p>
+                  <p className="text-xl font-bold mt-1" style={{ color: pct(kpisMes.totalRealizado, kpisMes.totalMeta) >= 100 ? "#16a34a" : pct(kpisMes.totalRealizado, kpisMes.totalMeta) >= 70 ? "#f59e0b" : "#ef4444" }}>
+                    {pct(kpisMes.totalRealizado, kpisMes.totalMeta).toFixed(1)}%
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Metas batidas</p>
+                  <p className="text-xl font-bold text-foreground mt-1">{kpisMes.batidas}/{kpisMes.total}</p>
+                </div>
+                {canViewValues && kpisMes.totalR$ !== null && (
+                  <>
+                    <div className="col-span-2 rounded-lg border bg-muted/30 px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">R$ Meta total</p>
+                      <p className="text-xl font-bold text-foreground mt-1 font-mono">
+                        {showValues
+                          ? `R$ ${kpisMes.totalR$!.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                          : <span className="tracking-widest text-muted-foreground">R$ •••</span>
+                        }
+                      </p>
+                    </div>
+                    <div className="col-span-2 rounded-lg border bg-muted/30 px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">R$ Realizado</p>
+                      <p className="text-xl font-bold mt-1 font-mono" style={{ color: pct(kpisMes.realizadoR$ ?? 0, kpisMes.totalR$ ?? 1) >= 100 ? "#16a34a" : "#f59e0b" }}>
+                        {showValues
+                          ? `R$ ${(kpisMes.realizadoR$ ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                          : <span className="tracking-widest text-muted-foreground">R$ •••</span>
+                        }
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* ── Bar chart: Meta vs Realizado por Produto ─────────── */}
+      {!isLoading && chartData.length > 0 && (
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-1">
+            Meta vs Realizado por Produto — {activeMes}
+          </h3>
+          <p className="text-xs text-muted-foreground mb-3">Quantidade de unidades por produto</p>
+          <div style={{ height: Math.max(180, chartData.length * 52) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                layout="vertical"
+                margin={{ left: 10, right: 40, top: 4, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+                <YAxis
+                  type="category"
+                  dataKey="produto"
+                  width={140}
+                  tick={{ fill: 'hsl(var(--foreground))', fontSize: 11 }}
+                />
+                <Tooltip content={<CustomTooltipProduto />} />
+                <Legend
+                  verticalAlign="top"
+                  formatter={(value) => value === 'metaQty' ? 'Meta' : 'Realizado'}
+                />
+                <Bar dataKey="metaQty" name="metaQty" fill="hsl(var(--muted-foreground))" opacity={0.4} radius={[0, 4, 4, 0]} maxBarSize={18} />
+                <Bar dataKey="realizadoQty" name="realizadoQty" radius={[0, 4, 4, 0]} maxBarSize={18}>
+                  {chartData.map((entry, i) => {
+                    const color = entry.pctAtingimento >= 100 ? "#16a34a" : entry.pctAtingimento >= 70 ? "#f59e0b" : "#ef4444";
+                    return <Cell key={i} fill={color} />;
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Product table ─────────────────────────────────────── */}
+      {!isLoading && metas.length > 0 && (
+        <div className="rounded-md border overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="bg-muted border-b">
+                <th className="px-3 py-2 text-left font-semibold">Produto</th>
+                <th className="px-3 py-2 text-left font-semibold">Mês</th>
+                <th className="px-3 py-2 text-left font-semibold">Tipo</th>
+                <th className="px-3 py-2 text-center font-semibold">Meta</th>
+                <th className="px-3 py-2 text-center font-semibold">Realizado</th>
+                <th className="px-3 py-2 text-left font-semibold min-w-[140px]">Atingimento</th>
+                {canViewValues && <th className="px-3 py-2 text-right font-semibold">R$ Total</th>}
+                <th className="px-3 py-2 text-left font-semibold min-w-[200px]">Status</th>
+                <th className="px-3 py-2 text-left font-semibold">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {metas.map((meta) => {
+                const metaQty = parseFloat(meta.valor) || 0;
+                const realizadoQty = parseInt(meta.realizado) || 0;
+                const p = pct(realizadoQty, metaQty);
+                const vu = parseFloat(meta.valor_unitario) || 0;
+                const totalR$ = metaQty * vu;
+
+                return (
+                  <tr key={meta.id} className="border-b hover:bg-muted/30 transition-colors">
+                    <td className="px-3 py-2 font-medium max-w-[200px]">
+                      <span title={meta.nome_indicador} className="block truncate">{meta.nome_indicador}</span>
+                      {meta.observacao && (
+                        <span className="text-xs text-muted-foreground block truncate">{meta.observacao}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground font-mono">{meta.mes}</td>
+                    <td className="px-3 py-2">
+                      <Badge variant="outline" className="text-xs">
+                        {meta.tipo === 'produto' ? 'Produto' : 'Ação Comercial'}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2 text-center font-mono">
+                      {metaQty > 0 ? metaQty.toLocaleString('pt-BR') : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-center font-mono">
+                      {meta.realizado ? (
+                        <span style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}>
+                          {realizadoQty.toLocaleString('pt-BR')}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {metaQty > 0 && meta.realizado ? (
+                        <PctBar value={p} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    {canViewValues && (
+                      <td className="px-3 py-2 text-right font-mono text-sm">
+                        {vu > 0 ? (
+                          showValues
+                            ? `R$ ${totalR$.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                            : <span className="text-muted-foreground tracking-widest">R$ •••</span>
+                        ) : '—'}
+                      </td>
+                    )}
+                    <td className="px-3 py-2 min-w-[200px]">
+                      <Select value={meta.status} onValueChange={(v) => handleStatusChange(meta.id, v as MetaFormData["status"])}>
+                        <SelectTrigger className="h-7 text-xs" style={{ borderColor: STATUS_COLORS[meta.status] + '60' }}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(STATUS_LABELS) as MetaFormData["status"][]).map(s => (
+                            <SelectItem key={s} value={s} className="text-xs">{STATUS_LABELS[s]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1">
+                        <Button type="button" variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => openEditDialog(meta.id)}>
+                          Editar
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs px-2 text-destructive hover:text-destructive" onClick={() => handleDelete(meta.id)}>
+                          ✕
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!isLoading && metas.length === 0 && !isError && (
+        <div className="rounded-lg border border-dashed flex flex-col items-center justify-center py-12 text-center gap-2">
+          <p className="text-muted-foreground text-sm">Nenhuma meta cadastrada.</p>
+          <Button variant="outline" size="sm" onClick={openCreateDialog}>+ Cadastrar primeira meta</Button>
+        </div>
+      )}
+
       <MetasFormDialog
         open={dialogOpen}
-        onClose={() => {
-          setDialogOpen(false);
-          setEditingId(null);
-        }}
+        onClose={() => { setDialogOpen(false); setEditingId(null); }}
         onSubmit={handleSubmit}
         initialData={currentFormData}
         mode={editingId ? "edit" : "create"}

@@ -30,21 +30,28 @@ function ddMmYyyyToIso(value?: string): string | null {
   return null;
 }
 
+function parseIntField(value: string): number | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseNumericField(value: string): number | null {
+  const raw = value.trim().replace(',', '.');
+  if (!raw) return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 function parseValorMeta(value: string): number | null {
   const raw = value.trim();
   if (!raw) return null;
-
-  const normalized = raw
-    .replace(/\./g, '')
-    .replace(',', '.')
-    .replace(/\s+/g, '')
-    .toLowerCase();
-
+  const normalized = raw.replace(/\./g, '').replace(',', '.').replace(/\s+/g, '').toLowerCase();
   if (normalized.endsWith('k')) {
     const n = Number(normalized.slice(0, -1));
     return Number.isFinite(n) ? n * 1000 : null;
   }
-
   const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
 }
@@ -57,6 +64,8 @@ function mapRowToMeta(row: any): MetaComercial {
     status: row.status,
     mes: row.mes_referencia,
     valor: row.valor_meta == null ? '' : String(row.valor_meta),
+    realizado: row.realizado_quantidade == null ? '' : String(row.realizado_quantidade),
+    valor_unitario: row.valor_unitario == null ? '' : String(row.valor_unitario),
     observacao: row.observacao ?? '',
     data_inicio_meta: isoToDdMmYyyy(row.data_inicio_meta),
     data_fim_meta: isoToDdMmYyyy(row.data_fim_meta),
@@ -98,6 +107,8 @@ export function useCreateMetaComercial() {
         p_observacao: payload.observacao || null,
         p_data_inicio_meta: ddMmYyyyToIso(payload.data_inicio_meta),
         p_data_fim_meta: ddMmYyyyToIso(payload.data_fim_meta),
+        p_realizado_quantidade: parseIntField(payload.realizado),
+        p_valor_unitario: parseNumericField(payload.valor_unitario),
       });
 
       if (error) throw error;
@@ -125,6 +136,8 @@ export function useUpdateMetaComercial() {
         p_observacao: payload.observacao || null,
         p_data_inicio_meta: ddMmYyyyToIso(payload.data_inicio_meta),
         p_data_fim_meta: ddMmYyyyToIso(payload.data_fim_meta),
+        p_realizado_quantidade: parseIntField(payload.realizado),
+        p_valor_unitario: parseNumericField(payload.valor_unitario),
       });
 
       if (error) throw error;
