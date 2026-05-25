@@ -91,6 +91,7 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos', dat
 
   return {
     clients,
+    allClients,
     totalClientes,
     bandeiras,
     stats,

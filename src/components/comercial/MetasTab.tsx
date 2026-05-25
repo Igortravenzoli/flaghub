@@ -22,6 +22,24 @@ interface MetasTabProps {
   showValues?: boolean;
 }
 
+const QUARTER_MONTHS: Record<string, number[]> = {
+  Q1: [1, 2, 3],
+  Q2: [4, 5, 6],
+  Q3: [7, 8, 9],
+  Q4: [10, 11, 12],
+};
+
+function getMesNumero(mes: string): number | null {
+  const m = mes.toLowerCase();
+  const isoMatch = m.match(/\d{4}-(\d{2})/);
+  if (isoMatch) return parseInt(isoMatch[1], 10);
+  const PT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  for (let i = 0; i < PT.length; i++) {
+    if (m.startsWith(PT[i])) return i + 1;
+  }
+  return null;
+}
+
 const STATUS_LABELS: Record<MetaFormData["status"], string> = {
   ativo: "Ativo",
   em_lancamento: "Em Lançamento",
@@ -90,26 +108,39 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
 
   const activeMes = selectedMes || meses[meses.length - 1] || "";
 
-  // Metas for selected month
-  const metasMes = useMemo(
-    () => metas.filter(m => m.mes === activeMes),
-    [metas, activeMes]
-  );
+  // Metas for selected month or quarter
+  const metasMes = useMemo(() => {
+    if (!activeMes) return [];
+    const quarterMonths = QUARTER_MONTHS[activeMes];
+    if (quarterMonths) {
+      return metas.filter(m => {
+        const n = getMesNumero(m.mes);
+        return n !== null && quarterMonths.includes(n);
+      });
+    }
+    return metas.filter(m => m.mes === activeMes);
+  }, [metas, activeMes]);
 
-  // Chart data: per product, meta vs realizado for selected month
+  const isQuarterView = activeMes.startsWith('Q');
+
+  // Chart data: aggregate by product name (sum across months when quarter selected)
   const chartData = useMemo(() => {
-    return metasMes.map(m => {
-      const metaQty = parseFloat(m.valor) || 0;
-      const realizadoQty = parseInt(m.realizado) || 0;
-      const label = m.nome_indicador.length > 22 ? m.nome_indicador.slice(0, 22) + "…" : m.nome_indicador;
-      return {
-        produto: label,
-        produtoFull: m.nome_indicador,
-        metaQty,
-        realizadoQty,
-        pctAtingimento: pct(realizadoQty, metaQty),
-      };
+    const map = new Map<string, { metaQty: number; realizadoQty: number }>();
+    metasMes.forEach(m => {
+      const key = m.nome_indicador;
+      const cur = map.get(key) ?? { metaQty: 0, realizadoQty: 0 };
+      map.set(key, {
+        metaQty: cur.metaQty + (parseFloat(m.valor) || 0),
+        realizadoQty: cur.realizadoQty + (parseInt(m.realizado) || 0),
+      });
     });
+    return Array.from(map.entries()).map(([nome, { metaQty, realizadoQty }]) => ({
+      produto: nome.length > 24 ? nome.slice(0, 24) + "…" : nome,
+      produtoFull: nome,
+      metaQty,
+      realizadoQty,
+      pctAtingimento: pct(realizadoQty, metaQty),
+    }));
   }, [metasMes]);
 
   // Aggregated KPIs for selected month
@@ -276,10 +307,14 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
               </div>
               {meses.length > 0 && (
                 <Select value={activeMes} onValueChange={setSelectedMes}>
-                  <SelectTrigger className="w-[130px] h-8 text-xs">
-                    <SelectValue placeholder="Mês" />
+                  <SelectTrigger className="w-[155px] h-8 text-xs">
+                    <SelectValue placeholder="Mês / Trimestre" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="Q1" className="text-xs font-medium">1º Tri — Jan/Fev/Mar</SelectItem>
+                    <SelectItem value="Q2" className="text-xs font-medium">2º Tri — Abr/Mai/Jun</SelectItem>
+                    <SelectItem value="Q3" className="text-xs font-medium">3º Tri — Jul/Ago/Set</SelectItem>
+                    <SelectItem value="Q4" className="text-xs font-medium">4º Tri — Out/Nov/Dez</SelectItem>
                     {meses.map(m => (
                       <SelectItem key={m} value={m} className="text-xs">{m}</SelectItem>
                     ))}
@@ -351,9 +386,12 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
       {!isLoading && chartData.length > 0 && (
         <Card className="p-4">
           <h3 className="text-sm font-semibold text-foreground mb-1">
-            Meta vs Realizado por Produto — {activeMes}
+            Meta vs Realizado por Produto —{' '}
+            {isQuarterView ? `${activeMes[1]}º Trimestre` : activeMes}
           </h3>
-          <p className="text-xs text-muted-foreground mb-3">Quantidade de unidades por produto</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            {isQuarterView ? 'Valores acumulados no trimestre por produto' : 'Quantidade de unidades por produto'}
+          </p>
           <div style={{ height: Math.max(180, chartData.length * 52) }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -395,11 +433,11 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
               <tr className="bg-muted border-b">
                 <th className="px-3 py-2 text-left font-semibold">Produto</th>
                 <th className="px-3 py-2 text-left font-semibold">Mês</th>
-                <th className="px-3 py-2 text-left font-semibold">Tipo</th>
-                <th className="px-3 py-2 text-center font-semibold">Meta</th>
+                <th className="px-3 py-2 text-center font-semibold">Meta Qtd</th>
+                {canViewValues && <th className="px-3 py-2 text-right font-semibold">V. Unit</th>}
+                {canViewValues && <th className="px-3 py-2 text-right font-semibold">Meta Valor</th>}
                 <th className="px-3 py-2 text-center font-semibold">Realizado</th>
-                <th className="px-3 py-2 text-left font-semibold min-w-[140px]">Atingimento</th>
-                {canViewValues && <th className="px-3 py-2 text-right font-semibold">R$ Total</th>}
+                <th className="px-3 py-2 text-left font-semibold min-w-[150px]">% Atingimento</th>
                 <th className="px-3 py-2 text-left font-semibold min-w-[200px]">Status</th>
                 <th className="px-3 py-2 text-left font-semibold">Ações</th>
               </tr>
@@ -410,25 +448,49 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
                 const realizadoQty = parseInt(meta.realizado) || 0;
                 const p = pct(realizadoQty, metaQty);
                 const vu = parseFloat(meta.valor_unitario) || 0;
-                const totalR$ = vu > 0 ? metaQty * vu : metaQty;
+                const metaValor = vu > 0 ? metaQty * vu : metaQty;
+                const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
                 return (
                   <tr key={meta.id} className="border-b hover:bg-muted/30 transition-colors">
-                    <td className="px-3 py-2 font-medium max-w-[200px]">
+                    <td className="px-3 py-2 font-medium max-w-[220px]">
                       <span title={meta.nome_indicador} className="block truncate">{meta.nome_indicador}</span>
                       {meta.observacao && (
                         <span className="text-xs text-muted-foreground block truncate">{meta.observacao}</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground font-mono">{meta.mes}</td>
-                    <td className="px-3 py-2">
-                      <Badge variant="outline" className="text-xs">
-                        {meta.tipo === 'produto' ? 'Produto' : 'Ação Comercial'}
-                      </Badge>
-                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground font-mono whitespace-nowrap">{meta.mes}</td>
+
+                    {/* Meta Qtd — sempre visível, é quantidade não valor financeiro */}
                     <td className="px-3 py-2 text-center font-mono">
                       {metaQty > 0 ? metaQty.toLocaleString('pt-BR') : '—'}
                     </td>
+
+                    {/* V. Unit — proprietário + ocultar valores */}
+                    {canViewValues && (
+                      <td className="px-3 py-2 text-right font-mono text-xs">
+                        {vu > 0
+                          ? showValues
+                            ? brl(vu)
+                            : <span className="text-muted-foreground tracking-widest">R$ •••</span>
+                          : <span className="text-muted-foreground">—</span>
+                        }
+                      </td>
+                    )}
+
+                    {/* Meta Valor (qtd × vu, ou qtd direto se sem preço unitário) — proprietário + ocultar */}
+                    {canViewValues && (
+                      <td className="px-3 py-2 text-right font-mono text-xs">
+                        {metaQty > 0
+                          ? showValues
+                            ? brl(metaValor)
+                            : <span className="text-muted-foreground tracking-widest">R$ •••</span>
+                          : <span className="text-muted-foreground">—</span>
+                        }
+                      </td>
+                    )}
+
+                    {/* Realizado Qtd */}
                     <td className="px-3 py-2 text-center font-mono">
                       {meta.realizado ? (
                         <span style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}>
@@ -438,6 +500,8 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
+
+                    {/* % Atingimento — sempre visível (percentual não é dado financeiro) */}
                     <td className="px-3 py-2">
                       {metaQty > 0 && meta.realizado ? (
                         <PctBar value={p} />
@@ -445,15 +509,7 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
-                    {canViewValues && (
-                      <td className="px-3 py-2 text-right font-mono text-sm">
-                        {vu > 0 ? (
-                          showValues
-                            ? `R$ ${totalR$.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-                            : <span className="text-muted-foreground tracking-widest">R$ •••</span>
-                        ) : '—'}
-                      </td>
-                    )}
+
                     <td className="px-3 py-2 min-w-[200px]">
                       <Select value={meta.status} onValueChange={(v) => handleStatusChange(meta.id, v as MetaFormData["status"])}>
                         <SelectTrigger className="h-7 text-xs" style={{ borderColor: STATUS_COLORS[meta.status] + '60' }}>

@@ -99,7 +99,7 @@ export default function ComercialDashboard() {
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
   const filters = useDashboardFilters('1y');
-  const { clients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
+  const { clients, allClients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerClient, setDrawerClient] = useState<ComercialClient | null>(null);
@@ -113,14 +113,16 @@ export default function ComercialDashboard() {
   const [tableExpanded, setTableExpanded] = useState(false);
   const [visibleInternalIds, setVisibleInternalIds] = useState<number[]>([]);
   const visibleInternalSet = useMemo(() => new Set(visibleInternalIds), [visibleInternalIds]);
+  // displayClients usa allClients (sem filtro de data) para garantir que os 4 internos
+  // sejam sempre removidos, mesmo que tenham synced_at antigo fora do período selecionado.
   const displayClients = useMemo(
-    () => clients.filter(c => !INTERNAL_IDS.has(Number(c.id)) || visibleInternalSet.has(Number(c.id))),
-    [clients, visibleInternalSet]
+    () => allClients.filter(c => !INTERNAL_IDS.has(Number(c.id)) || visibleInternalSet.has(Number(c.id))),
+    [allClients, visibleInternalSet]
   );
   const hiddenInternalCount = INTERNAL_CLIENT_LIST.length - visibleInternalIds.length;
   const hiddenInternalActiveCount = useMemo(
-    () => clients.filter(c => INTERNAL_IDS.has(Number(c.id)) && !visibleInternalSet.has(Number(c.id))).length,
-    [clients, visibleInternalSet]
+    () => allClients.filter(c => INTERNAL_IDS.has(Number(c.id)) && !visibleInternalSet.has(Number(c.id))).length,
+    [allClients, visibleInternalSet]
   );
 
   const { minDate, maxDate } = useMemo(
@@ -156,11 +158,11 @@ export default function ComercialDashboard() {
 
   const sistemasUnicos = useMemo(() => {
     const set = new Set<string>();
-    clients.forEach(c => {
+    allClients.forEach(c => {
       c.sistemas_label?.split(',').map((s: string) => s.trim()).filter(Boolean).forEach((s: string) => set.add(s));
     });
     return [...set].sort();
-  }, [clients]);
+  }, [allClients]);
 
   const sistemaChartData = useMemo(() => {
     const source = (statusFilter === 'todos' || statusFilter === 'ativo')
