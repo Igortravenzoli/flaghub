@@ -74,15 +74,17 @@ function PctBar({ value, className }: { value: number; className?: string }) {
 
 function CustomTooltipProduto({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
-  const meta = payload.find((p: any) => p.dataKey === "metaQty")?.value ?? 0;
-  const realizado = payload.find((p: any) => p.dataKey === "realizadoQty")?.value ?? 0;
-  const p = pct(realizado, meta);
+  const entry = payload[0]?.payload;
+  const pctVal: number = entry?.pctAtingimento ?? 0;
+  const metaQty: number = entry?.metaQty ?? 0;
+  const realizadoQty: number = entry?.realizadoQty ?? 0;
+  const color = pctVal >= 100 ? "#16a34a" : pctVal >= 70 ? "#f59e0b" : "#ef4444";
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md space-y-1">
-      <p className="font-medium text-foreground">{label}</p>
-      <p className="text-muted-foreground">Meta: <span className="font-mono text-foreground">{meta}</span></p>
-      <p className="text-muted-foreground">Realizado: <span className="font-mono text-foreground">{realizado}</span></p>
-      <p className="text-muted-foreground">Atingimento: <span className="font-mono" style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}>{p.toFixed(1)}%</span></p>
+      <p className="font-medium text-foreground">{entry?.produtoFull ?? label}</p>
+      <p className="text-muted-foreground">Meta: <span className="font-mono text-foreground">{metaQty.toLocaleString('pt-BR')}</span></p>
+      <p className="text-muted-foreground">Realizado: <span className="font-mono text-foreground">{realizadoQty.toLocaleString('pt-BR')}</span></p>
+      <p className="text-muted-foreground">Atingimento: <span className="font-mono font-bold" style={{ color }}>{pctVal.toFixed(1)}%</span></p>
     </div>
   );
 }
@@ -400,24 +402,26 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
                 margin={{ left: 10, right: 40, top: 4, bottom: 4 }}
               >
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+                <XAxis
+                  type="number"
+                  domain={[0, Math.max(120, ...chartData.map(d => Math.ceil(d.pctAtingimento / 10) * 10))]}
+                  tickFormatter={(v) => `${v}%`}
+                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                />
                 <YAxis
                   type="category"
                   dataKey="produto"
-                  width={140}
+                  width={150}
                   tick={{ fill: 'hsl(var(--foreground))', fontSize: 11 }}
                 />
                 <Tooltip content={<CustomTooltipProduto />} />
-                <Legend
-                  verticalAlign="top"
-                  formatter={(value) => value === 'metaQty' ? 'Meta' : 'Realizado'}
+                <ReferenceLine x={100} stroke="#16a34a" strokeDasharray="4 4"
+                  label={{ value: '100%', position: 'insideTopRight', fontSize: 10, fill: '#16a34a', dy: -4 }}
                 />
-                <Bar dataKey="metaQty" name="metaQty" fill="hsl(var(--muted-foreground))" opacity={0.4} radius={[0, 4, 4, 0]} maxBarSize={18} />
-                <Bar dataKey="realizadoQty" name="realizadoQty" radius={[0, 4, 4, 0]} maxBarSize={18}>
-                  {chartData.map((entry, i) => {
-                    const color = entry.pctAtingimento >= 100 ? "#16a34a" : entry.pctAtingimento >= 70 ? "#f59e0b" : "#ef4444";
-                    return <Cell key={i} fill={color} />;
-                  })}
+                <Bar dataKey="pctAtingimento" radius={[0, 4, 4, 0]} maxBarSize={20}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fill={entry.pctAtingimento >= 100 ? "#16a34a" : entry.pctAtingimento >= 70 ? "#f59e0b" : "#ef4444"} />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -461,9 +465,12 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
                     </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground font-mono whitespace-nowrap">{meta.mes}</td>
 
-                    {/* Meta Qtd — sempre visível, é quantidade não valor financeiro */}
+                    {/* Meta Qtd — quando vu=0, valor_meta é R$ total (ex: Agente IA), não exibir como qty */}
                     <td className="px-3 py-2 text-center font-mono">
-                      {metaQty > 0 ? metaQty.toLocaleString('pt-BR') : '—'}
+                      {vu > 0
+                        ? (metaQty > 0 ? metaQty.toLocaleString('pt-BR') : '—')
+                        : <span className="text-xs text-muted-foreground">—</span>
+                      }
                     </td>
 
                     {/* V. Unit — proprietário + ocultar valores */}
