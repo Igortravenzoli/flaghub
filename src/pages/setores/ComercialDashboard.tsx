@@ -114,11 +114,14 @@ export default function ComercialDashboard() {
   const [visibleInternalIds, setVisibleInternalIds] = useState<number[]>([]);
   const visibleInternalSet = useMemo(() => new Set(visibleInternalIds), [visibleInternalIds]);
   const displayClients = useMemo(
-    () => clients.filter(c => !INTERNAL_IDS.has(c.id as any) || visibleInternalSet.has(c.id as any)),
+    () => clients.filter(c => !INTERNAL_IDS.has(Number(c.id)) || visibleInternalSet.has(Number(c.id))),
     [clients, visibleInternalSet]
   );
   const hiddenInternalCount = INTERNAL_CLIENT_LIST.length - visibleInternalIds.length;
-  const hiddenInternalActiveCount = INTERNAL_CLIENT_LIST.filter(c => !visibleInternalSet.has(c.id)).length;
+  const hiddenInternalActiveCount = useMemo(
+    () => clients.filter(c => INTERNAL_IDS.has(Number(c.id)) && !visibleInternalSet.has(Number(c.id))).length,
+    [clients, visibleInternalSet]
+  );
 
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(clients, [(c) => c.synced_at]),
@@ -249,7 +252,6 @@ export default function ComercialDashboard() {
             title={showValues ? 'Ocultar valores monetários' : 'Exibir valores monetários'}
           >
             {showValues ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-            {showValues ? 'Ocultar valores' : 'Exibir valores'}
           </button>
         )}
       </div>
@@ -446,7 +448,7 @@ export default function ComercialDashboard() {
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={sistemaChartData} layout="vertical" margin={{ top: 4, right: 30, bottom: 4, left: 10 }}>
                               <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                              <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }} />
+                              <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }} />
                               <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
                               <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22}>
                                 {sistemaChartData.map((_, i) => (

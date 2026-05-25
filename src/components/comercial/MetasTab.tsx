@@ -114,28 +114,29 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
 
   // Aggregated KPIs for selected month
   const kpisMes = useMemo(() => {
-    const totalMeta = metasMes.reduce((s, m) => s + (parseFloat(m.valor) || 0), 0);
-    const totalRealizado = metasMes.reduce((s, m) => s + (parseInt(m.realizado) || 0), 0);
+    const batidas = metasMes.filter(m => {
+      const metaQty = parseFloat(m.valor) || 0;
+      const realizadoQty = parseInt(m.realizado) || 0;
+      return metaQty > 0 && realizadoQty >= metaQty;
+    }).length;
+    const semRealizado = metasMes.filter(m => !m.realizado || parseInt(m.realizado) === 0).length;
+    const pctBatidas = metasMes.length > 0 ? Math.round((batidas / metasMes.length) * 1000) / 10 : 0;
+    // R$ total: if produto has unit price → qty × vu; else valor_meta IS the R$ value directly
     const totalR$ = canViewValues
       ? metasMes.reduce((s, m) => {
           const qty = parseFloat(m.valor) || 0;
           const vu = parseFloat(m.valor_unitario) || 0;
-          return s + qty * vu;
+          return s + (vu > 0 ? qty * vu : qty);
         }, 0)
       : null;
     const realizadoR$ = canViewValues
       ? metasMes.reduce((s, m) => {
           const qty = parseInt(m.realizado) || 0;
           const vu = parseFloat(m.valor_unitario) || 0;
-          return s + qty * vu;
+          return s + (vu > 0 ? qty * vu : qty);
         }, 0)
       : null;
-    const batidas = metasMes.filter(m => {
-      const metaQty = parseFloat(m.valor) || 0;
-      const realizadoQty = parseInt(m.realizado) || 0;
-      return metaQty > 0 && realizadoQty >= metaQty;
-    }).length;
-    return { totalMeta, totalRealizado, totalR$, realizadoR$, batidas, total: metasMes.length };
+    return { batidas, semRealizado, pctBatidas, totalR$, realizadoR$, total: metasMes.length };
   }, [metasMes, canViewValues]);
 
   // Meta Faturamento: from PipeDrive stats (latest month with data)
@@ -297,29 +298,31 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-lg border bg-muted/30 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total meta</p>
-                  <p className="text-xl font-bold text-foreground mt-1">{kpisMes.totalMeta.toLocaleString('pt-BR')}</p>
-                </div>
-                <div className="rounded-lg border bg-muted/30 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Realizado</p>
-                  <p className="text-xl font-bold mt-1" style={{ color: pct(kpisMes.totalRealizado, kpisMes.totalMeta) >= 100 ? "#16a34a" : "#f59e0b" }}>
-                    {kpisMes.totalRealizado.toLocaleString('pt-BR')}
-                  </p>
-                </div>
-                <div className="rounded-lg border bg-muted/30 px-3 py-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Atingimento</p>
-                  <p className="text-xl font-bold mt-1" style={{ color: pct(kpisMes.totalRealizado, kpisMes.totalMeta) >= 100 ? "#16a34a" : pct(kpisMes.totalRealizado, kpisMes.totalMeta) >= 70 ? "#f59e0b" : "#ef4444" }}>
-                    {pct(kpisMes.totalRealizado, kpisMes.totalMeta).toFixed(1)}%
-                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Produtos</p>
+                  <p className="text-xl font-bold text-foreground mt-1">{kpisMes.total}</p>
                 </div>
                 <div className="rounded-lg border bg-muted/30 px-3 py-2">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Metas batidas</p>
-                  <p className="text-xl font-bold text-foreground mt-1">{kpisMes.batidas}/{kpisMes.total}</p>
+                  <p className="text-xl font-bold mt-1" style={{ color: kpisMes.batidas === kpisMes.total && kpisMes.total > 0 ? "#16a34a" : kpisMes.batidas > 0 ? "#f59e0b" : "#ef4444" }}>
+                    {kpisMes.batidas}/{kpisMes.total}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">% Batidas</p>
+                  <p className="text-xl font-bold mt-1" style={{ color: kpisMes.pctBatidas >= 100 ? "#16a34a" : kpisMes.pctBatidas >= 50 ? "#f59e0b" : "#ef4444" }}>
+                    {kpisMes.pctBatidas.toFixed(0)}%
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Sem realizado</p>
+                  <p className="text-xl font-bold mt-1" style={{ color: kpisMes.semRealizado > 0 ? "#f59e0b" : "#16a34a" }}>
+                    {kpisMes.semRealizado}
+                  </p>
                 </div>
                 {canViewValues && kpisMes.totalR$ !== null && (
                   <>
                     <div className="col-span-2 rounded-lg border bg-muted/30 px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">R$ Meta total</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">R$ Meta Produtos</p>
                       <p className="text-xl font-bold text-foreground mt-1 font-mono">
                         {showValues
                           ? `R$ ${kpisMes.totalR$!.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -328,7 +331,7 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
                       </p>
                     </div>
                     <div className="col-span-2 rounded-lg border bg-muted/30 px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">R$ Realizado</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">R$ Realizado Produtos</p>
                       <p className="text-xl font-bold mt-1 font-mono" style={{ color: pct(kpisMes.realizadoR$ ?? 0, kpisMes.totalR$ ?? 1) >= 100 ? "#16a34a" : "#f59e0b" }}>
                         {showValues
                           ? `R$ ${(kpisMes.realizadoR$ ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -407,7 +410,7 @@ const MetasTab: React.FC<MetasTabProps> = ({ canViewValues = false, showValues =
                 const realizadoQty = parseInt(meta.realizado) || 0;
                 const p = pct(realizadoQty, metaQty);
                 const vu = parseFloat(meta.valor_unitario) || 0;
-                const totalR$ = metaQty * vu;
+                const totalR$ = vu > 0 ? metaQty * vu : metaQty;
 
                 return (
                   <tr key={meta.id} className="border-b hover:bg-muted/30 transition-colors">
