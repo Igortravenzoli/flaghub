@@ -568,7 +568,11 @@ export default function ComercialDashboard() {
           </TabsContent>
 
           <TabsContent value="metas" className="space-y-4 mt-0">
-            <MetasTab canViewValues={canViewValues} showValues={showValues} />
+            <MetasTab
+              canViewValues={canViewValues}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+            />
           </TabsContent>
 
           <TabsContent value="fechamento-comercial" className="space-y-4 mt-0">
