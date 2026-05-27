@@ -31,6 +31,113 @@ import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 
+const MONTH_ABBR = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'] as const;
+const MONTH_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+function ComercialPeriodPicker({
+  preset,
+  onPresetChange,
+  onCustomRange,
+  currentYear,
+  pickerYear,
+  setPickerYear,
+}: {
+  preset: string;
+  onPresetChange: (p: string) => void;
+  onCustomRange: (from: Date, to: Date) => void;
+  currentYear: number;
+  pickerYear: number;
+  setPickerYear: (y: number) => void;
+}) {
+  const prevYear = currentYear - 1;
+
+  function handleMonth(idx: number) {
+    if (pickerYear === currentYear) {
+      onPresetChange(MONTH_ABBR[idx]);
+    } else {
+      const from = new Date(pickerYear, idx, 1);
+      const to = new Date(pickerYear, idx + 1, 0, 23, 59, 59);
+      onCustomRange(from, to);
+    }
+  }
+
+  function handleQuarter(q: number) {
+    if (pickerYear === currentYear) {
+      onPresetChange(`q${q}`);
+    } else {
+      const startMonth = (q - 1) * 3;
+      const from = new Date(pickerYear, startMonth, 1);
+      const to = new Date(pickerYear, startMonth + 3, 0, 23, 59, 59);
+      onCustomRange(from, to);
+    }
+  }
+
+  const isMonthActive = (idx: number) =>
+    pickerYear === currentYear && preset === MONTH_ABBR[idx];
+
+  const isQuarterActive = (q: number) =>
+    pickerYear === currentYear && preset === `q${q}`;
+
+  const btnBase = "rounded text-xs font-medium border transition-colors";
+  const btnActive = "bg-primary text-primary-foreground border-primary";
+  const btnIdle = "bg-background border-border text-muted-foreground hover:bg-muted";
+
+  return (
+    <div className="rounded-lg border bg-card px-3 py-2.5 space-y-2">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {[prevYear, currentYear].map((year) => (
+          <button
+            key={year}
+            type="button"
+            onClick={() => setPickerYear(year)}
+            className={`px-3 py-1 ${btnBase} ${pickerYear === year ? btnActive : btnIdle}`}
+          >
+            {year}
+          </button>
+        ))}
+        <div className="w-px h-4 bg-border mx-0.5" />
+        {[1, 2, 3, 4].map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => handleQuarter(q)}
+            className={`px-3 py-1 ${btnBase} ${isQuarterActive(q) ? btnActive : btnIdle}`}
+          >
+            Q{q}
+          </button>
+        ))}
+        <div className="w-px h-4 bg-border mx-0.5" />
+        <button
+          type="button"
+          onClick={() => onPresetChange('1y')}
+          className={`px-3 py-1 ${btnBase} ${preset === '1y' ? btnActive : btnIdle}`}
+        >
+          Ano atual
+        </button>
+        <button
+          type="button"
+          onClick={() => onPresetChange('all')}
+          className={`px-3 py-1 ${btnBase} ${preset === 'all' ? btnActive : btnIdle}`}
+        >
+          Todos
+        </button>
+      </div>
+      <div className="grid grid-cols-6 gap-1">
+        {MONTH_SHORT.map((m, idx) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => handleMonth(idx)}
+            className={`py-1.5 ${btnBase} text-center ${isMonthActive(idx) ? btnActive : btnIdle}`}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const INTERNAL_CLIENT_LIST = [
   { id: 924, label: 'Flag (Outros)' },
   { id: 1528, label: 'Padrao Froneri' },
@@ -98,6 +205,7 @@ export default function ComercialDashboard() {
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
+  const [pickerYear, setPickerYear] = useState(currentYear);
   const filters = useDashboardFilters('1y');
   const { clients, allClients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
@@ -258,33 +366,22 @@ export default function ComercialDashboard() {
         )}
       </div>
 
+      <ComercialPeriodPicker
+        preset={filters.preset}
+        onPresetChange={filters.setPreset}
+        onCustomRange={filters.setCustomRange}
+        currentYear={currentYear}
+        pickerYear={pickerYear}
+        setPickerYear={setPickerYear}
+      />
+
       <DashboardFilterBar
         preset={filters.preset}
         onPresetChange={filters.setPreset}
         presetLabel={filters.presetLabel}
         presetControl="dropdown"
         presetsLabel="Período"
-        presets={[
-          { value: 'mes_atual', label: 'Mês atual' },
-          { value: 'mes_anterior', label: 'Mês anterior' },
-          { value: 'jan', label: `Jan ${currentYear}` },
-          { value: 'fev', label: `Fev ${currentYear}` },
-          { value: 'mar', label: `Mar ${currentYear}` },
-          { value: 'abr', label: `Abr ${currentYear}` },
-          { value: 'mai', label: `Mai ${currentYear}` },
-          { value: 'jun', label: `Jun ${currentYear}` },
-          { value: 'jul', label: `Jul ${currentYear}` },
-          { value: 'ago', label: `Ago ${currentYear}` },
-          { value: 'set', label: `Set ${currentYear}` },
-          { value: 'out', label: `Out ${currentYear}` },
-          { value: 'nov', label: `Nov ${currentYear}` },
-          { value: 'dez', label: `Dez ${currentYear}` },
-          { value: 'q1', label: `1º Tri ${currentYear}` },
-          { value: 'q2', label: `2º Tri ${currentYear}` },
-          { value: 'q3', label: `3º Tri ${currentYear}` },
-          { value: 'q4', label: `4º Tri ${currentYear}` },
-          { value: '1y', label: `Ano ${currentYear}` },
-        ]}
+        presets={[]}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
         minDate={minDate}

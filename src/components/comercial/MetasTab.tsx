@@ -308,8 +308,13 @@ const MetasTab: React.FC<MetasTabProps> = ({
         ? Math.round((comDados.reduce((s, m) => s + m.pct, 0) / comDados.length) * 10) / 10
         : 0;
 
+    const pctMetas = target > 0 ? Math.round((realizadoProdutos / target) * 1000) / 10 : 0;
+    const pctVendas = target > 0 ? Math.round((realizadoVendas / target) * 1000) / 10 : 0;
+
     return {
       pctAtingimento,
+      pctMetas,
+      pctVendas,
       target,
       totalRealizado,
       realizadoProdutos,
@@ -570,26 +575,42 @@ const MetasTab: React.FC<MetasTabProps> = ({
                   <ProgressBar value={faturamentoPct} />
                 </div>
 
-                {canViewValues && (
-                  <div className="space-y-1 pt-1 text-xs text-muted-foreground border-t">
-                    <div className="flex justify-between pt-1">
-                      <span>Target período</span>
-                      <span>{brl(faturamentoStats.target, showValues)}</span>
+                {canViewValues && (() => {
+                  const colorFor = (p: number) =>
+                    p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444";
+                  const Row = ({
+                    label, pctVal, value, bold,
+                  }: { label: string; pctVal: number | null; value: number; bold?: boolean }) => (
+                    <div className={`flex items-center justify-between py-1.5 ${bold ? "" : "border-b border-border/30"}`}>
+                      <span className={`text-xs ${bold ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                        {label}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        {pctVal !== null ? (
+                          <span
+                            className={`text-[11px] font-mono ${bold ? "font-semibold" : ""}`}
+                            style={{ color: colorFor(pctVal) }}
+                          >
+                            {pctVal.toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground font-mono">100%</span>
+                        )}
+                        <span className={`text-xs ${bold ? "font-semibold" : ""}`}>
+                          {brl(value, showValues)}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Realizado Meta Produtos</span>
-                      <span>{brl(faturamentoStats.realizadoProdutos, showValues)}</span>
+                  );
+                  return (
+                    <div className="pt-1 border-t">
+                      <Row label="Target período" pctVal={null} value={faturamentoStats.target} />
+                      <Row label="Metas Produtos" pctVal={faturamentoStats.pctMetas} value={faturamentoStats.realizadoProdutos} />
+                      <Row label="Venda Produtos" pctVal={faturamentoStats.pctVendas} value={faturamentoStats.realizadoVendas} />
+                      <Row label="Total realizado" pctVal={faturamentoPct} value={faturamentoStats.totalRealizado} bold />
                     </div>
-                    <div className="flex justify-between">
-                      <span>Realizado Venda Produtos</span>
-                      <span>{brl(faturamentoStats.realizadoVendas, showValues)}</span>
-                    </div>
-                    <div className="flex justify-between font-semibold text-foreground border-t pt-1">
-                      <span>Total realizado</span>
-                      <span>{brl(faturamentoStats.totalRealizado, showValues)}</span>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div className="rounded-lg border bg-muted/30 px-3 py-2">
@@ -894,7 +915,6 @@ const MetasTab: React.FC<MetasTabProps> = ({
                   const metaValor = metaQty * vu;
                   const realizadoValor = realizadoQty * vu;
                   const p = pct(realizadoQty, metaQty);
-                  const hasQty = vu > 0;
 
                   return (
                     <tr key={meta.id} className="border-b hover:bg-muted/30 transition-colors">
@@ -913,17 +933,11 @@ const MetasTab: React.FC<MetasTabProps> = ({
                       </td>
 
                       <td className="px-3 py-2 text-center font-mono">
-                        {hasQty ? (
-                          metaQty > 0 ? metaQty.toLocaleString("pt-BR") : "—"
-                        ) : (
-                          <span className="text-xs text-muted-foreground" title="Produto por valor total">
-                            —
-                          </span>
-                        )}
+                        {metaQty > 0 ? metaQty.toLocaleString("pt-BR") : "—"}
                       </td>
 
                       <td className="px-3 py-2 text-center font-mono">
-                        {hasQty && meta.realizado ? (
+                        {meta.realizado ? (
                           <span
                             style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}
                           >
