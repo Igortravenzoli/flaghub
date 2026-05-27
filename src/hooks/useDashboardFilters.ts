@@ -2,7 +2,12 @@ import { useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { startOfMonth, endOfMonth, subDays, subMonths, startOfDay, endOfDay, subYears } from 'date-fns';
 
-export type FilterPreset = 'hoje' | '7d' | '30d' | '90d' | '6m' | 'mes_atual' | 'mes_anterior' | '1y' | 'all' | 'custom' | 'q1' | 'q2' | 'q3' | 'q4';
+export type FilterPreset = 'hoje' | '7d' | '30d' | '90d' | '6m' | 'mes_atual' | 'mes_anterior' | '1y' | 'all' | 'custom' | 'q1' | 'q2' | 'q3' | 'q4' | 'jan' | 'fev' | 'mar' | 'abr' | 'mai' | 'jun' | 'jul' | 'ago' | 'set' | 'out' | 'nov' | 'dez';
+
+const MONTH_PRESET_IDX: Partial<Record<FilterPreset, number>> = {
+  jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
+  jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11,
+};
 
 export interface DashboardFilters {
   preset: FilterPreset;
@@ -65,8 +70,14 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
           from: customFrom || subDays(now, 30),
           to: customTo || endOfDay(now),
         };
-      default:
+      default: {
+        const mIdx = MONTH_PRESET_IDX[preset as FilterPreset];
+        if (mIdx !== undefined) {
+          const d = new Date(now.getFullYear(), mIdx, 1);
+          return { from: d, to: endOfDay(endOfMonth(d)) };
+        }
         return { from: startOfMonth(now), to: endOfDay(now) };
+      }
     }
   }, [preset, customFrom, customTo]);
 
@@ -104,7 +115,12 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
       case 'q3': return '3º Trimestre';
       case 'q4': return '4º Trimestre';
       case 'custom': return 'Personalizado';
-      default: return preset;
+      default: {
+        const mIdx = MONTH_PRESET_IDX[preset as FilterPreset];
+        const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        if (mIdx !== undefined) return `${monthNames[mIdx]} ${new Date().getFullYear()}`;
+        return preset;
+      }
     }
   }, [preset]);
 

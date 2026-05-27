@@ -385,12 +385,15 @@ const MetasTab: React.FC<MetasTabProps> = ({
   }, [metas]);
 
   // ── CRUD handlers ─────────────────────────────────────────────
-  async function handleSubmit(meta: MetaFormData) {
+  async function handleSubmit(input: MetaFormData | MetaFormData[]) {
+    const list = Array.isArray(input) ? input : [input];
     try {
-      if (editingId) {
-        await updateMeta.mutateAsync({ id: editingId, payload: meta });
-      } else {
-        await createMeta.mutateAsync(meta);
+      for (const meta of list) {
+        if (editingId && list.length === 1) {
+          await updateMeta.mutateAsync({ id: editingId, payload: meta });
+        } else {
+          await createMeta.mutateAsync(meta);
+        }
       }
       setEditingId(null);
       setTipoFixoDialog(undefined);
@@ -522,7 +525,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {faturamentoStats.hasCadastrado
                     ? "Target cadastrado · Meta Produtos + Venda Produtos"
-                    : `Referência: R$ ${(META_MENSAL_DEFAULT / 1000).toFixed(0)}K/mês (padrão)`}
+                    : "Meta Produtos + Venda Produtos"}
                 </p>
               </div>
               {canViewValues && (
@@ -547,15 +550,22 @@ const MetasTab: React.FC<MetasTabProps> = ({
                     <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                       {faturamentoStats.latest?.mes ?? periodLabel}
                     </span>
-                    <span
-                      className="text-3xl font-bold font-mono"
-                      style={{
-                        color:
-                          faturamentoPct >= 100 ? "#16a34a" : faturamentoPct >= 70 ? "#f59e0b" : "#ef4444",
-                      }}
-                    >
-                      {faturamentoPct.toFixed(1)}%
-                    </span>
+                    <div className="flex items-baseline gap-2">
+                      {canViewValues && (
+                        <span className="text-sm font-mono text-muted-foreground">
+                          {brl(faturamentoStats.totalRealizado, showValues)}
+                        </span>
+                      )}
+                      <span
+                        className="text-3xl font-bold font-mono"
+                        style={{
+                          color:
+                            faturamentoPct >= 100 ? "#16a34a" : faturamentoPct >= 70 ? "#f59e0b" : "#ef4444",
+                        }}
+                      >
+                        {faturamentoPct.toFixed(1)}%
+                      </span>
+                    </div>
                   </div>
                   <ProgressBar value={faturamentoPct} />
                 </div>
@@ -805,12 +815,19 @@ const MetasTab: React.FC<MetasTabProps> = ({
                     dy: -4,
                   }}
                 />
-                <Bar dataKey="pctAtingimento" radius={[0, 4, 4, 0]} maxBarSize={20}>
+                <Bar
+                  dataKey="pctAtingimento"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={20}
+                  background={{ radius: 4, fill: "hsl(var(--muted))", opacity: 0.5 }}
+                >
                   {chartData.map((entry, i) => (
                     <Cell
                       key={i}
                       fill={
-                        entry.pctAtingimento >= 100
+                        entry.pctAtingimento === 0
+                          ? "transparent"
+                          : entry.pctAtingimento >= 100
                           ? "#16a34a"
                           : entry.pctAtingimento >= 70
                           ? "#f59e0b"

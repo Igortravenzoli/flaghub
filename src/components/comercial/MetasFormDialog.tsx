@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
+const PT_MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
 function getDefaultMesReferencia(): string {
-  const meses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   const now = new Date();
-  return `${meses[now.getMonth()]}-${now.getFullYear()}`;
+  return `${PT_MONTHS[now.getMonth()]}-${now.getFullYear()}`;
 }
 
 function normalizarDataDDMMYYYY(value: string): string {
@@ -19,6 +20,17 @@ function normalizarDataDDMMYYYY(value: string): string {
     return `${dd}-${mm}-${yyyy}`;
   }
   return v;
+}
+
+function quarterMonths(q: string, year: string): string[] {
+  const y = year;
+  switch (q) {
+    case "Q1": return [`jan-${y}`, `fev-${y}`, `mar-${y}`];
+    case "Q2": return [`abr-${y}`, `mai-${y}`, `jun-${y}`];
+    case "Q3": return [`jul-${y}`, `ago-${y}`, `set-${y}`];
+    case "Q4": return [`out-${y}`, `nov-${y}`, `dez-${y}`];
+    default: return [];
+  }
 }
 
 export interface MetaFormData {
@@ -37,12 +49,15 @@ export interface MetaFormData {
 interface MetasFormDialogProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: MetaFormData) => void;
+  onSubmit: (data: MetaFormData | MetaFormData[]) => void;
   initialData?: Partial<MetaFormData>;
   mode?: "create" | "edit";
   /** Quando definido, bloqueia o campo tipo e pré-preenche com este valor */
   tipoFixo?: MetaFormData["tipo"];
 }
+
+const currentYear = String(new Date().getFullYear());
+const nextYear = String(new Date().getFullYear() + 1);
 
 export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
   open,
@@ -67,6 +82,11 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
     data_fim_meta: initialData?.data_fim_meta ?? "",
   });
 
+  // Range mode — only available on create
+  const [modoRange, setModoRange] = useState<"mes" | "trimestre">("mes");
+  const [trimestre, setTrimestre] = useState("Q2");
+  const [trimestreAno, setTrimestreAno] = useState(currentYear);
+
   useEffect(() => {
     setForm({
       nome_indicador: initialData?.nome_indicador ?? (tipoFixo === "faturamento" ? "Meta de Faturamento" : ""),
@@ -80,6 +100,7 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
       data_inicio_meta: initialData?.data_inicio_meta ?? "",
       data_fim_meta: initialData?.data_fim_meta ?? "",
     });
+    setModoRange("mes");
   }, [initialData, open, tipoFixo]);
 
   const isFaturamento = form.tipo === "faturamento";
@@ -91,6 +112,21 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (modoRange === "trimestre" && mode === "create") {
+      const meses = quarterMonths(trimestre, trimestreAno);
+      if (meses.length === 0) return;
+      const records: MetaFormData[] = meses.map((mes) => ({
+        ...form,
+        mes,
+        realizado: "",
+        data_inicio_meta: "",
+        data_fim_meta: "",
+      }));
+      onSubmit(records);
+      return;
+    }
+
     const mesNormalizado = form.mes.trim().toLowerCase();
     const mesValido = /^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)-\d{4}$/.test(mesNormalizado);
     const dataInicio = normalizarDataDDMMYYYY(form.data_inicio_meta || "");
@@ -104,21 +140,22 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <form onSubmit={handleSubmit}>
-        <DialogContent className="space-y-4 max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {mode === "edit"
-                ? isFaturamento ? "Editar Meta de Faturamento" : "Editar Meta"
-                : isFaturamento ? "Cadastro — Meta de Faturamento" : "Cadastro de Meta"}
-            </DialogTitle>
-            {isFaturamento && (
-              <p className="text-xs text-muted-foreground">
-                Define o target mensal de faturamento. O realizado é calculado automaticamente
-                somando Meta Produtos + Venda Produtos.
-              </p>
-            )}
-          </DialogHeader>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {mode === "edit"
+              ? isFaturamento ? "Editar Meta de Faturamento" : "Editar Meta"
+              : isFaturamento ? "Cadastro — Meta de Faturamento" : "Cadastro de Meta"}
+          </DialogTitle>
+          {isFaturamento && (
+            <p className="text-xs text-muted-foreground">
+              Define o target de faturamento. O realizado é calculado automaticamente
+              somando Meta Produtos + Venda Produtos.
+            </p>
+          )}
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
 
           {/* Nome */}
           <div>
@@ -169,19 +206,88 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
             </div>
           </div>
 
-          {/* Mês */}
-          <div>
-            <label htmlFor="mes" className="block text-xs font-semibold mb-1">Mês Referência</label>
-            <Input
-              id="mes"
-              name="mes"
-              placeholder="Ex: mai-2026"
-              value={form.mes}
-              onChange={handleChange}
-              required
-            />
-            <p className="text-[11px] text-muted-foreground mt-1">Formato: mmm-AAAA (ex: mai-2026)</p>
-          </div>
+          {/* Período — Mês ou Trimestre (só no create) */}
+          {mode === "create" && (
+            <div>
+              <label className="block text-xs font-semibold mb-1">Período</label>
+              <div className="flex gap-1 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setModoRange("mes")}
+                  className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                    modoRange === "mes"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Mês
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoRange("trimestre")}
+                  className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                    modoRange === "trimestre"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Trimestre
+                </button>
+              </div>
+
+              {modoRange === "mes" ? (
+                <>
+                  <Input
+                    id="mes"
+                    name="mes"
+                    placeholder="Ex: mai-2026"
+                    value={form.mes}
+                    onChange={handleChange}
+                    required
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Formato: mmm-AAAA (ex: mai-2026)</p>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={trimestre} onValueChange={setTrimestre}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Q1">1º Trimestre (jan–mar)</SelectItem>
+                      <SelectItem value="Q2">2º Trimestre (abr–jun)</SelectItem>
+                      <SelectItem value="Q3">3º Trimestre (jul–set)</SelectItem>
+                      <SelectItem value="Q4">4º Trimestre (out–dez)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={trimestreAno} onValueChange={setTrimestreAno}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={currentYear}>{currentYear}</SelectItem>
+                      <SelectItem value={nextYear}>{nextYear}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="col-span-2 text-[11px] text-muted-foreground">
+                    Cria 3 metas com a mesma configuração, uma por mês do trimestre.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mês (edit mode only — no range) */}
+          {mode === "edit" && (
+            <div>
+              <label htmlFor="mes" className="block text-xs font-semibold mb-1">Mês Referência</label>
+              <Input
+                id="mes"
+                name="mes"
+                placeholder="Ex: mai-2026"
+                value={form.mes}
+                onChange={handleChange}
+                required
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Formato: mmm-AAAA (ex: mai-2026)</p>
+            </div>
+          )}
 
           {/* Faturamento: apenas campo de valor R$ */}
           {isFaturamento ? (
@@ -283,10 +389,14 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" variant="default">Salvar</Button>
+            <Button type="submit" variant="default">
+              {modoRange === "trimestre" && mode === "create"
+                ? `Salvar 3 metas (${trimestre}/${trimestreAno})`
+                : "Salvar"}
+            </Button>
           </div>
-        </DialogContent>
-      </form>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 };
