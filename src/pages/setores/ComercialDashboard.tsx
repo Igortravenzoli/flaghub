@@ -56,20 +56,40 @@ function ComercialCalendarPicker({
   const today = new Date();
   const [level, setLevel] = useState<CalLevel>('month');
   const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [pendingMonths, setPendingMonths] = useState<Set<string>>(new Set());
 
   const inRange = (d: Date) => !!dateFrom && !!dateTo && d >= dateFrom && d <= dateTo;
 
   const viewYear = viewDate.getFullYear();
 
-  // ── Helpers de seleção ────────────────────────────────────────
-  function selectMonth(yr: number, mo: number) {
-    if (yr === currentYear) {
-      onPresetChange(CAL_MONTHS_ABBR[mo]);
-    } else {
-      onCustomRange(new Date(yr, mo, 1), new Date(yr, mo + 1, 0, 23, 59, 59));
-    }
+  const monthKey = (yr: number, mo: number) => `${yr}-${mo}`;
+
+  // ── Multi-select helpers ──────────────────────────────────────
+  function toggleMonth(yr: number, mo: number) {
+    const key = monthKey(yr, mo);
+    setPendingMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function applyMonths() {
+    if (pendingMonths.size === 0) return;
+    const sorted = Array.from(pendingMonths)
+      .map(k => { const [y, m] = k.split('-').map(Number); return { y, m }; })
+      .sort((a, b) => a.y !== b.y ? a.y - b.y : a.m - b.m);
+    const first = sorted[0], last = sorted[sorted.length - 1];
+    onCustomRange(
+      new Date(first.y, first.m, 1, 0, 0, 0),
+      new Date(last.y, last.m + 1, 0, 23, 59, 59),
+    );
+    setPendingMonths(new Set());
     onAfterSelect?.();
   }
+
+  function clearPending() { setPendingMonths(new Set()); }
 
   function selectYear(yr: number) {
     if (yr === currentYear) {
@@ -77,6 +97,7 @@ function ComercialCalendarPicker({
     } else {
       onCustomRange(new Date(yr, 0, 1), new Date(yr, 11, 31, 23, 59, 59));
     }
+    setPendingMonths(new Set());
     setViewDate(new Date(yr, 0, 1));
     setLevel('month');
     onAfterSelect?.();
@@ -84,23 +105,18 @@ function ComercialCalendarPicker({
 
   function selectQuarter(q: number) {
     const startMo = (q - 1) * 3;
-    if (viewYear === currentYear) {
-      onPresetChange(`q${q}`);
-    } else {
-      onCustomRange(new Date(viewYear, startMo, 1), new Date(viewYear, startMo + 3, 0, 23, 59, 59));
-    }
-    onAfterSelect?.();
+    const keys = [0, 1, 2].map(i => monthKey(viewYear, startMo + i));
+    const allIn = keys.every(k => pendingMonths.has(k));
+    setPendingMonths(prev => {
+      const next = new Set(prev);
+      keys.forEach(k => allIn ? next.delete(k) : next.add(k));
+      return next;
+    });
   }
 
   function isQuarterActive(q: number) {
-    if (!dateFrom || !dateTo) return false;
     const startMo = (q - 1) * 3;
-    return (
-      dateFrom.getFullYear() === viewYear &&
-      dateFrom.getMonth() === startMo &&
-      dateTo.getFullYear() === viewYear &&
-      dateTo.getMonth() === startMo + 2
-    );
+    return [0, 1, 2].every(i => pendingMonths.has(monthKey(viewYear, startMo + i)));
   }
 
   // ─── Day view ───────────────────────────────────────────────────
@@ -148,22 +164,36 @@ function ComercialCalendarPicker({
   // ─── Month view ─────────────────────────────────────────────────
   const renderMonthView = () => {
     const yr = viewDate.getFullYear();
+    const hasPending = pendingMonths.size > 0;
     return (
-      <div className="grid grid-cols-4 gap-1 mt-2">
-        {CAL_MONTHS.map((m, idx) => {
-          const sel = !!dateFrom && dateFrom.getFullYear() === yr && dateFrom.getMonth() === idx &&
-            (!dateTo || (dateTo.getFullYear() === yr && dateTo.getMonth() === idx));
-          const isCurrentMonth = yr === today.getFullYear() && idx === today.getMonth();
-          return (
-            <button key={m} type="button"
-              onClick={() => selectMonth(yr, idx)}
-              className={`py-2 rounded text-xs font-medium border transition-colors
-                ${sel ? 'bg-primary text-primary-foreground border-primary' :
-                  isCurrentMonth ? 'border-primary/50 text-primary bg-primary/5 hover:bg-primary/10' :
-                  'bg-background border-border text-foreground hover:bg-muted'}`}
-            >{m}</button>
-          );
-        })}
+      <div className="mt-2 space-y-2">
+        <div className="grid grid-cols-4 gap-1">
+          {CAL_MONTHS.map((m, idx) => {
+            const pending = pendingMonths.has(monthKey(yr, idx));
+            const isCurrentMonth = yr === today.getFullYear() && idx === today.getMonth();
+            return (
+              <button key={m} type="button"
+                onClick={() => toggleMonth(yr, idx)}
+                className={`py-2 rounded text-xs font-medium border transition-colors
+                  ${pending ? 'bg-primary text-primary-foreground border-primary' :
+                    isCurrentMonth ? 'border-primary/50 text-primary bg-primary/5 hover:bg-primary/10' :
+                    'bg-background border-border text-foreground hover:bg-muted'}`}
+              >{m}</button>
+            );
+          })}
+        </div>
+        {hasPending && (
+          <div className="flex items-center gap-2 pt-1 border-t border-border">
+            <button type="button" onClick={applyMonths}
+              className="flex-1 py-1.5 rounded text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+              Aplicar ({pendingMonths.size} {pendingMonths.size === 1 ? 'mês' : 'meses'})
+            </button>
+            <button type="button" onClick={clearPending}
+              className="px-3 py-1.5 rounded text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors">
+              Limpar
+            </button>
+          </div>
+        )}
       </div>
     );
   };
