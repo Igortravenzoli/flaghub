@@ -137,6 +137,16 @@ SELECT cron.schedule(
   ) AS request_id;
   $$
 );
+
+-- 7. Snapshot de Sprint — diário às 03:00 UTC
+-- Captura automaticamente sprints encerradas que ainda não têm snapshot.
+-- Idempotente: pula sprints abertas e sprints que já foram capturadas.
+-- Garante que toda sprint seja congelada no dia seguinte ao seu encerramento.
+SELECT cron.schedule(
+  'snapshot-sprint-end-daily',
+  '0 3 * * *',
+  'SELECT public.rpc_backfill_closed_sprint_snapshots(p_year => EXTRACT(YEAR FROM NOW())::int, p_force_reprocess => false, p_notes => ''auto_cron_sprint_end'') AS result;'
+);
 ```
 
 ## Observação (retenção)
@@ -145,6 +155,16 @@ Os jobs de retenção abaixo sao gerenciados por migration e nao precisam ser cr
 
 - `cleanup-helpdesk-snapshots-daily` (90 dias)
 - `cleanup-hub-raw-ingestions-daily` (30 dias)
+
+## Observação (snapshot de sprint)
+
+O job `snapshot-sprint-end-daily` (item 7) roda direto em SQL, **sem Edge Function**. Não faz parte do `MANAGED_JOBS` em `manage-sync-schedules`. Para verificar capturas realizadas:
+
+```sql
+SELECT sprint_code, total_demands, finalized_demands, snapshot_datetime, notes
+FROM public.sprint_indicator_snapshots
+ORDER BY snapshot_datetime DESC;
+```
 
 ## 4. Verificar
 
@@ -189,6 +209,7 @@ SELECT cron.unschedule('sync-vdesk-helpdesk');
 SELECT cron.unschedule('sync-devops-timelog');
 SELECT cron.unschedule('sync-vdesk-timelog');
 SELECT cron.unschedule('sync-devops-qualidade');
+SELECT cron.unschedule('snapshot-sprint-end-daily');
 ```
 
 ---
@@ -199,4 +220,5 @@ SELECT cron.unschedule('sync-devops-qualidade');
 - [ ] Executar passo 1 (Vault) com o mesmo valor
 - [ ] Executar passo 2 (função helper)
 - [ ] Executar passo 3 substituindo `PROJECT_REF` pela ref de PROD
+- [ ] Executar passo 3 item 7 (`snapshot-sprint-end-daily`) — sem substituição de variável, roda direto em SQL
 - [ ] Verificar com passo 4

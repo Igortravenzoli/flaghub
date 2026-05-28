@@ -148,6 +148,62 @@ function buildMocks(): Record<string, unknown> {
     })),
   };
 
+  /* BI Customer — KPIs */
+  const biCustomerKpis = {
+    success: true,
+    message: '[MOCK] Dados simulados',
+    mesAtual: {
+      totalTickets: 198,
+      totalOs: 342,
+      incTickets: 112,
+      prbTickets: 34,
+      ritmTickets: 52,
+    },
+    mesAnterior: {
+      totalTickets: 221,
+      totalOs: 389,
+      incTickets: 130,
+      prbTickets: 41,
+      ritmTickets: 50,
+    },
+    abertos: {
+      incTicketsAberto: 47,
+      prbTicketsAberto: 18,
+      ritmTicketsAberto: 22,
+      incOsAberto: 83,
+      prbOsAberto: 31,
+      ritmOsAberto: 38,
+      incTicket5Dias: 21,
+      prbTicket10Dias: 9,
+      ritmTicket30Dias: 4,
+    },
+    metricas: {
+      fechados60Dias: 567,
+      ttrMedioDias: 4.3,
+      pctEncerrados24h: 38.2,
+    },
+  };
+
+  /* BI Customer — Detalhe (genérico para mock) */
+  const biCustomerDetalhe = {
+    success: true,
+    message: '[MOCK]',
+    tipo: 'INC',
+    diasMin: 5,
+    total: 21,
+    items: Array.from({ length: 21 }, (_, i) => ({
+      os: 30000 + i,
+      ticket: `INC${String(7000 + i).padStart(7, '0')}`,
+      cliente: ['Nestlé Brás', 'Nestlé Caçapava', 'Heineken SP', 'BRF Vitória', 'Ambev MG'][i % 5],
+      sistema: ['FlexxSales', 'AvanteSales', 'QuickOne', 'Decision'][i % 4],
+      consultor: ALL[i % ALL.length],
+      tipoChamado: ['Incidente', 'Problema', 'Requisição'][i % 3],
+      dataRegistro: new Date(Date.now() - (6 + i * 2) * 86400000).toISOString(),
+      diasAberto: 6 + i * 2,
+      criticidade: ['Alta', 'Média', 'Baixa'][i % 3],
+    })),
+  };
+
   /* Detalhe OS Flag */
   const mockFlagOs = Array.from({ length: 87 }, (_, i) => ({
     os: 10000 + i,
@@ -225,7 +281,7 @@ function buildMocks(): Record<string, unknown> {
       { tipoChamado: 'Melhoria', totalRegistros: Math.round(hdTotalRegistros * 0.09), tempoMedioMinutos: 45.1 },
       { tipoChamado: 'Outros',   totalRegistros: Math.round(hdTotalRegistros * 0.05), tempoMedioMinutos: 18.0 },
     ],
-    registrosPorSistema: sistemas.map(s => ({ nomeSistema: s.sistema, totalRegistros: s.totalRegistros })),
+    registrosPorSistema: sistemas.map(s => ({ nomeSistema: s.nomeSistema, totalRegistros: s.totalRegistros })),
     registrosPorBandeira: [
       { bandeira: 'Nestlé',   totalRegistros: Math.round(hdTotalRegistros * 0.52) },
       { bandeira: 'Heineken', totalRegistros: Math.round(hdTotalRegistros * 0.21) },
@@ -296,6 +352,8 @@ function buildMocks(): Record<string, unknown> {
       dataFim: fim,
       sistemas,
     },
+    '/api/bi-customer/kpis': biCustomerKpis,
+    '/api/bi-customer/detalhe': biCustomerDetalhe,
     '/api/gestao/sla-flag': slaFlag,
     '/api/gestao/sla-nestle': slaNestle,
     '/api/gestao/sla-nestle-historico': slaNestleHistorico,

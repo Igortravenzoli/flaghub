@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
+import { BICustomerPanel } from '@/components/techlead/BICustomerPanel';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import {
   useTechLeadAcumulado, useTechLeadConsultorSistemas, useTechLeadConsultorInfra,
@@ -19,7 +20,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import {
   Users, Monitor, UserCheck, Clock, TrendingUp, Upload, Phone, Flag,
-  BarChart3, Calendar, Search, ArrowUpDown, ChevronUp, ChevronDown,
+  BarChart3, Calendar, Search, ArrowUpDown, ChevronUp, ChevronDown, Ticket,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -364,6 +365,9 @@ export function TechLeadPanel() {
           </TabsTrigger>
           <TabsTrigger value="sistemas-detalhe" className="text-xs gap-1.5">
             <BarChart3 className="h-3.5 w-3.5" /> Sistemas
+          </TabsTrigger>
+          <TabsTrigger value="bi-customer" className="text-xs gap-1.5">
+            <Ticket className="h-3.5 w-3.5" /> BI Customer
           </TabsTrigger>
         </TabsList>
 
@@ -786,6 +790,11 @@ export function TechLeadPanel() {
             </Card>
 
           </div>
+        </TabsContent>
+
+        {/* Tab: BI Customer */}
+        <TabsContent value="bi-customer">
+          <BICustomerPanel />
         </TabsContent>
       </Tabs>
     </div>
