@@ -11,7 +11,7 @@ import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useDashboardFilters } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers, MoreHorizontal, Eye, EyeOff, Users } from 'lucide-react';
+import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers, MoreHorizontal, Eye, EyeOff, Users, CalendarDays, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -42,9 +42,7 @@ function ComercialCalendarPicker({
   preset,
   onPresetChange,
   onCustomRange,
-  onRefresh,
-  onExportCSV,
-  onExportPDF,
+  onAfterSelect,
   currentYear,
 }: {
   dateFrom?: Date;
@@ -52,6 +50,7 @@ function ComercialCalendarPicker({
   preset: string;
   onPresetChange: (p: string) => void;
   onCustomRange: (from: Date, to: Date) => void;
+  onAfterSelect?: () => void;
   currentYear: number;
 }) {
   const today = new Date();
@@ -69,6 +68,7 @@ function ComercialCalendarPicker({
     } else {
       onCustomRange(new Date(yr, mo, 1), new Date(yr, mo + 1, 0, 23, 59, 59));
     }
+    onAfterSelect?.();
   }
 
   function selectYear(yr: number) {
@@ -79,6 +79,7 @@ function ComercialCalendarPicker({
     }
     setViewDate(new Date(yr, 0, 1));
     setLevel('month');
+    onAfterSelect?.();
   }
 
   function selectQuarter(q: number) {
@@ -88,6 +89,7 @@ function ComercialCalendarPicker({
     } else {
       onCustomRange(new Date(viewYear, startMo, 1), new Date(viewYear, startMo + 3, 0, 23, 59, 59));
     }
+    onAfterSelect?.();
   }
 
   function isQuarterActive(q: number) {
@@ -128,7 +130,7 @@ function ComercialCalendarPicker({
                 const isToday = d.toDateString() === today.toDateString();
                 return (
                   <button key={di} type="button"
-                    onClick={() => onCustomRange(new Date(yr, mo, day, 0, 0, 0), new Date(yr, mo, day, 23, 59, 59))}
+                    onClick={() => { onCustomRange(new Date(yr, mo, day, 0, 0, 0), new Date(yr, mo, day, 23, 59, 59)); onAfterSelect?.(); }}
                     className={`h-7 w-full rounded text-xs transition-colors font-mono
                       ${sel ? 'bg-primary text-primary-foreground font-semibold' :
                         isToday ? 'ring-1 ring-primary text-primary font-semibold hover:bg-muted' :
@@ -326,6 +328,7 @@ export default function ComercialDashboard() {
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
+  const [calOpen, setCalOpen] = useState(false);
   const filters = useDashboardFilters('1y');
   const { clients, allClients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
@@ -486,14 +489,29 @@ export default function ComercialDashboard() {
         )}
       </div>
 
-      <ComercialCalendarPicker
-        dateFrom={filters.dateFrom}
-        dateTo={filters.dateTo}
-        preset={filters.preset}
-        onPresetChange={filters.setPreset}
-        onCustomRange={filters.setCustomRange}
-        currentYear={currentYear}
-      />
+      <Popover open={calOpen} onOpenChange={setCalOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="flex items-center gap-2 h-8 px-3 rounded-md border border-border bg-background text-sm text-foreground hover:bg-muted transition-colors"
+          >
+            <CalendarDays className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="font-medium">{filters.presetLabel}</span>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 ml-1" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <ComercialCalendarPicker
+            dateFrom={filters.dateFrom}
+            dateTo={filters.dateTo}
+            preset={filters.preset}
+            onPresetChange={filters.setPreset}
+            onCustomRange={filters.setCustomRange}
+            onAfterSelect={() => setCalOpen(false)}
+            currentYear={currentYear}
+          />
+        </PopoverContent>
+      </Popover>
 
       {isError ? (
         <DashboardEmptyState variant="error" onRetry={() => refetch()} />
