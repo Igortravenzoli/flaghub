@@ -350,6 +350,52 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
                 />
               </div>
 
+              {/* Preview calculado — Meta Valor / Realiz. Valor / % Atingimento */}
+              {(() => {
+                const qty  = parseFloat(form.valor) || 0;
+                const real = parseFloat(form.realizado) || 0;
+                const vu   = parseFloat(form.valor_unitario) || 0;
+                const metaValor      = qty  * vu;
+                const realizadoValor = real * vu;
+                const pctAting       = qty > 0 ? Math.round((real / qty) * 1000) / 10 : 0;
+                const hasVu = vu > 0;
+                const color = pctAting >= 100 ? "#16a34a" : pctAting >= 70 ? "#f59e0b" : "#ef4444";
+
+                const fmt = (v: number) =>
+                  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+                return (
+                  <div className="rounded-md border bg-muted/30 px-3 py-2.5 space-y-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                      Cálculo automático (somente leitura)
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Meta Valor</p>
+                        <p className="text-sm font-mono font-semibold">
+                          {hasVu ? fmt(metaValor) : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">Realiz. Valor</p>
+                        <p className="text-sm font-mono font-semibold">
+                          {hasVu && real > 0 ? fmt(realizadoValor) : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground">% Atingimento</p>
+                        <p
+                          className="text-sm font-mono font-semibold"
+                          style={{ color: qty > 0 && real > 0 ? color : undefined }}
+                        >
+                          {qty > 0 && real > 0 ? `${pctAting.toFixed(1)}%` : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="data_inicio_meta" className="block text-xs font-semibold mb-1">Início da Meta</label>
