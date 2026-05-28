@@ -52,9 +52,6 @@ function ComercialCalendarPicker({
   preset: string;
   onPresetChange: (p: string) => void;
   onCustomRange: (from: Date, to: Date) => void;
-  onRefresh?: () => void;
-  onExportCSV?: () => void;
-  onExportPDF?: () => void;
   currentYear: number;
 }) {
   const today = new Date();
@@ -252,32 +249,6 @@ function ComercialCalendarPicker({
           {[1, 2, 3, 4].map(q => btnQ(q))}
         </div>
 
-        <div className="flex-1" />
-
-        {/* Actions */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {onRefresh && (
-            <button type="button" onClick={onRefresh}
-              className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              title="Atualizar dados"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
-              </svg>
-            </button>
-          )}
-          {onExportCSV && (
-            <button type="button" onClick={onExportCSV}
-              className="h-6 px-2 flex items-center gap-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-[11px]"
-              title="Exportar CSV"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              CSV
-            </button>
-          )}
-        </div>
       </div>
 
       {/* ─ Conteúdo do calendário ─ */}
@@ -521,8 +492,6 @@ export default function ComercialDashboard() {
         preset={filters.preset}
         onPresetChange={filters.setPreset}
         onCustomRange={filters.setCustomRange}
-        onRefresh={() => refetch()}
-        onExportCSV={handleExportCSV}
         currentYear={currentYear}
       />
 
