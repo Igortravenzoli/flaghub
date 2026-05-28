@@ -6,13 +6,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { MetasFormDialog, MetaFormData } from "./MetasFormDialog";
+import { VendaFormDialog } from "./VendaFormDialog";
 import {
   useComercialMetas,
   useCreateMetaComercial,
   useUpdateMetaComercial,
   useDeleteMetaComercial,
 } from "@/hooks/useComercialMetas";
-import { useComercialVendas } from "@/hooks/useComercialVendas";
+import {
+  useComercialVendas,
+  useCreateVenda,
+  useUpdateVenda,
+  useDeleteVenda,
+  type VendaFormData,
+} from "@/hooks/useComercialVendas";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   CartesianGrid, ReferenceLine,
@@ -182,11 +189,18 @@ const MetasTab: React.FC<MetasTabProps> = ({
   const [copyDestino, setCopyDestino] = useState("");
   const [copyLoading, setCopyLoading] = useState(false);
 
+  // ── Venda Produtos CRUD state ─────────────────────────────────
+  const [vendaDialogOpen, setVendaDialogOpen] = useState(false);
+  const [editingVendaId, setEditingVendaId] = useState<string | null>(null);
+
   const { data: metas = [], isLoading, isError, refetch } = useComercialMetas();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
   const createMeta = useCreateMetaComercial();
   const updateMeta = useUpdateMetaComercial();
   const deleteMeta = useDeleteMetaComercial();
+  const createVenda = useCreateVenda();
+  const updateVenda = useUpdateVenda();
+  const deleteVenda = useDeleteVenda();
 
   const currentFormData = editingId ? metas.find((m) => m.id === editingId) : undefined;
   const periodLabel = getPeriodLabel(dateFrom, dateTo);
@@ -479,6 +493,55 @@ const MetasTab: React.FC<MetasTabProps> = ({
     setDialogOpen(true);
   }
 
+  // ── Venda CRUD ────────────────────────────────────────────────
+  function openCreateVenda() {
+    setEditingVendaId(null);
+    setVendaDialogOpen(true);
+  }
+
+  function openEditVenda(id: string) {
+    setEditingVendaId(id);
+    setVendaDialogOpen(true);
+  }
+
+  async function handleVendaSubmit(data: VendaFormData) {
+    try {
+      if (editingVendaId) {
+        await updateVenda.mutateAsync({ id: editingVendaId, data });
+      } else {
+        await createVenda.mutateAsync(data);
+      }
+      setVendaDialogOpen(false);
+      setEditingVendaId(null);
+    } catch {
+      window.alert("Falha ao salvar venda. Verifique a conexão.");
+    }
+  }
+
+  async function handleDeleteVenda(id: string) {
+    if (!window.confirm("Excluir esta venda?")) return;
+    try {
+      await deleteVenda.mutateAsync(id);
+    } catch {
+      window.alert("Falha ao excluir venda.");
+    }
+  }
+
+  // helper: build VendaFormData from existing ComercialVenda row
+  function vendaToFormData(id: string): Partial<VendaFormData> | undefined {
+    const v = vendasItems.find((i) => i.id === id);
+    if (!v) return undefined;
+    return {
+      deal_title: v.deal_title ?? "",
+      organization: v.organization ?? "",
+      observation: v.observation ?? "",
+      deal_value: v.deal_value != null ? String(v.deal_value) : "",
+      closed_date: v.closed_date ? v.closed_date.slice(0, 10) : "",
+      period_month: v.period_month ? v.period_month.slice(0, 10) : "",
+      source_sheet: v.source_sheet ?? "Venda_Produtos",
+    };
+  }
+
   const faturamentoPct = faturamentoStats.pctAtingimento;
 
   return (
@@ -720,8 +783,22 @@ const MetasTab: React.FC<MetasTabProps> = ({
         {/* Pillar 3 — Venda Produtos */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Venda Produtos</CardTitle>
-            <p className="text-xs text-muted-foreground">Negócios fechados no período</p>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-sm font-semibold">Venda Produtos</CardTitle>
+                <p className="text-xs text-muted-foreground">Negócios fechados no período</p>
+              </div>
+              {canViewValues && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs whitespace-nowrap flex-shrink-0"
+                  onClick={openCreateVenda}
+                >
+                  + Nova Venda
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {vendasLoading ? (
@@ -1033,63 +1110,108 @@ const MetasTab: React.FC<MetasTabProps> = ({
       )}
 
       {/* ── Tabela Venda Produtos ─────────────────────────────── */}
-      {!vendasLoading && vendasFiltradas.length > 0 && (
+      {!vendasLoading && (
         <div className="space-y-2">
-          <div>
-            <h3 className="text-sm font-semibold">Venda Produtos — {periodLabel}</h3>
-            <p className="text-xs text-muted-foreground">
-              {vendasFiltradas.length} negócio{vendasFiltradas.length !== 1 ? "s" : ""} fechado
-              {vendasFiltradas.length !== 1 ? "s" : ""} no período
-            </p>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold">Venda Produtos — {periodLabel}</h3>
+              <p className="text-xs text-muted-foreground">
+                {vendasFiltradas.length} negócio{vendasFiltradas.length !== 1 ? "s" : ""} fechado
+                {vendasFiltradas.length !== 1 ? "s" : ""} no período
+              </p>
+            </div>
+            {canViewValues && (
+              <Button variant="default" size="sm" onClick={openCreateVenda}>
+                + Nova Venda
+              </Button>
+            )}
           </div>
-          <div className="rounded-md border overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="bg-muted border-b">
-                  <th className="px-3 py-2 text-left font-semibold">Produto / Projeto / Demanda</th>
-                  <th className="px-3 py-2 text-left font-semibold">Cliente</th>
-                  <th className="px-3 py-2 text-left font-semibold">Observação</th>
-                  {canViewValues && (
-                    <th className="px-3 py-2 text-right font-semibold">Valor</th>
-                  )}
-                  <th className="px-3 py-2 text-left font-semibold">Data Fechamento</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vendasFiltradas.map((venda) => (
-                  <tr key={venda.id} className="border-b hover:bg-muted/30 transition-colors">
-                    <td className="px-3 py-2 font-medium max-w-[280px]">
-                      <span title={venda.deal_title ?? ""} className="block truncate">
-                        {venda.deal_title || "—"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-xs">
-                      {venda.organization ? (
-                        <Badge variant="outline" className="text-xs">
-                          {venda.organization}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground max-w-[200px] truncate">
-                      {venda.observation || "—"}
-                    </td>
+          {vendasFiltradas.length === 0 ? (
+            <div className="rounded-lg border border-dashed flex flex-col items-center justify-center py-8 text-center gap-2">
+              <p className="text-muted-foreground text-sm">Sem vendas no período.</p>
+              {canViewValues && (
+                <Button variant="outline" size="sm" onClick={openCreateVenda}>
+                  + Cadastrar primeira venda
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-muted border-b">
+                    <th className="px-3 py-2 text-left font-semibold">Produto / Projeto / Demanda</th>
+                    <th className="px-3 py-2 text-left font-semibold">Cliente</th>
+                    <th className="px-3 py-2 text-left font-semibold">Observação</th>
                     {canViewValues && (
-                      <td className="px-3 py-2 text-right text-xs">
-                        {venda.deal_value != null ? brl(venda.deal_value, showValues) : "—"}
-                      </td>
+                      <th className="px-3 py-2 text-right font-semibold">Valor</th>
                     )}
-                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                      {venda.closed_date
-                        ? new Date(venda.closed_date).toLocaleDateString("pt-BR")
-                        : "—"}
-                    </td>
+                    <th className="px-3 py-2 text-left font-semibold">Data Fechamento</th>
+                    {canViewValues && (
+                      <th className="px-3 py-2 text-left font-semibold">Ações</th>
+                    )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {vendasFiltradas.map((venda) => (
+                    <tr key={venda.id} className="border-b hover:bg-muted/30 transition-colors">
+                      <td className="px-3 py-2 font-medium max-w-[280px]">
+                        <span title={venda.deal_title ?? ""} className="block truncate">
+                          {venda.deal_title || "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {venda.organization ? (
+                          <Badge variant="outline" className="text-xs">
+                            {venda.organization}
+                          </Badge>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground max-w-[200px] truncate">
+                        {venda.observation || "—"}
+                      </td>
+                      {canViewValues && (
+                        <td className="px-3 py-2 text-right text-xs">
+                          {venda.deal_value != null ? brl(venda.deal_value, showValues) : "—"}
+                        </td>
+                      )}
+                      <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                        {venda.closed_date
+                          ? new Date(venda.closed_date).toLocaleDateString("pt-BR")
+                          : "—"}
+                      </td>
+                      {canViewValues && (
+                        <td className="px-3 py-2">
+                          <div className="flex gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs px-2"
+                              onClick={() => openEditVenda(venda.id)}
+                            >
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs px-2 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteVenda(venda.id)}
+                            >
+                              ✕
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -1158,6 +1280,18 @@ const MetasTab: React.FC<MetasTabProps> = ({
         initialData={currentFormData}
         mode={editingId ? "edit" : "create"}
         tipoFixo={tipoFixoDialog}
+      />
+
+      {/* ── Dialog: Venda Produto (create / edit) ─────────────── */}
+      <VendaFormDialog
+        open={vendaDialogOpen}
+        onClose={() => {
+          setVendaDialogOpen(false);
+          setEditingVendaId(null);
+        }}
+        onSubmit={handleVendaSubmit}
+        initialData={editingVendaId ? vendaToFormData(editingVendaId) : undefined}
+        mode={editingVendaId ? "edit" : "create"}
       />
     </div>
   );

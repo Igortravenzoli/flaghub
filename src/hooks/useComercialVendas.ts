@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemo } from 'react';
 
@@ -82,6 +82,76 @@ export function useComercialVendas() {
   }, [items]);
 
   return { items, stats, isLoading: query.isLoading, isError: query.isError, refetch: query.refetch };
+}
+
+// ── CRUD payload ──────────────────────────────────────────────────────────────
+
+export interface VendaFormData {
+  deal_title: string;
+  organization: string;
+  observation: string;
+  deal_value: string;   // string → parsed to numeric
+  closed_date: string;  // yyyy-mm-dd (input[type=date] format)
+  period_month: string; // yyyy-mm-dd (1st day of month, derived if empty)
+  source_sheet: string;
+}
+
+function buildRow(data: VendaFormData) {
+  const val = data.deal_value.trim().replace(',', '.');
+  const numVal = val ? parseFloat(val) : null;
+  // period_month: use explicit or derive from closed_date
+  let pm: string | null = null;
+  if (data.period_month) {
+    pm = data.period_month;
+  } else if (data.closed_date) {
+    const [y, m] = data.closed_date.split('-');
+    pm = `${y}-${m}-01`;
+  }
+  return {
+    deal_title: data.deal_title || null,
+    organization: data.organization || null,
+    observation: data.observation || null,
+    deal_value: Number.isFinite(numVal) ? numVal : null,
+    closed_date: data.closed_date || null,
+    period_month: pm,
+    source_sheet: data.source_sheet || 'Venda_Produtos',
+  };
+}
+
+export function useCreateVenda() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: VendaFormData) => {
+      const { error } = await supabase.from('comercial_vendas').insert([buildRow(data)]);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comercial', 'vendas'] }),
+  });
+}
+
+export function useUpdateVenda() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: VendaFormData }) => {
+      const { error } = await supabase
+        .from('comercial_vendas')
+        .update(buildRow(data))
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comercial', 'vendas'] }),
+  });
+}
+
+export function useDeleteVenda() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('comercial_vendas').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comercial', 'vendas'] }),
+  });
 }
 
 function formatMonth(ym: string) {
