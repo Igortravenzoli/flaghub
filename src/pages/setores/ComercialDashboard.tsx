@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { SectorLayout } from '@/components/setores/SectorLayout';
-import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 import { DashboardDataTable, DataTableColumn, ColumnFilter } from '@/components/dashboard/DashboardDataTable';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
@@ -43,6 +42,9 @@ function ComercialCalendarPicker({
   preset,
   onPresetChange,
   onCustomRange,
+  onRefresh,
+  onExportCSV,
+  onExportPDF,
   currentYear,
 }: {
   dateFrom?: Date;
@@ -50,6 +52,9 @@ function ComercialCalendarPicker({
   preset: string;
   onPresetChange: (p: string) => void;
   onCustomRange: (from: Date, to: Date) => void;
+  onRefresh?: () => void;
+  onExportCSV?: () => void;
+  onExportPDF?: () => void;
   currentYear: number;
 }) {
   const today = new Date();
@@ -58,18 +63,59 @@ function ComercialCalendarPicker({
 
   const inRange = (d: Date) => !!dateFrom && !!dateTo && d >= dateFrom && d <= dateTo;
 
+  const viewYear = viewDate.getFullYear();
+
+  // ── Helpers de seleção ────────────────────────────────────────
+  function selectMonth(yr: number, mo: number) {
+    if (yr === currentYear) {
+      onPresetChange(CAL_MONTHS_ABBR[mo]);
+    } else {
+      onCustomRange(new Date(yr, mo, 1), new Date(yr, mo + 1, 0, 23, 59, 59));
+    }
+  }
+
+  function selectYear(yr: number) {
+    if (yr === currentYear) {
+      onPresetChange('1y');
+    } else {
+      onCustomRange(new Date(yr, 0, 1), new Date(yr, 11, 31, 23, 59, 59));
+    }
+    setViewDate(new Date(yr, 0, 1));
+    setLevel('month');
+  }
+
+  function selectQuarter(q: number) {
+    const startMo = (q - 1) * 3;
+    if (viewYear === currentYear) {
+      onPresetChange(`q${q}`);
+    } else {
+      onCustomRange(new Date(viewYear, startMo, 1), new Date(viewYear, startMo + 3, 0, 23, 59, 59));
+    }
+  }
+
+  function isQuarterActive(q: number) {
+    if (!dateFrom || !dateTo) return false;
+    const startMo = (q - 1) * 3;
+    return (
+      dateFrom.getFullYear() === viewYear &&
+      dateFrom.getMonth() === startMo &&
+      dateTo.getFullYear() === viewYear &&
+      dateTo.getMonth() === startMo + 2
+    );
+  }
+
   // ─── Day view ───────────────────────────────────────────────────
   const renderDayView = () => {
     const yr = viewDate.getFullYear(), mo = viewDate.getMonth();
     const lastDay = new Date(yr, mo + 1, 0).getDate();
-    const startDow = (new Date(yr, mo, 1).getDay() + 6) % 7; // Mon=0
+    const startDow = (new Date(yr, mo, 1).getDay() + 6) % 7;
     const cells: (number | null)[] = [...Array(startDow).fill(null), ...Array.from({ length: lastDay }, (_, i) => i + 1)];
     while (cells.length % 7 !== 0) cells.push(null);
     const weeks: (number | null)[][] = [];
     for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
     return (
-      <div className="mt-1">
+      <div className="mt-2">
         <div className="grid grid-cols-7 mb-1">
           {CAL_WEEKDAYS.map(d => (
             <div key={d} className="text-center text-[10px] font-semibold text-muted-foreground py-0.5">{d}</div>
@@ -84,8 +130,7 @@ function ComercialCalendarPicker({
                 const sel = inRange(d);
                 const isToday = d.toDateString() === today.toDateString();
                 return (
-                  <button
-                    key={di} type="button"
+                  <button key={di} type="button"
                     onClick={() => onCustomRange(new Date(yr, mo, day, 0, 0, 0), new Date(yr, mo, day, 23, 59, 59))}
                     className={`h-7 w-full rounded text-xs transition-colors font-mono
                       ${sel ? 'bg-primary text-primary-foreground font-semibold' :
@@ -105,21 +150,14 @@ function ComercialCalendarPicker({
   const renderMonthView = () => {
     const yr = viewDate.getFullYear();
     return (
-      <div className="grid grid-cols-4 gap-1 mt-1">
+      <div className="grid grid-cols-4 gap-1 mt-2">
         {CAL_MONTHS.map((m, idx) => {
-          const sel = dateFrom && dateFrom.getFullYear() === yr && dateFrom.getMonth() === idx &&
+          const sel = !!dateFrom && dateFrom.getFullYear() === yr && dateFrom.getMonth() === idx &&
             (!dateTo || (dateTo.getFullYear() === yr && dateTo.getMonth() === idx));
           const isCurrentMonth = yr === today.getFullYear() && idx === today.getMonth();
           return (
-            <button
-              key={m} type="button"
-              onClick={() => {
-                if (yr === currentYear) {
-                  onPresetChange(CAL_MONTHS_ABBR[idx]);
-                } else {
-                  onCustomRange(new Date(yr, idx, 1), new Date(yr, idx + 1, 0, 23, 59, 59));
-                }
-              }}
+            <button key={m} type="button"
+              onClick={() => selectMonth(yr, idx)}
               className={`py-2 rounded text-xs font-medium border transition-colors
                 ${sel ? 'bg-primary text-primary-foreground border-primary' :
                   isCurrentMonth ? 'border-primary/50 text-primary bg-primary/5 hover:bg-primary/10' :
@@ -135,14 +173,15 @@ function ComercialCalendarPicker({
   const renderYearView = () => {
     const decStart = Math.floor(viewDate.getFullYear() / 12) * 12;
     return (
-      <div className="grid grid-cols-4 gap-1 mt-1">
+      <div className="grid grid-cols-4 gap-1 mt-2">
         {Array.from({ length: 12 }, (_, i) => decStart + i).map(yr => {
-          const sel = dateFrom && dateFrom.getFullYear() === yr;
+          const sel = !!dateFrom && dateFrom.getFullYear() === yr &&
+            !!dateTo && dateTo.getFullYear() === yr && dateFrom.getMonth() === 0 && dateTo.getMonth() === 11;
           const isCurrent = yr === today.getFullYear();
           return (
-            <button
-              key={yr} type="button"
-              onClick={() => { setViewDate(new Date(yr, 0, 1)); setLevel('month'); }}
+            <button key={yr} type="button"
+              onClick={() => selectYear(yr)}
+              title={`Selecionar ano ${yr}`}
               className={`py-2 rounded text-xs border transition-colors
                 ${sel ? 'bg-primary text-primary-foreground border-primary font-semibold' :
                   isCurrent ? 'border-primary/50 text-primary bg-primary/5 font-semibold hover:bg-primary/10' :
@@ -176,22 +215,72 @@ function ComercialCalendarPicker({
     else if (level === 'month') setLevel('year');
   };
 
+  const btnQ = (q: number) => {
+    const active = isQuarterActive(q);
+    return (
+      <button key={q} type="button"
+        onClick={() => selectQuarter(q)}
+        title={`${['Jan–Mar','Abr–Jun','Jul–Set','Out–Dez'][q - 1]} ${viewYear}`}
+        className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition-colors
+          ${active ? 'bg-primary text-primary-foreground border-primary' :
+          'border-border text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+      >Q{q}</button>
+    );
+  };
+
   return (
-    <div className="rounded-lg border bg-card px-3 py-2.5">
-      <div className="flex items-center justify-between select-none">
-        <button
-          type="button" onClick={handlePrev}
-          className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-lg leading-none"
+    <div className="rounded-lg border bg-card px-3 py-2.5 space-y-0">
+      {/* ─ Linha 1: nav + label + Q1-Q4 + actions ─ */}
+      <div className="flex items-center gap-1 select-none">
+        <button type="button" onClick={handlePrev}
+          className="h-7 w-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-base leading-none flex-shrink-0"
         >‹</button>
-        <button
-          type="button" onClick={handleHeaderClick}
-          className={`px-3 py-1 rounded text-sm font-semibold transition-colors hover:bg-muted ${level === 'year' ? 'pointer-events-none' : 'cursor-pointer'}`}
+
+        <button type="button" onClick={handleHeaderClick}
+          className={`px-2 py-1 rounded text-sm font-semibold transition-colors hover:bg-muted min-w-[90px] text-center flex-shrink-0
+            ${level === 'year' ? 'pointer-events-none' : 'cursor-pointer'}`}
         >{headerLabel()}</button>
-        <button
-          type="button" onClick={handleNext}
-          className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-lg leading-none"
+
+        <button type="button" onClick={handleNext}
+          className="h-7 w-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-base leading-none flex-shrink-0"
         >›</button>
+
+        <div className="w-px h-4 bg-border mx-1 flex-shrink-0" />
+
+        {/* Q1-Q4 */}
+        <div className="flex gap-1 flex-shrink-0">
+          {[1, 2, 3, 4].map(q => btnQ(q))}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {onRefresh && (
+            <button type="button" onClick={onRefresh}
+              className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              title="Atualizar dados"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+              </svg>
+            </button>
+          )}
+          {onExportCSV && (
+            <button type="button" onClick={onExportCSV}
+              className="h-6 px-2 flex items-center gap-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-[11px]"
+              title="Exportar CSV"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              CSV
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* ─ Conteúdo do calendário ─ */}
       {level === 'day' && renderDayView()}
       {level === 'month' && renderMonthView()}
       {level === 'year' && renderYearView()}
@@ -432,24 +521,9 @@ export default function ComercialDashboard() {
         preset={filters.preset}
         onPresetChange={filters.setPreset}
         onCustomRange={filters.setCustomRange}
-        currentYear={currentYear}
-      />
-
-      <DashboardFilterBar
-        preset={filters.preset}
-        onPresetChange={filters.setPreset}
-        presetLabel={filters.presetLabel}
-        presetControl="dropdown"
-        presetsLabel="Período"
-        presets={[]}
-        dateFrom={filters.dateFrom}
-        dateTo={filters.dateTo}
-        minDate={minDate}
-        maxDate={maxDate}
-        onCustomRange={filters.setCustomRange}
         onRefresh={() => refetch()}
         onExportCSV={handleExportCSV}
-        onExportPDF={handleExportPDF}
+        currentYear={currentYear}
       />
 
       {isError ? (
