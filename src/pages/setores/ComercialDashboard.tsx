@@ -31,109 +31,170 @@ import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 
-const MONTH_ABBR = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'] as const;
-const MONTH_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+// ── Windows-style drilldown calendar ─────────────────────────────
+const CAL_MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const CAL_MONTHS_ABBR = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'] as const;
+const CAL_WEEKDAYS = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+type CalLevel = 'day' | 'month' | 'year';
 
-function ComercialPeriodPicker({
+function ComercialCalendarPicker({
+  dateFrom,
+  dateTo,
   preset,
   onPresetChange,
   onCustomRange,
   currentYear,
-  pickerYear,
-  setPickerYear,
 }: {
+  dateFrom?: Date;
+  dateTo?: Date;
   preset: string;
   onPresetChange: (p: string) => void;
   onCustomRange: (from: Date, to: Date) => void;
   currentYear: number;
-  pickerYear: number;
-  setPickerYear: (y: number) => void;
 }) {
-  const prevYear = currentYear - 1;
+  const today = new Date();
+  const [level, setLevel] = useState<CalLevel>('month');
+  const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
 
-  function handleMonth(idx: number) {
-    if (pickerYear === currentYear) {
-      onPresetChange(MONTH_ABBR[idx]);
-    } else {
-      const from = new Date(pickerYear, idx, 1);
-      const to = new Date(pickerYear, idx + 1, 0, 23, 59, 59);
-      onCustomRange(from, to);
-    }
-  }
+  const inRange = (d: Date) => !!dateFrom && !!dateTo && d >= dateFrom && d <= dateTo;
 
-  function handleQuarter(q: number) {
-    if (pickerYear === currentYear) {
-      onPresetChange(`q${q}`);
-    } else {
-      const startMonth = (q - 1) * 3;
-      const from = new Date(pickerYear, startMonth, 1);
-      const to = new Date(pickerYear, startMonth + 3, 0, 23, 59, 59);
-      onCustomRange(from, to);
-    }
-  }
+  // ─── Day view ───────────────────────────────────────────────────
+  const renderDayView = () => {
+    const yr = viewDate.getFullYear(), mo = viewDate.getMonth();
+    const lastDay = new Date(yr, mo + 1, 0).getDate();
+    const startDow = (new Date(yr, mo, 1).getDay() + 6) % 7; // Mon=0
+    const cells: (number | null)[] = [...Array(startDow).fill(null), ...Array.from({ length: lastDay }, (_, i) => i + 1)];
+    while (cells.length % 7 !== 0) cells.push(null);
+    const weeks: (number | null)[][] = [];
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
-  const isMonthActive = (idx: number) =>
-    pickerYear === currentYear && preset === MONTH_ABBR[idx];
+    return (
+      <div className="mt-1">
+        <div className="grid grid-cols-7 mb-1">
+          {CAL_WEEKDAYS.map(d => (
+            <div key={d} className="text-center text-[10px] font-semibold text-muted-foreground py-0.5">{d}</div>
+          ))}
+        </div>
+        <div className="space-y-0.5">
+          {weeks.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7 gap-0.5">
+              {week.map((day, di) => {
+                if (!day) return <div key={di} />;
+                const d = new Date(yr, mo, day);
+                const sel = inRange(d);
+                const isToday = d.toDateString() === today.toDateString();
+                return (
+                  <button
+                    key={di} type="button"
+                    onClick={() => onCustomRange(new Date(yr, mo, day, 0, 0, 0), new Date(yr, mo, day, 23, 59, 59))}
+                    className={`h-7 w-full rounded text-xs transition-colors font-mono
+                      ${sel ? 'bg-primary text-primary-foreground font-semibold' :
+                        isToday ? 'ring-1 ring-primary text-primary font-semibold hover:bg-muted' :
+                        'text-foreground hover:bg-muted'}`}
+                  >{day}</button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
-  const isQuarterActive = (q: number) =>
-    pickerYear === currentYear && preset === `q${q}`;
+  // ─── Month view ─────────────────────────────────────────────────
+  const renderMonthView = () => {
+    const yr = viewDate.getFullYear();
+    return (
+      <div className="grid grid-cols-4 gap-1 mt-1">
+        {CAL_MONTHS.map((m, idx) => {
+          const sel = dateFrom && dateFrom.getFullYear() === yr && dateFrom.getMonth() === idx &&
+            (!dateTo || (dateTo.getFullYear() === yr && dateTo.getMonth() === idx));
+          const isCurrentMonth = yr === today.getFullYear() && idx === today.getMonth();
+          return (
+            <button
+              key={m} type="button"
+              onClick={() => {
+                if (yr === currentYear) {
+                  onPresetChange(CAL_MONTHS_ABBR[idx]);
+                } else {
+                  onCustomRange(new Date(yr, idx, 1), new Date(yr, idx + 1, 0, 23, 59, 59));
+                }
+              }}
+              className={`py-2 rounded text-xs font-medium border transition-colors
+                ${sel ? 'bg-primary text-primary-foreground border-primary' :
+                  isCurrentMonth ? 'border-primary/50 text-primary bg-primary/5 hover:bg-primary/10' :
+                  'bg-background border-border text-foreground hover:bg-muted'}`}
+            >{m}</button>
+          );
+        })}
+      </div>
+    );
+  };
 
-  const btnBase = "rounded text-xs font-medium border transition-colors";
-  const btnActive = "bg-primary text-primary-foreground border-primary";
-  const btnIdle = "bg-background border-border text-muted-foreground hover:bg-muted";
+  // ─── Year view ──────────────────────────────────────────────────
+  const renderYearView = () => {
+    const decStart = Math.floor(viewDate.getFullYear() / 12) * 12;
+    return (
+      <div className="grid grid-cols-4 gap-1 mt-1">
+        {Array.from({ length: 12 }, (_, i) => decStart + i).map(yr => {
+          const sel = dateFrom && dateFrom.getFullYear() === yr;
+          const isCurrent = yr === today.getFullYear();
+          return (
+            <button
+              key={yr} type="button"
+              onClick={() => { setViewDate(new Date(yr, 0, 1)); setLevel('month'); }}
+              className={`py-2 rounded text-xs border transition-colors
+                ${sel ? 'bg-primary text-primary-foreground border-primary font-semibold' :
+                  isCurrent ? 'border-primary/50 text-primary bg-primary/5 font-semibold hover:bg-primary/10' :
+                  'bg-background border-border text-foreground hover:bg-muted'}`}
+            >{yr}</button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const headerLabel = () => {
+    if (level === 'day') return `${CAL_MONTHS[viewDate.getMonth()]} ${viewDate.getFullYear()}`;
+    if (level === 'month') return String(viewDate.getFullYear());
+    const ds = Math.floor(viewDate.getFullYear() / 12) * 12;
+    return `${ds} – ${ds + 11}`;
+  };
+
+  const handlePrev = () => {
+    if (level === 'day') setViewDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    else if (level === 'month') setViewDate(d => new Date(d.getFullYear() - 1, 0, 1));
+    else setViewDate(d => new Date(d.getFullYear() - 12, 0, 1));
+  };
+  const handleNext = () => {
+    if (level === 'day') setViewDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+    else if (level === 'month') setViewDate(d => new Date(d.getFullYear() + 1, 0, 1));
+    else setViewDate(d => new Date(d.getFullYear() + 12, 0, 1));
+  };
+  const handleHeaderClick = () => {
+    if (level === 'day') setLevel('month');
+    else if (level === 'month') setLevel('year');
+  };
 
   return (
-    <div className="rounded-lg border bg-card px-3 py-2.5 space-y-2">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {[prevYear, currentYear].map((year) => (
-          <button
-            key={year}
-            type="button"
-            onClick={() => setPickerYear(year)}
-            className={`px-3 py-1 ${btnBase} ${pickerYear === year ? btnActive : btnIdle}`}
-          >
-            {year}
-          </button>
-        ))}
-        <div className="w-px h-4 bg-border mx-0.5" />
-        {[1, 2, 3, 4].map((q) => (
-          <button
-            key={q}
-            type="button"
-            onClick={() => handleQuarter(q)}
-            className={`px-3 py-1 ${btnBase} ${isQuarterActive(q) ? btnActive : btnIdle}`}
-          >
-            Q{q}
-          </button>
-        ))}
-        <div className="w-px h-4 bg-border mx-0.5" />
+    <div className="rounded-lg border bg-card px-3 py-2.5">
+      <div className="flex items-center justify-between select-none">
         <button
-          type="button"
-          onClick={() => onPresetChange('1y')}
-          className={`px-3 py-1 ${btnBase} ${preset === '1y' ? btnActive : btnIdle}`}
-        >
-          Ano atual
-        </button>
+          type="button" onClick={handlePrev}
+          className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-lg leading-none"
+        >‹</button>
         <button
-          type="button"
-          onClick={() => onPresetChange('all')}
-          className={`px-3 py-1 ${btnBase} ${preset === 'all' ? btnActive : btnIdle}`}
-        >
-          Todos
-        </button>
+          type="button" onClick={handleHeaderClick}
+          className={`px-3 py-1 rounded text-sm font-semibold transition-colors hover:bg-muted ${level === 'year' ? 'pointer-events-none' : 'cursor-pointer'}`}
+        >{headerLabel()}</button>
+        <button
+          type="button" onClick={handleNext}
+          className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-lg leading-none"
+        >›</button>
       </div>
-      <div className="grid grid-cols-6 gap-1">
-        {MONTH_SHORT.map((m, idx) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => handleMonth(idx)}
-            className={`py-1.5 ${btnBase} text-center ${isMonthActive(idx) ? btnActive : btnIdle}`}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
+      {level === 'day' && renderDayView()}
+      {level === 'month' && renderMonthView()}
+      {level === 'year' && renderYearView()}
     </div>
   );
 }
@@ -205,7 +266,6 @@ export default function ComercialDashboard() {
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
-  const [pickerYear, setPickerYear] = useState(currentYear);
   const filters = useDashboardFilters('1y');
   const { clients, allClients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
@@ -366,13 +426,13 @@ export default function ComercialDashboard() {
         )}
       </div>
 
-      <ComercialPeriodPicker
+      <ComercialCalendarPicker
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
         preset={filters.preset}
         onPresetChange={filters.setPreset}
         onCustomRange={filters.setCustomRange}
         currentYear={currentYear}
-        pickerYear={pickerYear}
-        setPickerYear={setPickerYear}
       />
 
       <DashboardFilterBar
