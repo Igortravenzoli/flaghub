@@ -355,6 +355,8 @@ export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('ativo');
   const [activeTab, setActiveTab] = useState('visao-clientes');
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
+  const [selectedSistema, setSelectedSistema] = useState<string | null>(null);
+  const [multiOnly, setMultiOnly] = useState(false);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
   const [calOpen, setCalOpen] = useState(false);
@@ -428,7 +430,10 @@ export default function ComercialDashboard() {
     const source = (statusFilter === 'todos' || statusFilter === 'ativo')
       ? displayClients.filter(c => c.status?.toLowerCase() === 'ativo')
       : displayClients;
-    const target = selectedBandeira ? source.filter(c => (c.bandeira || 'Sem bandeira') === selectedBandeira) : source;
+    const byBandeira = selectedBandeira ? source.filter(c => (c.bandeira || 'Sem bandeira') === selectedBandeira) : source;
+    const target = multiOnly
+      ? byBandeira.filter(c => ((c.sistemas_label?.split(',').map(s => s.trim()).filter(Boolean) ?? []).length > 1))
+      : byBandeira;
     const map = new Map<string, number>();
     target.forEach(c => {
       const sistemas = c.sistemas_label?.split(',').map(s => s.trim()).filter(Boolean) ?? [];
@@ -442,7 +447,7 @@ export default function ComercialDashboard() {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-  }, [displayClients, statusFilter, selectedBandeira]);
+  }, [displayClients, statusFilter, selectedBandeira, multiOnly]);
 
   const operacionalItems = operational.items.filter(i => i.query_name === '04-Em Fila Comercial');
   const pbiHealthIds = useMemo(
@@ -585,11 +590,23 @@ export default function ComercialDashboard() {
 
           <TabsContent value="visao-clientes" className="space-y-4 mt-0">
             {(() => {
+              const clientHasSistema = (c: any, sis: string) => {
+                const list = c.sistemas_label?.split(',').map((s: string) => s.trim()).filter(Boolean) ?? [];
+                if (sis === 'Sem sistema') return list.length === 0;
+                return list.includes(sis);
+              };
               const ativosClients = (statusFilter === 'todos' || statusFilter === 'ativo')
                 ? displayClients.filter(c => c.status?.toLowerCase() === 'ativo')
                 : [];
+              // Cross-filter: se um sistema está selecionado, restringe a base da bandeira
+              const bandeiraBase = selectedSistema
+                ? ativosClients.filter(c => clientHasSistema(c, selectedSistema))
+                : ativosClients;
+              const bandeiraSource = multiOnly
+                ? bandeiraBase.filter(c => ((c.sistemas_label?.split(',').map((s: string) => s.trim()).filter(Boolean) ?? []).length > 1))
+                : bandeiraBase;
               const bandeiraMap = new Map<string, number>();
-              ativosClients.forEach(c => {
+              bandeiraSource.forEach(c => {
                 const b = c.bandeira || 'Sem bandeira';
                 bandeiraMap.set(b, (bandeiraMap.get(b) || 0) + 1);
               });
@@ -598,6 +615,10 @@ export default function ComercialDashboard() {
                 .sort((a, b) => b.count - a.count);
               const handleBarClick = (data: any) => {
                 if (data?.name) setSelectedBandeira(prev => prev === data.name ? null : data.name);
+              };
+              const handleSliceClick = (data: any) => {
+                const name = data?.name ?? data?.payload?.name;
+                if (name && name !== 'Outros') setSelectedSistema(prev => prev === name ? null : name);
               };
               return (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -626,22 +647,37 @@ export default function ComercialDashboard() {
                         <p className="text-xs text-muted-foreground mt-0.5">Bloqueados</p>
                       </button>
                     </div>
-                    {/* KPIs internos */}
+                    {/* KPIs internos — clicáveis */}
                     <div className="grid grid-cols-3 gap-2 border-t pt-3 mt-3">
-                      <div className="rounded-lg border bg-muted/30 px-2.5 py-2">
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedBandeira(null); setSelectedSistema(null); setMultiOnly(false); }}
+                        title="Ver todos (limpar filtros)"
+                        className="rounded-lg border bg-muted/30 px-2.5 py-2 text-left transition-colors hover:bg-muted/60 hover:border-primary/40"
+                      >
                         <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Bandeiras</p>
                         <p className="text-xl font-semibold text-foreground mt-1">{isLoading ? '—' : bandeiras.length}</p>
-                      </div>
-                      <div className="rounded-lg border bg-muted/30 px-2.5 py-2">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMultiOnly(v => !v)}
+                        title="Filtrar clientes com mais de um sistema"
+                        className={`rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-muted/60 ${multiOnly ? 'bg-primary/10 border-primary/40 ring-1 ring-primary/30' : 'bg-muted/30'}`}
+                      >
                         <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Multissist.</p>
                         <p className="text-xl font-semibold text-foreground mt-1">{isLoading ? '—' : clientInsights.multissistema}</p>
-                      </div>
-                      <div className="rounded-lg border bg-muted/30 px-2.5 py-2">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBandeira(prev => prev === 'Sem bandeira' ? null : 'Sem bandeira')}
+                        title="Filtrar clientes sem bandeira"
+                        className={`rounded-lg border px-2.5 py-2 text-left transition-colors hover:bg-muted/60 ${selectedBandeira === 'Sem bandeira' ? 'bg-primary/10 border-primary/40 ring-1 ring-primary/30' : 'bg-muted/30'}`}
+                      >
                         <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Sem bandeira</p>
                         <p className={`text-xl font-semibold mt-1 ${clientInsights.semBandeira > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                           {isLoading ? '—' : clientInsights.semBandeira}
                         </p>
-                      </div>
+                      </button>
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-2">
                       {isLoading ? 'Carteira atual' : `Média de ${clientInsights.mediaSistemas} sistemas por cliente na carteira atual`}
@@ -650,16 +686,25 @@ export default function ComercialDashboard() {
 
                   {/* Bloco 2 — Clientes Ativos por Bandeira */}
                   <Card className="p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
                         <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
-                        <p className="text-xs text-muted-foreground">{ativosClients.length} clientes · {bandeiraData.length} bandeiras</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {selectedSistema ? `Filtrado por ${selectedSistema}` : `${ativosClients.length} clientes · ${bandeiraData.length} bandeiras`}
+                        </p>
                       </div>
-                      {selectedBandeira && (
-                        <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedBandeira(null)}>
-                          {selectedBandeira} ✕
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {selectedSistema && (
+                          <Badge variant="outline" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedSistema(null)}>
+                            {selectedSistema} ✕
+                          </Badge>
+                        )}
+                        {selectedBandeira && (
+                          <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedBandeira(null)}>
+                            {selectedBandeira} ✕
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <div className="h-[190px]">
                       {bandeiraData.length > 0 && !isLoading ? (
@@ -668,7 +713,16 @@ export default function ComercialDashboard() {
                             <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
                             <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
-                            <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={40} cursor="pointer" onClick={handleBarClick}>
+                            <Bar
+                              dataKey="count"
+                              radius={[3, 3, 0, 0]}
+                              maxBarSize={40}
+                              cursor="pointer"
+                              onClick={handleBarClick}
+                              isAnimationActive
+                              animationDuration={900}
+                              animationEasing="ease-out"
+                            >
                               {bandeiraData.map((entry, i) => (
                                 <Cell key={i} fill="hsl(var(--primary))" opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.25 : 0.85} />
                               ))}
@@ -683,11 +737,18 @@ export default function ComercialDashboard() {
 
                   {/* Bloco 3 — Clientes por Sistema */}
                   <Card className="p-4 space-y-2">
-                    <div>
-                      <h3 className="text-sm font-semibold">Clientes por Sistema</h3>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedBandeira ? `Filtrado por ${selectedBandeira}` : 'Distribuição da carteira ativa por produto'}
-                      </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold">Clientes por Sistema</h3>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {selectedBandeira ? `Filtrado por ${selectedBandeira}` : 'Distribuição da carteira ativa por produto'}
+                        </p>
+                      </div>
+                      {selectedSistema && (
+                        <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20 flex-shrink-0" onClick={() => setSelectedSistema(null)}>
+                          {selectedSistema} ✕
+                        </Badge>
+                      )}
                     </div>
                     <div className="h-[190px]">
                       {sistemaChartData.length > 0 && !isLoading ? (() => {
@@ -697,6 +758,8 @@ export default function ComercialDashboard() {
                           ? [...sistemaChartData.slice(0, TOP), { name: 'Outros', count: sistemaChartData.slice(TOP).reduce((s, d) => s + d.count, 0) }]
                           : sistemaChartData;
                         const op = (i: number) => Math.max(0.25, 1 - i * 0.13);
+                        const dimFor = (name: string, i: number) =>
+                          selectedSistema && selectedSistema !== name ? 0.18 : op(i);
                         return (
                           <div className="flex items-center gap-4 h-full">
                             <div className="relative flex-shrink-0" style={{ width: 150, height: 150 }}>
@@ -712,9 +775,15 @@ export default function ComercialDashboard() {
                                     stroke="none"
                                     startAngle={90}
                                     endAngle={-270}
+                                    cursor="pointer"
+                                    onClick={handleSliceClick}
+                                    isAnimationActive
+                                    animationBegin={150}
+                                    animationDuration={900}
+                                    animationEasing="ease-out"
                                   >
-                                    {donut.map((_, i) => (
-                                      <Cell key={i} fill="hsl(var(--primary))" fillOpacity={op(i)} />
+                                    {donut.map((entry, i) => (
+                                      <Cell key={i} fill="hsl(var(--primary))" fillOpacity={dimFor(entry.name, i)} />
                                     ))}
                                   </Pie>
                                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
@@ -726,17 +795,30 @@ export default function ComercialDashboard() {
                               </div>
                             </div>
                             <div className="flex-1 min-w-0 space-y-1 overflow-y-auto max-h-[170px] pr-1">
-                              {donut.map((s, i) => (
-                                <div key={s.name} className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="flex items-center gap-1.5 min-w-0">
-                                    <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: 'hsl(var(--primary))', opacity: op(i) }} />
-                                    <span className="truncate text-foreground">{s.name}</span>
-                                  </span>
-                                  <span className="font-mono text-muted-foreground flex-shrink-0">
-                                    {totalAssoc > 0 ? ((s.count / totalAssoc) * 100).toFixed(0) : 0}%
-                                  </span>
-                                </div>
-                              ))}
+                              {donut.map((s, i) => {
+                                const isActive = selectedSistema === s.name;
+                                const clickable = s.name !== 'Outros';
+                                return (
+                                  <button
+                                    key={s.name}
+                                    type="button"
+                                    disabled={!clickable}
+                                    onClick={() => clickable && setSelectedSistema(prev => prev === s.name ? null : s.name)}
+                                    style={{ animationDelay: `${i * 70}ms`, animationFillMode: 'both' }}
+                                    className={`flex items-center justify-between gap-2 text-xs w-full rounded px-1 py-0.5 animate-in fade-in slide-in-from-left-1 duration-500
+                                      ${clickable ? 'cursor-pointer hover:bg-muted/50' : 'cursor-default'}
+                                      ${isActive ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                                  >
+                                    <span className="flex items-center gap-1.5 min-w-0">
+                                      <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: 'hsl(var(--primary))', opacity: op(i) }} />
+                                      <span className="truncate text-foreground">{s.name}</span>
+                                    </span>
+                                    <span className="font-mono text-muted-foreground flex-shrink-0">
+                                      {totalAssoc > 0 ? ((s.count / totalAssoc) * 100).toFixed(0) : 0}%
+                                    </span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
                         );
