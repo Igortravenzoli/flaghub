@@ -22,7 +22,7 @@ import {
 } from "@/hooks/useComercialVendas";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  CartesianGrid, ReferenceLine,
+  CartesianGrid, ReferenceLine, AreaChart, Area,
 } from "recharts";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
@@ -173,6 +173,25 @@ function CustomTooltipProduto({ active, payload, label }: any) {
   );
 }
 
+function WaveTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  const colorFor = (p: number) => (p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444");
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md space-y-1">
+      <p className="font-medium text-foreground">{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.dataKey} className="text-muted-foreground flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
+          {p.name}:{" "}
+          <span className="font-mono font-semibold" style={{ color: colorFor(p.value) }}>
+            {Number(p.value).toFixed(1)}%
+          </span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────
 const MetasTab: React.FC<MetasTabProps> = ({
   canViewValues = false,
@@ -192,6 +211,9 @@ const MetasTab: React.FC<MetasTabProps> = ({
   // ── Venda Produtos CRUD state ─────────────────────────────────
   const [vendaDialogOpen, setVendaDialogOpen] = useState(false);
   const [editingVendaId, setEditingVendaId] = useState<string | null>(null);
+
+  // ── Histograma de ondas: visão mensal/trimestral ─────────────
+  const [waveView, setWaveView] = useState<"mensal" | "trimestral">("mensal");
 
   const { data: metas = [], isLoading, isError, refetch } = useComercialMetas();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
@@ -354,6 +376,93 @@ const MetasTab: React.FC<MetasTabProps> = ({
       hasCadastrado: targetCadastrado > 0,
     };
   }, [metasFaturamento, metasProduto, vendasFiltradas]);
+
+  // ── Histograma de ondas: atingimento Produtos × Financeiro ───
+  const waveData = useMemo(() => {
+    const parseFat = (raw0: string) => {
+      const raw = raw0.trim().toLowerCase();
+      const v = raw.endsWith("k")
+        ? parseFloat(raw.slice(0, -1)) * 1000
+        : parseFloat(raw.replace(",", ".")) || 0;
+      return Number.isFinite(v) ? v : 0;
+    };
+
+    type Acc = { metaQty: number; realQty: number; finMeta: number; finReal: number };
+    const map = new Map<string, Acc>();
+    const ensure = (k: string) => {
+      let a = map.get(k);
+      if (!a) { a = { metaQty: 0, realQty: 0, finMeta: 0, finReal: 0 }; map.set(k, a); }
+      return a;
+    };
+
+    // Metas de produto → quantidade + contribuição financeira (realizado × vu)
+    for (const m of metasProduto) {
+      const d = getMesDate(m.mes);
+      if (!d) continue;
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const a = ensure(k);
+      a.metaQty += parseFloat(m.valor) || 0;
+      const rq = parseInt(m.realizado) || 0;
+      a.realQty += rq;
+      a.finReal += rq * (parseFloat(m.valor_unitario) || 0);
+    }
+    // Metas de faturamento cadastradas → target financeiro do mês
+    for (const m of metasFaturamento) {
+      const d = getMesDate(m.mes);
+      if (!d) continue;
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      ensure(k).finMeta += parseFat(m.valor);
+    }
+    // Vendas → realizado financeiro do mês
+    for (const v of vendasFiltradas) {
+      const pm = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
+      if (!pm) continue;
+      ensure(pm).finReal += v.deal_value ?? 0;
+    }
+    // Default mensal quando não há meta de faturamento cadastrada
+    for (const a of map.values()) {
+      if (a.finMeta <= 0) a.finMeta = META_MENSAL_DEFAULT;
+    }
+
+    const months = [...map.keys()].sort();
+    const pctOf = (real: number, meta: number) =>
+      meta > 0 ? Math.round((real / meta) * 1000) / 10 : 0;
+
+    if (waveView === "mensal") {
+      return months.map((k) => {
+        const a = map.get(k)!;
+        return {
+          label: formatYM(k),
+          produto: pctOf(a.realQty, a.metaQty),
+          financeiro: pctOf(a.finReal, a.finMeta),
+        };
+      });
+    }
+
+    // Trimestral: agrupa meses em Q1–Q4 por ano
+    const qmap = new Map<string, Acc>();
+    for (const k of months) {
+      const a = map.get(k)!;
+      const [y, mo] = k.split("-").map(Number);
+      const q = Math.floor((mo - 1) / 3) + 1;
+      const qk = `${y}-Q${q}`;
+      let qa = qmap.get(qk);
+      if (!qa) { qa = { metaQty: 0, realQty: 0, finMeta: 0, finReal: 0 }; qmap.set(qk, qa); }
+      qa.metaQty += a.metaQty;
+      qa.realQty += a.realQty;
+      qa.finMeta += a.finMeta;
+      qa.finReal += a.finReal;
+    }
+    return [...qmap.keys()].sort().map((qk) => {
+      const a = qmap.get(qk)!;
+      const [y, q] = qk.split("-");
+      return {
+        label: `${q}/${y}`,
+        produto: pctOf(a.realQty, a.metaQty),
+        financeiro: pctOf(a.finReal, a.finMeta),
+      };
+    });
+  }, [metasProduto, metasFaturamento, vendasFiltradas, waveView]);
 
   // ── Pillar 2: Meta Produtos KPIs ─────────────────────────────
   const kpisProdutos = useMemo(() => {
@@ -595,8 +704,8 @@ const MetasTab: React.FC<MetasTabProps> = ({
         </div>
       )}
 
-      {/* ── Três pilares ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      {/* ── Pilares + histograma de ondas ─────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
 
         {/* Pillar 1 — Meta de Faturamento */}
         <Card>
@@ -873,6 +982,118 @@ const MetasTab: React.FC<MetasTabProps> = ({
                   )}
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pillar 4 — Histograma de ondas (atingimento de metas) */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-sm font-semibold">Atingimento de Metas</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Produtos × Financeiro · {waveView === "mensal" ? "mensal" : "trimestral"}
+                </p>
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                {(["mensal", "trimestral"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setWaveView(v)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition-colors ${
+                      waveView === v
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {v === "mensal" ? "Mês" : "Trim."}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {waveData.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                Sem dados no período.
+              </p>
+            ) : (
+              <>
+                <div style={{ height: 196 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={waveData} margin={{ left: -18, right: 8, top: 8, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="waveProduto" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.45} />
+                          <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.03} />
+                        </linearGradient>
+                        <linearGradient id="waveFinanceiro" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.45} />
+                          <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.03} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tickFormatter={(v) => `${v}%`}
+                        tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={42}
+                        domain={[
+                          0,
+                          Math.max(
+                            120,
+                            ...waveData.map(
+                              (d) => Math.ceil(Math.max(d.produto, d.financeiro) / 20) * 20
+                            )
+                          ),
+                        ]}
+                      />
+                      <Tooltip content={<WaveTooltip />} />
+                      <ReferenceLine y={100} stroke="#16a34a" strokeDasharray="4 4" strokeOpacity={0.7} />
+                      <Area
+                        type="monotone"
+                        dataKey="produto"
+                        name="Produtos"
+                        stroke="#0ea5e9"
+                        strokeWidth={2}
+                        fill="url(#waveProduto)"
+                        dot={{ r: 2.5, fill: "#0ea5e9" }}
+                        activeDot={{ r: 4 }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="financeiro"
+                        name="Financeiro"
+                        stroke="#8b5cf6"
+                        strokeWidth={2}
+                        fill="url(#waveFinanceiro)"
+                        dot={{ r: 2.5, fill: "#8b5cf6" }}
+                        activeDot={{ r: 4 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex items-center justify-center gap-4 pt-2">
+                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#0ea5e9" }} />
+                    Meta Produtos
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "#8b5cf6" }} />
+                    Meta Financeira
+                  </span>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
