@@ -21,7 +21,7 @@ import {
   type VendaFormData,
 } from "@/hooks/useComercialVendas";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine, AreaChart, Area,
 } from "recharts";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
@@ -143,32 +143,6 @@ function PctBar({ value }: { value: number }) {
       <span className="text-xs font-mono w-12 text-right" style={{ color }}>
         {value.toFixed(1)}%
       </span>
-    </div>
-  );
-}
-
-function CustomTooltipProduto({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  const entry = payload[0]?.payload;
-  const pctVal: number = entry?.pctAtingimento ?? 0;
-  const metaQty: number = entry?.metaQty ?? 0;
-  const realizadoQty: number = entry?.realizadoQty ?? 0;
-  const color = pctVal >= 100 ? "#16a34a" : pctVal >= 70 ? "#f59e0b" : "#ef4444";
-  return (
-    <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md space-y-1">
-      <p className="font-medium text-foreground">{entry?.produtoFull ?? label}</p>
-      <p className="text-muted-foreground">
-        Qtd Meta: <span className="font-mono text-foreground">{metaQty.toLocaleString("pt-BR")}</span>
-      </p>
-      <p className="text-muted-foreground">
-        Qtd Realizada: <span className="font-mono text-foreground">{realizadoQty.toLocaleString("pt-BR")}</span>
-      </p>
-      <p className="text-muted-foreground">
-        Atingimento:{" "}
-        <span className="font-mono font-bold" style={{ color }}>
-          {pctVal.toFixed(1)}%
-        </span>
-      </p>
     </div>
   );
 }
@@ -497,26 +471,6 @@ const MetasTab: React.FC<MetasTabProps> = ({
     return { count, novos, totalVal, pctFaturamento };
   }, [vendasFiltradas, faturamentoStats.target]);
 
-  // ── Chart: % atingimento por produto ─────────────────────────
-  const chartData = useMemo(() => {
-    const map = new Map<string, { metaQty: number; realizadoQty: number }>();
-    metasProduto.forEach((m) => {
-      const key = m.nome_indicador;
-      const cur = map.get(key) ?? { metaQty: 0, realizadoQty: 0 };
-      map.set(key, {
-        metaQty: cur.metaQty + (parseFloat(m.valor) || 0),
-        realizadoQty: cur.realizadoQty + (parseInt(m.realizado) || 0),
-      });
-    });
-    return Array.from(map.entries()).map(([nome, { metaQty, realizadoQty }]) => ({
-      produto: nome.length > 24 ? nome.slice(0, 24) + "…" : nome,
-      produtoFull: nome,
-      metaQty,
-      realizadoQty,
-      pctAtingimento: pct(realizadoQty, metaQty),
-    }));
-  }, [metasProduto]);
-
   // ── Months available for copy dialog ─────────────────────────
   const mesesDisponiveis = useMemo(() => {
     const set = new Set<string>();
@@ -705,7 +659,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
       )}
 
       {/* ── Pilares + histograma de ondas ─────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
         {/* Pillar 1 — Meta de Faturamento */}
         <Card>
@@ -1098,82 +1052,6 @@ const MetasTab: React.FC<MetasTabProps> = ({
           </CardContent>
         </Card>
       </div>
-
-      {/* ── Gráfico % atingimento por produto ─────────────────── */}
-      {!isLoading && chartData.length > 0 && (
-        <Card className="p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-1">
-            Meta vs Realizado por Produto — {periodLabel}
-          </h3>
-          <p className="text-xs text-muted-foreground mb-3">
-            % de atingimento por produto no período
-          </p>
-          <div style={{ height: Math.max(180, chartData.length * 52) }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                layout="vertical"
-                margin={{ left: 10, right: 40, top: 4, bottom: 4 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  horizontal={false}
-                  stroke="hsl(var(--border))"
-                />
-                <XAxis
-                  type="number"
-                  domain={[
-                    0,
-                    Math.max(120, ...chartData.map((d) => Math.ceil(d.pctAtingimento / 10) * 10)),
-                  ]}
-                  tickFormatter={(v) => `${v}%`}
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="produto"
-                  width={150}
-                  tick={{ fill: "hsl(var(--foreground))", fontSize: 11 }}
-                />
-                <Tooltip content={<CustomTooltipProduto />} />
-                <ReferenceLine
-                  x={100}
-                  stroke="#16a34a"
-                  strokeDasharray="4 4"
-                  label={{
-                    value: "100%",
-                    position: "insideTopRight",
-                    fontSize: 10,
-                    fill: "#16a34a",
-                    dy: -4,
-                  }}
-                />
-                <Bar
-                  dataKey="pctAtingimento"
-                  radius={[0, 4, 4, 0]}
-                  maxBarSize={20}
-                  background={{ radius: 4, fill: "hsl(var(--muted))", opacity: 0.5 }}
-                >
-                  {chartData.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={
-                        entry.pctAtingimento === 0
-                          ? "transparent"
-                          : entry.pctAtingimento >= 100
-                          ? "#16a34a"
-                          : entry.pctAtingimento >= 70
-                          ? "#f59e0b"
-                          : "#ef4444"
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      )}
 
       {/* ── Tabela Meta Produtos ──────────────────────────────── */}
       {!isLoading && metasProduto.length > 0 && (
