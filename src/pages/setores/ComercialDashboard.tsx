@@ -585,149 +585,133 @@ export default function ComercialDashboard() {
           </div>
 
           <TabsContent value="visao-clientes" className="space-y-4 mt-0">
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <div className="grid gap-4 min-h-[340px] xl:grid-rows-[auto_1fr]">
-                <Card className="p-5 border transition-colors duration-150">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">BASE DE CLIENTES</p>
-                      <p className="text-3xl font-semibold text-foreground font-mono mt-0.5">{isLoading ? '—' : displayClients.length}</p>
-                    </div>
-                    <UserCheck className="h-8 w-8 text-muted-foreground/40" />
-                  </div>
-                  <div className="grid grid-cols-2 divide-x divide-border border-t pt-3 -mx-5 px-5">
-                    <button
-                      onClick={() => handleKpiClick('ativo')}
-                      className={`flex flex-col items-center py-2 rounded-l transition-colors hover:bg-muted/30 ${statusFilter === 'ativo' ? 'bg-primary/5' : ''}`}
-                    >
-                      <p className="text-2xl font-semibold font-mono">{isLoading ? '—' : Math.max(0, stats.ativos - hiddenInternalActiveCount)}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Ativos</p>
-                    </button>
-                    <button
-                      onClick={() => handleKpiClick('bloqueado')}
-                      className={`flex flex-col items-center py-2 rounded-r transition-colors hover:bg-muted/30 ${statusFilter === 'bloqueado' ? 'bg-primary/5' : ''}`}
-                    >
-                      <p className="text-2xl font-semibold text-destructive font-mono">{isLoading ? '—' : stats.bloqueados}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Bloqueados</p>
-                    </button>
-                  </div>
-                </Card>
-
-                <Card className="border bg-card">
-                  <div className="grid h-full grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
-                    <div className="flex flex-col justify-between px-4 py-4">
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Bandeiras ativas</p>
-                        <p className="text-2xl font-semibold text-foreground">{isLoading ? '—' : bandeiras.length}</p>
+            {(() => {
+              const ativosClients = (statusFilter === 'todos' || statusFilter === 'ativo')
+                ? displayClients.filter(c => c.status?.toLowerCase() === 'ativo')
+                : [];
+              const bandeiraMap = new Map<string, number>();
+              ativosClients.forEach(c => {
+                const b = c.bandeira || 'Sem bandeira';
+                bandeiraMap.set(b, (bandeiraMap.get(b) || 0) + 1);
+              });
+              const bandeiraData = Array.from(bandeiraMap.entries())
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count);
+              const handleBarClick = (data: any) => {
+                if (data?.name) setSelectedBandeira(prev => prev === data.name ? null : data.name);
+              };
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* Bloco 1 — BASE DE CLIENTES + KPIs internos */}
+                  <Card className="p-5 border flex flex-col">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">BASE DE CLIENTES</p>
+                        <p className="text-3xl font-semibold text-foreground font-mono mt-0.5">{isLoading ? '—' : displayClients.length}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground">Cobertura comercial dentro da carteira listada no período</p>
+                      <UserCheck className="h-8 w-8 text-muted-foreground/40" />
                     </div>
-
-                    <div className="flex flex-col justify-between px-4 py-4">
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Multissistema</p>
-                        <p className="text-2xl font-semibold text-foreground">{isLoading ? '—' : clientInsights.multissistema}</p>
+                    <div className="grid grid-cols-2 divide-x divide-border border-t pt-3 -mx-5 px-5">
+                      <button
+                        onClick={() => handleKpiClick('ativo')}
+                        className={`flex flex-col items-center py-2 rounded-l transition-colors hover:bg-muted/30 ${statusFilter === 'ativo' ? 'bg-primary/5' : ''}`}
+                      >
+                        <p className="text-2xl font-semibold font-mono">{isLoading ? '—' : Math.max(0, stats.ativos - hiddenInternalActiveCount)}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Ativos</p>
+                      </button>
+                      <button
+                        onClick={() => handleKpiClick('bloqueado')}
+                        className={`flex flex-col items-center py-2 rounded-r transition-colors hover:bg-muted/30 ${statusFilter === 'bloqueado' ? 'bg-primary/5' : ''}`}
+                      >
+                        <p className="text-2xl font-semibold text-destructive font-mono">{isLoading ? '—' : stats.bloqueados}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Bloqueados</p>
+                      </button>
+                    </div>
+                    {/* KPIs internos */}
+                    <div className="grid grid-cols-3 gap-2 border-t pt-3 mt-3">
+                      <div className="rounded-lg border bg-muted/30 px-2.5 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Bandeiras</p>
+                        <p className="text-xl font-semibold text-foreground mt-1">{isLoading ? '—' : bandeiras.length}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground">Clientes listados com mais de um sistema associado</p>
-                    </div>
-
-                    <div className="flex flex-col justify-between px-4 py-4">
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Sem bandeira</p>
-                        <p className={`text-2xl font-semibold ${clientInsights.semBandeira > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      <div className="rounded-lg border bg-muted/30 px-2.5 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Multissist.</p>
+                        <p className="text-xl font-semibold text-foreground mt-1">{isLoading ? '—' : clientInsights.multissistema}</p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 px-2.5 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Sem bandeira</p>
+                        <p className={`text-xl font-semibold mt-1 ${clientInsights.semBandeira > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                           {isLoading ? '—' : clientInsights.semBandeira}
                         </p>
                       </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      {isLoading ? 'Carteira atual' : `Média de ${clientInsights.mediaSistemas} sistemas por cliente na carteira atual`}
+                    </p>
+                  </Card>
+
+                  {/* Bloco 2 — Clientes Ativos por Bandeira */}
+                  <Card className="p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
+                        <p className="text-xs text-muted-foreground">{ativosClients.length} clientes · {bandeiraData.length} bandeiras</p>
+                      </div>
+                      {selectedBandeira && (
+                        <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedBandeira(null)}>
+                          {selectedBandeira} ✕
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="h-[190px]">
+                      {bandeiraData.length > 0 && !isLoading ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={bandeiraData} margin={{ top: 4, right: 16, bottom: 36, left: 0 }}>
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
+                            <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
+                            <Bar dataKey="count" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                              {bandeiraData.map((entry, i) => (
+                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.3 : 1} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados para o período.</div>
+                      )}
+                    </div>
+                  </Card>
+
+                  {/* Bloco 3 — Clientes por Sistema */}
+                  <Card className="p-4 space-y-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">Clientes por Sistema</h3>
                       <p className="text-xs text-muted-foreground">
-                        {isLoading ? 'Carteira atual' : clientInsights.semBandeira > 0 ? `Média de ${clientInsights.mediaSistemas} sistemas por cliente na carteira atual` : `Carteira limpa, com média de ${clientInsights.mediaSistemas} sistemas por cliente`}
+                        {selectedBandeira ? `Filtrado por ${selectedBandeira}` : 'Distribuição da carteira ativa por produto'}
                       </p>
                     </div>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Charts: Bandeira + Sistema */}
-              {(() => {
-                const ativosClients = (statusFilter === 'todos' || statusFilter === 'ativo')
-                  ? displayClients.filter(c => c.status?.toLowerCase() === 'ativo')
-                  : [];
-                const bandeiraMap = new Map<string, number>();
-                ativosClients.forEach(c => {
-                  const b = c.bandeira || 'Sem bandeira';
-                  bandeiraMap.set(b, (bandeiraMap.get(b) || 0) + 1);
-                });
-                const bandeiraData = Array.from(bandeiraMap.entries())
-                  .map(([name, count]) => ({ name, count }))
-                  .sort((a, b) => b.count - a.count);
-                const handleBarClick = (data: any) => {
-                  if (data?.name) setSelectedBandeira(prev => prev === data.name ? null : data.name);
-                };
-                return (
-                  <div className="space-y-4">
-                    {/* Bandeira chart */}
-                    <Card className="p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-sm font-semibold">Clientes Ativos por Bandeira</h3>
-                          <p className="text-xs text-muted-foreground">{ativosClients.length} clientes · {bandeiraData.length} bandeiras</p>
-                        </div>
-                        {selectedBandeira && (
-                          <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-destructive/20" onClick={() => setSelectedBandeira(null)}>
-                            {selectedBandeira} ✕
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="h-[190px]">
-                        {bandeiraData.length > 0 && !isLoading ? (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={bandeiraData} margin={{ top: 4, right: 16, bottom: 36, left: 0 }}>
-                              <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
-                              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
-                              <Bar dataKey="count" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
-                                {bandeiraData.map((entry, i) => (
-                                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.3 : 1} />
-                                ))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados para o período.</div>
-                        )}
-                      </div>
-                    </Card>
-
-                    {/* Sistema chart */}
-                    <Card className="p-4 space-y-2">
-                      <div>
-                        <h3 className="text-sm font-semibold">Clientes por Sistema</h3>
-                        <p className="text-xs text-muted-foreground">
-                          {selectedBandeira ? `Filtrado por ${selectedBandeira}` : 'Distribuição da carteira ativa por produto'}
-                        </p>
-                      </div>
-                      <div className="h-[190px]">
-                        {sistemaChartData.length > 0 && !isLoading ? (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={sistemaChartData} layout="vertical" margin={{ top: 4, right: 30, bottom: 4, left: 10 }}>
-                              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                              <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }} />
-                              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
-                              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22}>
-                                {sistemaChartData.map((_, i) => (
-                                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                                ))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        ) : (
-                          <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados de sistema.</div>
-                        )}
-                      </div>
-                    </Card>
-                  </div>
-                );
-              })()}
-            </div>
+                    <div className="h-[190px]">
+                      {sistemaChartData.length > 0 && !isLoading ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={sistemaChartData} layout="vertical" margin={{ top: 4, right: 30, bottom: 4, left: 10 }}>
+                            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                            <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }} />
+                            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
+                            <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                              {sistemaChartData.map((_, i) => (
+                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados de sistema.</div>
+                      )}
+                    </div>
+                  </Card>
+                </div>
+              );
+            })()}
 
             <div className="flex items-center gap-2 mt-1 mb-1 flex-wrap">
               <span className="text-xs text-muted-foreground">Filtrar:</span>
