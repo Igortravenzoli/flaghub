@@ -23,7 +23,7 @@ import MovimentacaoTab from '@/components/comercial/MovimentacaoTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
 import { PipeDriveTab } from '@/components/comercial/PipeDriveTab';
 import MetasTab from '@/components/comercial/MetasTab';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { useHubAreas } from '@/hooks/useHubAreas';
 import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -690,16 +690,57 @@ export default function ComercialDashboard() {
                       </p>
                     </div>
                     <div className="h-[190px]">
-                      {sistemaChartData.length > 0 && !isLoading ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={sistemaChartData} margin={{ top: 4, right: 16, bottom: 36, left: 0 }}>
-                            <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
-                            <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
-                            <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={40} fill="hsl(var(--primary))" fillOpacity={0.85} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
+                      {sistemaChartData.length > 0 && !isLoading ? (() => {
+                        const totalAssoc = sistemaChartData.reduce((s, d) => s + d.count, 0);
+                        const TOP = 6;
+                        const donut = sistemaChartData.length > TOP
+                          ? [...sistemaChartData.slice(0, TOP), { name: 'Outros', count: sistemaChartData.slice(TOP).reduce((s, d) => s + d.count, 0) }]
+                          : sistemaChartData;
+                        const op = (i: number) => Math.max(0.25, 1 - i * 0.13);
+                        return (
+                          <div className="flex items-center gap-4 h-full">
+                            <div className="relative flex-shrink-0" style={{ width: 150, height: 150 }}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie
+                                    data={donut}
+                                    dataKey="count"
+                                    nameKey="name"
+                                    innerRadius={48}
+                                    outerRadius={70}
+                                    paddingAngle={1.5}
+                                    stroke="none"
+                                    startAngle={90}
+                                    endAngle={-270}
+                                  >
+                                    {donut.map((_, i) => (
+                                      <Cell key={i} fill="hsl(var(--primary))" fillOpacity={op(i)} />
+                                    ))}
+                                  </Pie>
+                                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-2xl font-bold text-foreground leading-none">{sistemaChartData.length}</span>
+                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">sistemas</span>
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0 space-y-1 overflow-y-auto max-h-[170px] pr-1">
+                              {donut.map((s, i) => (
+                                <div key={s.name} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="flex items-center gap-1.5 min-w-0">
+                                    <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: 'hsl(var(--primary))', opacity: op(i) }} />
+                                    <span className="truncate text-foreground">{s.name}</span>
+                                  </span>
+                                  <span className="font-mono text-muted-foreground flex-shrink-0">
+                                    {totalAssoc > 0 ? ((s.count / totalAssoc) * 100).toFixed(0) : 0}%
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })() : (
                         <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados de sistema.</div>
                       )}
                     </div>
