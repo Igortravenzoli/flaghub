@@ -693,11 +693,11 @@ export default function ComercialDashboard() {
                     <div className="h-[190px]">
                       {sistemaChartData.length > 0 && !isLoading ? (
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={sistemaChartData} layout="vertical" margin={{ top: 4, right: 30, bottom: 4, left: 10 }}>
-                            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                            <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: 'hsl(var(--foreground))' }} />
+                          <BarChart data={sistemaChartData} margin={{ top: 4, right: 16, bottom: 36, left: 0 }}>
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
+                            <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
-                            <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                            <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={40}>
                               {sistemaChartData.map((_, i) => (
                                 <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                               ))}
