@@ -18,6 +18,7 @@ const CORE_FIELDS = [
   'Microsoft.VSTS.Common.Priority', 'Microsoft.VSTS.Scheduling.Effort',
   'System.Parent', 'System.AreaPath', 'System.IterationPath',
   'System.CreatedDate', 'System.ChangedDate',
+  'Microsoft.VSTS.Common.ClosedBy', 'Microsoft.VSTS.Common.ClosedDate',
 ]
 
 function toDateOrNull(value: string | null | undefined): Date | null {
@@ -98,6 +99,7 @@ interface DevOpsWorkItem {
 function mapWorkItem(wi: DevOpsWorkItem) {
   const f = wi.fields || {}
   const assignedTo = f['System.AssignedTo']
+  const closedBy = f['Microsoft.VSTS.Common.ClosedBy']
   const coreFieldSet = new Set(CORE_FIELDS.map(ff => ff.toLowerCase()))
   const customFields: Record<string, any> = {}
   for (const [key, val] of Object.entries(f)) {
@@ -122,6 +124,9 @@ function mapWorkItem(wi: DevOpsWorkItem) {
     iteration_path: f['System.IterationPath'] ?? null,
     created_date: f['System.CreatedDate'] ?? null,
     changed_date: f['System.ChangedDate'] ?? null,
+    closed_by: closedBy?.displayName ?? (typeof closedBy === 'string' ? closedBy : null),
+    closed_by_email: closedBy?.uniqueName ?? null,
+    closed_date: f['Microsoft.VSTS.Common.ClosedDate'] ?? null,
     web_url: wi._links?.html?.href ?? `https://dev.azure.com/${DEVOPS_ORG}/${encodeURIComponent(f['System.TeamProject'] || DEVOPS_PROJECT)}/_workitems/edit/${wi.id}`,
     api_url: wi.url ?? null,
     custom_fields: Object.keys(customFields).length > 0 ? customFields : null,

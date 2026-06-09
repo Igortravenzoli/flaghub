@@ -16,6 +16,7 @@ const CORE_FIELDS = [
   'System.Parent', 'System.AreaPath', 'System.IterationPath',
   'System.CreatedDate', 'System.ChangedDate',
   'System.Description',
+  'Microsoft.VSTS.Common.ClosedBy', 'Microsoft.VSTS.Common.ClosedDate',
 ]
 
 const CORE_FIELD_SET = new Set(CORE_FIELDS.map(f => f.toLowerCase()))
@@ -141,6 +142,7 @@ async function fetchWorkItemsBatch(ids: number[]): Promise<DevOpsWorkItem[]> {
 function mapWorkItem(wi: DevOpsWorkItem) {
   const f = wi.fields || {}
   const assignedTo = f['System.AssignedTo']
+  const closedBy = f['Microsoft.VSTS.Common.ClosedBy']
 
   // Separate custom fields
   const customFields: Record<string, any> = {}
@@ -169,6 +171,9 @@ function mapWorkItem(wi: DevOpsWorkItem) {
     iteration_path: f['System.IterationPath'] ?? null,
     created_date: f['System.CreatedDate'] ?? null,
     changed_date: f['System.ChangedDate'] ?? null,
+    closed_by: closedBy?.displayName ?? (typeof closedBy === 'string' ? closedBy : null),
+    closed_by_email: closedBy?.uniqueName ?? null,
+    closed_date: f['Microsoft.VSTS.Common.ClosedDate'] ?? null,
     web_url: wi._links?.html?.href ?? `https://dev.azure.com/${DEVOPS_ORG}/${encodeURIComponent(f['System.TeamProject'] || DEVOPS_PROJECT)}/_workitems/edit/${wi.id}`,
     api_url: wi.url ?? null,
     custom_fields: Object.keys(customFields).length > 0 ? customFields : null,

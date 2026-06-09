@@ -148,6 +148,81 @@ export type Database = {
           },
         ]
       }
+      chamada_central: {
+        Row: {
+          agente: string
+          data_inicio: string
+          id: string
+          importado_em: string | null
+          tempo_falado_seg: number
+        }
+        Insert: {
+          agente: string
+          data_inicio: string
+          id?: string
+          importado_em?: string | null
+          tempo_falado_seg?: number
+        }
+        Update: {
+          agente?: string
+          data_inicio?: string
+          id?: string
+          importado_em?: string | null
+          tempo_falado_seg?: number
+        }
+        Relationships: []
+      }
+      comercial_metas: {
+        Row: {
+          created_at: string
+          data_fim_meta: string | null
+          data_inicio_meta: string | null
+          id: string
+          mes_referencia: string
+          meta_valor_total: number | null
+          observacao: string | null
+          produto: string
+          realizado_quantidade: number | null
+          status: string
+          tipo: string
+          updated_at: string
+          valor_meta: number | null
+          valor_unitario: number | null
+        }
+        Insert: {
+          created_at?: string
+          data_fim_meta?: string | null
+          data_inicio_meta?: string | null
+          id?: string
+          mes_referencia: string
+          meta_valor_total?: number | null
+          observacao?: string | null
+          produto: string
+          realizado_quantidade?: number | null
+          status: string
+          tipo: string
+          updated_at?: string
+          valor_meta?: number | null
+          valor_unitario?: number | null
+        }
+        Update: {
+          created_at?: string
+          data_fim_meta?: string | null
+          data_inicio_meta?: string | null
+          id?: string
+          mes_referencia?: string
+          meta_valor_total?: number | null
+          observacao?: string | null
+          produto?: string
+          realizado_quantidade?: number | null
+          status?: string
+          tipo?: string
+          updated_at?: string
+          valor_meta?: number | null
+          valor_unitario?: number | null
+        }
+        Relationships: []
+      }
       comercial_movimentacao_clientes: {
         Row: {
           ano_referencia: number | null
@@ -426,23 +501,35 @@ export type Database = {
         Row: {
           canonical_name: string
           created_at: string
+          devops_email: string | null
+          devops_unique_name: string | null
+          is_active: boolean
           notes: string | null
           timelog_name: string
           updated_at: string
+          vdesk_user_name: string | null
         }
         Insert: {
           canonical_name: string
           created_at?: string
+          devops_email?: string | null
+          devops_unique_name?: string | null
+          is_active?: boolean
           notes?: string | null
           timelog_name: string
           updated_at?: string
+          vdesk_user_name?: string | null
         }
         Update: {
           canonical_name?: string
           created_at?: string
+          devops_email?: string | null
+          devops_unique_name?: string | null
+          is_active?: boolean
           notes?: string | null
           timelog_name?: string
           updated_at?: string
+          vdesk_user_name?: string | null
         }
         Relationships: []
       }
@@ -493,6 +580,146 @@ export type Database = {
           visual_priority?: number
         }
         Relationships: []
+      }
+      devops_lead_mapping: {
+        Row: {
+          canonical_name: string | null
+          created_at: string
+          devops_display_name: string
+          devops_unique_name: string | null
+          id: number
+          is_active: boolean
+          notes: string | null
+          teams_email: string | null
+          teams_user_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          canonical_name?: string | null
+          created_at?: string
+          devops_display_name: string
+          devops_unique_name?: string | null
+          id?: never
+          is_active?: boolean
+          notes?: string | null
+          teams_email?: string | null
+          teams_user_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          canonical_name?: string | null
+          created_at?: string
+          devops_display_name?: string
+          devops_unique_name?: string | null
+          id?: never
+          is_active?: boolean
+          notes?: string | null
+          teams_email?: string | null
+          teams_user_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      devops_qa_return_events: {
+        Row: {
+          alert_channel_id: string | null
+          alert_channel_type: string | null
+          alert_error: string | null
+          alert_sent_at: string | null
+          alert_status: string
+          area_path: string | null
+          assigned_to_display: string | null
+          assigned_to_email: string | null
+          created_at: string
+          detected_at: string
+          detected_state: string
+          detected_tags: string | null
+          detection_method: string | null
+          id: number
+          is_open: boolean
+          iteration_path: string | null
+          lead_email: string | null
+          lead_teams_user_id: string | null
+          resolved_at: string | null
+          sprint_code: string | null
+          transition_date: string | null
+          transition_from_state: string | null
+          transition_to_state: string | null
+          updated_at: string
+          web_url: string | null
+          work_item_id: number
+          work_item_title: string | null
+          work_item_type: string | null
+        }
+        Insert: {
+          alert_channel_id?: string | null
+          alert_channel_type?: string | null
+          alert_error?: string | null
+          alert_sent_at?: string | null
+          alert_status?: string
+          area_path?: string | null
+          assigned_to_display?: string | null
+          assigned_to_email?: string | null
+          created_at?: string
+          detected_at?: string
+          detected_state?: string
+          detected_tags?: string | null
+          detection_method?: string | null
+          id?: never
+          is_open?: boolean
+          iteration_path?: string | null
+          lead_email?: string | null
+          lead_teams_user_id?: string | null
+          resolved_at?: string | null
+          sprint_code?: string | null
+          transition_date?: string | null
+          transition_from_state?: string | null
+          transition_to_state?: string | null
+          updated_at?: string
+          web_url?: string | null
+          work_item_id: number
+          work_item_title?: string | null
+          work_item_type?: string | null
+        }
+        Update: {
+          alert_channel_id?: string | null
+          alert_channel_type?: string | null
+          alert_error?: string | null
+          alert_sent_at?: string | null
+          alert_status?: string
+          area_path?: string | null
+          assigned_to_display?: string | null
+          assigned_to_email?: string | null
+          created_at?: string
+          detected_at?: string
+          detected_state?: string
+          detected_tags?: string | null
+          detection_method?: string | null
+          id?: never
+          is_open?: boolean
+          iteration_path?: string | null
+          lead_email?: string | null
+          lead_teams_user_id?: string | null
+          resolved_at?: string | null
+          sprint_code?: string | null
+          transition_date?: string | null
+          transition_from_state?: string | null
+          transition_to_state?: string | null
+          updated_at?: string
+          web_url?: string | null
+          work_item_id?: number
+          work_item_title?: string | null
+          work_item_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "devops_qa_return_events_alert_channel_id_fkey"
+            columns: ["alert_channel_id"]
+            isOneToOne: false
+            referencedRelation: "alert_channels"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       devops_queries: {
         Row: {
@@ -658,6 +885,9 @@ export type Database = {
           assigned_to_id: string | null
           assigned_to_unique: string | null
           changed_date: string | null
+          closed_by: string | null
+          closed_by_email: string | null
+          closed_date: string | null
           created_at: string
           created_date: string | null
           custom_fields: Json | null
@@ -687,6 +917,9 @@ export type Database = {
           assigned_to_id?: string | null
           assigned_to_unique?: string | null
           changed_date?: string | null
+          closed_by?: string | null
+          closed_by_email?: string | null
+          closed_date?: string | null
           created_at?: string
           created_date?: string | null
           custom_fields?: Json | null
@@ -716,6 +949,9 @@ export type Database = {
           assigned_to_id?: string | null
           assigned_to_unique?: string | null
           changed_date?: string | null
+          closed_by?: string | null
+          closed_by_email?: string | null
+          closed_date?: string | null
           created_at?: string
           created_date?: string | null
           custom_fields?: Json | null
@@ -770,6 +1006,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      fabrica_read_entries: {
+        Row: {
+          is_read: boolean
+          marked_at: string
+          updated_at: string
+          work_item_id: number
+        }
+        Insert: {
+          is_read?: boolean
+          marked_at?: string
+          updated_at?: string
+          work_item_id: number
+        }
+        Update: {
+          is_read?: boolean
+          marked_at?: string
+          updated_at?: string
+          work_item_id?: number
+        }
+        Relationships: []
       }
       helpdesk_dashboard_snapshots: {
         Row: {
@@ -2167,6 +2424,33 @@ export type Database = {
           },
         ]
       }
+      qa_authorized_closers: {
+        Row: {
+          canonical: string | null
+          created_at: string
+          display_name: string
+          email: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          canonical?: string | null
+          created_at?: string
+          display_name: string
+          email: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          canonical?: string | null
+          created_at?: string
+          display_name?: string
+          email?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sector_health: {
         Row: {
           checked_at: string
@@ -2228,6 +2512,126 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sprint_indicator_snapshots: {
+        Row: {
+          avg_lead_time_days: number | null
+          captured_by: string | null
+          created_at: string
+          delivered_demands: number | null
+          delivered_in_dev_count: number | null
+          delivered_in_qa_count: number | null
+          finalized_demands: number | null
+          id: string
+          inconsistencies_count: number | null
+          inconsistencies_found: Json | null
+          itens_atencao: number | null
+          itens_criticos: number | null
+          itens_saudaveis: number | null
+          max_lead_time_days: number | null
+          notes: string | null
+          planned_demands: number | null
+          qa_avg_return_cycles: number | null
+          qa_done_items: number | null
+          qa_items_with_return: number | null
+          qa_return_cycles_total: number | null
+          qa_return_rate_pct: number | null
+          reprocess_reason: string | null
+          reprocessed_at: string | null
+          snapshot_datetime: string
+          source_work_item_ids: number[] | null
+          sprint_code: string
+          sprint_end_date: string | null
+          sprint_id: number | null
+          sprint_start_date: string | null
+          total_demands: number | null
+          transbordo_count: number | null
+          transbordo_percentage: number | null
+          unplanned_aviao_count: number | null
+          unplanned_bug_count: number | null
+          unplanned_demands: number | null
+          unplanned_retorno_qa_count: number | null
+          work_item_count_in_snapshot: number | null
+        }
+        Insert: {
+          avg_lead_time_days?: number | null
+          captured_by?: string | null
+          created_at?: string
+          delivered_demands?: number | null
+          delivered_in_dev_count?: number | null
+          delivered_in_qa_count?: number | null
+          finalized_demands?: number | null
+          id?: string
+          inconsistencies_count?: number | null
+          inconsistencies_found?: Json | null
+          itens_atencao?: number | null
+          itens_criticos?: number | null
+          itens_saudaveis?: number | null
+          max_lead_time_days?: number | null
+          notes?: string | null
+          planned_demands?: number | null
+          qa_avg_return_cycles?: number | null
+          qa_done_items?: number | null
+          qa_items_with_return?: number | null
+          qa_return_cycles_total?: number | null
+          qa_return_rate_pct?: number | null
+          reprocess_reason?: string | null
+          reprocessed_at?: string | null
+          snapshot_datetime?: string
+          source_work_item_ids?: number[] | null
+          sprint_code: string
+          sprint_end_date?: string | null
+          sprint_id?: number | null
+          sprint_start_date?: string | null
+          total_demands?: number | null
+          transbordo_count?: number | null
+          transbordo_percentage?: number | null
+          unplanned_aviao_count?: number | null
+          unplanned_bug_count?: number | null
+          unplanned_demands?: number | null
+          unplanned_retorno_qa_count?: number | null
+          work_item_count_in_snapshot?: number | null
+        }
+        Update: {
+          avg_lead_time_days?: number | null
+          captured_by?: string | null
+          created_at?: string
+          delivered_demands?: number | null
+          delivered_in_dev_count?: number | null
+          delivered_in_qa_count?: number | null
+          finalized_demands?: number | null
+          id?: string
+          inconsistencies_count?: number | null
+          inconsistencies_found?: Json | null
+          itens_atencao?: number | null
+          itens_criticos?: number | null
+          itens_saudaveis?: number | null
+          max_lead_time_days?: number | null
+          notes?: string | null
+          planned_demands?: number | null
+          qa_avg_return_cycles?: number | null
+          qa_done_items?: number | null
+          qa_items_with_return?: number | null
+          qa_return_cycles_total?: number | null
+          qa_return_rate_pct?: number | null
+          reprocess_reason?: string | null
+          reprocessed_at?: string | null
+          snapshot_datetime?: string
+          source_work_item_ids?: number[] | null
+          sprint_code?: string
+          sprint_end_date?: string | null
+          sprint_id?: number | null
+          sprint_start_date?: string | null
+          total_demands?: number | null
+          transbordo_count?: number | null
+          transbordo_percentage?: number | null
+          unplanned_aviao_count?: number | null
+          unplanned_bug_count?: number | null
+          unplanned_demands?: number | null
+          unplanned_retorno_qa_count?: number | null
+          work_item_count_in_snapshot?: number | null
+        }
+        Relationships: []
       }
       status_mapping: {
         Row: {
@@ -2542,6 +2946,166 @@ export type Database = {
           },
         ]
       }
+      timelog_post_queue: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          attempt_count: number
+          created_at: string
+          devops_entry_id: string | null
+          dry_run: boolean
+          error_code: string | null
+          error_message: string | null
+          id: string
+          last_attempt_at: string | null
+          log_date: string
+          notes: string | null
+          posted_at: string | null
+          selected_at: string | null
+          selected_by: string | null
+          status: string
+          target_user_display: string | null
+          target_user_email: string | null
+          task_devops: number
+          time_minutes: number
+          updated_at: string
+          vdesk_log_id: string
+          vdesk_user_name: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          attempt_count?: number
+          created_at?: string
+          devops_entry_id?: string | null
+          dry_run?: boolean
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          log_date: string
+          notes?: string | null
+          posted_at?: string | null
+          selected_at?: string | null
+          selected_by?: string | null
+          status?: string
+          target_user_display?: string | null
+          target_user_email?: string | null
+          task_devops: number
+          time_minutes: number
+          updated_at?: string
+          vdesk_log_id: string
+          vdesk_user_name: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          attempt_count?: number
+          created_at?: string
+          devops_entry_id?: string | null
+          dry_run?: boolean
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          log_date?: string
+          notes?: string | null
+          posted_at?: string | null
+          selected_at?: string | null
+          selected_by?: string | null
+          status?: string
+          target_user_display?: string | null
+          target_user_email?: string | null
+          task_devops?: number
+          time_minutes?: number
+          updated_at?: string
+          vdesk_log_id?: string
+          vdesk_user_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timelog_post_queue_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "timelog_post_queue_selected_by_fkey"
+            columns: ["selected_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "timelog_post_queue_vdesk_log_id_fkey"
+            columns: ["vdesk_log_id"]
+            isOneToOne: false
+            referencedRelation: "vdesk_time_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      timelog_sync_runs: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          error_code: string | null
+          error_message: string | null
+          finished_at: string | null
+          from_date: string
+          gateway_url: string | null
+          id: string
+          pages_fetched: number
+          rows_fetched: number
+          rows_inserted: number
+          rows_skipped: number
+          rows_updated: number
+          started_at: string
+          status: string
+          to_date: string
+          triggered_by: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          from_date: string
+          gateway_url?: string | null
+          id?: string
+          pages_fetched?: number
+          rows_fetched?: number
+          rows_inserted?: number
+          rows_skipped?: number
+          rows_updated?: number
+          started_at?: string
+          status?: string
+          to_date: string
+          triggered_by?: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          from_date?: string
+          gateway_url?: string | null
+          id?: string
+          pages_fetched?: number
+          rows_fetched?: number
+          rows_inserted?: number
+          rows_skipped?: number
+          rows_updated?: number
+          started_at?: string
+          status?: string
+          to_date?: string
+          triggered_by?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -2599,6 +3163,60 @@ export type Database = {
         }
         Relationships: []
       }
+      vdesk_time_logs: {
+        Row: {
+          data_historico: string
+          horas: number
+          id: string
+          log_date: string
+          minutos: number
+          num_os: string
+          os_origem: string | null
+          raw: Json | null
+          start_time: string | null
+          synced_at: string
+          task_devops: number
+          tempo_segundos: number
+          updated_at: string
+          usuario_vdesk: string
+          vdesk_ext_key: string
+        }
+        Insert: {
+          data_historico: string
+          horas: number
+          id?: string
+          log_date: string
+          minutos: number
+          num_os: string
+          os_origem?: string | null
+          raw?: Json | null
+          start_time?: string | null
+          synced_at?: string
+          task_devops: number
+          tempo_segundos: number
+          updated_at?: string
+          usuario_vdesk: string
+          vdesk_ext_key?: string
+        }
+        Update: {
+          data_historico?: string
+          horas?: number
+          id?: string
+          log_date?: string
+          minutos?: number
+          num_os?: string
+          os_origem?: string | null
+          raw?: Json | null
+          start_time?: string | null
+          synced_at?: string
+          task_devops?: number
+          tempo_segundos?: number
+          updated_at?: string
+          usuario_vdesk?: string
+          vdesk_ext_key?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       v_dashboard_summary: {
@@ -2620,6 +3238,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      v_timelog_unified: {
+        Row: {
+          gap_minutes: number | null
+          log_date: string | null
+          minutes_devops: number | null
+          minutes_vdesk: number | null
+          num_os_sample: string | null
+          rows_devops: number | null
+          rows_vdesk: number | null
+          status: string | null
+          task_id: number | null
+          user_canonical: string | null
+          vdesk_log_ids: string[] | null
+          vdesk_user_name: string | null
+          work_item_assigned_to: string | null
+          work_item_state: string | null
+          work_item_title: string | null
+          work_item_url: string | null
+        }
+        Relationships: []
       }
       vw_comercial_clientes_ativos: {
         Row: {
@@ -2912,6 +3551,19 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_sprints_2026_historical: {
+        Row: {
+          avg_lead_time: number | null
+          completed_items: number | null
+          has_snapshot: boolean | null
+          last_snapshot_date: string | null
+          last_updated_date: string | null
+          overflow_items: number | null
+          sprint_code: string | null
+          total_items: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       auth_network_id: { Args: never; Returns: number }
@@ -2930,9 +3582,32 @@ export type Database = {
       }
       cleanup_login_attempts: { Args: never; Returns: undefined }
       compute_pbi_health_all: { Args: never; Returns: undefined }
+      delete_meta_comercial: {
+        Args: { p_id: string }
+        Returns: {
+          message: string
+          success: boolean
+        }[]
+      }
+      delete_movimentacao_comercial: {
+        Args: { p_id: string }
+        Returns: {
+          message: string
+          success: boolean
+        }[]
+      }
       delete_tickets_by_network: {
         Args: { p_network_id: number }
         Returns: number
+      }
+      fn_sprint_official_range: {
+        Args: { p_sprint_code: string }
+        Returns: {
+          sprint_end: string
+          sprint_number: number
+          sprint_start: string
+          sprint_year: number
+        }[]
       }
       get_batch_statistics: { Args: { p_batch_id: number }; Returns: Json }
       get_correlation_stats: {
@@ -3125,6 +3800,7 @@ export type Database = {
         Returns: boolean
       }
       hub_is_admin: { Args: never; Returns: boolean }
+      hub_is_approved: { Args: never; Returns: boolean }
       hub_is_ip_allowed: { Args: never; Returns: boolean }
       hub_request_ip: { Args: never; Returns: string }
       hub_resolve_area_network_id: {
@@ -3132,6 +3808,43 @@ export type Database = {
         Returns: number
       }
       hub_user_has_area: { Args: { p_area_id: string }; Returns: boolean }
+      insert_meta_comercial: {
+        Args: {
+          p_data_fim_meta?: string
+          p_data_inicio_meta?: string
+          p_mes_referencia: string
+          p_meta_valor_total?: number
+          p_observacao?: string
+          p_produto: string
+          p_realizado_quantidade?: number
+          p_status: string
+          p_tipo: string
+          p_valor_meta?: number
+          p_valor_unitario?: number
+        }
+        Returns: string
+      }
+      insert_movimentacao_comercial: {
+        Args: {
+          p_ano_referencia?: number
+          p_bandeira?: string
+          p_cliente_codigo: number
+          p_cliente_nome: string
+          p_data_evento?: string
+          p_motivo?: string
+          p_sistema?: string
+          p_status_encerramento?: string
+          p_tipo: string
+          p_valor_mensal?: number
+        }
+        Returns: {
+          cliente_codigo: number
+          cliente_nome: string
+          created_at: string
+          id: string
+          tipo: string
+        }[]
+      }
       is_admin: { Args: never; Returns: boolean }
       is_admin_or_gestao: { Args: never; Returns: boolean }
       jsonb_merge: { Args: { current: Json; new_data: Json }; Returns: Json }
@@ -3144,12 +3857,55 @@ export type Database = {
         Returns: number
       }
       recalculate_ticket_severities: {
-        Args: { p_grace_hours?: number; p_network_id?: number }
+        Args: { p_grace_hours?: number; p_network_id: number }
+        Returns: number
+      }
+      rpc_backfill_closed_sprint_snapshots: {
+        Args: { p_force_reprocess?: boolean; p_notes?: string; p_year?: number }
         Returns: {
-          critical_count: number
-          info_count: number
-          updated_count: number
-          warning_count: number
+          qa_done_items: number
+          qa_items_with_return: number
+          qa_return_cycles_total: number
+          snapshot_id: string
+          sprint_code: string
+          status: string
+        }[]
+      }
+      rpc_capture_sprint_snapshot: {
+        Args: { p_notes?: string; p_sprint_code: string }
+        Returns: {
+          captured_at: string
+          delivered_demands: number
+          finalized_demands: number
+          planned_demands: number
+          snapshot_id: string
+          sprint_code: string
+          total_demands: number
+          unplanned_demands: number
+        }[]
+      }
+      rpc_compare_multiple_sprints_2026: {
+        Args: { p_limit?: number }
+        Returns: {
+          avg_lead_time_days: number
+          conclusao_pct: number
+          data_type: string
+          finalized_demands: number
+          itens_criticos: number
+          ranking: number
+          sprint_code: string
+          total_demands: number
+          transbordo_count: number
+        }[]
+      }
+      rpc_compare_sprint_snapshots: {
+        Args: { p_sprint_1: string; p_sprint_2: string }
+        Returns: {
+          difference: string
+          direction: string
+          metric: string
+          sprint_1_value: string
+          sprint_2_value: string
         }[]
       }
       rpc_devops_timelog_agg: {
@@ -3208,6 +3964,38 @@ export type Database = {
           transbordo_count: number
         }[]
       }
+      rpc_gerencial_fabrica_summary_v2: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sector?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          qa_return_total: number
+          sprint_code: string
+        }[]
+      }
+      rpc_gerencial_qa_items: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          closed_by: string
+          closed_by_email: string
+          current_stage: string
+          qa_closed: boolean
+          qa_return_count: number
+          qualidade_days: number
+          sprint_code: string
+          tags: string
+          title: string
+          work_item_id: number
+          work_item_type: string
+        }[]
+      }
       rpc_gerencial_qa_summary: {
         Args: {
           p_date_end?: string
@@ -3217,6 +4005,7 @@ export type Database = {
         Returns: {
           aprovadas: number
           avg_qualidade_days: number
+          concluidos: number
           itens_atencao: number
           itens_criticos: number
           itens_saudaveis: number
@@ -3231,6 +4020,121 @@ export type Database = {
           taxa_retrabalho: number
           testadas: number
           total_itens: number
+        }[]
+      }
+      rpc_get_sprint_historical: {
+        Args: { p_sprint_code: string }
+        Returns: {
+          avg_lead_time_days: number
+          captured_by: string
+          delivered_demands: number
+          delivered_in_dev: number
+          delivered_in_qa: number
+          finalized_demands: number
+          itens_atencao: number
+          itens_criticos: number
+          itens_saudaveis: number
+          max_lead_time_days: number
+          notes: string
+          planned_demands: number
+          snapshot_datetime: string
+          source_work_item_ids: number[]
+          sprint_code: string
+          total_demands: number
+          transbordo_count: number
+          unplanned_aviao_count: number
+          unplanned_bug_count: number
+          unplanned_demands: number
+          unplanned_retorno_qa_count: number
+          work_item_count: number
+        }[]
+      }
+      rpc_get_sprint_historical_v2: {
+        Args: { p_sprint_code: string }
+        Returns: {
+          avg_lead_time_days: number
+          captured_by: string
+          delivered_demands: number
+          delivered_in_dev: number
+          delivered_in_qa: number
+          finalized_demands: number
+          itens_atencao: number
+          itens_criticos: number
+          itens_saudaveis: number
+          max_lead_time_days: number
+          notes: string
+          planned_demands: number
+          qa_avg_return_cycles: number
+          qa_done_items: number
+          qa_items_with_return: number
+          qa_return_cycles_total: number
+          qa_return_rate_pct: number
+          snapshot_datetime: string
+          source_work_item_ids: number[]
+          sprint_code: string
+          total_demands: number
+          transbordo_count: number
+          unplanned_aviao_count: number
+          unplanned_bug_count: number
+          unplanned_demands: number
+          unplanned_retorno_qa_count: number
+          work_item_count: number
+        }[]
+      }
+      rpc_get_sprint_retrospective: {
+        Args: {
+          p_date: string
+          p_fallback_to_latest?: boolean
+          p_sprint_code: string
+        }
+        Returns: {
+          avg_lead_time_days: number
+          calculated_at: string
+          data_source: string
+          delivered_demands: number
+          finalized_demands: number
+          in_progress_count: number
+          itens_atencao: number
+          itens_criticos: number
+          itens_saudaveis: number
+          max_lead_time_days: number
+          planned_demands: number
+          reconstructed: boolean
+          retrospective_date: string
+          snapshot_found: boolean
+          sprint_code: string
+          total_demands: number
+          transbordo_count: number
+          unplanned_demands: number
+        }[]
+      }
+      rpc_list_all_sprints_2026: {
+        Args: never
+        Returns: {
+          conclusion_percentage: number
+          data_source: string
+          finalized_demands: number
+          has_snapshot: boolean
+          itens_criticos: number
+          latest_snapshot_date: string
+          sprint_code: string
+          sprints_count: number
+          total_demands: number
+        }[]
+      }
+      rpc_list_sprint_snapshots: {
+        Args: { p_limit?: number }
+        Returns: {
+          avg_lead_time_days: number
+          delivered_demands: number
+          finalized_demands: number
+          itens_criticos: number
+          planned_demands: number
+          snapshot_age_days: number
+          snapshot_datetime: string
+          sprint_code: string
+          total_demands: number
+          unplanned_demands: number
         }[]
       }
       rpc_pbi_bottleneck_summary: {
@@ -3279,6 +4183,192 @@ export type Database = {
           retornos_gerados: number
           tasks_testadas: number
           taxa_aprovacao: number
+        }[]
+      }
+      rpc_qa_encerramentos_por_usuario: {
+        Args: {
+          p_date_end?: string
+          p_date_start?: string
+          p_sprint_code?: string
+        }
+        Returns: {
+          closer_display: string
+          closer_email: string
+          com_retorno: number
+          encerramentos: number
+          sem_retorno: number
+          sprint_code: string
+        }[]
+      }
+      rpc_qa_return_by_assignee: {
+        Args: never
+        Returns: {
+          assigned_to_display: string
+          assigned_to_email: string
+          last_return_at: string
+          open_returns: number
+          total_returns: number
+        }[]
+      }
+      rpc_qa_return_by_sprint: {
+        Args: never
+        Returns: {
+          distinct_items: number
+          open_returns: number
+          sprint_code: string
+          total_returns: number
+        }[]
+      }
+      rpc_qa_return_open_items: {
+        Args: never
+        Returns: {
+          alert_channel_type: string
+          alert_error: string
+          alert_sent_at: string
+          alert_status: string
+          assigned_to_display: string
+          assigned_to_email: string
+          days_since_return: number
+          detected_at: string
+          detection_method: string
+          id: number
+          is_open: boolean
+          parent_id: number
+          parent_title: string
+          parent_type: string
+          resolved_at: string
+          sprint_code: string
+          transition_date: string
+          web_url: string
+          work_item_id: number
+          work_item_title: string
+          work_item_type: string
+        }[]
+      }
+      rpc_qa_return_summary: {
+        Args: { p_area_path?: string; p_sprint_code?: string }
+        Returns: Json
+      }
+      rpc_sprint_annual_timeline: {
+        Args: never
+        Returns: {
+          finalized_demands: number
+          health_status: string
+          sprint_code: string
+          sprint_month: string
+          total_demands: number
+          trend: string
+        }[]
+      }
+      rpc_timelog_queue_post: {
+        Args: {
+          p_dry_run?: boolean
+          p_notes_override?: string
+          p_target_user_email?: string
+          p_vdesk_log_id: string
+        }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          attempt_count: number
+          created_at: string
+          devops_entry_id: string | null
+          dry_run: boolean
+          error_code: string | null
+          error_message: string | null
+          id: string
+          last_attempt_at: string | null
+          log_date: string
+          notes: string | null
+          posted_at: string | null
+          selected_at: string | null
+          selected_by: string | null
+          status: string
+          target_user_display: string | null
+          target_user_email: string | null
+          task_devops: number
+          time_minutes: number
+          updated_at: string
+          vdesk_log_id: string
+          vdesk_user_name: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "timelog_post_queue"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      rpc_timelog_set_status: {
+        Args: { p_action: string; p_queue_id: string; p_reason?: string }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          attempt_count: number
+          created_at: string
+          devops_entry_id: string | null
+          dry_run: boolean
+          error_code: string | null
+          error_message: string | null
+          id: string
+          last_attempt_at: string | null
+          log_date: string
+          notes: string | null
+          posted_at: string | null
+          selected_at: string | null
+          selected_by: string | null
+          status: string
+          target_user_display: string | null
+          target_user_email: string | null
+          task_devops: number
+          time_minutes: number
+          updated_at: string
+          vdesk_log_id: string
+          vdesk_user_name: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "timelog_post_queue"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      sync_qa_return_count_from_events: { Args: never; Returns: undefined }
+      update_meta_comercial: {
+        Args: {
+          p_data_fim_meta?: string
+          p_data_inicio_meta?: string
+          p_id: string
+          p_mes_referencia: string
+          p_meta_valor_total?: number
+          p_observacao?: string
+          p_produto: string
+          p_realizado_quantidade?: number
+          p_status: string
+          p_tipo: string
+          p_valor_meta?: number
+          p_valor_unitario?: number
+        }
+        Returns: undefined
+      }
+      update_movimentacao_comercial: {
+        Args: {
+          p_ano_referencia?: number
+          p_bandeira?: string
+          p_data_evento?: string
+          p_id: string
+          p_motivo?: string
+          p_sistema?: string
+          p_status_encerramento?: string
+          p_tipo?: string
+          p_valor_mensal?: number
+        }
+        Returns: {
+          cliente_codigo: number
+          cliente_nome: string
+          id: string
+          tipo: string
+          updated_at: string
         }[]
       }
     }

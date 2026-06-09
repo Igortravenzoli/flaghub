@@ -2,6 +2,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
+import { normalizeProduct, extractProducts } from '@/lib/products';
 
 const normalizeFabricaState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 
@@ -126,26 +127,6 @@ function sprintCompare(a: string, b: string): number {
 }
 
 /** Known product tags — only these are considered "products" */
-const KNOWN_PRODUCTS = new Set([
-  'FLEXX', 'FLEXXSALES', 'CONNECTSALES', 'FLEXXGO', 'FLEXXGPS',
-  'HEISHOP', 'PORTALBROKER', 'PORTAL BROKER', 'FLEXXLEAD', 'QUICKONE',
-  'CONNECTMERCHAN',
-]);
-
-/** Canonical product name normalization */
-function normalizeProduct(tag: string): string {
-  const upper = tag.toUpperCase();
-  if (upper === 'PORTALBROKER' || upper === 'PORTAL BROKER') return 'Portal Broker';
-  if (upper === 'CONNECTMERCHAN') return 'ConnectMerchan';
-  return tag.charAt(0).toUpperCase() + tag.slice(1);
-}
-
-/** Extract only known product tags from a tags string */
-function extractProducts(tags: string | null): string[] {
-  if (!tags) return [];
-  return tags.split(';').map(t => t.trim()).filter(t => KNOWN_PRODUCTS.has(t.toUpperCase()));
-}
-
 /** Normalise collaborator names for filtering/dedup: strip diacritics, punctuation, lowercase, collapse spaces */
 export function normalizeCollaboratorName(name: string | null | undefined): string {
   if (!name) return '';

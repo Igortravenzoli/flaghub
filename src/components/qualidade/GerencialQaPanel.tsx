@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useGerencialQa, useQaDesempenho, type GerencialQaRow } from '@/hooks/useGerencialQa';
+import {
+  useGerencialQa, useQaDesempenho, useQaEncerramentosPorUsuario, useGerencialQaItems,
+  type GerencialQaRow,
+} from '@/hooks/useGerencialQa';
+import { extractProducts, normalizeProduct } from '@/lib/products';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -49,6 +53,8 @@ function KpiCard({ label, value, icon: Icon, tooltip, variant = 'default' }: {
 
 const HEALTH_COLORS = { verde: '#10b981', amarelo: '#eab308', vermelho: '#ef4444' };
 
+const SERIES_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#84cc16', '#ec4899'];
+
 interface GerencialQaPanelProps {
   lockedSprintCode?: string | null;
   dateStart?: Date;
@@ -67,6 +73,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
 
   const { data: qaRows, isLoading: qaLoading } = useGerencialQa(lockedSprintCode || undefined, dateStartIso, dateEndIso);
   const { data: desempenho, isLoading: desLoading } = useQaDesempenho(lockedSprintCode || undefined, dateStartIso, dateEndIso);
+  const { data: encerramentos } = useQaEncerramentosPorUsuario(lockedSprintCode || undefined, dateStartIso, dateEndIso);
+  const { data: qaItems } = useGerencialQaItems(lockedSprintCode || undefined, dateStartIso, dateEndIso);
 
   const sprints = useMemo(
     () => Array.from(new Set((qaRows || []).map(r => r.sprint_code).filter(Boolean))),
@@ -99,6 +107,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
   const agg = useMemo(() => {
     if (!filteredRows.length) return null;
     const testadas = filteredRows.reduce((s, r) => s + r.testadas, 0);
+    const concluidos = filteredRows.reduce((s, r) => s + (r.concluidos || 0), 0);
     const aprovadas = filteredRows.reduce((s, r) => s + r.aprovadas, 0);
     const reprovadas = filteredRows.reduce((s, r) => s + r.reprovadas, 0);
     const total = filteredRows.reduce((s, r) => s + r.total_itens, 0);
@@ -111,7 +120,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
     const saudaveis = filteredRows.reduce((s, r) => s + r.itens_saudaveis, 0);
     const atencao = filteredRows.reduce((s, r) => s + r.itens_atencao, 0);
     const itensCriticos = filteredRows.reduce((s, r) => s + r.itens_criticos, 0);
-    return { testadas, aprovadas, reprovadas, total, taxaAprovacao, taxaRetrabalho, avgDays, criticos, saudaveis, atencao, itensCriticos };
+    return { testadas, concluidos, aprovadas, reprovadas, total, taxaAprovacao, taxaRetrabalho, avgDays, criticos, saudaveis, atencao, itensCriticos };
   }, [filteredRows]);
 
   const evolutionData = useMemo(() =>
@@ -144,6 +153,59 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
     ].filter(d => d.value > 0);
   }, [agg]);
 
+  // Item 3 — histórico de encerramentos por usuário (pivot sprint × closer)
+  const closers = useMemo(
+    () => Array.from(new Set((encerramentos || []).map(e => e.closer_display))).sort(),
+    [encerramentos]
+  );
+  const encerramentosByCloser = useMemo(() => {
+    if (!encerramentos?.length) return [];
+    const bySprint = new Map<string, Record<string, number | string>>();
+    for (const e of encerramentos) {
+      const sprint = e.sprint_code?.split('\\').pop() || e.sprint_code || 'Sem Sprint';
+      const row = bySprint.get(sprint) || { sprint };
+      row[e.closer_display] = (Number(row[e.closer_display]) || 0) + e.encerramentos;
+      bySprint.set(sprint, row);
+    }
+    return Array.from(bySprint.values()).sort((a, b) =>
+      String(a.sprint).localeCompare(String(b.sprint), undefined, { numeric: true })
+    );
+  }, [encerramentos]);
+
+  const totalEncerramentosCloser = useMemo(() =>
+    (encerramentos || []).reduce((s, e) => s + e.encerramentos, 0),
+    [encerramentos]
+  );
+
+  // Item 4 — retornos por produto/sistema (soma de ciclos de retorno por produto)
+  const retornosPorProduto = useMemo(() => {
+    if (!qaItems?.length) return [];
+    const map = new Map<string, number>();
+    for (const it of qaItems) {
+      if ((it.qa_return_count || 0) <= 0) continue;
+      const produtos = extractProducts(it.tags);
+      const labels = produtos.length > 0 ? produtos.map(normalizeProduct) : ['Sem produto'];
+      for (const p of labels) map.set(p, (map.get(p) || 0) + it.qa_return_count);
+    }
+    return Array.from(map.entries())
+      .map(([produto, retornos]) => ({ produto, retornos }))
+      .sort((a, b) => b.retornos - a.retornos);
+  }, [qaItems]);
+
+  // Item 5 — volumetria de trabalho por produto/sistema (contagem de itens)
+  const volumetriaPorProduto = useMemo(() => {
+    if (!qaItems?.length) return [];
+    const map = new Map<string, number>();
+    for (const it of qaItems) {
+      const produtos = extractProducts(it.tags);
+      const labels = produtos.length > 0 ? produtos.map(normalizeProduct) : ['Sem produto'];
+      for (const p of labels) map.set(p, (map.get(p) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([produto, itens]) => ({ produto, itens }))
+      .sort((a, b) => b.itens - a.itens);
+  }, [qaItems]);
+
   const isLoading = qaLoading;
 
   return (
@@ -170,12 +232,12 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
         </div>
       ) : agg ? (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          <KpiCard label="Itens concluídos" value={agg.total} icon={ShieldCheck}
-            tooltip="Total de itens Done no recorte de sprint" />
-          <KpiCard label="Sem retorno QA" value={agg.aprovadas} icon={CheckCircle2}
-            tooltip="Itens concluídos sem retorno QA" variant="success" />
+          <KpiCard label="Itens concluídos" value={agg.concluidos} icon={ShieldCheck}
+            tooltip="Itens encerrados pelo QA — Closed By autorizado (Thales, Marquin, Rodrigues, Thiago, Alessandro, Mauricio)" />
+          <KpiCard label="Encerradas sem Retorno" value={agg.aprovadas} icon={CheckCircle2}
+            tooltip="Itens encerrados pelo QA sem nenhum retorno" variant="success" />
           <KpiCard label="Com retorno QA" value={agg.reprovadas} icon={XCircle}
-            tooltip="Itens concluídos com pelo menos 1 retorno QA"
+            tooltip="Itens encerrados pelo QA com pelo menos 1 retorno"
             variant={agg.reprovadas > 5 ? 'danger' : agg.reprovadas > 0 ? 'warning' : 'default'} />
           <KpiCard label="% sem retorno" value={`${agg.taxaAprovacao}%`} icon={TrendingUp}
             tooltip="Percentual de itens concluídos sem retrabalho"
@@ -191,6 +253,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
       <Tabs defaultValue="evolucao" className="space-y-4">
         <TabsList>
           <TabsTrigger value="evolucao">Evolução Sprint</TabsTrigger>
+          <TabsTrigger value="encerramentos">Encerramentos QA</TabsTrigger>
+          <TabsTrigger value="produtos">Produtos/Sistemas</TabsTrigger>
           <TabsTrigger value="retrabalho">Retrabalho</TabsTrigger>
           <TabsTrigger value="desempenho">Desempenho QA</TabsTrigger>
         </TabsList>
@@ -236,6 +300,87 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                     </PieChart>
                   </ResponsiveContainer>
                 ) : <p className="text-muted-foreground text-sm py-8">Sem dados</p>}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="encerramentos" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Users className="h-4 w-4" /> Histórico de Encerramentos QA por Usuário
+                <Badge variant="outline" className="ml-2 text-xs">{totalEncerramentosCloser} encerramentos</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {encerramentosByCloser.length > 0 ? (
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={encerramentosByCloser}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                    <XAxis dataKey="sprint" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <RTooltip />
+                    <Legend />
+                    {closers.map((c, i) => (
+                      <Bar key={c} dataKey={c} stackId="enc" fill={SERIES_COLORS[i % SERIES_COLORS.length]} name={c} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-muted-foreground text-sm py-8 text-center">
+                  Sem encerramentos atribuídos aos usuários do QA no recorte selecionado.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                <Info className="h-3.5 w-3.5" />
+                Conta itens encerrados por Closed By autorizado, por sprint.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="produtos" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Retornos por Produto/Sistema</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {retornosPorProduto.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={retornosPorProduto} layout="vertical" margin={{ left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                      <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <YAxis type="category" dataKey="produto" tick={{ fontSize: 10 }} width={110} />
+                      <RTooltip />
+                      <Bar dataKey="retornos" fill="#ef4444" name="Retornos" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Volumetria de Trabalho por Produto/Sistema</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {volumetriaPorProduto.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={volumetriaPorProduto} layout="vertical" margin={{ left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                      <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <YAxis type="category" dataKey="produto" tick={{ fontSize: 10 }} width={110} />
+                      <RTooltip />
+                      <Bar dataKey="itens" fill="#6366f1" name="Itens" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
+                <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                  <Info className="h-3.5 w-3.5" />
+                  Volumetria por produto (tag do item). Bandeira comercial por cliente ainda não vinculável aos work items.
+                </p>
               </CardContent>
             </Card>
           </div>
