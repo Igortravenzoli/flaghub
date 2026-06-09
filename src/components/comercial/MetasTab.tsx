@@ -256,30 +256,43 @@ const MetasTab: React.FC<MetasTabProps> = ({
     });
   }, [vendasItems, dateFrom, dateTo]);
 
-  // ── Distinct months count in filtered period ─────────────────
-  const numMeses = useMemo(() => {
-    const set = new Set<string>();
-    for (const m of metasFiltradas) {
-      const d = getMesDate(m.mes);
-      if (d) set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-    }
-    for (const v of vendasFiltradas) {
-      const pm = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
-      if (pm) set.add(pm);
-    }
-    return Math.max(1, set.size);
-  }, [metasFiltradas, vendasFiltradas]);
-
   // ── Pillar 1: Meta de Faturamento (combined) ─────────────────
   const faturamentoStats = useMemo(() => {
-    const targetCadastrado = metasFaturamento.reduce((s, m) => {
-      const raw = m.valor.trim().toLowerCase();
+    const parseValor = (raw0: string) => {
+      const raw = raw0.trim().toLowerCase();
       const v = raw.endsWith("k")
         ? parseFloat(raw.slice(0, -1)) * 1000
         : parseFloat(raw.replace(",", ".")) || 0;
-      return s + (Number.isFinite(v) ? v : 0);
-    }, 0);
-    const target = targetCadastrado > 0 ? targetCadastrado : META_MENSAL_DEFAULT * numMeses;
+      return Number.isFinite(v) ? v : 0;
+    };
+
+    // Meta de faturamento cadastrada POR mês (YYYY-MM)
+    const fatPorMes = new Map<string, number>();
+    for (const m of metasFaturamento) {
+      const d = getMesDate(m.mes);
+      if (!d) continue;
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      fatPorMes.set(k, (fatPorMes.get(k) ?? 0) + parseValor(m.valor));
+    }
+    const targetCadastrado = [...fatPorMes.values()].reduce((s, v) => s + v, 0);
+
+    // Conjunto de meses no escopo (metas de produto + faturamento + vendas filtradas)
+    const mesesEscopo = new Set<string>();
+    for (const m of metasProduto) {
+      const d = getMesDate(m.mes);
+      if (d) mesesEscopo.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    for (const k of fatPorMes.keys()) mesesEscopo.add(k);
+    for (const v of vendasFiltradas) {
+      const pm = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
+      if (pm) mesesEscopo.add(pm);
+    }
+    const mesesNoEscopo = Math.max(1, mesesEscopo.size);
+
+    // Target = soma por mês (meta cadastrada do mês, ou default mensal)
+    const target =
+      [...mesesEscopo].reduce((s, k) => s + (fatPorMes.get(k) ?? META_MENSAL_DEFAULT), 0) ||
+      META_MENSAL_DEFAULT * mesesNoEscopo;
 
     const realizadoProdutos = metasProduto.reduce((sum, m) => {
       const qty = parseInt(m.realizado) || 0;
@@ -306,11 +319,12 @@ const MetasTab: React.FC<MetasTabProps> = ({
       if (contrib > 0) mesMap.set(pm, (mesMap.get(pm) ?? 0) + contrib);
     }
 
-    const metaMensal = targetCadastrado > 0 ? target / numMeses : META_MENSAL_DEFAULT;
+    // % mensal: cada mês contra sua própria meta (cadastrada ou default)
     const comDados = [...mesMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([ym, val]) => {
-        const p = Math.round((val / metaMensal) * 1000) / 10;
+        const metaDoMes = fatPorMes.get(ym) ?? META_MENSAL_DEFAULT;
+        const p = metaDoMes > 0 ? Math.round((val / metaDoMes) * 1000) / 10 : 0;
         return { mes: formatYM(ym), pct: p, atingiu: p >= 100 };
       })
       .filter((m) => m.pct > 0);
@@ -339,7 +353,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
       media,
       hasCadastrado: targetCadastrado > 0,
     };
-  }, [metasFaturamento, metasProduto, vendasFiltradas, numMeses]);
+  }, [metasFaturamento, metasProduto, vendasFiltradas]);
 
   // ── Pillar 2: Meta Produtos KPIs ─────────────────────────────
   const kpisProdutos = useMemo(() => {
