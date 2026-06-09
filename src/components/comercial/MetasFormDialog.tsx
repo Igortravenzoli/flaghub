@@ -41,6 +41,7 @@ export interface MetaFormData {
   valor: string;           // qty meta (produtos) ou R$ target (faturamento)
   realizado: string;       // qty realizada (produtos) — não usado para faturamento
   valor_unitario: string;  // preço unitário R$ — não usado para faturamento
+  meta_valor_total: string; // meta monetária direta R$ (quando não há quantidade)
   observacao?: string;
   data_inicio_meta?: string;
   data_fim_meta?: string;
@@ -77,6 +78,7 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
     valor: initialData?.valor ?? "",
     realizado: initialData?.realizado ?? "",
     valor_unitario: initialData?.valor_unitario ?? "",
+    meta_valor_total: initialData?.meta_valor_total ?? "",
     observacao: initialData?.observacao ?? "",
     data_inicio_meta: initialData?.data_inicio_meta ?? "",
     data_fim_meta: initialData?.data_fim_meta ?? "",
@@ -312,14 +314,16 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="valor" className="block text-xs font-semibold mb-1">Meta (quantidade)</label>
+                  <label htmlFor="valor" className="block text-xs font-semibold mb-1">
+                    Meta (quantidade)
+                    <span className="ml-1 text-[10px] font-normal text-muted-foreground">— opcional</span>
+                  </label>
                   <Input
                     id="valor"
                     name="valor"
                     placeholder="Ex: 400"
                     value={form.valor}
                     onChange={handleChange}
-                    required
                   />
                 </div>
                 <div>
@@ -350,15 +354,35 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
                 />
               </div>
 
+              <div>
+                <label htmlFor="meta_valor_total" className="block text-xs font-semibold mb-1">
+                  Meta Valor total (R$)
+                  <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                    — use quando a meta é monetária e não por quantidade
+                  </span>
+                </label>
+                <Input
+                  id="meta_valor_total"
+                  name="meta_valor_total"
+                  placeholder="Ex: 49600"
+                  value={form.meta_valor_total}
+                  onChange={handleChange}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Se preenchido, prevalece sobre Qtd × Valor unitário na coluna “Meta Valor”.
+                </p>
+              </div>
+
               {/* Preview calculado — Meta Valor / Realiz. Valor / % Atingimento */}
               {(() => {
                 const qty  = parseFloat(form.valor) || 0;
                 const real = parseFloat(form.realizado) || 0;
                 const vu   = parseFloat(form.valor_unitario) || 0;
-                const metaValor      = qty  * vu;
+                const metaTotalDireto = parseFloat((form.meta_valor_total || "").replace(",", ".")) || 0;
+                const metaValor      = metaTotalDireto > 0 ? metaTotalDireto : qty * vu;
                 const realizadoValor = real * vu;
                 const pctAting       = qty > 0 ? Math.round((real / qty) * 1000) / 10 : 0;
-                const hasVu = vu > 0;
+                const hasMetaValor = metaValor > 0;
                 const color = pctAting >= 100 ? "#16a34a" : pctAting >= 70 ? "#f59e0b" : "#ef4444";
 
                 const fmt = (v: number) =>
@@ -373,13 +397,13 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
                       <div>
                         <p className="text-[10px] text-muted-foreground">Meta Valor</p>
                         <p className="text-sm font-mono font-semibold">
-                          {hasVu ? fmt(metaValor) : "—"}
+                          {hasMetaValor ? fmt(metaValor) : "—"}
                         </p>
                       </div>
                       <div>
                         <p className="text-[10px] text-muted-foreground">Realiz. Valor</p>
                         <p className="text-sm font-mono font-semibold">
-                          {hasVu && real > 0 ? fmt(realizadoValor) : "—"}
+                          {vu > 0 && real > 0 ? fmt(realizadoValor) : "—"}
                         </p>
                       </div>
                       <div>

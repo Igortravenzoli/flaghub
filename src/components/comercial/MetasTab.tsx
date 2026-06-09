@@ -24,7 +24,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine, AreaChart, Area,
 } from "recharts";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
 
 interface MetasTabProps {
   canViewValues?: boolean;
@@ -188,6 +188,10 @@ const MetasTab: React.FC<MetasTabProps> = ({
 
   // ── Histograma de ondas: visão mensal/trimestral ─────────────
   const [waveView, setWaveView] = useState<"mensal" | "trimestral">("mensal");
+
+  // ── Seções de tabela minimizáveis ────────────────────────────
+  const [metaTableOpen, setMetaTableOpen] = useState(true);
+  const [vendaTableOpen, setVendaTableOpen] = useState(true);
 
   const { data: metas = [], isLoading, isError, refetch } = useComercialMetas();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
@@ -1056,12 +1060,25 @@ const MetasTab: React.FC<MetasTabProps> = ({
       {/* ── Tabela Meta Produtos ──────────────────────────────── */}
       {!isLoading && metasProduto.length > 0 && (
         <div className="space-y-2">
-          <div>
-            <h3 className="text-sm font-semibold">Meta Produtos — {periodLabel}</h3>
-            <p className="text-xs text-muted-foreground">
-              {metasProduto.length} produto{metasProduto.length !== 1 ? "s" : ""} no período
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setMetaTableOpen((o) => !o)}
+            className="flex items-center gap-2 w-full text-left group"
+          >
+            <ChevronDown
+              className={`h-4 w-4 text-muted-foreground transition-transform ${metaTableOpen ? "" : "-rotate-90"}`}
+            />
+            <div>
+              <h3 className="text-sm font-semibold group-hover:text-primary transition-colors">
+                Meta Produtos — {periodLabel}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {metasProduto.length} produto{metasProduto.length !== 1 ? "s" : ""} no período
+                {!metaTableOpen ? " · clique para expandir" : ""}
+              </p>
+            </div>
+          </button>
+          {metaTableOpen && (
           <div className="rounded-md border overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -1102,7 +1119,8 @@ const MetasTab: React.FC<MetasTabProps> = ({
                   const metaQty = parseFloat(meta.valor) || 0;
                   const realizadoQty = parseInt(meta.realizado) || 0;
                   const vu = parseFloat(meta.valor_unitario) || 0;
-                  const metaValor = metaQty * vu;
+                  const metaValorTotal = parseFloat(meta.meta_valor_total || "") || 0;
+                  const metaValor = metaValorTotal > 0 ? metaValorTotal : metaQty * vu;
                   const realizadoValor = realizadoQty * vu;
                   const p = pct(realizadoQty, metaQty);
 
@@ -1210,6 +1228,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 
@@ -1226,20 +1245,32 @@ const MetasTab: React.FC<MetasTabProps> = ({
       {!vendasLoading && (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-semibold">Venda Produtos — {periodLabel}</h3>
-              <p className="text-xs text-muted-foreground">
-                {vendasFiltradas.length} negócio{vendasFiltradas.length !== 1 ? "s" : ""} fechado
-                {vendasFiltradas.length !== 1 ? "s" : ""} no período
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setVendaTableOpen((o) => !o)}
+              className="flex items-center gap-2 text-left group"
+            >
+              <ChevronDown
+                className={`h-4 w-4 text-muted-foreground transition-transform ${vendaTableOpen ? "" : "-rotate-90"}`}
+              />
+              <div>
+                <h3 className="text-sm font-semibold group-hover:text-primary transition-colors">
+                  Venda Produtos — {periodLabel}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {vendasFiltradas.length} negócio{vendasFiltradas.length !== 1 ? "s" : ""} fechado
+                  {vendasFiltradas.length !== 1 ? "s" : ""} no período
+                  {!vendaTableOpen ? " · clique para expandir" : ""}
+                </p>
+              </div>
+            </button>
             {canViewValues && (
               <Button variant="default" size="sm" onClick={openCreateVenda}>
                 + Nova Venda
               </Button>
             )}
           </div>
-          {vendasFiltradas.length === 0 ? (
+          {vendaTableOpen && (vendasFiltradas.length === 0 ? (
             <div className="rounded-lg border border-dashed flex flex-col items-center justify-center py-8 text-center gap-2">
               <p className="text-muted-foreground text-sm">Sem vendas no período.</p>
               {canViewValues && (
@@ -1324,7 +1355,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                 </tbody>
               </table>
             </div>
-          )}
+          ))}
         </div>
       )}
 

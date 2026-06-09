@@ -66,6 +66,7 @@ function mapRowToMeta(row: any): MetaComercial {
     valor: row.valor_meta == null ? '' : String(row.valor_meta),
     realizado: row.realizado_quantidade == null ? '' : String(row.realizado_quantidade),
     valor_unitario: row.valor_unitario == null ? '' : String(row.valor_unitario),
+    meta_valor_total: row.meta_valor_total == null ? '' : String(row.meta_valor_total),
     observacao: row.observacao ?? '',
     data_inicio_meta: isoToDdMmYyyy(row.data_inicio_meta),
     data_fim_meta: isoToDdMmYyyy(row.data_fim_meta),
@@ -109,6 +110,7 @@ export function useCreateMetaComercial() {
         p_data_fim_meta: ddMmYyyyToIso(payload.data_fim_meta),
         p_realizado_quantidade: parseIntField(payload.realizado),
         p_valor_unitario: parseNumericField(payload.valor_unitario),
+        p_meta_valor_total: parseValorMeta(payload.meta_valor_total || ''),
       });
 
       if (error) throw error;
@@ -138,6 +140,7 @@ export function useUpdateMetaComercial() {
         p_data_fim_meta: ddMmYyyyToIso(payload.data_fim_meta),
         p_realizado_quantidade: parseIntField(payload.realizado),
         p_valor_unitario: parseNumericField(payload.valor_unitario),
+        p_meta_valor_total: parseValorMeta(payload.meta_valor_total || ''),
       });
 
       if (error) throw error;
