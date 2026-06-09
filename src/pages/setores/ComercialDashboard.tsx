@@ -18,7 +18,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
-import { CHART_COLORS } from '@/lib/chartColors';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import MovimentacaoTab from '@/components/comercial/MovimentacaoTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
@@ -669,9 +668,9 @@ export default function ComercialDashboard() {
                             <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
                             <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
-                            <Bar dataKey="count" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                            <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={40} cursor="pointer" onClick={handleBarClick}>
                               {bandeiraData.map((entry, i) => (
-                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.3 : 1} />
+                                <Cell key={i} fill="hsl(var(--primary))" opacity={selectedBandeira && selectedBandeira !== entry.name ? 0.25 : 0.85} />
                               ))}
                             </Bar>
                           </BarChart>
@@ -697,11 +696,7 @@ export default function ComercialDashboard() {
                             <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-35} textAnchor="end" interval={0} />
                             <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, 'Clientes']} />
-                            <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                              {sistemaChartData.map((_, i) => (
-                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                              ))}
-                            </Bar>
+                            <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={40} fill="hsl(var(--primary))" fillOpacity={0.85} />
                           </BarChart>
                         </ResponsiveContainer>
                       ) : (
