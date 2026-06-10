@@ -45,6 +45,8 @@ type GerenciaTabProps = {
   featureRows: FeaturePbiSummaryRow[];
   performance?: GerenciaPerformance;
   risks?: GerenciaRisks;
+  /** Fábrica (Epic raiz) por work item id — habilita a visão por fábrica */
+  fabricaByItemId?: Record<number, string>;
 };
 
 type GerenciaPerformance = {
@@ -97,27 +99,63 @@ function includesRetornoQa(tags: string | null | undefined): boolean {
   return /(^|;)\s*retorno\s*(de\s*)?qa\s*(;|$)/i.test(tags || '');
 }
 
+// Aceita "AVIAO" e variantes compostas legadas ("AVIAO ANTIGO", "AVIAO TRANSBORDADO")
 function includesAviao(tags: string | null | undefined): boolean {
-  return /(^|;)\s*avi[aã]o\s*(;|$)/i.test(tags || '');
+  return /(^|;)\s*avi[aã]o\b/i.test(tags || '');
 }
 
-type Bucket = 'priorizacao' | 'bug' | 'retorno_qa' | 'aviao_sprint' | 'aviao_antigo';
+function includesAviaoTransbordadoLegado(tags: string | null | undefined): boolean {
+  return /(^|;)\s*avi[aã]o\s+(antigo|transbordad[oa])\s*(;|$)/i.test(tags || '');
+}
 
-function classifyItem(
-  item: FabricaItem,
-  selectedSprintCode: string | null,
-): Bucket {
+function includesTransbordo(tags: string | null | undefined): boolean {
+  return /(^|;)\s*transbord(o|ad[oa])\s*(;|$)/i.test(tags || '');
+}
+
+function includesPriorizacao(tags: string | null | undefined): boolean {
+  return /(^|;)\s*prioriza[cç][aã]o\s*(;|$)/i.test(tags || '');
+}
+
+function includesBugTag(tags: string | null | undefined): boolean {
+  return /(^|;)\s*bug\s*(;|$)/i.test(tags || '');
+}
+
+type Bucket =
+  | 'priorizacao'
+  | 'priorizacao_transbordo'
+  | 'bug'
+  | 'retorno_qa'
+  | 'aviao_sprint'
+  | 'aviao_transbordado';
+
+/**
+ * Regras de classificação (alinhadas com a planilha gerencial da Fábrica):
+ * 1. Retorno de QA: qualquer item (Avião, Bug, PBI) com tag "Retorno de QA"
+ * 2. Avião da sprint: tag Avião sem tag Transbordo nem Retorno de QA
+ *    Avião Transbordado: tag Avião + tag Transbordo, sem Retorno de QA
+ * 3. Priorização: tag Priorização sem Retorno de QA nem Transbordo (inclui Bugs priorizados)
+ *    Transbordo: tag Priorização + tag Transbordo, sem Retorno de QA
+ * 4. Bug: tipo Bug (ou tag BUG) sem tag Retorno de QA
+ */
+function classifyItem(item: FabricaItem): Bucket {
   const tags = item.tags || '';
   if (includesRetornoQa(tags)) {
     return 'retorno_qa';
   }
   if (includesAviao(tags)) {
-    if (!selectedSprintCode) return 'aviao_sprint';
-    const current = normalizeSprintCode(item.iteration_path);
-    return current === selectedSprintCode ? 'aviao_sprint' : 'aviao_antigo';
+    return (includesTransbordo(tags) || includesAviaoTransbordadoLegado(tags))
+      ? 'aviao_transbordado'
+      : 'aviao_sprint';
   }
-  if (item.work_item_type === 'Bug') return 'bug';
+  if (includesPriorizacao(tags)) {
+    return includesTransbordo(tags) ? 'priorizacao_transbordo' : 'priorizacao';
+  }
+  if (item.work_item_type === 'Bug' || includesBugTag(tags)) return 'bug';
   return 'priorizacao';
+}
+
+function isPriorizadoBucket(bucket: Bucket): boolean {
+  return bucket === 'priorizacao' || bucket === 'priorizacao_transbordo';
 }
 
 type DrilldownKey =
@@ -128,10 +166,11 @@ type DrilldownKey =
   | 'done'
   | 'priorizado_done'
   | 'priorizado_em_dev'
+  | 'priorizado_transbordo'
   | 'np_bug'
   | 'np_retorno_qa'
   | 'np_aviao_sprint'
-  | 'np_aviao_antigo'
+  | 'np_aviao_transbordado'
   | 'entregue_bug'
   | 'entregue_retorno_qa'
   | 'entregue_priorizacao'
@@ -228,10 +267,17 @@ export function GerenciaTab({
   featureRows,
   performance,
   risks,
+  fabricaByItemId,
 }: GerenciaTabProps) {
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
   const [selectedDrilldown, setSelectedDrilldown] = useState<{ key: DrilldownKey; label: string } | null>(null);
   const [histogramMode, setHistogramMode] = useState<'absoluto' | 'percentual'>('absoluto');
+  const [selectedFabrica, setSelectedFabrica] = useState<string | null>(null);
+
+  const fabricaOf = useCallback((item: FabricaItem): string | null => {
+    if (!fabricaByItemId || item.id == null) return null;
+    return fabricaByItemId[item.id] ?? null;
+  }, [fabricaByItemId]);
 
   const toggleBlock = useCallback((key: string) => {
     setCollapsedBlocks((prev) => {
@@ -266,59 +312,99 @@ export function GerenciaTab({
   }, [hasAllSprints, selectedSprintCodes]);
 
   // â”€â”€ Current sprint metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const managerItems = useMemo(
+  const allManagerItems = useMemo(
     () => items.filter((item) => item.count_in_kpi !== false && isManagerLike(item)),
     [items],
   );
 
+  // Fábricas disponíveis no escopo atual (ordenadas por volume)
+  const fabricas = useMemo(() => {
+    if (!fabricaByItemId) return [];
+    const counts = new Map<string, number>();
+    for (const item of allManagerItems) {
+      const f = fabricaOf(item);
+      if (f) counts.set(f, (counts.get(f) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+  }, [allManagerItems, fabricaByItemId, fabricaOf]);
+
+  // Escopo dos KPIs: geral ou uma fábrica específica (mesma visualização do geral)
+  const managerItems = useMemo(
+    () => selectedFabrica
+      ? allManagerItems.filter((item) => fabricaOf(item) === selectedFabrica)
+      : allManagerItems,
+    [allManagerItems, selectedFabrica, fabricaOf],
+  );
+
+  // Retorno QA e Bug por fábrica (sempre sobre o escopo completo da sprint)
+  const qaBugPorFabrica = useMemo(() => {
+    if (!fabricaByItemId) return [];
+    const map = new Map<string, { total: number; retornoQa: number; bug: number }>();
+    for (const item of allManagerItems) {
+      const f = fabricaOf(item) || 'Sem fábrica';
+      const entry = map.get(f) ?? { total: 0, retornoQa: 0, bug: 0 };
+      entry.total++;
+      const bucket = classifyItem(item);
+      if (bucket === 'retorno_qa') entry.retornoQa++;
+      else if (bucket === 'bug') entry.bug++;
+      map.set(f, entry);
+    }
+    return [...map.entries()]
+      .map(([fabrica, v]) => ({ fabrica, ...v, bugQa: v.retornoQa + v.bug }))
+      .sort((a, b) => b.bugQa - a.bugQa);
+  }, [allManagerItems, fabricaByItemId, fabricaOf]);
+
   const metrics = useMemo(() => {
     const total = managerItems.length;
-    let priorizacao = 0, bug = 0, retornoQa = 0, aviaoSprint = 0, aviaoAntigo = 0;
+    let priorizacaoPura = 0, priorizacaoTransbordo = 0, bug = 0, retornoQa = 0, aviaoSprint = 0, aviaoTransbordado = 0;
     let entregueTotal = 0, doneTotal = 0;
     let doneBug = 0, doneRetornoQa = 0, donePriorizacao = 0, doneAviao = 0;
     let entregueBug = 0, entregueRetornoQa = 0, entreguePriorizacao = 0, entregueAviao = 0;
     let priorizadoDone = 0, priorizadoEmDev = 0;
 
     for (const item of managerItems) {
-      const bucket = classifyItem(item, selectedSingleSprintCode);
+      const bucket = classifyItem(item);
       const done = isDoneState(item.state);
       const entregue = ENTREGUE_STATES.has(item.state || '');
 
-      if (bucket === 'priorizacao') priorizacao++;
+      if (bucket === 'priorizacao') priorizacaoPura++;
+      else if (bucket === 'priorizacao_transbordo') priorizacaoTransbordo++;
       else if (bucket === 'bug') bug++;
       else if (bucket === 'retorno_qa') retornoQa++;
       else if (bucket === 'aviao_sprint') aviaoSprint++;
-      else aviaoAntigo++;
+      else aviaoTransbordado++;
 
       if (entregue) {
         entregueTotal++;
         if (bucket === 'bug') entregueBug++;
         else if (bucket === 'retorno_qa') entregueRetornoQa++;
-        else if (bucket === 'priorizacao') entreguePriorizacao++;
+        else if (isPriorizadoBucket(bucket)) entreguePriorizacao++;
         else entregueAviao++;
       }
-      if (bucket === 'priorizacao') {
+      if (isPriorizadoBucket(bucket)) {
         if (done) priorizadoDone++; else priorizadoEmDev++;
       }
       if (done) {
         doneTotal++;
         if (bucket === 'bug') doneBug++;
         else if (bucket === 'retorno_qa') doneRetornoQa++;
-        else if (bucket === 'priorizacao') donePriorizacao++;
+        else if (isPriorizadoBucket(bucket)) donePriorizacao++;
         else doneAviao++;
       }
     }
 
     return {
-      total, priorizacao,
-      naoPriorizado: bug + retornoQa + aviaoSprint + aviaoAntigo,
+      total,
+      priorizacao: priorizacaoPura + priorizacaoTransbordo,
+      priorizacaoTransbordo,
+      naoPriorizado: bug + retornoQa + aviaoSprint + aviaoTransbordado,
       entregue: entregueTotal, done: doneTotal,
       priorizadoDone, priorizadoEmDev,
-      bug, retornoQa, aviaoSprint, aviaoAntigo,
+      bug, retornoQa, aviaoSprint, aviaoTransbordado,
       entregueBug, entregueRetornoQa, entreguePriorizacao, entregueAviao,
       doneBug, doneRetornoQa, donePriorizacao, doneAviao,
     };
-  }, [managerItems, selectedSingleSprintCode]);
+  }, [managerItems]);
 
   // â”€â”€ Sprint comparison: current sprint + 3 previous â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const comparisonSprints = useMemo(() => {
@@ -338,13 +424,14 @@ export function GerenciaTab({
     return comparisonSprints.map((sprintPath) => {
       const sprintCode = normalizeSprintCode(sprintPath);
       const sprintItems = allItems.filter(
-        (i) => i.iteration_path === sprintPath && i.count_in_kpi !== false && isManagerLike(i),
+        (i) => i.iteration_path === sprintPath && i.count_in_kpi !== false && isManagerLike(i)
+          && (!selectedFabrica || fabricaOf(i) === selectedFabrica),
       );
       const total = sprintItems.length;
       let priorizacao = 0, bug = 0, retornoQa = 0, aviao = 0, entregue = 0, done = 0;
       for (const item of sprintItems) {
-        const bucket = classifyItem(item, sprintCode);
-        if (bucket === 'priorizacao') priorizacao++;
+        const bucket = classifyItem(item);
+        if (isPriorizadoBucket(bucket)) priorizacao++;
         else if (bucket === 'bug') bug++;
         else if (bucket === 'retorno_qa') retornoQa++;
         else aviao++;
@@ -383,38 +470,39 @@ export function GerenciaTab({
         DoneP: doneP,
       };
     });
-  }, [comparisonSprints, allItems, histogramMode]);
+  }, [comparisonSprints, allItems, histogramMode, selectedFabrica, fabricaOf]);
 
   // â”€â”€ Drilldown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const getDrilldownItems = useCallback((key: DrilldownKey): FabricaItem[] => {
     return managerItems.filter((item) => {
-      const bucket = classifyItem(item, selectedSingleSprintCode);
+      const bucket = classifyItem(item);
       const done = isDoneState(item.state);
       const entregue = ENTREGUE_STATES.has(item.state || '');
       switch (key) {
         case 'demandas': return true;
-        case 'priorizado': return bucket === 'priorizacao';
-        case 'nao_priorizado': return bucket !== 'priorizacao';
+        case 'priorizado': return isPriorizadoBucket(bucket);
+        case 'nao_priorizado': return !isPriorizadoBucket(bucket);
         case 'entregue': return entregue;
         case 'done': return done;
-        case 'priorizado_done': return bucket === 'priorizacao' && done;
-        case 'priorizado_em_dev': return bucket === 'priorizacao' && !done;
+        case 'priorizado_done': return isPriorizadoBucket(bucket) && done;
+        case 'priorizado_em_dev': return isPriorizadoBucket(bucket) && !done;
+        case 'priorizado_transbordo': return bucket === 'priorizacao_transbordo';
         case 'np_bug': return bucket === 'bug';
         case 'np_retorno_qa': return bucket === 'retorno_qa';
         case 'np_aviao_sprint': return bucket === 'aviao_sprint';
-        case 'np_aviao_antigo': return bucket === 'aviao_antigo';
+        case 'np_aviao_transbordado': return bucket === 'aviao_transbordado';
         case 'entregue_bug': return entregue && bucket === 'bug';
         case 'entregue_retorno_qa': return entregue && bucket === 'retorno_qa';
-        case 'entregue_priorizacao': return entregue && bucket === 'priorizacao';
-        case 'entregue_aviao': return entregue && (bucket === 'aviao_sprint' || bucket === 'aviao_antigo');
+        case 'entregue_priorizacao': return entregue && isPriorizadoBucket(bucket);
+        case 'entregue_aviao': return entregue && (bucket === 'aviao_sprint' || bucket === 'aviao_transbordado');
         case 'done_bug': return done && bucket === 'bug';
         case 'done_retorno_qa': return done && bucket === 'retorno_qa';
-        case 'done_priorizacao': return done && bucket === 'priorizacao';
-        case 'done_aviao': return done && (bucket === 'aviao_sprint' || bucket === 'aviao_antigo');
+        case 'done_priorizacao': return done && isPriorizadoBucket(bucket);
+        case 'done_aviao': return done && (bucket === 'aviao_sprint' || bucket === 'aviao_transbordado');
         default: return false;
       }
     });
-  }, [managerItems, selectedSingleSprintCode]);
+  }, [managerItems]);
 
   const handleDrilldown = useCallback((key: DrilldownKey, label: string) => {
     setSelectedDrilldown((prev) => prev?.key === key ? null : { key, label });
@@ -444,9 +532,35 @@ export function GerenciaTab({
 
   return (
     <div className="space-y-4">
-      {renderSectionHeader('kpi_cards', 'Visão Geral — ' + sprintLabel, <BarChart3 className="h-4 w-4" />)}
+      {renderSectionHeader(
+        'kpi_cards',
+        `Visão ${selectedFabrica ? `Fábrica ${selectedFabrica}` : 'Geral'} — ${sprintLabel}`,
+        <BarChart3 className="h-4 w-4" />,
+      )}
       {!isCollapsed('kpi_cards') && (
         <>
+          {fabricas.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mr-1">Fábrica:</span>
+              <Button
+                variant={selectedFabrica === null ? 'default' : 'outline'}
+                size="sm" className="h-7 text-xs"
+                onClick={() => { setSelectedFabrica(null); setSelectedDrilldown(null); }}
+              >
+                Geral
+              </Button>
+              {fabricas.map((f) => (
+                <Button
+                  key={f}
+                  variant={selectedFabrica === f ? 'default' : 'outline'}
+                  size="sm" className="h-7 text-xs"
+                  onClick={() => { setSelectedFabrica(selectedFabrica === f ? null : f); setSelectedDrilldown(null); }}
+                >
+                  {f}
+                </Button>
+              ))}
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
             <KpiCard
               label="Demandas"
@@ -472,6 +586,7 @@ export function GerenciaTab({
               subItems={[
                 { key: 'priorizado_done', label: 'Entregue/Done', value: metrics.priorizadoDone, total: metrics.priorizacao, valueColor: 'text-emerald-600' },
                 { key: 'priorizado_em_dev', label: 'Em dev', value: metrics.priorizadoEmDev, total: metrics.priorizacao, valueColor: 'text-orange-500' },
+                { key: 'priorizado_transbordo', label: 'Transbordo', value: metrics.priorizacaoTransbordo, total: metrics.priorizacao, valueColor: 'text-purple-600' },
               ]}
             />
             <KpiCard
@@ -486,9 +601,9 @@ export function GerenciaTab({
               onSubClick={(k) => handleDrilldown(k, k)}
               subItems={[
                 { key: 'np_bug', label: 'Bug', value: metrics.bug, total: metrics.naoPriorizado, valueColor: 'text-destructive' },
-                { key: 'np_retorno_qa', label: 'Retorno QA (tag)', value: metrics.retornoQa, total: metrics.naoPriorizado, valueColor: 'text-amber-600' },
-                { key: 'np_aviao_sprint', label: selectedSingleSprintCode ? `Avião ${selectedSingleSprintCode}` : 'Avião', value: metrics.aviaoSprint, total: metrics.naoPriorizado },
-                { key: 'np_aviao_antigo', label: 'Avião Antigo', value: metrics.aviaoAntigo, total: metrics.naoPriorizado },
+                { key: 'np_retorno_qa', label: 'Retorno QA', value: metrics.retornoQa, total: metrics.naoPriorizado, valueColor: 'text-amber-600' },
+                { key: 'np_aviao_sprint', label: selectedSingleSprintCode ? `Avião ${selectedSingleSprintCode}` : 'Avião da Sprint', value: metrics.aviaoSprint, total: metrics.naoPriorizado },
+                { key: 'np_aviao_transbordado', label: 'Avião Transbordado', value: metrics.aviaoTransbordado, total: metrics.naoPriorizado },
               ]}
             />
             <KpiCard
@@ -503,7 +618,7 @@ export function GerenciaTab({
               onSubClick={(k) => handleDrilldown(k, k)}
               subItems={[
                 { key: 'entregue_bug', label: 'Bug', value: metrics.entregueBug, total: metrics.entregue, valueColor: 'text-destructive' },
-                { key: 'entregue_retorno_qa', label: 'Retorno QA (tag)', value: metrics.entregueRetornoQa, total: metrics.entregue, valueColor: 'text-amber-600' },
+                { key: 'entregue_retorno_qa', label: 'Retorno QA', value: metrics.entregueRetornoQa, total: metrics.entregue, valueColor: 'text-amber-600' },
                 { key: 'entregue_priorizacao', label: 'Priorização', value: metrics.entreguePriorizacao, total: metrics.entregue, valueColor: 'text-blue-600' },
                 { key: 'entregue_aviao', label: 'Avião', value: metrics.entregueAviao, total: metrics.entregue },
               ]}
@@ -520,7 +635,7 @@ export function GerenciaTab({
               onSubClick={(k) => handleDrilldown(k, k)}
               subItems={[
                 { key: 'done_bug', label: 'Bug', value: metrics.doneBug, total: metrics.done, valueColor: 'text-destructive' },
-                { key: 'done_retorno_qa', label: 'Retorno QA (tag)', value: metrics.doneRetornoQa, total: metrics.done, valueColor: 'text-amber-600' },
+                { key: 'done_retorno_qa', label: 'Retorno QA', value: metrics.doneRetornoQa, total: metrics.done, valueColor: 'text-amber-600' },
                 { key: 'done_priorizacao', label: 'Priorização', value: metrics.donePriorizacao, total: metrics.done, valueColor: 'text-blue-600' },
                 { key: 'done_aviao', label: 'Avião', value: metrics.doneAviao, total: metrics.done },
               ]}
@@ -591,7 +706,11 @@ export function GerenciaTab({
         </>
       )}
 
-      {renderSectionHeader('hist_comparacao', 'Comparação por Sprint (sprint atual + 3 anteriores)', <BarChart3 className="h-4 w-4" />)}
+      {renderSectionHeader(
+        'hist_comparacao',
+        `Comparação por Sprint (sprint atual + 3 anteriores)${selectedFabrica ? ` — Fábrica ${selectedFabrica}` : ''}`,
+        <BarChart3 className="h-4 w-4" />,
+      )}
       {!isCollapsed('hist_comparacao') && (
         <Card>
           <CardHeader className="pb-2">
@@ -654,6 +773,58 @@ export function GerenciaTab({
             )}
             <p className="text-[11px] text-muted-foreground mt-2">
               Considera todos os colaboradores do setor, independente do filtro de colaborador ativo.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Retorno QA e Bug por fábrica — retrabalho/correção e impacto dentro de cada fábrica */}
+      {qaBugPorFabrica.length > 0 && renderSectionHeader('qa_bug_fabrica', 'Retorno QA e Bug por Fábrica — ' + sprintLabel, <AlertTriangle className="h-4 w-4" />)}
+      {qaBugPorFabrica.length > 0 && !isCollapsed('qa_bug_fabrica') && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="text-xs font-semibold">Fábrica</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">Retorno QA</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">Bug</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">Bug + QA</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">Demandas</TableHead>
+                    <TableHead className="text-xs font-semibold text-right">% dentro da fábrica</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {qaBugPorFabrica.map((row) => (
+                    <TableRow
+                      key={row.fabrica}
+                      className={`cursor-pointer hover:bg-muted/30 ${selectedFabrica === row.fabrica ? 'bg-primary/5' : ''}`}
+                      onClick={() => { setSelectedFabrica(selectedFabrica === row.fabrica ? null : row.fabrica); setSelectedDrilldown(null); }}
+                    >
+                      <TableCell className="text-xs font-medium">{row.fabrica}</TableCell>
+                      <TableCell className="text-xs text-right text-amber-600 font-semibold">{row.retornoQa}</TableCell>
+                      <TableCell className="text-xs text-right text-destructive font-semibold">{row.bug}</TableCell>
+                      <TableCell className="text-xs text-right font-semibold">{row.bugQa}</TableCell>
+                      <TableCell className="text-xs text-right text-muted-foreground">{row.total}</TableCell>
+                      <TableCell className="text-xs text-right font-semibold">{percent(row.bugQa, row.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="bg-muted/40 font-semibold">
+                    <TableCell className="text-xs">Total</TableCell>
+                    <TableCell className="text-xs text-right text-amber-600">{qaBugPorFabrica.reduce((s, r) => s + r.retornoQa, 0)}</TableCell>
+                    <TableCell className="text-xs text-right text-destructive">{qaBugPorFabrica.reduce((s, r) => s + r.bug, 0)}</TableCell>
+                    <TableCell className="text-xs text-right">{qaBugPorFabrica.reduce((s, r) => s + r.bugQa, 0)}</TableCell>
+                    <TableCell className="text-xs text-right text-muted-foreground">{qaBugPorFabrica.reduce((s, r) => s + r.total, 0)}</TableCell>
+                    <TableCell className="text-xs text-right">
+                      {percent(qaBugPorFabrica.reduce((s, r) => s + r.bugQa, 0), qaBugPorFabrica.reduce((s, r) => s + r.total, 0))}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-[11px] text-muted-foreground px-4 py-2">
+              Clique em uma fábrica para filtrar os indicadores acima. % dentro da fábrica = (Retorno QA + Bug) / demandas da fábrica.
             </p>
           </CardContent>
         </Card>
