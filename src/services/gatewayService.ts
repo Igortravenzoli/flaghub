@@ -148,39 +148,23 @@ function buildMocks(): Record<string, unknown> {
     })),
   };
 
-  /* BI Customer — KPIs */
+  /* BI Customer — KPIs (espelho SLA Flag x Outros: 2 segmentos) */
   const biCustomerKpis = {
     success: true,
     message: '[MOCK] Dados simulados',
-    mesAtual: {
-      totalTickets: 198,
-      totalOs: 342,
-      incTickets: 112,
-      prbTickets: 34,
-      ritmTickets: 52,
+    nestle: {
+      unidade: 'ticket',
+      mesAtual:    { total: 135, inc: 99, prb: 1, ritm: 35 },
+      mesAnterior: { total: 549, inc: 393, prb: 8, ritm: 148 },
+      abertos:     { incAberto: 61, prbAberto: 3, ritmAberto: 15, inc5Dias: 53, prb10Dias: 2, ritm30Dias: 4 },
+      metricas:    { fechadosMes: 131, ttrMedioDias: 4.99, pctEncerrados24h: 68.7 },
     },
-    mesAnterior: {
-      totalTickets: 221,
-      totalOs: 389,
-      incTickets: 130,
-      prbTickets: 41,
-      ritmTickets: 50,
-    },
-    abertos: {
-      incTicketsAberto: 47,
-      prbTicketsAberto: 18,
-      ritmTicketsAberto: 22,
-      incOsAberto: 83,
-      prbOsAberto: 31,
-      ritmOsAberto: 38,
-      incTicket5Dias: 21,
-      prbTicket10Dias: 9,
-      ritmTicket30Dias: 4,
-    },
-    metricas: {
-      fechados60Dias: 567,
-      ttrMedioDias: 4.3,
-      pctEncerrados24h: 38.2,
+    outras: {
+      unidade: 'os',
+      mesAtual:    { total: 286, inc: 10, prb: 20, ritm: 111 },
+      mesAnterior: { total: 914, inc: 34, prb: 87, ritm: 352 },
+      abertos:     { incAberto: 24, prbAberto: 60, ritmAberto: 226, inc5Dias: 24, prb10Dias: 52, ritm30Dias: 175 },
+      metricas:    { fechadosMes: 284, ttrMedioDias: 4.89, pctEncerrados24h: 81.69 },
     },
   };
 
@@ -188,6 +172,7 @@ function buildMocks(): Record<string, unknown> {
   const biCustomerDetalhe = {
     success: true,
     message: '[MOCK]',
+    segmento: 'nestle',
     tipo: 'INC',
     diasMin: 5,
     total: 21,
@@ -198,6 +183,7 @@ function buildMocks(): Record<string, unknown> {
       sistema: ['FlexxSales', 'AvanteSales', 'QuickOne', 'Decision'][i % 4],
       consultor: ALL[i % ALL.length],
       tipoChamado: ['Incidente', 'Problema', 'Requisição'][i % 3],
+      bandeira: ['Nestlé', 'Heineken', 'Danone', 'Outros'][i % 4],
       dataRegistro: new Date(Date.now() - (6 + i * 2) * 86400000).toISOString(),
       diasAberto: 6 + i * 2,
       criticidade: ['Alta', 'Média', 'Baixa'][i % 3],
