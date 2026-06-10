@@ -7,6 +7,7 @@ import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState'
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS, getCollaboratorExclusionKeys, isCollaboratorExcluded, normalizeCollaboratorName, isFabricaInProgress, isFabricaCountableState } from '@/hooks/useFabricaKpis';
 import { useTimelogUnificado } from '@/hooks/useTimelogUnificado';
+import { useSprintSnapshots } from '@/hooks/useSprintSnapshots';
 import { useAuth } from '@/hooks/useAuth';
 import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { useHubAreas } from '@/hooks/useHubAreas';
@@ -491,6 +492,7 @@ export default function FabricaDashboard() {
     ? 'all'
     : selectedSprintPaths[0];
   const fab = useFabricaKpis(effectiveRange?.from, effectiveRange?.to, sprintParamForKpis, undefined, excludedCollabs);
+  const sprintSnapshots = useSprintSnapshots();
   const operational = useDevopsOperationalQueue([
     '03-Em Fila Backlog para Priorizar',
     '05-Em Fila UX-UI',
@@ -3058,6 +3060,7 @@ export default function FabricaDashboard() {
               items={collaboratorScopedItems}
               allItems={fab.allItems}
               fabricaByItemId={fab.fabricaByItemId}
+              snapshots={sprintSnapshots.data}
               sortedSprints={fab.sortedSprints}
               isLoading={fab.isLoading}
               selectedSprintCodes={selectedSprintCodes}

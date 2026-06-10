@@ -1,5 +1,7 @@
 ﻿import React, { useMemo, useState, useCallback } from 'react';
 import type { FabricaItem } from '@/hooks/useFabricaKpis';
+import type { SprintSnapshotRow, SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
+import { getOfficialSprintRange } from '@/lib/sprintCalendar';
 import type { FeaturePbiSummaryRow, PbiBottleneckRow } from '@/types/pbi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +49,8 @@ type GerenciaTabProps = {
   risks?: GerenciaRisks;
   /** Fábrica (Epic raiz) por work item id — habilita a visão por fábrica */
   fabricaByItemId?: Record<number, string>;
+  /** Fotografias congeladas por sprint_code — sprints fechadas usam a fotografia */
+  snapshots?: Record<string, SprintSnapshotRow>;
 };
 
 type GerenciaPerformance = {
@@ -156,6 +160,81 @@ function classifyItem(item: FabricaItem): Bucket {
 
 function isPriorizadoBucket(bucket: Bucket): boolean {
   return bucket === 'priorizacao' || bucket === 'priorizacao_transbordo';
+}
+
+/** "[K8] - Squad" → "K8"; "FLEXX Squad" → "FLEXX" — rótulo curto de fábrica */
+function cleanFabricaName(name: string): string {
+  const bracket = name.match(/\[([^\]]+)\]/);
+  if (bracket) return bracket[1].trim().toUpperCase();
+  return name.replace(/\s*-?\s*squad\s*$/i, '').trim();
+}
+
+/** Sprint já encerrou? (fim oficial — sexta 23:59 — anterior a hoje) */
+function isSprintClosed(sprintCode: string): boolean {
+  const range = getOfficialSprintRange(sprintCode);
+  if (!range) return false;
+  const endOfDay = new Date(range.to);
+  endOfDay.setHours(23, 59, 59, 999);
+  return endOfDay.getTime() < Date.now();
+}
+
+type GerenciaMetrics = {
+  total: number;
+  priorizacao: number;
+  priorizacaoTransbordo: number;
+  naoPriorizado: number;
+  entregue: number;
+  done: number;
+  priorizadoDone: number;
+  priorizadoEmDev: number;
+  bug: number;
+  retornoQa: number;
+  aviaoSprint: number;
+  aviaoTransbordado: number;
+  entregueBug: number;
+  entregueRetornoQa: number;
+  entreguePriorizacao: number;
+  entregueAviao: number;
+  doneBug: number;
+  doneRetornoQa: number;
+  donePriorizacao: number;
+  doneAviao: number;
+};
+
+/** Converte o escopo congelado do snapshot no mesmo shape dos KPIs ao vivo */
+function metricsFromSnapshotScope(s: SnapshotScopeBreakdown): GerenciaMetrics {
+  return {
+    total: s.total,
+    priorizacao: s.cats.priorizacao + s.cats.priorizacao_transbordo,
+    priorizacaoTransbordo: s.cats.priorizacao_transbordo,
+    naoPriorizado: s.cats.bug + s.cats.retorno_qa + s.cats.aviao_sprint + s.cats.aviao_transbordado,
+    entregue: s.entregue.total,
+    done: s.done.total,
+    priorizadoDone: s.priorizado_done,
+    priorizadoEmDev: s.priorizado_em_dev,
+    bug: s.cats.bug,
+    retornoQa: s.cats.retorno_qa,
+    aviaoSprint: s.cats.aviao_sprint,
+    aviaoTransbordado: s.cats.aviao_transbordado,
+    entregueBug: s.entregue.bug,
+    entregueRetornoQa: s.entregue.retorno_qa,
+    entreguePriorizacao: s.entregue.priorizacao,
+    entregueAviao: s.entregue.aviao,
+    doneBug: s.done.bug,
+    doneRetornoQa: s.done.retorno_qa,
+    donePriorizacao: s.done.priorizacao,
+    doneAviao: s.done.aviao,
+  };
+}
+
+/** Breakdown do snapshot com chaves de fábrica normalizadas */
+function normalizedFabricas(snap: SprintSnapshotRow | null | undefined): Record<string, SnapshotScopeBreakdown> {
+  const out: Record<string, SnapshotScopeBreakdown> = {};
+  if (!snap?.category_breakdown?.fabricas) return out;
+  for (const [name, scope] of Object.entries(snap.category_breakdown.fabricas)) {
+    out[cleanFabricaName(name)] = scope;
+  }
+  return out;
 }
 
 type DrilldownKey =
@@ -268,6 +347,7 @@ export function GerenciaTab({
   performance,
   risks,
   fabricaByItemId,
+  snapshots,
 }: GerenciaTabProps) {
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
   const [selectedDrilldown, setSelectedDrilldown] = useState<{ key: DrilldownKey; label: string } | null>(null);
@@ -276,7 +356,8 @@ export function GerenciaTab({
 
   const fabricaOf = useCallback((item: FabricaItem): string | null => {
     if (!fabricaByItemId || item.id == null) return null;
-    return fabricaByItemId[item.id] ?? null;
+    const raw = fabricaByItemId[item.id];
+    return raw ? cleanFabricaName(raw) : null;
   }, [fabricaByItemId]);
 
   const toggleBlock = useCallback((key: string) => {
@@ -311,14 +392,48 @@ export function GerenciaTab({
     return normalizeSprintCode(selectedSprintCodes[0]);
   }, [hasAllSprints, selectedSprintCodes]);
 
+  // ── Modo fotografia: 1 sprint fechada selecionada + snapshot com breakdown ──
+  const photoSnapshot = useMemo(() => {
+    if (!snapshots || !selectedSingleSprintCode) return null;
+    if (!isSprintClosed(selectedSingleSprintCode)) return null;
+    const snap = snapshots[selectedSingleSprintCode];
+    return snap?.category_breakdown ? snap : null;
+  }, [snapshots, selectedSingleSprintCode]);
+
+  const photoFabricas = useMemo(() => normalizedFabricas(photoSnapshot), [photoSnapshot]);
+
+  const ZERO_SCOPE: SnapshotScopeBreakdown = useMemo(() => ({
+    total: 0,
+    cats: { priorizacao: 0, priorizacao_transbordo: 0, bug: 0, retorno_qa: 0, aviao_sprint: 0, aviao_transbordado: 0 },
+    entregue: { total: 0, bug: 0, retorno_qa: 0, priorizacao: 0, aviao: 0 },
+    done: { total: 0, bug: 0, retorno_qa: 0, priorizacao: 0, aviao: 0 },
+    priorizado_done: 0,
+    priorizado_em_dev: 0,
+  }), []);
+
+  const photoScope = useMemo(() => {
+    if (!photoSnapshot?.category_breakdown) return null;
+    if (selectedFabrica) return photoFabricas[selectedFabrica] ?? ZERO_SCOPE;
+    return photoSnapshot.category_breakdown.geral;
+  }, [photoSnapshot, photoFabricas, selectedFabrica, ZERO_SCOPE]);
+
+  const isPhotoMode = photoScope !== null;
+
   // â”€â”€ Current sprint metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const allManagerItems = useMemo(
     () => items.filter((item) => item.count_in_kpi !== false && isManagerLike(item)),
     [items],
   );
 
-  // Fábricas disponíveis no escopo atual (ordenadas por volume)
+  // Fábricas disponíveis no escopo atual (ordenadas por volume).
+  // Em modo fotografia, a lista vem do breakdown congelado da sprint.
   const fabricas = useMemo(() => {
+    if (photoSnapshot) {
+      return Object.entries(photoFabricas)
+        .filter(([name]) => name !== 'Sem fábrica')
+        .sort((a, b) => b[1].total - a[1].total)
+        .map(([name]) => name);
+    }
     if (!fabricaByItemId) return [];
     const counts = new Map<string, number>();
     for (const item of allManagerItems) {
@@ -326,7 +441,7 @@ export function GerenciaTab({
       if (f) counts.set(f, (counts.get(f) || 0) + 1);
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
-  }, [allManagerItems, fabricaByItemId, fabricaOf]);
+  }, [photoSnapshot, photoFabricas, allManagerItems, fabricaByItemId, fabricaOf]);
 
   // Escopo dos KPIs: geral ou uma fábrica específica (mesma visualização do geral)
   const managerItems = useMemo(
@@ -336,8 +451,20 @@ export function GerenciaTab({
     [allManagerItems, selectedFabrica, fabricaOf],
   );
 
-  // Retorno QA e Bug por fábrica (sempre sobre o escopo completo da sprint)
+  // Retorno QA e Bug por fábrica (sempre sobre o escopo completo da sprint).
+  // Em modo fotografia, vem do breakdown congelado.
   const qaBugPorFabrica = useMemo(() => {
+    if (photoSnapshot) {
+      return Object.entries(photoFabricas)
+        .map(([fabrica, s]) => ({
+          fabrica,
+          total: s.total,
+          retornoQa: s.cats.retorno_qa,
+          bug: s.cats.bug,
+          bugQa: s.cats.retorno_qa + s.cats.bug,
+        }))
+        .sort((a, b) => b.bugQa - a.bugQa);
+    }
     if (!fabricaByItemId) return [];
     const map = new Map<string, { total: number; retornoQa: number; bug: number }>();
     for (const item of allManagerItems) {
@@ -352,9 +479,9 @@ export function GerenciaTab({
     return [...map.entries()]
       .map(([fabrica, v]) => ({ fabrica, ...v, bugQa: v.retornoQa + v.bug }))
       .sort((a, b) => b.bugQa - a.bugQa);
-  }, [allManagerItems, fabricaByItemId, fabricaOf]);
+  }, [photoSnapshot, photoFabricas, allManagerItems, fabricaByItemId, fabricaOf]);
 
-  const metrics = useMemo(() => {
+  const liveMetrics = useMemo(() => {
     const total = managerItems.length;
     let priorizacaoPura = 0, priorizacaoTransbordo = 0, bug = 0, retornoQa = 0, aviaoSprint = 0, aviaoTransbordado = 0;
     let entregueTotal = 0, doneTotal = 0;
@@ -406,6 +533,12 @@ export function GerenciaTab({
     };
   }, [managerItems]);
 
+  // Sprint fechada → KPIs da fotografia congelada; sprint atual → dado vivo
+  const metrics: GerenciaMetrics = useMemo(
+    () => (photoScope ? metricsFromSnapshotScope(photoScope) : liveMetrics),
+    [photoScope, liveMetrics],
+  );
+
   // â”€â”€ Sprint comparison: current sprint + 3 previous â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const comparisonSprints = useMemo(() => {
     if (sortedSprints.length === 0) return [];
@@ -423,27 +556,53 @@ export function GerenciaTab({
   const comparisonData = useMemo(() => {
     return comparisonSprints.map((sprintPath) => {
       const sprintCode = normalizeSprintCode(sprintPath);
-      const sprintItems = allItems.filter(
-        (i) => i.iteration_path === sprintPath && i.count_in_kpi !== false && isManagerLike(i)
-          && (!selectedFabrica || fabricaOf(i) === selectedFabrica),
-      );
-      const total = sprintItems.length;
-      let priorizacao = 0, bug = 0, retornoQa = 0, aviao = 0, entregue = 0, done = 0;
-      for (const item of sprintItems) {
-        const bucket = classifyItem(item);
-        if (isPriorizadoBucket(bucket)) priorizacao++;
-        else if (bucket === 'bug') bug++;
-        else if (bucket === 'retorno_qa') retornoQa++;
-        else aviao++;
-        if (ENTREGUE_STATES.has(item.state || '')) entregue++;
-        if (isDoneState(item.state)) done++;
+
+      // Sprint fechada com fotografia → usa o breakdown congelado
+      const snap = snapshots?.[sprintCode];
+      const frozenScope = (isSprintClosed(sprintCode) && snap?.category_breakdown)
+        ? (selectedFabrica
+            ? normalizedFabricas(snap)[selectedFabrica] ?? null
+            : snap.category_breakdown.geral)
+        : null;
+
+      let total: number, priorizacao: number, bug: number, retornoQa: number, aviao: number, entregue: number, done: number;
+      if (frozenScope) {
+        total = frozenScope.total;
+        priorizacao = frozenScope.cats.priorizacao + frozenScope.cats.priorizacao_transbordo;
+        bug = frozenScope.cats.bug;
+        retornoQa = frozenScope.cats.retorno_qa;
+        aviao = frozenScope.cats.aviao_sprint + frozenScope.cats.aviao_transbordado;
+        entregue = frozenScope.entregue.total;
+        done = frozenScope.done.total;
+      } else if (selectedFabrica && isSprintClosed(sprintCode) && snap?.category_breakdown) {
+        // fábrica sem itens naquela sprint congelada
+        total = priorizacao = bug = retornoQa = aviao = entregue = done = 0;
+      } else {
+        const sprintItems = allItems.filter(
+          (i) => i.iteration_path === sprintPath && i.count_in_kpi !== false && isManagerLike(i)
+            && (!selectedFabrica || fabricaOf(i) === selectedFabrica),
+        );
+        total = sprintItems.length;
+        priorizacao = 0; bug = 0; retornoQa = 0; aviao = 0; entregue = 0; done = 0;
+        for (const item of sprintItems) {
+          const bucket = classifyItem(item);
+          if (isPriorizadoBucket(bucket)) priorizacao++;
+          else if (bucket === 'bug') bug++;
+          else if (bucket === 'retorno_qa') retornoQa++;
+          else aviao++;
+          if (ENTREGUE_STATES.has(item.state || '')) entregue++;
+          if (isDoneState(item.state)) done++;
+        }
       }
+
+      const isFrozen = frozenScope !== null;
       const naoPriorizado = bug + retornoQa + aviao;
       const entregueP = percentNum(entregue, total);
       const doneP = percentNum(done, total);
+      const sprintLabel = isFrozen ? `${sprintCode} 📸` : sprintCode;
       if (histogramMode === 'percentual') {
         return {
-          sprint: sprintCode,
+          sprint: sprintLabel,
           total,
           Priorizado: percentNum(priorizacao, total),
           NaoPriorizado: percentNum(naoPriorizado, total),
@@ -457,7 +616,7 @@ export function GerenciaTab({
         };
       }
       return {
-        sprint: sprintCode,
+        sprint: sprintLabel,
         total,
         Priorizado: priorizacao,
         NaoPriorizado: naoPriorizado,
@@ -470,7 +629,7 @@ export function GerenciaTab({
         DoneP: doneP,
       };
     });
-  }, [comparisonSprints, allItems, histogramMode, selectedFabrica, fabricaOf]);
+  }, [comparisonSprints, allItems, histogramMode, selectedFabrica, fabricaOf, snapshots]);
 
   // â”€â”€ Drilldown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const getDrilldownItems = useCallback((key: DrilldownKey): FabricaItem[] => {
@@ -539,6 +698,25 @@ export function GerenciaTab({
       )}
       {!isCollapsed('kpi_cards') && (
         <>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isPhotoMode ? (
+              <Badge variant="outline" className="text-[11px] border-sky-300 bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800">
+                📸 Fotografia fim de sprint
+                {photoSnapshot?.as_of_datetime
+                  ? ` — ${new Date(photoSnapshot.as_of_datetime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                  : ''}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[11px] border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
+                ⚡ Tempo real — estado atual do DevOps
+              </Badge>
+            )}
+            {selectedSingleSprintCode && isSprintClosed(selectedSingleSprintCode) && !isPhotoMode && (
+              <span className="text-[11px] text-muted-foreground">
+                Sprint encerrada sem fotografia disponível — exibindo estado atual.
+              </span>
+            )}
+          </div>
           {fabricas.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mr-1">Fábrica:</span>
@@ -656,6 +834,11 @@ export function GerenciaTab({
                 </div>
               </CardHeader>
               <CardContent className="p-0">
+                {isPhotoMode && (
+                  <p className="text-[11px] text-muted-foreground px-4 pb-2">
+                    Os itens listados refletem o estado atual do DevOps; os KPIs acima são da fotografia de fim de sprint — as listas podem divergir.
+                  </p>
+                )}
                 <div className="overflow-auto max-h-[320px]">
                   <Table>
                     <TableHeader>
@@ -773,6 +956,7 @@ export function GerenciaTab({
             )}
             <p className="text-[11px] text-muted-foreground mt-2">
               Considera todos os colaboradores do setor, independente do filtro de colaborador ativo.
+              Sprints marcadas com 📸 usam a fotografia congelada de fim de sprint; as demais, o estado atual do DevOps.
             </p>
           </CardContent>
         </Card>
