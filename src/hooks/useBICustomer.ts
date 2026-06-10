@@ -2,41 +2,48 @@ import { useQuery } from '@tanstack/react-query';
 import { gatewayGet } from '@/services/gatewayService';
 
 // ── Types ──────────────────────────────────────────────────────────────
+// Espelha o Power BI "SLA Flag x Outros": dois segmentos.
+//   • nestle → contagem por ticket ServiceNow (INC/RITM + PRB via _PSN)
+//   • outras → contagem por OS, tipo via ErroPadrao
 
 export interface BICustomerPeriodo {
-  totalTickets: number;
-  totalOs: number;
-  incTickets: number;
-  prbTickets: number;
-  ritmTickets: number;
+  total: number;
+  inc: number;
+  prb: number;
+  ritm: number;
 }
 
 export interface BICustomerAbertos {
-  incTicketsAberto: number;
-  prbTicketsAberto: number;
-  ritmTicketsAberto: number;
-  incOsAberto: number;
-  prbOsAberto: number;
-  ritmOsAberto: number;
-  incTicket5Dias: number;
-  prbTicket10Dias: number;
-  ritmTicket30Dias: number;
+  incAberto: number;
+  prbAberto: number;
+  ritmAberto: number;
+  inc5Dias: number;
+  prb10Dias: number;
+  ritm30Dias: number;
 }
 
 export interface BICustomerMetricas {
-  fechados60Dias: number;
+  fechadosMes: number;
   ttrMedioDias: number;
   pctEncerrados24h: number;
 }
 
-export interface BICustomerKpisResponse {
-  success: boolean;
-  message: string;
+export interface BICustomerSegmento {
+  unidade: 'ticket' | 'os';
   mesAtual: BICustomerPeriodo;
   mesAnterior: BICustomerPeriodo;
   abertos: BICustomerAbertos;
   metricas: BICustomerMetricas;
 }
+
+export interface BICustomerKpisResponse {
+  success: boolean;
+  message: string;
+  nestle: BICustomerSegmento;
+  outras: BICustomerSegmento;
+}
+
+export type BICustomerSegmentoKey = 'nestle' | 'outras';
 
 export interface BICustomerDetalheItem {
   os: number;
@@ -45,6 +52,7 @@ export interface BICustomerDetalheItem {
   sistema: string;
   consultor: string;
   tipoChamado: string;
+  bandeira: string;
   dataRegistro: string;
   diasAberto: number;
   criticidade: string | null;
@@ -53,6 +61,7 @@ export interface BICustomerDetalheItem {
 export interface BICustomerDetalheResponse {
   success: boolean;
   message: string;
+  segmento: string;
   tipo: string;
   diasMin: number;
   total: number;
@@ -70,10 +79,15 @@ export function useBICustomerKpis() {
   });
 }
 
-export function useBICustomerDetalhe(tipo: string, diasMin: number, enabled = true) {
+export function useBICustomerDetalhe(
+  segmento: BICustomerSegmentoKey,
+  tipo: string,
+  diasMin: number,
+  enabled = true,
+) {
   return useQuery<BICustomerDetalheResponse>({
-    queryKey: ['bi-customer', 'detalhe', tipo, diasMin],
-    queryFn: () => gatewayGet(`/api/bi-customer/detalhe?tipo=${tipo}&diasMin=${diasMin}`),
+    queryKey: ['bi-customer', 'detalhe', segmento, tipo, diasMin],
+    queryFn: () => gatewayGet(`/api/bi-customer/detalhe?segmento=${segmento}&tipo=${tipo}&diasMin=${diasMin}`),
     staleTime: 2 * 60 * 1000,
     retry: 1,
     enabled: enabled && !!tipo,
