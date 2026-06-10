@@ -2515,6 +2515,7 @@ export type Database = {
       }
       sprint_indicator_snapshots: {
         Row: {
+          as_of_datetime: string | null
           avg_lead_time_days: number | null
           captured_by: string | null
           created_at: string
@@ -2532,6 +2533,9 @@ export type Database = {
           notes: string | null
           planned_demands: number | null
           qa_avg_return_cycles: number | null
+          qa_concluidos: number | null
+          qa_concluidos_com_retorno: number | null
+          qa_concluidos_sem_retorno: number | null
           qa_done_items: number | null
           qa_items_with_return: number | null
           qa_return_cycles_total: number | null
@@ -2539,6 +2543,7 @@ export type Database = {
           reprocess_reason: string | null
           reprocessed_at: string | null
           snapshot_datetime: string
+          snapshot_source: string
           source_work_item_ids: number[] | null
           sprint_code: string
           sprint_end_date: string | null
@@ -2554,6 +2559,7 @@ export type Database = {
           work_item_count_in_snapshot: number | null
         }
         Insert: {
+          as_of_datetime?: string | null
           avg_lead_time_days?: number | null
           captured_by?: string | null
           created_at?: string
@@ -2571,6 +2577,9 @@ export type Database = {
           notes?: string | null
           planned_demands?: number | null
           qa_avg_return_cycles?: number | null
+          qa_concluidos?: number | null
+          qa_concluidos_com_retorno?: number | null
+          qa_concluidos_sem_retorno?: number | null
           qa_done_items?: number | null
           qa_items_with_return?: number | null
           qa_return_cycles_total?: number | null
@@ -2578,6 +2587,7 @@ export type Database = {
           reprocess_reason?: string | null
           reprocessed_at?: string | null
           snapshot_datetime?: string
+          snapshot_source?: string
           source_work_item_ids?: number[] | null
           sprint_code: string
           sprint_end_date?: string | null
@@ -2593,6 +2603,7 @@ export type Database = {
           work_item_count_in_snapshot?: number | null
         }
         Update: {
+          as_of_datetime?: string | null
           avg_lead_time_days?: number | null
           captured_by?: string | null
           created_at?: string
@@ -2610,6 +2621,9 @@ export type Database = {
           notes?: string | null
           planned_demands?: number | null
           qa_avg_return_cycles?: number | null
+          qa_concluidos?: number | null
+          qa_concluidos_com_retorno?: number | null
+          qa_concluidos_sem_retorno?: number | null
           qa_done_items?: number | null
           qa_items_with_return?: number | null
           qa_return_cycles_total?: number | null
@@ -2617,6 +2631,7 @@ export type Database = {
           reprocess_reason?: string | null
           reprocessed_at?: string | null
           snapshot_datetime?: string
+          snapshot_source?: string
           source_work_item_ids?: number[] | null
           sprint_code?: string
           sprint_end_date?: string | null
@@ -3871,6 +3886,16 @@ export type Database = {
           status: string
         }[]
       }
+      rpc_backfill_reconstruct_closed_sprints: {
+        Args: { p_year?: number }
+        Returns: {
+          itens_aprox: number
+          qa_concluidos: number
+          qa_done: number
+          sprint_code: string
+          status: string
+        }[]
+      }
       rpc_capture_sprint_snapshot: {
         Args: { p_notes?: string; p_sprint_code: string }
         Returns: {
@@ -4052,6 +4077,7 @@ export type Database = {
       rpc_get_sprint_historical_v2: {
         Args: { p_sprint_code: string }
         Returns: {
+          as_of_datetime: string
           avg_lead_time_days: number
           captured_by: string
           delivered_demands: number
@@ -4065,11 +4091,15 @@ export type Database = {
           notes: string
           planned_demands: number
           qa_avg_return_cycles: number
+          qa_concluidos: number
+          qa_concluidos_com_retorno: number
+          qa_concluidos_sem_retorno: number
           qa_done_items: number
           qa_items_with_return: number
           qa_return_cycles_total: number
           qa_return_rate_pct: number
           snapshot_datetime: string
+          snapshot_source: string
           source_work_item_ids: number[]
           sprint_code: string
           total_demands: number
@@ -4200,6 +4230,20 @@ export type Database = {
           sprint_code: string
         }[]
       }
+      rpc_qa_historical_series: {
+        Args: { p_year?: number }
+        Returns: {
+          as_of_datetime: string
+          qa_concluidos: number
+          qa_concluidos_com_retorno: number
+          qa_concluidos_sem_retorno: number
+          qa_done_items: number
+          qa_return_rate_pct: number
+          snapshot_source: string
+          sprint_code: string
+          sprint_number: number
+        }[]
+      }
       rpc_qa_return_by_assignee: {
         Args: never
         Returns: {
@@ -4248,6 +4292,18 @@ export type Database = {
       rpc_qa_return_summary: {
         Args: { p_area_path?: string; p_sprint_code?: string }
         Returns: Json
+      }
+      rpc_reconstruct_sprint_snapshot: {
+        Args: { p_as_of?: string; p_sprint_code: string }
+        Returns: {
+          as_of_datetime: string
+          itens_aprox: number
+          itens_exatos: number
+          qa_concluidos: number
+          qa_done: number
+          sprint_code: string
+          total: number
+        }[]
       }
       rpc_sprint_annual_timeline: {
         Args: never

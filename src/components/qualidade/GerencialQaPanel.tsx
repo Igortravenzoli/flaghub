@@ -4,6 +4,7 @@ import {
   type GerencialQaRow,
 } from '@/hooks/useGerencialQa';
 import { extractProducts, normalizeProduct } from '@/lib/products';
+import { useQaHistoricalSeries } from '@/hooks/useSprintHistorical';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -55,6 +56,34 @@ const HEALTH_COLORS = { verde: '#10b981', amarelo: '#eab308', vermelho: '#ef4444
 
 const SERIES_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#84cc16', '#ec4899'];
 
+const SOURCE_META: Record<string, { label: string; color: string }> = {
+  fim_sprint_reconstruido: { label: 'Reconstruído (fim de sprint)', color: '#6366f1' },
+  estado_atual: { label: 'Estado atual', color: '#f59e0b' },
+  manual: { label: 'Manual', color: '#94a3b8' },
+};
+function sourceMeta(source?: string) {
+  return SOURCE_META[source || ''] || { label: source || '—', color: '#94a3b8' };
+}
+
+function HistoricalTooltip({ active, payload }: { active?: boolean; payload?: any[] }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  const meta = sourceMeta(d.source);
+  return (
+    <div className="rounded-md border bg-background p-2 text-xs shadow-md">
+      <div className="font-medium">{d.sprint_code}</div>
+      <div>Concluídos (Closed By): <b>{d.concluidos}</b></div>
+      <div className="text-muted-foreground">sem retorno {d.sem_retorno} · com retorno {d.com_retorno}</div>
+      <div className="mt-1 flex items-center gap-1">
+        <span className="inline-block h-2 w-2 rounded-full" style={{ background: meta.color }} />
+        {meta.label}
+      </div>
+      {d.as_of && <div className="text-muted-foreground">em {new Date(d.as_of).toLocaleString('pt-BR')}</div>}
+    </div>
+  );
+}
+
 interface GerencialQaPanelProps {
   lockedSprintCode?: string | null;
   dateStart?: Date;
@@ -75,6 +104,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
   const { data: desempenho, isLoading: desLoading } = useQaDesempenho(lockedSprintCode || undefined, dateStartIso, dateEndIso);
   const { data: encerramentos } = useQaEncerramentosPorUsuario(lockedSprintCode || undefined, dateStartIso, dateEndIso);
   const { data: qaItems } = useGerencialQaItems(lockedSprintCode || undefined, dateStartIso, dateEndIso);
+  const historicalYear = new Date().getFullYear();
+  const { data: qaHistorical } = useQaHistoricalSeries(historicalYear);
 
   const sprints = useMemo(
     () => Array.from(new Set((qaRows || []).map(r => r.sprint_code).filter(Boolean))),
@@ -206,6 +237,25 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
       .sort((a, b) => b.itens - a.itens);
   }, [qaItems]);
 
+  // Histórico (snapshots) — qa_concluidos por sprint + procedência
+  const historicalData = useMemo(() =>
+    (qaHistorical || []).map(h => ({
+      sprint: h.sprint_code?.split('-')[0] || h.sprint_code,
+      sprint_code: h.sprint_code,
+      concluidos: h.qa_concluidos,
+      sem_retorno: h.qa_concluidos_sem_retorno,
+      com_retorno: h.qa_concluidos_com_retorno,
+      taxa: h.qa_return_rate_pct,
+      source: h.snapshot_source,
+      as_of: h.as_of_datetime,
+    })),
+    [qaHistorical]
+  );
+  const historicalReconCount = useMemo(
+    () => (qaHistorical || []).filter(h => h.snapshot_source === 'fim_sprint_reconstruido').length,
+    [qaHistorical]
+  );
+
   const isLoading = qaLoading;
 
   return (
@@ -254,6 +304,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
         <TabsList>
           <TabsTrigger value="evolucao">Evolução Sprint</TabsTrigger>
           <TabsTrigger value="encerramentos">Encerramentos QA</TabsTrigger>
+          <TabsTrigger value="historico">Histórico (snapshots)</TabsTrigger>
           <TabsTrigger value="produtos">Produtos/Sistemas</TabsTrigger>
           <TabsTrigger value="retrabalho">Retrabalho</TabsTrigger>
           <TabsTrigger value="desempenho">Desempenho QA</TabsTrigger>
@@ -336,6 +387,56 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                 <Info className="h-3.5 w-3.5" />
                 Conta itens encerrados por Closed By autorizado, por sprint.
               </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="historico" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                Concluídos por Sprint (Closed By) — {historicalYear}
+                <Badge variant="outline" className="ml-2 text-xs">
+                  {historicalReconCount}/{historicalData.length} reconstruídas
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {historicalData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={historicalData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                      <XAxis dataKey="sprint" tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <RTooltip content={<HistoricalTooltip />} />
+                      <Bar dataKey="concluidos" name="Concluídos (Closed By)">
+                        {historicalData.map((d, i) => (
+                          <Cell key={i} fill={sourceMeta(d.source).color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: SOURCE_META.fim_sprint_reconstruido.color }} />
+                      {SOURCE_META.fim_sprint_reconstruido.label}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: SOURCE_META.estado_atual.color }} />
+                      {SOURCE_META.estado_atual.label}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Info className="h-3.5 w-3.5" />
+                      "Reconstruído" = estado real no fim da sprint (via histórico de transições); "Estado atual" = estado das tasks na captura.
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-muted-foreground text-sm py-8 text-center">
+                  Sem snapshots históricos para {historicalYear}.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

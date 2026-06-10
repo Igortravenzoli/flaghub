@@ -29,6 +29,23 @@ export interface SprintHistoricalData {
   qa_return_cycles_total: number;
   qa_return_rate_pct: number;
   qa_avg_return_cycles: number;
+  qa_concluidos: number;
+  qa_concluidos_sem_retorno: number;
+  qa_concluidos_com_retorno: number;
+  snapshot_source: string;
+  as_of_datetime: string | null;
+}
+
+export interface QaHistoricalSeriesRow {
+  sprint_code: string;
+  sprint_number: number;
+  qa_done_items: number;
+  qa_concluidos: number;
+  qa_concluidos_sem_retorno: number;
+  qa_concluidos_com_retorno: number;
+  qa_return_rate_pct: number;
+  snapshot_source: string;
+  as_of_datetime: string | null;
 }
 
 export interface SprintBackfillResult {
@@ -80,6 +97,22 @@ export function useSprintHistorical(sprintCode: string | null) {
     },
     enabled: !!sprintCode,
     staleTime: 60 * 60 * 1000, // 1 hora (dado histórico não muda frequentemente)
+  });
+}
+
+/**
+ * Série histórica de QA por sprint (ano) para o gráfico de encerramentos.
+ * Inclui qa_concluidos (Closed By) e a procedência do dado (snapshot_source).
+ */
+export function useQaHistoricalSeries(year: number) {
+  return useQuery({
+    queryKey: ['qa-historical-series', year],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('rpc_qa_historical_series', { p_year: year });
+      if (error) throw error;
+      return (data || []) as QaHistoricalSeriesRow[];
+    },
+    staleTime: 30 * 60 * 1000,
   });
 }
 
