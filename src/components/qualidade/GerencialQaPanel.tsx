@@ -5,9 +5,11 @@ import {
 } from '@/hooks/useGerencialQa';
 import { extractProducts, normalizeProduct } from '@/lib/products';
 import { useQaHistoricalSeries } from '@/hooks/useSprintHistorical';
+import { QaKpiCard } from '@/components/qualidade/QaKpiCard';
+import { QaPillarCard } from '@/components/qualidade/QaPillarCard';
+import { QA_HEALTH, QA_CHART_SERIES, QA_SOURCE_COLORS, QA_TONES, thresholdColorHigh, thresholdColorLow } from '@/lib/qaTheme';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -24,42 +26,14 @@ import {
 } from 'lucide-react';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
 
-function KpiCard({ label, value, icon: Icon, tooltip, variant = 'default' }: {
-  label: string; value: string | number; icon: React.ElementType;
-  tooltip: string; variant?: 'default' | 'danger' | 'warning' | 'success';
-}) {
-  const variantClasses = {
-    default: 'border-border',
-    danger: 'border-red-500/40 bg-red-500/5',
-    warning: 'border-amber-500/40 bg-amber-500/5',
-    success: 'border-emerald-500/40 bg-emerald-500/5',
-  };
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Card className={`${variantClasses[variant]} transition-all hover:shadow-md`}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</span>
-              <Icon className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-bold">{value}</div>
-          </CardContent>
-        </Card>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-xs text-sm">{tooltip}</TooltipContent>
-    </Tooltip>
-  );
-}
+const HEALTH_COLORS = QA_HEALTH;
 
-const HEALTH_COLORS = { verde: '#10b981', amarelo: '#eab308', vermelho: '#ef4444' };
-
-const SERIES_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#84cc16', '#ec4899'];
+const SERIES_COLORS = QA_CHART_SERIES;
 
 const SOURCE_META: Record<string, { label: string; color: string }> = {
-  fim_sprint_reconstruido: { label: 'Reconstruído (fim de sprint)', color: '#6366f1' },
-  estado_atual: { label: 'Estado atual', color: '#f59e0b' },
-  manual: { label: 'Manual', color: '#94a3b8' },
+  fim_sprint_reconstruido: { label: 'Reconstruído (fim de sprint)', color: QA_SOURCE_COLORS.fim_sprint_reconstruido },
+  estado_atual: { label: 'Estado atual', color: QA_SOURCE_COLORS.estado_atual },
+  manual: { label: 'Manual', color: QA_SOURCE_COLORS.manual },
 };
 function sourceMeta(source?: string) {
   return SOURCE_META[source || ''] || { label: source || '—', color: '#94a3b8' };
@@ -282,20 +256,21 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
         </div>
       ) : agg ? (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          <KpiCard label="Itens concluídos" value={agg.concluidos} icon={ShieldCheck}
+          <QaKpiCard label="Itens concluídos" value={agg.concluidos} icon={ShieldCheck} tone="primary" delay={0}
             tooltip="Itens encerrados pelo QA — Closed By autorizado (Thales, Marquin, Rodrigues, Thiago, Alessandro, Mauricio)" />
-          <KpiCard label="Encerradas sem Retorno" value={agg.aprovadas} icon={CheckCircle2}
-            tooltip="Itens encerrados pelo QA sem nenhum retorno" variant="success" />
-          <KpiCard label="Com retorno QA" value={agg.reprovadas} icon={XCircle}
-            tooltip="Itens encerrados pelo QA com pelo menos 1 retorno"
-            variant={agg.reprovadas > 5 ? 'danger' : agg.reprovadas > 0 ? 'warning' : 'default'} />
-          <KpiCard label="% sem retorno" value={`${agg.taxaAprovacao}%`} icon={TrendingUp}
-            tooltip="Percentual de itens concluídos sem retrabalho"
-            variant={agg.taxaAprovacao >= 80 ? 'success' : agg.taxaAprovacao >= 60 ? 'warning' : 'danger'} />
-          <KpiCard label="Crítico (3+)" value={agg.criticos} icon={AlertTriangle}
-            tooltip="Itens com 3 ou mais ciclos de retorno"
-            variant={agg.criticos > 0 ? 'danger' : 'default'} />
-          <KpiCard label="Tempo médio QA" value={`${agg.avgDays}d`} icon={Clock}
+          <QaKpiCard label="Encerradas sem Retorno" value={agg.aprovadas} icon={CheckCircle2} tone="success" delay={60}
+            tooltip="Itens encerrados pelo QA sem nenhum retorno" />
+          <QaKpiCard label="Com retorno QA" value={agg.reprovadas} icon={XCircle} delay={120}
+            tone={agg.reprovadas > 5 ? 'danger' : agg.reprovadas > 0 ? 'warning' : 'neutral'}
+            tooltip="Itens encerrados pelo QA com pelo menos 1 retorno" />
+          <QaKpiCard label="% sem retorno" value={agg.taxaAprovacao} suffix="%" decimals={1} icon={TrendingUp} delay={180}
+            tone={agg.taxaAprovacao >= 80 ? 'success' : agg.taxaAprovacao >= 60 ? 'warning' : 'danger'}
+            valueColor={thresholdColorHigh(agg.taxaAprovacao)} progress={agg.taxaAprovacao}
+            tooltip="Percentual de itens concluídos sem retrabalho" />
+          <QaKpiCard label="Crítico (3+)" value={agg.criticos} icon={AlertTriangle} delay={240}
+            tone={agg.criticos > 0 ? 'danger' : 'neutral'}
+            tooltip="Itens com 3 ou mais ciclos de retorno" />
+          <QaKpiCard label="Tempo médio QA" value={agg.avgDays} suffix="d" decimals={1} icon={Clock} tone="info" delay={300}
             tooltip="Tempo médio (dias) na etapa de qualidade" />
         </div>
       ) : null}
@@ -325,9 +300,9 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                       <YAxis tick={{ fontSize: 11 }} />
                       <RTooltip />
                       <Legend />
-                      <Bar dataKey="aprovadas" stackId="a" fill="#10b981" name="Sem retorno" />
-                      <Bar dataKey="reprovadas" stackId="a" fill="#ef4444" name="Com retorno" />
-                      <Bar dataKey="retornadas" stackId="a" fill="#eab308" name="Ciclos" />
+                      <Bar dataKey="aprovadas" stackId="a" fill={QA_TONES.success.solid} name="Sem retorno" radius={[0,0,0,0]} />
+                      <Bar dataKey="reprovadas" stackId="a" fill={QA_TONES.danger.solid} name="Com retorno" />
+                      <Bar dataKey="retornadas" stackId="a" fill={QA_TONES.warning.solid} name="Ciclos" radius={[3,3,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
@@ -455,7 +430,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                       <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
                       <YAxis type="category" dataKey="produto" tick={{ fontSize: 10 }} width={110} />
                       <RTooltip />
-                      <Bar dataKey="retornos" fill="#ef4444" name="Retornos" />
+                      <Bar dataKey="retornos" fill={QA_TONES.danger.solid} name="Retornos" radius={[0,4,4,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
@@ -474,7 +449,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                       <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
                       <YAxis type="category" dataKey="produto" tick={{ fontSize: 10 }} width={110} />
                       <RTooltip />
-                      <Bar dataKey="itens" fill="#6366f1" name="Itens" />
+                      <Bar dataKey="itens" fill={QA_TONES.primary.solid} name="Itens" radius={[0,4,4,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
@@ -488,6 +463,21 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
         </TabsContent>
 
         <TabsContent value="retrabalho" className="space-y-4">
+          {agg && (
+            <QaPillarCard
+              title="Saúde do Retrabalho QA"
+              subtitle="Itens com retorno sobre concluídos no recorte"
+              caption="Taxa de retrabalho"
+              value={agg.taxaRetrabalho} valueSuffix="%" decimals={1}
+              valueColor={thresholdColorLow(agg.taxaRetrabalho)}
+              progress={agg.taxaRetrabalho} progressColor={thresholdColorLow(agg.taxaRetrabalho)}
+              stats={[
+                { label: 'Crítico 3+', value: agg.criticos, color: agg.criticos > 0 ? QA_TONES.danger.solid : undefined },
+                { label: 'Tempo médio QA', value: `${agg.avgDays}d` },
+              ]}
+              className="max-w-sm"
+            />
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader className="pb-2">
@@ -502,9 +492,9 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                       <YAxis tick={{ fontSize: 11 }} />
                       <RTooltip />
                       <Legend />
-                      <Bar dataKey="baixo" stackId="a" fill="#eab308" name="Baixo (1)" />
+                      <Bar dataKey="baixo" stackId="a" fill={QA_TONES.warning.solid} name="Baixo (1)" />
                       <Bar dataKey="alto" stackId="a" fill="#f97316" name="Alto (2)" />
-                      <Bar dataKey="critico" stackId="a" fill="#ef4444" name="Crítico (3+)" />
+                      <Bar dataKey="critico" stackId="a" fill={QA_TONES.danger.solid} name="Crítico (3+)" radius={[3,3,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
@@ -523,7 +513,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                       <XAxis dataKey="sprint" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 11 }} unit="%" />
                       <RTooltip />
-                      <Line type="monotone" dataKey="taxa" stroke="#ef4444" strokeWidth={2} name="% Retrabalho" dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="taxa" stroke={QA_TONES.danger.solid} strokeWidth={2} name="% Retrabalho" dot={{ r: 3 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}

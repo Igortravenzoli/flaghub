@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
-import { DashboardKpiCard } from '@/components/dashboard/DashboardKpiCard';
 import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/DashboardDataTable';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
@@ -18,6 +17,8 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
 import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { GerencialQaPanel } from '@/components/qualidade/GerencialQaPanel';
+import { QaKpiCard } from '@/components/qualidade/QaKpiCard';
+import { QA_TONES, QA_CHART_SERIES, QA_HEALTH, thresholdColorLow } from '@/lib/qaTheme';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -783,23 +784,19 @@ export default function QualidadeDashboard() {
                   quantidade: qty,
                 }));
 
-              const CHART_COLORS = [
-                'hsl(var(--primary))',
-                'hsl(0, 72%, 51%)',
-                'hsl(43, 85%, 46%)',
-                'hsl(199, 89%, 48%)',
-                'hsl(142, 71%, 45%)',
-                'hsl(280, 67%, 50%)',
-              ];
+              const CHART_COLORS = QA_CHART_SERIES;
 
               return (
                 <>
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                    <DashboardKpiCard label="Itens concluídos" value={reworkMetrics.totalConcluidos} icon={FileCheck} isLoading={reworkQuery.isLoading} />
-                    <DashboardKpiCard label="Itens com retorno QA" value={reworkMetrics.itensComRetornoQa} icon={RotateCcw} accent="bg-destructive" isLoading={reworkQuery.isLoading} delay={80} />
-                    <DashboardKpiCard label="Ciclos totais de retorno" value={reworkMetrics.ciclosTotaisRetornoQa} suffix="x" icon={RotateCcw} accent="bg-[hsl(43,85%,46%)]" isLoading={reworkQuery.isLoading} delay={160} />
-                    <DashboardKpiCard label="% com retorno QA" value={`${reworkMetrics.percentualComRetornoQa}%`} icon={AlertTriangle} accent={reworkMetrics.percentualComRetornoQa > 20 ? 'bg-destructive' : 'bg-[hsl(43,85%,46%)]'} isLoading={reworkQuery.isLoading} delay={240} />
-                    <DashboardKpiCard label="Média por item afetado" value={reworkMetrics.mediaRetornoPorItemAfetado} suffix="x" icon={TrendingUp} isLoading={reworkQuery.isLoading} delay={320} />
+                    <QaKpiCard label="Itens concluídos" value={reworkMetrics.totalConcluidos} icon={FileCheck} tone="primary" isLoading={reworkQuery.isLoading} delay={0} />
+                    <QaKpiCard label="Itens com retorno QA" value={reworkMetrics.itensComRetornoQa} icon={RotateCcw} tone="danger" isLoading={reworkQuery.isLoading} delay={80} />
+                    <QaKpiCard label="Ciclos totais de retorno" value={reworkMetrics.ciclosTotaisRetornoQa} suffix="x" icon={RotateCcw} tone="warning" isLoading={reworkQuery.isLoading} delay={160} />
+                    <QaKpiCard label="% com retorno QA" value={reworkMetrics.percentualComRetornoQa} suffix="%" decimals={1} icon={AlertTriangle}
+                      tone={reworkMetrics.percentualComRetornoQa > 20 ? 'danger' : 'warning'}
+                      valueColor={thresholdColorLow(reworkMetrics.percentualComRetornoQa)} progress={reworkMetrics.percentualComRetornoQa}
+                      isLoading={reworkQuery.isLoading} delay={240} />
+                    <QaKpiCard label="Média por item afetado" value={reworkMetrics.mediaRetornoPorItemAfetado} suffix="x" decimals={2} icon={TrendingUp} tone="info" isLoading={reworkQuery.isLoading} delay={320} />
                   </div>
 
                   {reworkMetrics.percentualComRetornoQa > 20 && (
@@ -951,10 +948,10 @@ export default function QualidadeDashboard() {
 
               <TabsContent value="esteira-saude" className="space-y-4 mt-0">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <DashboardKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={FileCheck} isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter('all')} active={healthFilter === 'all'} />
-                  <DashboardKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} />
-                  <DashboardKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} />
-                  <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} accent="bg-destructive" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} />
+                  <QaKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={FileCheck} tone="primary" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter('all')} active={healthFilter === 'all'} delay={0} />
+                  <QaKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} tone="success" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} delay={80} />
+                  <QaKpiCard label="Atenção" value={pbiHealthBatch.overview.amarelo} icon={AlertTriangle} tone="warning" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'amarelo' ? 'all' : 'amarelo')} active={healthFilter === 'amarelo'} delay={160} />
+                  <QaKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} tone="danger" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'vermelho' ? 'all' : 'vermelho')} active={healthFilter === 'vermelho'} delay={240} />
                 </div>
 
                 <Card className="overflow-hidden">
@@ -1002,10 +999,10 @@ export default function QualidadeDashboard() {
               <TabsContent value="gargalos" className="space-y-4 mt-0">
                 {bottlenecks.overview && (
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <DashboardKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} />
-                    <DashboardKpiCard label="Saudável" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} accent="bg-[hsl(142,71%,45%)]" />
-                    <DashboardKpiCard label="Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} accent="bg-[hsl(43,85%,46%)]" />
-                    <DashboardKpiCard label="Crítica" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} accent="bg-destructive" />
+                    <QaKpiCard label="Total monitorados" value={Number(bottlenecks.overview.total_count)} icon={ListTodo} tone="primary" delay={0} />
+                    <QaKpiCard label="Saudável" value={Number(bottlenecks.overview.verde_count)} icon={HeartPulse} tone="success" delay={80} />
+                    <QaKpiCard label="Atenção" value={Number(bottlenecks.overview.amarelo_count)} icon={AlertTriangle} tone="warning" delay={160} />
+                    <QaKpiCard label="Crítica" value={Number(bottlenecks.overview.vermelho_count)} icon={AlertTriangle} tone="danger" delay={240} />
                   </div>
                 )}
                 <Card className="p-3 border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/20 mb-2">
@@ -1080,10 +1077,18 @@ export default function QualidadeDashboard() {
                     <div key={`qa-feature-${row.feature_id ?? idx}`} className="rounded-md border border-border/60 p-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium truncate">{row.feature_title || 'Sem feature'} {row.epic_title ? `• ${row.epic_title}` : ''}</p>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {row.verde_count > 0 && <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] px-1.5">✅ {row.verde_count}</Badge>}
-                          {row.amarelo_count > 0 && <Badge className="bg-amber-100 text-amber-700 border border-amber-300 text-[10px] px-1.5">⚠️ {row.amarelo_count}</Badge>}
-                          {row.vermelho_count > 0 && <Badge className="bg-red-100 text-red-700 border border-red-300 text-[10px] px-1.5">🔴 {row.vermelho_count}</Badge>}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {[
+                            { n: row.verde_count, c: QA_HEALTH.verde },
+                            { n: row.amarelo_count, c: QA_HEALTH.amarelo },
+                            { n: row.vermelho_count, c: QA_HEALTH.vermelho },
+                          ].filter(s => s.n > 0).map((s, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium tabular-nums"
+                              style={{ borderColor: `${s.c}55`, color: s.c }}>
+                              <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.c }} />
+                              {s.n}
+                            </span>
+                          ))}
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
