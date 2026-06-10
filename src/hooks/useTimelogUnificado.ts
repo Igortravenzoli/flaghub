@@ -50,13 +50,21 @@ export function useTimelogUnificado(filters: TimelogFilters = {}) {
         const id = parseInt(filters.taskId.trim(), 10);
         if (!Number.isNaN(id)) query = query.eq('task_id', id);
       }
-      if (filters.workItemIds?.length) {
-        query = query.in('task_id', filters.workItemIds);
+      // Escopos grandes (ex.: todas as sprints com tasks consolidadas) estouram o
+      // limite de URL do PostgREST — acima do corte, filtra client-side.
+      const MAX_IN_FILTER_IDS = 800;
+      const idSet = filters.workItemIds?.length ? new Set(filters.workItemIds) : null;
+      if (idSet && idSet.size <= MAX_IN_FILTER_IDS) {
+        query = query.in('task_id', [...idSet]);
       }
 
       const { data, error } = await query.limit(2000);
       if (error) throw error;
-      return (data ?? []) as unknown as TimelogUnificadoRow[];
+      let rows = (data ?? []) as unknown as TimelogUnificadoRow[];
+      if (idSet && idSet.size > MAX_IN_FILTER_IDS) {
+        rows = rows.filter((r) => idSet.has(r.task_id));
+      }
+      return rows;
     },
     staleTime: 3 * 60 * 1000,
     placeholderData: keepPreviousData,

@@ -36,7 +36,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import {
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
-  Clock, Gauge, AlertTriangle, Timer, Package, Building2,
+  Clock, Clock3, Gauge, AlertTriangle, Timer, Package, Building2,
   TrendingUp, BarChart3, Zap, HeartPulse, Workflow, LayoutGrid, MoreHorizontal,
   GitMerge, Loader2, ExternalLink, CheckCircle2, Check, Minus, SendHorizonal,
 } from 'lucide-react';
@@ -529,34 +529,16 @@ export default function FabricaDashboard() {
   const PAGE_SIZE = 25;
 
   const localFabItemIds = useMemo(() => fab.allSprintItems.map(i => i.id).filter(Boolean) as number[], [fab.allSprintItems]);
-  const timelogWorkItemIds = useMemo(() => {
-    const managerIds = new Set(
-      fab.items
-        .filter((item) => isManagerLikeItem(item) && item.id != null)
-        .map((item) => item.id as number)
-    );
-
-    const taskIds = fab.items
-      .filter((item) => item.work_item_type === 'Task' && item.id != null && item.parent_id != null && managerIds.has(item.parent_id))
-      .map((item) => item.id as number);
-
-    return Array.from(new Set<number>([...managerIds, ...taskIds]));
-  }, [fab.items]);
+  // Escopo de timelog vem do hook: PBIs/Bugs gerenciais + TODAS as tasks filhas
+  // (de devops_work_items, não apenas a fila) — apontamentos são nas tasks.
+  const timelogWorkItemIds = useMemo(
+    () => fab.timelogScopeIds || [],
+    [fab.timelogScopeIds],
+  );
 
   const timelogTaskScopeSet = useMemo(() => {
-    const managerIds = new Set(
-      fab.items
-        .filter((item) => isManagerLikeItem(item) && item.id != null)
-        .map((item) => item.id as number)
-    );
-
-    const source = fab.items.filter((item) => item.work_item_type === 'Task' && item.id != null);
-    return new Set(
-      source
-        .filter((item) => item.parent_id != null && managerIds.has(item.parent_id))
-        .map((item) => item.id as number)
-    );
-  }, [fab.items]);
+    return new Set(Object.keys(fab.managerIdByTaskId || {}).map(Number));
+  }, [fab.managerIdByTaskId]);
 
   const { crossSectorResult } = useCrossSectorSearch(search, 'fabrica', localFabItemIds);
 
@@ -2657,6 +2639,67 @@ export default function FabricaDashboard() {
                 }}
               />
             </div>
+
+            {/* ── Horas consolidadas por PBI/Bug (próprias + tasks filhas) ───── */}
+            <Card className="animate-fade-in border-l-4 border-l-sky-400">
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Clock3 className="h-4 w-4 text-sky-500" />
+                  Horas por PBI/Bug — consolidado com Tasks
+                  <Badge variant="outline" className="ml-auto text-[10px]">
+                    {fab.horasPorPbi.length} itens com apontamento
+                  </Badge>
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground">
+                  Soma os apontamentos feitos nas tasks filhas (DevOps e Vdesk) no PBI/Bug pai — visão alinhada ao plugin de timelog do DevOps.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {fab.horasPorPbi.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-6">Nenhum apontamento no escopo atual.</p>
+                ) : (
+                  <DraggableScrollArea className="max-h-[320px] border rounded-md">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted sticky top-0">
+                        <tr>
+                          <th className="text-left px-2 py-1.5 font-medium">ID</th>
+                          <th className="text-left px-2 py-1.5 font-medium">Tipo</th>
+                          <th className="text-left px-2 py-1.5 font-medium">Título</th>
+                          <th className="text-left px-2 py-1.5 font-medium">Responsável</th>
+                          <th className="text-left px-2 py-1.5 font-medium">Estado</th>
+                          <th className="text-right px-2 py-1.5 font-medium">Tasks c/ apont.</th>
+                          <th className="text-right px-2 py-1.5 font-medium">DevOps</th>
+                          <th className="text-right px-2 py-1.5 font-medium">Vdesk</th>
+                          <th className="text-right px-2 py-1.5 font-medium">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {fab.horasPorPbi.slice(0, 100).map((row) => (
+                          <tr key={row.id} className="hover:bg-muted/30">
+                            <td className="px-2 py-1.5 font-mono">
+                              {row.web_url ? (
+                                <a href={row.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{row.id}</a>
+                              ) : row.id}
+                            </td>
+                            <td className="px-2 py-1.5">{row.work_item_type ?? '—'}</td>
+                            <td className="px-2 py-1.5 max-w-[320px] truncate" title={row.title}>{row.title}</td>
+                            <td className="px-2 py-1.5">{row.assigned_to_display ?? '—'}</td>
+                            <td className="px-2 py-1.5">{row.state ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-right">{row.taskCount}</td>
+                            <td className="px-2 py-1.5 text-right">{formatMinutesAsHoursLabel(row.devopsMinutes)}</td>
+                            <td className="px-2 py-1.5 text-right">{formatMinutesAsHoursLabel(row.vdeskMinutes)}</td>
+                            <td className="px-2 py-1.5 text-right font-semibold">{formatMinutesAsHoursLabel(row.totalMinutes)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </DraggableScrollArea>
+                )}
+                {fab.horasPorPbi.length > 100 && (
+                  <p className="text-[11px] text-muted-foreground mt-2">Exibindo 100 de {fab.horasPorPbi.length} itens.</p>
+                )}
+              </CardContent>
+            </Card>
 
             {/* ── Reconciliação + Horas por Colaborador (lado a lado) ───── */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
