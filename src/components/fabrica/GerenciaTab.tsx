@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, Line } from 'recharts';
+import { ResponsiveContainer, ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import {
   ChevronDown,
   ChevronRight,
@@ -16,6 +16,8 @@ import {
   HeartPulse,
   Workflow,
   BarChart3,
+  Camera,
+  Zap,
   X,
 } from 'lucide-react';
 import { Clock, Gauge, TrendingUp } from 'lucide-react';
@@ -267,6 +269,9 @@ type DrilldownRow = {
 };
 
 // â”€â”€â”€ KPI Summary Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/** Mini-valor histórico exibido nos cards (fotografia de sprints anteriores) */
+type KpiHistoryEntry = { code: string; value: number; isPhoto: boolean };
+
 function KpiCard({
   label,
   value,
@@ -274,6 +279,7 @@ function KpiCard({
   drilldownKey,
   valueColor = 'text-foreground',
   subItems,
+  history,
   isActive,
   activeSubKey,
   onClick,
@@ -285,6 +291,8 @@ function KpiCard({
   drilldownKey: DrilldownKey;
   valueColor?: string;
   subItems?: { label: string; value: number; total: number; key: DrilldownKey; valueColor?: string }[];
+  /** Sprints anteriores lado a lado, em tom claro (fotografia de fim de sprint) */
+  history?: KpiHistoryEntry[];
   isActive: boolean;
   activeSubKey: DrilldownKey | null;
   onClick: (key: DrilldownKey) => void;
@@ -304,6 +312,23 @@ function KpiCard({
           {value}
           <span className="text-base font-semibold ml-2 text-muted-foreground">| {pct}</span>
         </div>
+        {history && history.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {history.map((h) => (
+              <span
+                key={h.code}
+                className="inline-flex items-center gap-1 rounded border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground/80"
+                title={h.isPhoto
+                  ? `${h.code} — fotografia de fim de sprint (23:59)`
+                  : `${h.code} — estado atual do DevOps`}
+              >
+                {h.isPhoto && <Camera className="h-2.5 w-2.5 shrink-0" />}
+                <span>{h.code.replace(/-\d{4}$/, '')}</span>
+                <span className="font-semibold text-foreground/60">{h.value}</span>
+              </span>
+            ))}
+          </div>
+        )}
         {subItems && subItems.length > 0 && (
           <div className="mt-3 pt-2 border-t space-y-0.5">
             {subItems.map((sub) => {
@@ -539,9 +564,17 @@ export function GerenciaTab({
     [photoScope, liveMetrics],
   );
 
-  // â”€â”€ Sprint comparison: current sprint + 3 previous â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â”€â”€ Sprint comparison window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // 2+ sprints selecionadas → compara exatamente as selecionadas;
+  // caso contrário → sprint de referência + 3 anteriores.
+  const isExplicitMultiSelection = !hasAllSprints && selectedSprintCodes.length > 1;
+
   const comparisonSprints = useMemo(() => {
     if (sortedSprints.length === 0) return [];
+    if (isExplicitMultiSelection) {
+      const selectedSet = new Set(selectedSprintCodes);
+      return sortedSprints.filter((sp) => selectedSet.has(sp));
+    }
     let refIdx: number;
     if (hasAllSprints || selectedSprintCodes.length === 0) {
       refIdx = sortedSprints.length - 1;
@@ -551,85 +584,105 @@ export function GerenciaTab({
       refIdx = found ? sortedSprints.indexOf(found) : sortedSprints.length - 1;
     }
     return sortedSprints.slice(Math.max(0, refIdx - 3), refIdx + 1);
-  }, [sortedSprints, selectedSprintCodes, hasAllSprints]);
+  }, [sortedSprints, selectedSprintCodes, hasAllSprints, isExplicitMultiSelection]);
 
-  const comparisonData = useMemo(() => {
+  // Uma entrada por sprint da janela — fotografia congelada quando a sprint
+  // está fechada e tem snapshot; senão, estado atual do DevOps.
+  type SprintEntry = {
+    code: string;
+    isPhoto: boolean;
+    total: number;
+    priorizacao: number;
+    bug: number;
+    retornoQa: number;
+    aviao: number;
+    entregue: number;
+    done: number;
+  };
+
+  const sprintEntries: SprintEntry[] = useMemo(() => {
     return comparisonSprints.map((sprintPath) => {
-      const sprintCode = normalizeSprintCode(sprintPath);
-
-      // Sprint fechada com fotografia → usa o breakdown congelado
-      const snap = snapshots?.[sprintCode];
-      const frozenScope = (isSprintClosed(sprintCode) && snap?.category_breakdown)
+      const code = normalizeSprintCode(sprintPath);
+      const snap = snapshots?.[code];
+      const hasFrozen = isSprintClosed(code) && !!snap?.category_breakdown;
+      const frozenScope = hasFrozen
         ? (selectedFabrica
-            ? normalizedFabricas(snap)[selectedFabrica] ?? null
-            : snap.category_breakdown.geral)
+            ? normalizedFabricas(snap!)[selectedFabrica] ?? ZERO_SCOPE
+            : snap!.category_breakdown!.geral)
         : null;
 
-      let total: number, priorizacao: number, bug: number, retornoQa: number, aviao: number, entregue: number, done: number;
       if (frozenScope) {
-        total = frozenScope.total;
-        priorizacao = frozenScope.cats.priorizacao + frozenScope.cats.priorizacao_transbordo;
-        bug = frozenScope.cats.bug;
-        retornoQa = frozenScope.cats.retorno_qa;
-        aviao = frozenScope.cats.aviao_sprint + frozenScope.cats.aviao_transbordado;
-        entregue = frozenScope.entregue.total;
-        done = frozenScope.done.total;
-      } else if (selectedFabrica && isSprintClosed(sprintCode) && snap?.category_breakdown) {
-        // fábrica sem itens naquela sprint congelada
-        total = priorizacao = bug = retornoQa = aviao = entregue = done = 0;
-      } else {
-        const sprintItems = allItems.filter(
-          (i) => i.iteration_path === sprintPath && i.count_in_kpi !== false && isManagerLike(i)
-            && (!selectedFabrica || fabricaOf(i) === selectedFabrica),
-        );
-        total = sprintItems.length;
-        priorizacao = 0; bug = 0; retornoQa = 0; aviao = 0; entregue = 0; done = 0;
-        for (const item of sprintItems) {
-          const bucket = classifyItem(item);
-          if (isPriorizadoBucket(bucket)) priorizacao++;
-          else if (bucket === 'bug') bug++;
-          else if (bucket === 'retorno_qa') retornoQa++;
-          else aviao++;
-          if (ENTREGUE_STATES.has(item.state || '')) entregue++;
-          if (isDoneState(item.state)) done++;
-        }
+        return {
+          code,
+          isPhoto: true,
+          total: frozenScope.total,
+          priorizacao: frozenScope.cats.priorizacao + frozenScope.cats.priorizacao_transbordo,
+          bug: frozenScope.cats.bug,
+          retornoQa: frozenScope.cats.retorno_qa,
+          aviao: frozenScope.cats.aviao_sprint + frozenScope.cats.aviao_transbordado,
+          entregue: frozenScope.entregue.total,
+          done: frozenScope.done.total,
+        };
       }
 
-      const isFrozen = frozenScope !== null;
-      const naoPriorizado = bug + retornoQa + aviao;
-      const entregueP = percentNum(entregue, total);
-      const doneP = percentNum(done, total);
-      const sprintLabel = isFrozen ? `${sprintCode} 📸` : sprintCode;
+      const sprintItems = allItems.filter(
+        (i) => i.iteration_path === sprintPath && i.count_in_kpi !== false && isManagerLike(i)
+          && (!selectedFabrica || fabricaOf(i) === selectedFabrica),
+      );
+      let priorizacao = 0, bug = 0, retornoQa = 0, aviao = 0, entregue = 0, done = 0;
+      for (const item of sprintItems) {
+        const bucket = classifyItem(item);
+        if (isPriorizadoBucket(bucket)) priorizacao++;
+        else if (bucket === 'bug') bug++;
+        else if (bucket === 'retorno_qa') retornoQa++;
+        else aviao++;
+        if (ENTREGUE_STATES.has(item.state || '')) entregue++;
+        if (isDoneState(item.state)) done++;
+      }
+      return { code, isPhoto: false, total: sprintItems.length, priorizacao, bug, retornoQa, aviao, entregue, done };
+    });
+  }, [comparisonSprints, snapshots, selectedFabrica, allItems, fabricaOf, ZERO_SCOPE]);
+
+  // Histórico exibido nos cards: sprints da janela, exceto a sprint principal
+  // quando há uma única selecionada (ela já é o valor grande do card).
+  const cardHistoryEntries = useMemo(() => {
+    const list = selectedSingleSprintCode
+      ? sprintEntries.filter((e) => e.code !== selectedSingleSprintCode)
+      : sprintEntries;
+    return list.slice(-4);
+  }, [sprintEntries, selectedSingleSprintCode]);
+
+  const historyFor = useCallback(
+    (pick: (e: SprintEntry) => number): KpiHistoryEntry[] =>
+      cardHistoryEntries.map((e) => ({ code: e.code, value: pick(e), isPhoto: e.isPhoto })),
+    [cardHistoryEntries],
+  );
+
+  // Composição da sprint (barra empilhada única por sprint): Priorizado + Bug +
+  // Retorno QA + Avião = total de demandas. Entrega fica na tabela de progresso.
+  const comparisonData = useMemo(() => {
+    return sprintEntries.map((e) => {
+      const sprintLabel = e.isPhoto ? `${e.code} (foto)` : e.code;
       if (histogramMode === 'percentual') {
         return {
           sprint: sprintLabel,
-          total,
-          Priorizado: percentNum(priorizacao, total),
-          NaoPriorizado: percentNum(naoPriorizado, total),
-          Entregue: percentNum(entregue, total),
-          Done: percentNum(done, total),
-          NPBug: percentNum(bug, total),
-          NPRetornoQA: percentNum(retornoQa, total),
-          NPAviao: percentNum(aviao, total),
-          EntregueP: entregueP,
-          DoneP: doneP,
+          total: e.total,
+          Priorizado: percentNum(e.priorizacao, e.total),
+          Bug: percentNum(e.bug, e.total),
+          'Retorno QA': percentNum(e.retornoQa, e.total),
+          'Avião': percentNum(e.aviao, e.total),
         };
       }
       return {
         sprint: sprintLabel,
-        total,
-        Priorizado: priorizacao,
-        NaoPriorizado: naoPriorizado,
-        Entregue: entregue,
-        Done: done,
-        NPBug: bug,
-        NPRetornoQA: retornoQa,
-        NPAviao: aviao,
-        EntregueP: entregueP,
-        DoneP: doneP,
+        total: e.total,
+        Priorizado: e.priorizacao,
+        Bug: e.bug,
+        'Retorno QA': e.retornoQa,
+        'Avião': e.aviao,
       };
     });
-  }, [comparisonSprints, allItems, histogramMode, selectedFabrica, fabricaOf, snapshots]);
+  }, [sprintEntries, histogramMode]);
 
   // â”€â”€ Drilldown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const getDrilldownItems = useCallback((key: DrilldownKey): FabricaItem[] => {
@@ -700,15 +753,17 @@ export function GerenciaTab({
         <>
           <div className="flex items-center gap-2 flex-wrap">
             {isPhotoMode ? (
-              <Badge variant="outline" className="text-[11px] border-sky-300 bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800">
-                📸 Fotografia fim de sprint
+              <Badge variant="outline" className="text-[11px] gap-1 border-sky-300 bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800">
+                <Camera className="h-3 w-3 shrink-0" />
+                Fotografia fim de sprint
                 {photoSnapshot?.as_of_datetime
                   ? ` — ${new Date(photoSnapshot.as_of_datetime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
                   : ''}
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-[11px] border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
-                ⚡ Tempo real — estado atual do DevOps
+              <Badge variant="outline" className="text-[11px] gap-1 border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
+                <Zap className="h-3 w-3 shrink-0" />
+                Tempo real — estado atual do DevOps
               </Badge>
             )}
             {selectedSingleSprintCode && isSprintClosed(selectedSingleSprintCode) && !isPhotoMode && (
@@ -745,6 +800,7 @@ export function GerenciaTab({
               value={metrics.total}
               total={metrics.total}
               drilldownKey="demandas"
+              history={historyFor((e) => e.total)}
               valueColor="text-primary"
               isActive={selectedDrilldown?.key === 'demandas'}
               activeSubKey={selectedDrilldown?.key ?? null}
@@ -756,6 +812,7 @@ export function GerenciaTab({
               value={metrics.priorizacao}
               total={metrics.total}
               drilldownKey="priorizado"
+              history={historyFor((e) => e.priorizacao)}
               valueColor="text-blue-600 dark:text-blue-400"
               isActive={selectedDrilldown?.key === 'priorizado'}
               activeSubKey={selectedDrilldown?.key ?? null}
@@ -772,6 +829,7 @@ export function GerenciaTab({
               value={metrics.naoPriorizado}
               total={metrics.total}
               drilldownKey="nao_priorizado"
+              history={historyFor((e) => e.bug + e.retornoQa + e.aviao)}
               valueColor="text-destructive"
               isActive={selectedDrilldown?.key === 'nao_priorizado'}
               activeSubKey={selectedDrilldown?.key ?? null}
@@ -789,6 +847,7 @@ export function GerenciaTab({
               value={metrics.entregue}
               total={metrics.total}
               drilldownKey="entregue"
+              history={historyFor((e) => e.entregue)}
               valueColor="text-blue-500"
               isActive={selectedDrilldown?.key === 'entregue'}
               activeSubKey={selectedDrilldown?.key ?? null}
@@ -806,6 +865,7 @@ export function GerenciaTab({
               value={metrics.done}
               total={metrics.total}
               drilldownKey="done"
+              history={historyFor((e) => e.done)}
               valueColor="text-emerald-600"
               isActive={selectedDrilldown?.key === 'done'}
               activeSubKey={selectedDrilldown?.key ?? null}
@@ -891,7 +951,7 @@ export function GerenciaTab({
 
       {renderSectionHeader(
         'hist_comparacao',
-        `Comparação por Sprint (sprint atual + 3 anteriores)${selectedFabrica ? ` — Fábrica ${selectedFabrica}` : ''}`,
+        `Comparação por Sprint ${isExplicitMultiSelection ? '(sprints selecionadas)' : '(sprint atual + 3 anteriores)'}${selectedFabrica ? ` — Fábrica ${selectedFabrica}` : ''}`,
         <BarChart3 className="h-4 w-4" />,
       )}
       {!isCollapsed('hist_comparacao') && (
@@ -928,35 +988,82 @@ export function GerenciaTab({
             ) : (
               <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={comparisonData} margin={{ top: 8, right: 48, left: 0, bottom: 0 }}>
+                  <ComposedChart data={comparisonData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                     <XAxis dataKey="sprint" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} unit={histogramMode === 'percentual' ? '%' : ''} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
+                    <YAxis tick={{ fontSize: 11 }} unit={histogramMode === 'percentual' ? '%' : ''} />
                     <RechartsTooltip
                       contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
                       formatter={(value: number, name: string) => [
-                        name === 'Entregue %' || name === 'Done %' ? `${value}%` : (histogramMode === 'percentual' ? `${value}%` : value),
+                        histogramMode === 'percentual' ? `${value}%` : value,
                         name,
                       ]}
                     />
                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                    <Bar dataKey="Priorizado" name="Priorizado" yAxisId="left" fill="hsl(210,90%,55%)" />
-                    <Bar dataKey="NaoPriorizado" name="Não Priorizado" yAxisId="left" fill="hsl(0,72%,56%)" />
-                    <Bar dataKey="Entregue" name="Entregue" yAxisId="left" fill="hsl(210,70%,68%)" />
-                    <Bar dataKey="Done" name="Done" yAxisId="left" fill="hsl(142,60%,45%)" />
-                    <Bar dataKey="NPBug" name="Subcat NP: Bug" stackId="np_sub" yAxisId="left" fill="hsl(0,72%,46%)" />
-                    <Bar dataKey="NPRetornoQA" name="Subcat NP: Retorno QA" stackId="np_sub" yAxisId="left" fill="hsl(38,92%,45%)" />
-                    <Bar dataKey="NPAviao" name="Subcat NP: Avião" stackId="np_sub" yAxisId="left" fill="hsl(270,60%,52%)" radius={[4, 4, 0, 0]} />
-                    <Line dataKey="EntregueP" name="Entregue %" yAxisId="right" type="monotone" stroke="hsl(210,70%,68%)" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line dataKey="DoneP" name="Done %" yAxisId="right" type="monotone" stroke="hsl(142,60%,45%)" strokeWidth={2} dot={{ r: 3 }} />
+                    {/* Uma barra empilhada por sprint = composição do total de demandas */}
+                    <Bar dataKey="Priorizado" name="Priorizado" stackId="comp" fill="hsl(210,90%,55%)" maxBarSize={72} />
+                    <Bar dataKey="Bug" name="Bug" stackId="comp" fill="hsl(0,72%,52%)" maxBarSize={72} />
+                    <Bar dataKey="Retorno QA" name="Retorno QA" stackId="comp" fill="hsl(38,92%,50%)" maxBarSize={72} />
+                    <Bar dataKey="Avião" name="Avião" stackId="comp" fill="hsl(270,60%,55%)" maxBarSize={72} radius={[4, 4, 0, 0]} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             )}
+
+            {/* Entrega por sprint — barras de progresso (Entregue e Done sobre o total) */}
+            {sprintEntries.length > 0 && (
+              <div className="mt-4 border rounded-md overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium w-32">Sprint</th>
+                      <th className="text-right px-3 py-2 font-medium w-20">Demandas</th>
+                      <th className="text-left px-3 py-2 font-medium">Entregue</th>
+                      <th className="text-left px-3 py-2 font-medium">Done</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {sprintEntries.map((e) => {
+                      const entreguePct = percentNum(e.entregue, e.total);
+                      const donePct = percentNum(e.done, e.total);
+                      return (
+                        <tr key={e.code}>
+                          <td className="px-3 py-2">
+                            <span className="inline-flex items-center gap-1.5 font-medium">
+                              {e.code}
+                              {e.isPhoto
+                                ? <Camera className="h-3 w-3 text-sky-600" aria-label="Fotografia de fim de sprint" />
+                                : <Zap className="h-3 w-3 text-emerald-600" aria-label="Tempo real" />}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold">{e.total}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full rounded-full bg-sky-500" style={{ width: `${Math.min(100, entreguePct)}%` }} />
+                              </div>
+                              <span className="w-24 text-right tabular-nums text-muted-foreground">{e.entregue}/{e.total} · {entreguePct}%</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, donePct)}%` }} />
+                              </div>
+                              <span className="w-24 text-right tabular-nums text-muted-foreground">{e.done}/{e.total} · {donePct}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             <p className="text-[11px] text-muted-foreground mt-2">
               Considera todos os colaboradores do setor, independente do filtro de colaborador ativo.
-              Sprints marcadas com 📸 usam a fotografia congelada de fim de sprint; as demais, o estado atual do DevOps.
+              Sprints marcadas com "(foto)" usam a fotografia congelada de fim de sprint; as demais, o estado atual do DevOps.
             </p>
           </CardContent>
         </Card>
