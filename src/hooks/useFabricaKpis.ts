@@ -92,6 +92,23 @@ export interface TimelogAggregation {
   minutes: number;
 }
 
+/** Horas consolidadas a nível de PBI/Bug (próprias + tasks filhas), DevOps + VDESK */
+export interface PbiTimelogConsolidado {
+  id: number;
+  title: string;
+  work_item_type: string | null;
+  state: string | null;
+  assigned_to_display: string | null;
+  web_url: string | null;
+  devopsMinutes: number;
+  vdeskMinutes: number;
+  totalMinutes: number;
+  devopsHours: number;
+  vdeskHours: number;
+  /** Quantidade de tasks filhas com apontamento */
+  taskCount: number;
+}
+
 export interface TimelogFabricaScope {
   key: string;
   displayName: string;
@@ -365,9 +382,40 @@ export function useFabricaKpis(
   const managerScopedIds = new Set(
     managerScopedItems.map((item) => item.id).filter((id): id is number => id != null)
   );
-  const managerScopedTaskIds = filteredItems
-    .filter((item) => isFabricaTaskItem(item.work_item_type) && item.id != null && item.parent_id != null && managerScopedIds.has(item.parent_id))
-    .map((item) => item.id as number);
+
+  // Apontamentos (DevOps e VDESK) são feitos nas Tasks — a consolidação precisa
+  // somar as horas de TODAS as tasks filhas no PBI/Bug pai, inclusive tasks que
+  // não aparecem na fila (vw_fabrica_kpis), ex.: tasks já concluídas.
+  // managerIdByTaskId: task id → PBI/Bug raiz no escopo gerencial.
+  const managerIdByTaskId: Record<number, number> = (() => {
+    const out: Record<number, number> = {};
+    const allWis = workItemsQuery.data || [];
+    const parentById = new Map<number, number | null>();
+    for (const wi of allWis) parentById.set(wi.id, wi.parent_id);
+    for (const wi of allWis) {
+      if (wi.work_item_type !== 'Task') continue;
+      let parentId = wi.parent_id;
+      let depth = 0;
+      while (parentId != null && depth < 10) {
+        if (managerScopedIds.has(parentId)) { out[wi.id] = parentId; break; }
+        parentId = parentById.get(parentId) ?? null;
+        depth++;
+      }
+    }
+    // Tasks vindas da fila cujo pai está no escopo — cobre tasks ainda não
+    // sincronizadas em devops_work_items
+    for (const item of filteredItems) {
+      if (
+        isFabricaTaskItem(item.work_item_type) && item.id != null && item.parent_id != null
+        && managerScopedIds.has(item.parent_id) && out[item.id] === undefined
+      ) {
+        out[item.id] = item.parent_id;
+      }
+    }
+    return out;
+  })();
+
+  const managerScopedTaskIds = Object.keys(managerIdByTaskId).map(Number);
   const timelogScopeIds = new Set<number>([
     ...managerScopedIds,
     ...managerScopedTaskIds,
@@ -418,6 +466,21 @@ export function useFabricaKpis(
     if (wi.tags) tagsByWorkItemId[wi.id] = wi.tags;
   }
 
+  // Produtos de um item logado: tasks normalmente não têm tag de produto,
+  // então sobe a cadeia de pais (task → PBI/Bug → ...) até encontrar produtos.
+  function productsForWorkItem(startId: number, maxDepth = 10): string[] {
+    let current = wiMap.get(startId);
+    let depth = 0;
+    while (current && depth < maxDepth) {
+      const products = extractProducts(current.tags || null);
+      if (products.length > 0) return products;
+      if (!current.parent_id) break;
+      current = wiMap.get(current.parent_id);
+      depth++;
+    }
+    return [];
+  }
+
   // Find top-level Epic by walking parent_id
   function findEpic(startId: number, maxDepth = 10): { title: string; id: number } | null {
     let currentId = startId;
@@ -437,6 +500,24 @@ export function useFabricaKpis(
     }
     return null;
   }
+
+  // Fábrica (squad) de cada work item — resolvida pelo Epic raiz, mesma regra do timelog.
+  // Cobre todos os itens não-infra (todas as sprints) para alimentar visão e histograma por fábrica.
+  const fabricaByItemId: Record<number, string> = (() => {
+    const out: Record<number, string> = {};
+    if (wiMap.size === 0) return out;
+    for (const item of nonInfraItems) {
+      if (item.id == null) continue;
+      const epic = findEpic(item.id);
+      if (epic) out[item.id] = epic.title;
+    }
+    for (const wi of nonInfraWorkItems) {
+      if (out[wi.id] !== undefined || !isFabricaManagerItem(wi.work_item_type)) continue;
+      const epic = findEpic(wi.id);
+      if (epic) out[wi.id] = epic.title;
+    }
+    return out;
+  })();
 
   // Hours by collaborator
   const horasPorColaborador: TimelogAggregation[] = (() => {
@@ -492,8 +573,7 @@ export function useFabricaKpis(
     if (!hasTimeLogs) return [];
     const map: Record<string, number> = {};
     for (const tl of scopedTimeLogs) {
-      const wi = tl.work_item_id ? wiMap.get(tl.work_item_id) : null;
-      const products = extractProducts(wi?.tags || null);
+      const products = tl.work_item_id ? productsForWorkItem(tl.work_item_id) : [];
       if (products.length > 0) {
         const share = (tl.time_minutes || 0) / products.length;
         for (const p of products) {
@@ -606,8 +686,7 @@ export function useFabricaKpis(
     if (!hasVdeskData) return [];
     const map: Record<string, number> = {};
     for (const vl of scopedVdeskLogs) {
-      const wi = wiMap.get(vl.task_devops);
-      const products = extractProducts(wi?.tags || null);
+      const products = productsForWorkItem(vl.task_devops);
       if (products.length > 0) {
         const share = vl.tempo_segundos / products.length;
         for (const p of products) {
@@ -619,6 +698,54 @@ export function useFabricaKpis(
     return Object.entries(map)
       .map(([name, seconds]) => ({ name, hours: Math.round(seconds / 3600 * 10) / 10, minutes: Math.round(seconds / 60) }))
       .sort((a, b) => b.hours - a.hours);
+  })();
+
+  // ── Consolidação a nível de PBI/Bug: horas próprias + horas das tasks filhas ──
+  const horasPorPbi: PbiTimelogConsolidado[] = (() => {
+    const acc = new Map<number, { devopsMinutes: number; vdeskMinutes: number; taskIds: Set<number> }>();
+    const resolveManagerId = (rawId: number): number | null => {
+      if (managerScopedIds.has(rawId)) return rawId;
+      return managerIdByTaskId[rawId] ?? null;
+    };
+    const add = (rawId: number, source: 'devops' | 'vdesk', minutes: number) => {
+      const managerId = resolveManagerId(rawId);
+      if (managerId == null) return;
+      const entry = acc.get(managerId) ?? { devopsMinutes: 0, vdeskMinutes: 0, taskIds: new Set<number>() };
+      if (source === 'devops') entry.devopsMinutes += minutes;
+      else entry.vdeskMinutes += minutes;
+      if (rawId !== managerId) entry.taskIds.add(rawId);
+      acc.set(managerId, entry);
+    };
+    for (const tl of scopedTimeLogs) {
+      if (tl.work_item_id != null) add(tl.work_item_id, 'devops', tl.time_minutes || 0);
+    }
+    for (const vl of scopedVdeskLogs) {
+      add(vl.task_devops, 'vdesk', vl.tempo_segundos / 60);
+    }
+    const itemById = new Map<number, FabricaItem>();
+    for (const item of managerScopedItems) {
+      if (item.id != null) itemById.set(item.id, item);
+    }
+    return [...acc.entries()]
+      .map(([id, v]) => {
+        const item = itemById.get(id);
+        const totalMinutes = v.devopsMinutes + v.vdeskMinutes;
+        return {
+          id,
+          title: item?.title ?? `#${id}`,
+          work_item_type: item?.work_item_type ?? null,
+          state: item?.state ?? null,
+          assigned_to_display: item?.assigned_to_display ?? null,
+          web_url: item?.web_url ?? null,
+          devopsMinutes: Math.round(v.devopsMinutes),
+          vdeskMinutes: Math.round(v.vdeskMinutes),
+          totalMinutes: Math.round(totalMinutes),
+          devopsHours: Math.round(v.devopsMinutes / 60 * 10) / 10,
+          vdeskHours: Math.round(v.vdeskMinutes / 60 * 10) / 10,
+          taskCount: v.taskIds.size,
+        };
+      })
+      .sort((a, b) => b.totalMinutes - a.totalMinutes);
   })();
 
   // Coverage: how much of max(vdesk,devops) total hours is covered by the other source
@@ -810,6 +937,14 @@ export function useFabricaKpis(
     /** Raw scoped VDESK log entries (with id) — for post-to-DevOps queue UI */
     scopedVdeskLogs,
     tagsByWorkItemId,
+    /** Fábrica (Epic raiz) por work item id — para visões gerenciais por fábrica */
+    fabricaByItemId,
+    /** Escopo completo do timelog: PBIs/Bugs gerenciais + todas as suas tasks */
+    timelogScopeIds: [...timelogScopeIds],
+    /** Task id → PBI/Bug pai no escopo gerencial (consolidação de horas) */
+    managerIdByTaskId,
+    /** Horas consolidadas por PBI/Bug (próprias + tasks filhas), DevOps + VDESK */
+    horasPorPbi,
     allCollaborators,
   };
 }

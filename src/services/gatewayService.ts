@@ -148,39 +148,23 @@ function buildMocks(): Record<string, unknown> {
     })),
   };
 
-  /* BI Customer — KPIs */
+  /* BI Customer — KPIs (espelho SLA Flag x Outros: 2 segmentos) */
   const biCustomerKpis = {
     success: true,
     message: '[MOCK] Dados simulados',
-    mesAtual: {
-      totalTickets: 198,
-      totalOs: 342,
-      incTickets: 112,
-      prbTickets: 34,
-      ritmTickets: 52,
+    nestle: {
+      unidade: 'ticket',
+      mesAtual:    { total: 135, inc: 99, prb: 1, ritm: 35 },
+      mesAnterior: { total: 549, inc: 393, prb: 8, ritm: 148 },
+      abertos:     { incAberto: 61, prbAberto: 3, ritmAberto: 15, inc5Dias: 53, prb10Dias: 2, ritm30Dias: 4 },
+      metricas:    { fechadosMes: 131, ttrMedioDias: 4.99, pctEncerrados24h: 68.7 },
     },
-    mesAnterior: {
-      totalTickets: 221,
-      totalOs: 389,
-      incTickets: 130,
-      prbTickets: 41,
-      ritmTickets: 50,
-    },
-    abertos: {
-      incTicketsAberto: 47,
-      prbTicketsAberto: 18,
-      ritmTicketsAberto: 22,
-      incOsAberto: 83,
-      prbOsAberto: 31,
-      ritmOsAberto: 38,
-      incTicket5Dias: 21,
-      prbTicket10Dias: 9,
-      ritmTicket30Dias: 4,
-    },
-    metricas: {
-      fechados60Dias: 567,
-      ttrMedioDias: 4.3,
-      pctEncerrados24h: 38.2,
+    outras: {
+      unidade: 'os',
+      mesAtual:    { total: 286, inc: 10, prb: 20, ritm: 111 },
+      mesAnterior: { total: 914, inc: 34, prb: 87, ritm: 352 },
+      abertos:     { incAberto: 24, prbAberto: 60, ritmAberto: 226, inc5Dias: 24, prb10Dias: 52, ritm30Dias: 175 },
+      metricas:    { fechadosMes: 284, ttrMedioDias: 4.89, pctEncerrados24h: 81.69 },
     },
   };
 
@@ -188,6 +172,7 @@ function buildMocks(): Record<string, unknown> {
   const biCustomerDetalhe = {
     success: true,
     message: '[MOCK]',
+    segmento: 'nestle',
     tipo: 'INC',
     diasMin: 5,
     total: 21,
@@ -198,6 +183,7 @@ function buildMocks(): Record<string, unknown> {
       sistema: ['FlexxSales', 'AvanteSales', 'QuickOne', 'Decision'][i % 4],
       consultor: ALL[i % ALL.length],
       tipoChamado: ['Incidente', 'Problema', 'Requisição'][i % 3],
+      bandeira: ['Nestlé', 'Heineken', 'Danone', 'Outros'][i % 4],
       dataRegistro: new Date(Date.now() - (6 + i * 2) * 86400000).toISOString(),
       diasAberto: 6 + i * 2,
       criticidade: ['Alta', 'Média', 'Baixa'][i % 3],
@@ -233,6 +219,225 @@ function buildMocks(): Record<string, unknown> {
     criticidade: ['Alta','Média'][i % 2],
     desvioLancamento: false,
   }));
+
+  /* BI Infra — SGSI (espelho do PBIX SG-LST Usecase 1.04: listas SharePoint SG) */
+  const AMBIENTES = ['Produção', 'Homologação', 'Datacenter', 'Cloud Azure', 'Rede Corporativa'];
+  const PESSOAS_INFRA = ['Bruna', 'Ronaldo', 'Igor', 'Henrique', 'Marcos'];
+
+  const biInfraSgsi = {
+    success: true,
+    message: '[MOCK] Dados simulados',
+    atualizadoEm: new Date().toISOString(),
+    diasSem: { incidentes: 41, riscos: 12, naoConformidades: 87, attMalSucedidas: 26 },
+    mudancas: {
+      total: 86, concluidos: 71, pendentes: 9, aguardandoGestor: 4, aguardandoTI: 2,
+      porStatus: [
+        { name: 'Concluído', value: 71 }, { name: 'Pendente', value: 9 },
+        { name: 'Aguardando Gestor', value: 4 }, { name: 'Aguardando TI', value: 2 },
+      ],
+      porAmbiente: [
+        { name: 'Produção', value: 38 }, { name: 'Homologação', value: 21 },
+        { name: 'Datacenter', value: 14 }, { name: 'Cloud Azure', value: 9 }, { name: 'Rede Corporativa', value: 4 },
+      ],
+      porRisco: [{ name: 'Baixo', value: 52 }, { name: 'Médio', value: 27 }, { name: 'Alto', value: 7 }],
+      porCategoria: [
+        { name: 'Normal', value: 49 }, { name: 'Padrão', value: 24 }, { name: 'Emergencial', value: 13 },
+      ],
+      atualizacoesBemSucedidas: { sim: 79, nao: 7 },
+      validacaoTestes: { sim: 74, nao: 12 },
+      itens: Array.from({ length: 10 }, (_, i) => ({
+        id: 860 - i,
+        chamado: `MUD-${String(860 - i).padStart(4, '0')}`,
+        ambiente: AMBIENTES[i % AMBIENTES.length],
+        tipoMudanca: ['Atualização de versão', 'Patch de segurança', 'Configuração', 'Hotfix'][i % 4],
+        categoria: ['Normal', 'Padrão', 'Emergencial'][i % 3],
+        motivo: ['Atualização programada', 'Correção de vulnerabilidade', 'Ajuste de performance', 'Solicitação de cliente'][i % 4],
+        status: i < 7 ? 'Concluído' : ['Pendente', 'Aguardando Gestor', 'Aguardando TI'][i % 3],
+        solicitante: PESSOAS_INFRA[i % PESSOAS_INFRA.length],
+        aprovadorTI: PESSOAS_INFRA[(i + 2) % PESSOAS_INFRA.length],
+        risco: ['Baixo', 'Médio', 'Alto'][i % 3],
+        modificado: new Date(Date.now() - i * 3 * 86400000).toISOString(),
+      })),
+    },
+    incidentes: {
+      total: 23, ativos: 2, contornados: 4, resolvidos: 17,
+      porSLA: [{ name: 'Dentro do SLA', value: 19 }, { name: 'Fora do SLA', value: 4 }],
+      porCategoria: [
+        { name: 'Disponibilidade', value: 9 }, { name: 'Performance', value: 6 },
+        { name: 'Segurança', value: 4 }, { name: 'Acesso', value: 4 },
+      ],
+      itens: Array.from({ length: 8 }, (_, i) => ({
+        id: 230 - i,
+        titulo: ['Indisponibilidade VPN', 'Lentidão storage', 'Alerta antivírus', 'Queda link MPLS', 'Falha backup noturno', 'Certificado expirado', 'Disco crítico SQL', 'Phishing reportado'][i],
+        ativo: ['FW-Edge01', 'STG-NetApp', 'SRV-AV', 'LINK-MPLS-SP', 'BKP-Veeam', 'SRV-WEB02', 'SQL-PROD01', 'M365'][i],
+        motivo: ['Falha de hardware', 'Saturação de uso', 'Assinatura desatualizada', 'Rompimento operadora', 'Job travado', 'Renovação não programada', 'Crescimento de base', 'Engenharia social'][i],
+        priorizacao: ['Alta', 'Média', 'Baixa'][i % 3],
+        protocolo: `INC-${String(230 - i).padStart(4, '0')}`,
+        status: i < 2 ? 'Ativo' : i < 6 ? 'Resolvido' : 'Contornado',
+        tipo: ['Infraestrutura', 'Segurança'][i % 2],
+        sla: i % 5 === 0 ? 'Fora do SLA' : 'Dentro do SLA',
+        categoria: ['Disponibilidade', 'Performance', 'Segurança', 'Acesso'][i % 4],
+        downtimeHoras: [4.5, 1.2, 0, 6.8, 2.1, 0.5, 3.2, 0][i],
+        inicio: new Date(Date.now() - (i * 11 + 2) * 86400000).toISOString(),
+      })),
+    },
+    riscos: {
+      total: 31, abertos: 6,
+      porStatus: [
+        { name: 'Tratado', value: 21 }, { name: 'Em tratamento', value: 6 },
+        { name: 'Aceito', value: 3 }, { name: 'Novo', value: 1 },
+      ],
+      porAmbiente: [
+        { name: 'Datacenter', value: 11 }, { name: 'Cloud Azure', value: 8 },
+        { name: 'Rede Corporativa', value: 7 }, { name: 'Produção', value: 5 },
+      ],
+      porCID: [
+        { name: 'Disponibilidade', value: 14 }, { name: 'Confidencialidade', value: 10 }, { name: 'Integridade', value: 7 },
+      ],
+      porCategoriaAmeaca: [
+        { name: 'Técnica', value: 13 }, { name: 'Humana', value: 9 },
+        { name: 'Física', value: 5 }, { name: 'Ambiental', value: 4 },
+      ],
+      porTipoAmeaca: [
+        { name: 'Intencional', value: 9 }, { name: 'Acidental', value: 14 }, { name: 'Natural', value: 8 },
+      ],
+      porAtivoAfetado: [
+        { name: 'Servidores', value: 10 }, { name: 'Rede', value: 8 },
+        { name: 'Dados', value: 7 }, { name: 'Pessoas', value: 4 }, { name: 'Instalações', value: 2 },
+      ],
+      tratamentoEficaz: { sim: 24, nao: 7 },
+      itens: Array.from({ length: 8 }, (_, i) => ({
+        id: 310 - i,
+        descricao: ['Ransomware via e-mail', 'Falha climatização DC', 'Acesso indevido a backups', 'Obsolescência hypervisor', 'Dependência de fornecedor único', 'Perda de chaves de criptografia', 'Shadow IT em SaaS', 'Queda de energia prolongada'][i],
+        ambiente: AMBIENTES[i % AMBIENTES.length],
+        cid: ['Disponibilidade', 'Confidencialidade', 'Integridade'][i % 3],
+        categoriaAmeaca: ['Técnica', 'Humana', 'Física', 'Ambiental'][i % 4],
+        tipoAmeaca: ['Intencional', 'Acidental', 'Natural'][i % 3],
+        ativoAfetado: ['Servidores', 'Rede', 'Dados', 'Pessoas', 'Instalações'][i % 5],
+        status: i < 2 ? 'Em tratamento' : i < 7 ? 'Tratado' : 'Aceito',
+        responsavelAjuste: PESSOAS_INFRA[i % PESSOAS_INFRA.length],
+        dataLimite: new Date(Date.now() + (30 - i * 8) * 86400000).toISOString(),
+        eficaz: i % 4 === 3 ? 'Não' : 'Sim',
+      })),
+    },
+    naoConformidades: {
+      total: 12, recorrentes: 3,
+      porStatus: [
+        { name: 'Encerrada', value: 8 }, { name: 'Em análise', value: 3 }, { name: 'Aberta', value: 1 },
+      ],
+      porCausaRaiz: [
+        { name: 'Processo não seguido', value: 5 }, { name: 'Falta de treinamento', value: 3 },
+        { name: 'Documentação desatualizada', value: 2 }, { name: 'Falha de comunicação', value: 2 },
+      ],
+      tratamentoEficaz: { sim: 9, nao: 3 },
+      itens: Array.from({ length: 6 }, (_, i) => ({
+        id: 120 - i,
+        processo: ['Gestão de mudanças', 'Backup e restauração', 'Controle de acessos', 'Gestão de incidentes', 'Inventário de ativos', 'Gestão de patches'][i],
+        detalhes: ['Mudança sem aprovação registrada', 'Teste de restore fora do prazo', 'Revisão de acessos atrasada', 'Incidente sem lição aprendida', 'CMDB divergente do ambiente', 'Patch crítico fora da janela'][i],
+        causaRaiz: ['Processo não seguido', 'Falta de treinamento', 'Documentação desatualizada', 'Falha de comunicação'][i % 4],
+        acao: ['Reforço do fluxo de aprovação', 'Agenda automática de testes', 'Alerta de revisão trimestral', 'Template de pós-incidente', 'Sincronização automática CMDB', 'Janela emergencial documentada'][i],
+        recorrente: i % 4 === 0,
+        status: i < 4 ? 'Encerrada' : i === 4 ? 'Em análise' : 'Aberta',
+        eficaz: i < 4 ? 'Sim' : '—',
+        solicitante: PESSOAS_INFRA[i % PESSOAS_INFRA.length],
+        criado: new Date(Date.now() - (i * 25 + 10) * 86400000).toISOString(),
+      })),
+    },
+    melhorias: {
+      total: 18, eficazes: 11,
+      porStatus: [
+        { name: 'Implementada', value: 11 }, { name: 'Em andamento', value: 4 },
+        { name: 'Avaliação', value: 2 }, { name: 'Backlog', value: 1 },
+      ],
+      porAmbiente: [
+        { name: 'Datacenter', value: 6 }, { name: 'Cloud Azure', value: 5 },
+        { name: 'Rede Corporativa', value: 4 }, { name: 'Produção', value: 3 },
+      ],
+      itens: Array.from({ length: 6 }, (_, i) => ({
+        id: 180 - i,
+        oportunidade: ['Automação de provisionamento', 'Dashboard de capacidade', 'MFA em ativos legados', 'Padronização de nomenclatura', 'Alertas proativos de certificado', 'Runbooks de incidentes'][i],
+        ambiente: AMBIENTES[i % AMBIENTES.length],
+        processo: ['Provisionamento', 'Capacity planning', 'Segurança', 'Governança', 'Monitoração', 'Operação'][i],
+        beneficios: ['Redução de 60% no tempo de entrega', 'Visibilidade antecipada de saturação', 'Redução de superfície de ataque', 'Menos erros operacionais', 'Zero expiração não programada', 'Resposta padronizada'][i],
+        status: i < 4 ? 'Implementada' : 'Em andamento',
+        eficaz: i < 4 ? 'Sim' : '—',
+        solicitante: PESSOAS_INFRA[i % PESSOAS_INFRA.length],
+      })),
+    },
+    acessos: {
+      total: 64, pendentes: 5,
+      porStatus: [
+        { name: 'Concedido', value: 49 }, { name: 'Revogado', value: 10 }, { name: 'Pendente', value: 5 },
+      ],
+      porTipo: [
+        { name: 'Novo acesso', value: 31 }, { name: 'Alteração', value: 17 },
+        { name: 'Revogação', value: 10 }, { name: 'Revisão', value: 6 },
+      ],
+      porProjeto: [
+        { name: 'FlexxSales', value: 18 }, { name: 'Datacenter', value: 14 },
+        { name: 'AvanteSales', value: 12 }, { name: 'QuickOne', value: 11 }, { name: 'Decision', value: 9 },
+      ],
+      acessoDevOps: { sim: 27, nao: 37 },
+      acessoTS: { sim: 22, nao: 42 },
+      permissoesAdmin: { sim: 8, nao: 56 },
+      itens: Array.from({ length: 8 }, (_, i) => ({
+        id: 640 - i,
+        titulo: `ACS-${String(640 - i).padStart(4, '0')}`,
+        descricao: ['Acesso repositório DevOps', 'Acesso TS produção', 'Pasta compartilhada projetos', 'Instância SQL homolog', 'Portal de BI', 'VPN terceiros', 'Admin local estação', 'Acesso cofre de senhas'][i],
+        motivo: ['Novo colaborador', 'Mudança de função', 'Projeto temporário', 'Suporte a cliente', 'Auditoria', 'Fornecedor externo', 'Desenvolvimento', 'Operação NOC'][i],
+        tipo: ['Novo acesso', 'Alteração', 'Revogação', 'Revisão'][i % 4],
+        projeto: ['FlexxSales', 'Datacenter', 'AvanteSales', 'QuickOne', 'Decision'][i % 5],
+        solicitante: PESSOAS_INFRA[i % PESSOAS_INFRA.length],
+        cargo: ['Analista Infra', 'DevOps', 'Consultor', 'Tech Lead', 'Suporte'][i % 5],
+        status: i < 6 ? 'Concedido' : i === 6 ? 'Pendente' : 'Revogado',
+        acessoDevOps: i % 2 === 0,
+        acessoTS: i % 3 === 0,
+        permissoesAdmin: i === 6,
+        ultimaRevisao: new Date(Date.now() - (i * 14 + 5) * 86400000).toISOString(),
+      })),
+    },
+  };
+
+  /* BI Infra — Projetos & Pipelines (gestão sem pipeline + meta 3/trimestre) */
+  const infraProjetosBase = [
+    { id: 1,  nome: 'Observabilidade Datacenter',   ambiente: 'Datacenter',       responsavel: 'Bruna',    status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'obs-datacenter-deploy',  pipelineCriadaEm: '2026-05-28', proximoPasso: null, previsaoPipeline: null },
+    { id: 2,  nome: 'Backup Imutável (Veeam)',      ambiente: 'Datacenter',       responsavel: 'Ronaldo',  status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'veeam-policy-as-code',   pipelineCriadaEm: '2026-04-17', proximoPasso: null, previsaoPipeline: null },
+    { id: 3,  nome: 'IaC Terraform Núcleo Azure',   ambiente: 'Cloud Azure',      responsavel: 'Igor',     status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'tf-core-azure',          pipelineCriadaEm: '2026-02-19', proximoPasso: null, previsaoPipeline: null },
+    { id: 4,  nome: 'SSO Entra ID Apps Internas',   ambiente: 'Cloud Azure',      responsavel: 'Henrique', status: 'Ativo',           prioridade: 'Média', temPipeline: true,  pipelineNome: 'sso-app-onboarding',     pipelineCriadaEm: '2026-03-05', proximoPasso: null, previsaoPipeline: null },
+    { id: 5,  nome: 'Hardening Active Directory',   ambiente: 'Rede Corporativa', responsavel: 'Marcos',   status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'ad-baseline-check',      pipelineCriadaEm: '2025-11-12', proximoPasso: null, previsaoPipeline: null },
+    { id: 6,  nome: 'Migração VMware → Proxmox',    ambiente: 'Datacenter',       responsavel: 'Ronaldo',  status: 'Em implantação',  prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'pve-migration-waves',    pipelineCriadaEm: '2025-12-03', proximoPasso: null, previsaoPipeline: null },
+    { id: 7,  nome: 'Zabbix → Grafana Cloud',       ambiente: 'Datacenter',       responsavel: 'Bruna',    status: 'Em implantação',  prioridade: 'Média', temPipeline: true,  pipelineNome: 'grafana-dash-sync',      pipelineCriadaEm: '2025-10-21', proximoPasso: null, previsaoPipeline: null },
+    { id: 8,  nome: 'Vault de Secrets',             ambiente: 'Cloud Azure',      responsavel: 'Igor',     status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'vault-rotate-secrets',   pipelineCriadaEm: '2025-09-30', proximoPasso: null, previsaoPipeline: null },
+    { id: 9,  nome: 'DR Site Secundário',           ambiente: 'Datacenter',       responsavel: 'Ronaldo',  status: 'Em implantação',  prioridade: 'Alta',  temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Definir runbook de failover e automatizar replicação', previsaoPipeline: 'T3/2026' },
+    { id: 10, nome: 'FinOps Azure',                 ambiente: 'Cloud Azure',      responsavel: 'Henrique', status: 'Ativo',           prioridade: 'Média', temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Exportar custos via API e versionar budgets',           previsaoPipeline: 'T3/2026' },
+    { id: 11, nome: 'Atualização Firewalls Edge',   ambiente: 'Rede Corporativa', responsavel: 'Marcos',   status: 'Ativo',           prioridade: 'Alta',  temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Backup de config automatizado pré-upgrade',             previsaoPipeline: 'T2/2026' },
+    { id: 12, nome: 'Inventário CMDB Automatizado', ambiente: 'Datacenter',       responsavel: 'Bruna',    status: 'Ativo',           prioridade: 'Média', temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Agente de discovery + sync agendado',                    previsaoPipeline: 'T3/2026' },
+    { id: 13, nome: 'Automação N1 NOC',             ambiente: 'Datacenter',       responsavel: 'Igor',     status: 'Pausado',         prioridade: 'Baixa', temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Repriorizar após DR Site',                               previsaoPipeline: 'T4/2026' },
+    { id: 14, nome: 'Refresh Wi-Fi Corporativo',    ambiente: 'Rede Corporativa', responsavel: 'Marcos',   status: 'Pausado',         prioridade: 'Baixa', temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Aguardando orçamento aprovado',                          previsaoPipeline: 'T4/2026' },
+  ];
+
+  const biInfraProjetos = {
+    success: true,
+    message: '[MOCK] Dados simulados',
+    meta: { pipelinesPorTrimestre: 3 },
+    trimestreAtual: { trimestre: 'T2/2026', inicio: '2026-04-01', fim: '2026-06-30', criadas: 2 },
+    historico: [
+      { trimestre: 'T3/2025', criadas: 1 },
+      { trimestre: 'T4/2025', criadas: 3 },
+      { trimestre: 'T1/2026', criadas: 2 },
+      { trimestre: 'T2/2026', criadas: 2 },
+    ],
+    resumo: {
+      totalProjetos: infraProjetosBase.length,
+      comPipeline: infraProjetosBase.filter(p => p.temPipeline).length,
+      semPipeline: infraProjetosBase.filter(p => !p.temPipeline).length,
+    },
+    projetos: infraProjetosBase,
+    pipelinesNovas: [
+      { nome: 'veeam-policy-as-code',  projeto: 'Backup Imutável (Veeam)',    responsavel: 'Ronaldo', criadaEm: '2026-04-17' },
+      { nome: 'obs-datacenter-deploy', projeto: 'Observabilidade Datacenter', responsavel: 'Bruna',   criadaEm: '2026-05-28' },
+    ],
+  };
 
   /* SLA Nestlé */
   const slaNestle = {
@@ -354,6 +559,8 @@ function buildMocks(): Record<string, unknown> {
     },
     '/api/bi-customer/kpis': biCustomerKpis,
     '/api/bi-customer/detalhe': biCustomerDetalhe,
+    '/api/bi-infra/sgsi': biInfraSgsi,
+    '/api/bi-infra/projetos': biInfraProjetos,
     '/api/gestao/sla-flag': slaFlag,
     '/api/gestao/sla-nestle': slaNestle,
     '/api/gestao/sla-nestle-historico': slaNestleHistorico,

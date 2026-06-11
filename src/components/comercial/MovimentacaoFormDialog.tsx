@@ -96,8 +96,8 @@ export const MovimentacaoFormDialog: React.FC<MovimentacaoFormDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <form onSubmit={handleSubmit}>
-        <DialogContent className="space-y-4 max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
             <DialogTitle>{mode === "edit" ? "Editar Movimentação" : "Nova Movimentação"}</DialogTitle>
           </DialogHeader>
@@ -247,8 +247,8 @@ export const MovimentacaoFormDialog: React.FC<MovimentacaoFormDialogProps> = ({
             <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
             <Button type="submit">Salvar</Button>
           </div>
-        </DialogContent>
-      </form>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 };
