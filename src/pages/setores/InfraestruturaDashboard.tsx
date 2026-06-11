@@ -17,8 +17,10 @@ import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
+import { BIInfraSgsiPanel } from '@/components/infraestrutura/BIInfraSgsiPanel';
+import { InfraProjetosPanel } from '@/components/infraestrutura/InfraProjetosPanel';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow } from 'lucide-react';
+import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
@@ -28,6 +30,7 @@ type InfraHealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items Infra' },
+  { name: 'SharePoint SG-LST', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Listas SG (Power BI espelhado via Gateway)' },
 ];
 
 const columns: DataTableColumn<InfraItem>[] = [
@@ -200,6 +203,8 @@ export default function InfraestruturaDashboard() {
           <TabsList className="bg-muted/50 p-1">
             <TabsTrigger value="overview" className="gap-1.5 text-xs"><Server className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
             <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
+            <TabsTrigger value="gestao-sg" className="gap-1.5 text-xs"><ShieldCheck className="h-3.5 w-3.5" />Gestão SG</TabsTrigger>
+            <TabsTrigger value="projetos-pipelines" className="gap-1.5 text-xs"><FolderKanban className="h-3.5 w-3.5" />Projetos & Pipelines</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4 mt-0">
@@ -327,6 +332,14 @@ export default function InfraestruturaDashboard() {
                 searchPlaceholder="Buscar item monitorado..."
               />
             )}
+          </TabsContent>
+
+          <TabsContent value="gestao-sg" className="mt-0">
+            <BIInfraSgsiPanel />
+          </TabsContent>
+
+          <TabsContent value="projetos-pipelines" className="mt-0">
+            <InfraProjetosPanel />
           </TabsContent>
         </Tabs>
       )}
