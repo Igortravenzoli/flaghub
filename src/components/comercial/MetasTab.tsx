@@ -256,6 +256,45 @@ const MetasTab: React.FC<MetasTabProps> = ({
     });
   }, [vendasItems, dateFrom, dateTo]);
 
+  // ── Qtd vendida por produto+mês (itens de venda → realizado) ──
+  const vendaQtyMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const v of vendasFiltradas) {
+      const ym = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
+      if (!ym) continue;
+      for (const item of v.itens ?? []) {
+        const key = `${item.produto}|${ym}`;
+        map.set(key, (map.get(key) ?? 0) + (item.quantidade || 0));
+      }
+    }
+    return map;
+  }, [vendasFiltradas]);
+
+  const qtyVendidaPara = (produto: string, mes: string) => {
+    const d = getMesDate(mes);
+    if (!d) return 0;
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return vendaQtyMap.get(`${produto}|${ym}`) ?? 0;
+  };
+
+  // ── Produtos das metas + meses com meta (para o form de venda) ─
+  const produtosMeta = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of metas) if (m.tipo !== "faturamento") set.add(m.nome_indicador);
+    return [...set].sort();
+  }, [metas]);
+
+  const metaMesSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of metas) {
+      if (m.tipo === "faturamento") continue;
+      const d = getMesDate(m.mes);
+      if (!d) continue;
+      s.add(`${m.nome_indicador}|${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    return s;
+  }, [metas]);
+
   // ── Pillar 1: Meta de Faturamento (combined) ─────────────────
   const faturamentoStats = useMemo(() => {
     const parseValor = (raw0: string) => {
@@ -374,6 +413,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
     };
 
     // Metas de produto → quantidade + contribuição financeira (realizado × vu)
+    // realQty combina o manual com o vendido via itens de venda (sem dupla digitação)
     for (const m of metasProduto) {
       const d = getMesDate(m.mes);
       if (!d) continue;
@@ -381,7 +421,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
       const a = ensure(k);
       a.metaQty += parseFloat(m.valor) || 0;
       const rq = parseInt(m.realizado) || 0;
-      a.realQty += rq;
+      a.realQty += rq + (vendaQtyMap.get(`${m.nome_indicador}|${k}`) ?? 0);
       a.finReal += rq * (parseFloat(m.valor_unitario) || 0);
     }
     // Metas de faturamento cadastradas → target financeiro do mês
@@ -440,24 +480,24 @@ const MetasTab: React.FC<MetasTabProps> = ({
         financeiro: pctOf(a.finReal, a.finMeta),
       };
     });
-  }, [metasProduto, metasFaturamento, vendasFiltradas, waveView]);
+  }, [metasProduto, metasFaturamento, vendasFiltradas, vendaQtyMap, waveView]);
 
-  // ── Pillar 2: Meta Produtos KPIs ─────────────────────────────
+  // ── Pillar 2: Meta Produtos KPIs (manual + vendas) ───────────
   const kpisProdutos = useMemo(() => {
+    const realizadoDe = (m: (typeof metasProduto)[number]) =>
+      (parseInt(m.realizado) || 0) + qtyVendidaPara(m.nome_indicador, m.mes);
     const batidas = metasProduto.filter((m) => {
       const metaQty = parseFloat(m.valor) || 0;
-      const realizadoQty = parseInt(m.realizado) || 0;
-      return metaQty > 0 && realizadoQty >= metaQty;
+      return metaQty > 0 && realizadoDe(m) >= metaQty;
     }).length;
-    const semRealizado = metasProduto.filter(
-      (m) => !m.realizado || parseInt(m.realizado) === 0
-    ).length;
+    const semRealizado = metasProduto.filter((m) => realizadoDe(m) === 0).length;
     const pctBatidas =
       metasProduto.length > 0
         ? Math.round((batidas / metasProduto.length) * 1000) / 10
         : 0;
     return { batidas, semRealizado, pctBatidas, total: metasProduto.length };
-  }, [metasProduto]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metasProduto, vendaQtyMap]);
 
   // ── Pillar 3: Venda Produtos ──────────────────────────────────
   const vendaStats = useMemo(() => {
@@ -620,6 +660,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
       closed_date: v.closed_date ? v.closed_date.slice(0, 10) : "",
       period_month: v.period_month ? v.period_month.slice(0, 10) : "",
       source_sheet: v.source_sheet ?? "Venda_Produtos",
+      itens: (v.itens ?? []).map((i) => ({ produto: i.produto, quantidade: String(i.quantidade) })),
     };
   }
 
@@ -1117,7 +1158,9 @@ const MetasTab: React.FC<MetasTabProps> = ({
               <tbody>
                 {metasProduto.map((meta) => {
                   const metaQty = parseFloat(meta.valor) || 0;
-                  const realizadoQty = parseInt(meta.realizado) || 0;
+                  const manualQty = parseInt(meta.realizado) || 0;
+                  const vendaQty = qtyVendidaPara(meta.nome_indicador, meta.mes);
+                  const realizadoQty = manualQty + vendaQty;
                   const vu = parseFloat(meta.valor_unitario) || 0;
                   const metaValorTotal = parseFloat(meta.meta_valor_total || "") || 0;
                   const metaValor = metaValorTotal > 0 ? metaValorTotal : metaQty * vu;
@@ -1145,12 +1188,22 @@ const MetasTab: React.FC<MetasTabProps> = ({
                       </td>
 
                       <td className="px-3 py-2 text-center font-mono">
-                        {meta.realizado ? (
-                          <span
-                            style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}
-                          >
-                            {realizadoQty.toLocaleString("pt-BR")}
-                          </span>
+                        {realizadoQty > 0 ? (
+                          <div>
+                            <span
+                              style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}
+                            >
+                              {realizadoQty.toLocaleString("pt-BR")}
+                            </span>
+                            {vendaQty > 0 && (
+                              <span
+                                className="block text-[10px] text-muted-foreground font-sans"
+                                title={`${manualQty} manual + ${vendaQty} via Venda Produtos`}
+                              >
+                                {manualQty > 0 ? `${manualQty} + ${vendaQty} vendas` : "via vendas"}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -1171,7 +1224,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                       )}
 
                       <td className="px-3 py-2">
-                        {metaQty > 0 && meta.realizado ? (
+                        {metaQty > 0 && realizadoQty > 0 ? (
                           <PctBar value={p} />
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
@@ -1303,6 +1356,14 @@ const MetasTab: React.FC<MetasTabProps> = ({
                         <span title={venda.deal_title ?? ""} className="block truncate">
                           {venda.deal_title || "—"}
                         </span>
+                        {(venda.itens?.length ?? 0) > 0 && (
+                          <span
+                            className="block truncate text-[11px] text-muted-foreground font-normal"
+                            title={venda.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(", ")}
+                          >
+                            {venda.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(", ")}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-xs">
                         {venda.organization ? (
@@ -1436,6 +1497,8 @@ const MetasTab: React.FC<MetasTabProps> = ({
         onSubmit={handleVendaSubmit}
         initialData={editingVendaId ? vendaToFormData(editingVendaId) : undefined}
         mode={editingVendaId ? "edit" : "create"}
+        produtosDisponiveis={produtosMeta}
+        hasMetaFor={(produto, ym) => metaMesSet.has(`${produto}|${ym}`)}
       />
     </div>
   );
