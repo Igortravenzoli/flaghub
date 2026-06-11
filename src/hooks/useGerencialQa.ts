@@ -71,12 +71,11 @@ export interface GerencialQaItemRow {
   qualidade_days: number | null;
 }
 
-export function useQaEncerramentosPorUsuario(sprintCode?: string, dateStart?: string, dateEnd?: string) {
+export function useQaEncerramentosPorUsuario(dateStart?: string, dateEnd?: string) {
   return useQuery({
-    queryKey: ['qa-encerramentos-usuario', sprintCode, dateStart, dateEnd],
+    queryKey: ['qa-encerramentos-usuario', dateStart, dateEnd],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('rpc_qa_encerramentos_por_usuario', {
-        p_sprint_code: sprintCode || null,
         p_date_start: dateStart || null,
         p_date_end: dateEnd || null,
       });
@@ -84,6 +83,108 @@ export function useQaEncerramentosPorUsuario(sprintCode?: string, dateStart?: st
       return (data || []) as unknown as QaEncerramentoUsuarioRow[];
     },
     staleTime: 2 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+// ── Visão atemporal (alinhada à query oficial do DevOps) ─────────────────────
+// Concluído = qualquer tipo + Done + Closed By autorizado; retorno = tag RETORNO QA.
+
+export interface QaAtemporalSummary {
+  concluidos: number;
+  com_retorno: number;
+  sem_retorno: number;
+  pct_sem_retorno: number;
+  qtd_tasks: number;
+  qtd_pbis: number;
+  qtd_bugs: number;
+  qtd_outros: number;
+}
+
+export function useQaAtemporalSummary(dateStart?: string, dateEnd?: string) {
+  return useQuery({
+    queryKey: ['qa-atemporal-summary', dateStart, dateEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('rpc_qa_atemporal_summary', {
+        p_date_start: dateStart || null,
+        p_date_end: dateEnd || null,
+      });
+      if (error) throw error;
+      return ((data || []) as unknown as QaAtemporalSummary[])[0] ?? null;
+    },
+    staleTime: 2 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export interface QaItemAtemporalRow {
+  work_item_id: number;
+  title: string | null;
+  work_item_type: string | null;
+  closed_by: string | null;
+  closed_date: string | null;
+  sprint_periodo: string | null;
+  sprint_origem: string;
+  tem_retorno: boolean;
+  tags: string | null;
+  web_url: string | null;
+}
+
+export function useQaItemsAtemporal(dateStart?: string, dateEnd?: string) {
+  return useQuery({
+    queryKey: ['qa-items-atemporal', dateStart, dateEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('rpc_qa_items_atemporal', {
+        p_date_start: dateStart || null,
+        p_date_end: dateEnd || null,
+      });
+      if (error) throw error;
+      return (data || []) as unknown as QaItemAtemporalRow[];
+    },
+    staleTime: 2 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export interface QaClosedSprintPeriodoRow {
+  sprint_periodo: string;
+  sprint_origem: string;
+  qtd: number;
+  com_retorno: number;
+}
+
+export function useQaClosedPorSprintPeriodo(year: number) {
+  return useQuery({
+    queryKey: ['qa-closed-sprint-periodo', year],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('rpc_qa_closed_por_sprint_periodo', {
+        p_year: year,
+      });
+      if (error) throw error;
+      return (data || []) as unknown as QaClosedSprintPeriodoRow[];
+    },
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export interface QaHandoffRow {
+  dia: string;
+  entradas: number;
+}
+
+export function useQaHandoffHistogram(dateStart?: string, dateEnd?: string) {
+  return useQuery({
+    queryKey: ['qa-handoff-histogram', dateStart, dateEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('rpc_qa_handoff_histogram', {
+        p_date_start: dateStart || null,
+        p_date_end: dateEnd || null,
+      });
+      if (error) throw error;
+      return (data || []) as unknown as QaHandoffRow[];
+    },
+    staleTime: 5 * 60 * 1000,
     placeholderData: keepPreviousData,
   });
 }

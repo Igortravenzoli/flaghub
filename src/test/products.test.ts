@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractProducts, normalizeProduct, KNOWN_PRODUCTS } from '@/lib/products';
+import { extractProducts, extractClients, classifyTag, normalizeProduct, KNOWN_PRODUCTS } from '@/lib/products';
 
 describe('products', () => {
   it('extracts only known product tags from a tags string', () => {
@@ -21,7 +21,24 @@ describe('products', () => {
 
   it('exposes the known products allowlist', () => {
     expect(KNOWN_PRODUCTS.has('FLEXXSALES')).toBe(true);
+    expect(KNOWN_PRODUCTS.has('FLEXXSPEED')).toBe(true);
     expect(KNOWN_PRODUCTS.has('UNKNOWN')).toBe(false);
+  });
+
+  it('classifies tags as produto, marcador or cliente', () => {
+    expect(classifyTag('FLEXX')).toBe('produto');
+    expect(classifyTag('flexxpromo')).toBe('produto');
+    expect(classifyTag('RETORNO QA')).toBe('marcador');
+    expect(classifyTag('bug')).toBe('marcador');
+    expect(classifyTag('HEINEKEN')).toBe('cliente');
+    expect(classifyTag('BROKERMAIS')).toBe('cliente');
+  });
+
+  it('extracts client tags (neither product nor marker)', () => {
+    expect(extractClients('FLEXX;HEINEKEN;RETORNO QA;BUG')).toEqual(['HEINEKEN']);
+    expect(extractClients('NESTLE;RIONORTE')).toEqual(['NESTLE', 'RIONORTE']);
+    expect(extractClients('FLEXX;BUG;PRIORIZACAO')).toEqual([]);
+    expect(extractClients(null)).toEqual([]);
   });
 });
 

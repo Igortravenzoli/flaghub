@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  useGerencialQa, useQaDesempenho, useQaEncerramentosPorUsuario, useGerencialQaItems,
+  useGerencialQa, useQaDesempenho, useQaEncerramentosPorUsuario,
+  useQaAtemporalSummary, useQaItemsAtemporal, useQaClosedPorSprintPeriodo, useQaHandoffHistogram,
   type GerencialQaRow,
 } from '@/hooks/useGerencialQa';
-import { extractProducts, normalizeProduct } from '@/lib/products';
-import { useQaHistoricalSeries } from '@/hooks/useSprintHistorical';
+import { extractProducts, normalizeProduct, extractClients } from '@/lib/products';
 import { QaKpiCard } from '@/components/qualidade/QaKpiCard';
 import { QaPillarCard } from '@/components/qualidade/QaPillarCard';
-import { QA_HEALTH, QA_CHART_SERIES, QA_SOURCE_COLORS, QA_TONES, thresholdColorHigh, thresholdColorLow } from '@/lib/qaTheme';
+import { QA_HEALTH, QA_CHART_SERIES, QA_TONES, thresholdColorHigh, thresholdColorLow } from '@/lib/qaTheme';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -18,45 +18,19 @@ import { SortableTableHead, useTableSort } from '@/components/gerencial/Sortable
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   LineChart, Line, Legend, Tooltip as RTooltip, Cell,
-  PieChart, Pie,
+  PieChart, Pie, ReferenceLine,
 } from 'recharts';
 import {
-  CheckCircle2, XCircle, Clock, ShieldCheck,
-  Users, TrendingUp, Info, AlertTriangle,
+  CheckCircle2, XCircle, ShieldCheck,
+  Users, TrendingUp, Info, AlertTriangle, ExternalLink,
 } from 'lucide-react';
-import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
+import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
 const HEALTH_COLORS = QA_HEALTH;
 
 const SERIES_COLORS = QA_CHART_SERIES;
 
-const SOURCE_META: Record<string, { label: string; color: string }> = {
-  fim_sprint_reconstruido: { label: 'Reconstruído (fim de sprint)', color: QA_SOURCE_COLORS.fim_sprint_reconstruido },
-  estado_atual: { label: 'Estado atual', color: QA_SOURCE_COLORS.estado_atual },
-  manual: { label: 'Manual', color: QA_SOURCE_COLORS.manual },
-};
-function sourceMeta(source?: string) {
-  return SOURCE_META[source || ''] || { label: source || '—', color: '#94a3b8' };
-}
-
-function HistoricalTooltip({ active, payload }: { active?: boolean; payload?: any[] }) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0]?.payload;
-  if (!d) return null;
-  const meta = sourceMeta(d.source);
-  return (
-    <div className="rounded-md border bg-background p-2 text-xs shadow-md">
-      <div className="font-medium">{d.sprint_code}</div>
-      <div>Concluídos (Closed By): <b>{d.concluidos}</b></div>
-      <div className="text-muted-foreground">sem retorno {d.sem_retorno} · com retorno {d.com_retorno}</div>
-      <div className="mt-1 flex items-center gap-1">
-        <span className="inline-block h-2 w-2 rounded-full" style={{ background: meta.color }} />
-        {meta.label}
-      </div>
-      {d.as_of && <div className="text-muted-foreground">em {new Date(d.as_of).toLocaleString('pt-BR')}</div>}
-    </div>
-  );
-}
+type QaDrillFilter = 'concluidos' | 'sem_retorno' | 'com_retorno' | null;
 
 interface GerencialQaPanelProps {
   lockedSprintCode?: string | null;
@@ -76,10 +50,13 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
 
   const { data: qaRows, isLoading: qaLoading } = useGerencialQa(lockedSprintCode || undefined, dateStartIso, dateEndIso);
   const { data: desempenho, isLoading: desLoading } = useQaDesempenho(lockedSprintCode || undefined, dateStartIso, dateEndIso);
-  const { data: encerramentos } = useQaEncerramentosPorUsuario(lockedSprintCode || undefined, dateStartIso, dateEndIso);
-  const { data: qaItems } = useGerencialQaItems(lockedSprintCode || undefined, dateStartIso, dateEndIso);
+  const { data: encerramentos } = useQaEncerramentosPorUsuario(dateStartIso, dateEndIso);
   const historicalYear = new Date().getFullYear();
-  const { data: qaHistorical } = useQaHistoricalSeries(historicalYear);
+  const { data: atemporal, isLoading: atemporalLoading } = useQaAtemporalSummary(dateStartIso, dateEndIso);
+  const { data: qaItems } = useQaItemsAtemporal(dateStartIso, dateEndIso);
+  const { data: closedPorPeriodo } = useQaClosedPorSprintPeriodo(historicalYear);
+  const { data: handoff } = useQaHandoffHistogram(dateStartIso, dateEndIso);
+  const [kpiDrill, setKpiDrill] = useState<QaDrillFilter>(null);
 
   const sprints = useMemo(
     () => Array.from(new Set((qaRows || []).map(r => r.sprint_code).filter(Boolean))),
@@ -182,22 +159,22 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
     [encerramentos]
   );
 
-  // Item 4 — retornos por produto/sistema (soma de ciclos de retorno por produto)
+  // Retornos por produto/sistema (itens com tag RETORNO QA, por produto)
   const retornosPorProduto = useMemo(() => {
     if (!qaItems?.length) return [];
     const map = new Map<string, number>();
     for (const it of qaItems) {
-      if ((it.qa_return_count || 0) <= 0) continue;
+      if (!it.tem_retorno) continue;
       const produtos = extractProducts(it.tags);
       const labels = produtos.length > 0 ? produtos.map(normalizeProduct) : ['Sem produto'];
-      for (const p of labels) map.set(p, (map.get(p) || 0) + it.qa_return_count);
+      for (const p of labels) map.set(p, (map.get(p) || 0) + 1);
     }
     return Array.from(map.entries())
       .map(([produto, retornos]) => ({ produto, retornos }))
       .sort((a, b) => b.retornos - a.retornos);
   }, [qaItems]);
 
-  // Item 5 — volumetria de trabalho por produto/sistema (contagem de itens)
+  // Volumetria de trabalho por produto/sistema (contagem de itens concluídos QA)
   const volumetriaPorProduto = useMemo(() => {
     if (!qaItems?.length) return [];
     const map = new Map<string, number>();
@@ -211,26 +188,98 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
       .sort((a, b) => b.itens - a.itens);
   }, [qaItems]);
 
-  // Histórico (snapshots) — qa_concluidos por sprint + procedência
-  const historicalData = useMemo(() =>
-    (qaHistorical || []).map(h => ({
-      sprint: h.sprint_code?.split('-')[0] || h.sprint_code,
-      sprint_code: h.sprint_code,
-      concluidos: h.qa_concluidos,
-      sem_retorno: h.qa_concluidos_sem_retorno,
-      com_retorno: h.qa_concluidos_com_retorno,
-      taxa: h.qa_return_rate_pct,
-      source: h.snapshot_source,
-      as_of: h.as_of_datetime,
-    })),
-    [qaHistorical]
-  );
-  const historicalReconCount = useMemo(
-    () => (qaHistorical || []).filter(h => h.snapshot_source === 'fim_sprint_reconstruido').length,
-    [qaHistorical]
+  // Tasks por cliente (tags que não são produto nem marcador de processo)
+  const tasksPorCliente = useMemo(() => {
+    if (!qaItems?.length) return [];
+    const map = new Map<string, number>();
+    let semCliente = 0;
+    for (const it of qaItems) {
+      const clientes = extractClients(it.tags);
+      if (clientes.length === 0) { semCliente++; continue; }
+      for (const c of clientes) map.set(c, (map.get(c) || 0) + 1);
+    }
+    const rows = Array.from(map.entries())
+      .map(([cliente, itens]) => ({ cliente, itens }))
+      .sort((a, b) => b.itens - a.itens)
+      .slice(0, 15);
+    if (semCliente > 0) rows.push({ cliente: 'Sem cliente', itens: semCliente });
+    return rows;
+  }, [qaItems]);
+
+  // Histórico atemporal — encerradas DENTRO do período de cada sprint, empilhado por sprint de ORIGEM
+  const origens = useMemo(() => {
+    const set = new Set((closedPorPeriodo || []).map(r => r.sprint_origem));
+    return Array.from(set).sort((a, b) => {
+      if (a === 'Sem sprint') return 1;
+      if (b === 'Sem sprint') return -1;
+      return a.localeCompare(b, undefined, { numeric: true });
+    });
+  }, [closedPorPeriodo]);
+
+  const periodoData = useMemo(() => {
+    if (!closedPorPeriodo?.length) return [];
+    const bySprint = new Map<string, Record<string, number | string>>();
+    for (const r of closedPorPeriodo) {
+      const row = bySprint.get(r.sprint_periodo) || { sprint: r.sprint_periodo, total: 0 };
+      row[r.sprint_origem] = (Number(row[r.sprint_origem]) || 0) + r.qtd;
+      row.total = (Number(row.total) || 0) + r.qtd;
+      bySprint.set(r.sprint_periodo, row);
+    }
+    return Array.from(bySprint.values()).sort((a, b) =>
+      String(a.sprint).localeCompare(String(b.sprint), undefined, { numeric: true })
+    );
+  }, [closedPorPeriodo]);
+
+  const totalPeriodo = useMemo(
+    () => (closedPorPeriodo || []).reduce((s, r) => s + r.qtd, 0),
+    [closedPorPeriodo]
   );
 
-  const isLoading = qaLoading;
+  // Histograma de handoff Dev→QA + marcadores de fim de sprint
+  const handoffData = useMemo(() =>
+    (handoff || []).map(h => ({
+      dia: h.dia,
+      label: new Date(h.dia + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      entradas: h.entradas,
+    })),
+    [handoff]
+  );
+
+  const sprintEndMarkers = useMemo(() => {
+    if (!handoffData.length) return [];
+    const first = handoffData[0].dia;
+    const last = handoffData[handoffData.length - 1].dia;
+    const marks: { dia: string; sprint: string }[] = [];
+    for (let n = 1; n <= 27; n++) {
+      const code = `S${n}-${historicalYear}`;
+      const range = getOfficialSprintRange(code);
+      if (!range) continue;
+      const end = range.to.toISOString().slice(0, 10);
+      if (end >= first && end <= last) marks.push({ dia: end, sprint: code });
+    }
+    return marks;
+  }, [handoffData, historicalYear]);
+
+  const totalHandoff = useMemo(
+    () => (handoff || []).reduce((s, h) => s + h.entradas, 0),
+    [handoff]
+  );
+
+  // Drill-down dos KPIs clicáveis
+  const drillItems = useMemo(() => {
+    if (!kpiDrill || !qaItems?.length) return [];
+    if (kpiDrill === 'com_retorno') return qaItems.filter(i => i.tem_retorno);
+    if (kpiDrill === 'sem_retorno') return qaItems.filter(i => !i.tem_retorno);
+    return qaItems;
+  }, [kpiDrill, qaItems]);
+
+  const drillLabel: Record<Exclude<QaDrillFilter, null>, string> = {
+    concluidos: 'Itens concluídos pelo QA',
+    sem_retorno: 'Encerradas sem retorno',
+    com_retorno: 'Com retorno QA (tag)',
+  };
+
+  const isLoading = qaLoading || atemporalLoading;
 
   return (
     <div className="space-y-6">
@@ -251,35 +300,91 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
         </div>
-      ) : agg ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          <QaKpiCard label="Itens concluídos" value={agg.concluidos} icon={ShieldCheck} tone="primary" delay={0}
-            tooltip="Itens encerrados pelo QA — Closed By autorizado (Thales, Marquin, Rodrigues, Thiago, Alessandro, Mauricio)" />
-          <QaKpiCard label="Encerradas sem Retorno" value={agg.aprovadas} icon={CheckCircle2} tone="success" delay={60}
-            tooltip="Itens encerrados pelo QA sem nenhum retorno" />
-          <QaKpiCard label="Com retorno QA" value={agg.reprovadas} icon={XCircle} delay={120}
-            tone={agg.reprovadas > 5 ? 'danger' : agg.reprovadas > 0 ? 'warning' : 'neutral'}
-            tooltip="Itens encerrados pelo QA com pelo menos 1 retorno" />
-          <QaKpiCard label="% sem retorno" value={agg.taxaAprovacao} suffix="%" decimals={1} icon={TrendingUp} delay={180}
-            tone={agg.taxaAprovacao >= 80 ? 'success' : agg.taxaAprovacao >= 60 ? 'warning' : 'danger'}
-            valueColor={thresholdColorHigh(agg.taxaAprovacao)} progress={agg.taxaAprovacao}
-            tooltip="Percentual de itens concluídos sem retrabalho" />
-          <QaKpiCard label="Crítico (3+)" value={agg.criticos} icon={AlertTriangle} delay={240}
-            tone={agg.criticos > 0 ? 'danger' : 'neutral'}
-            tooltip="Itens com 3 ou mais ciclos de retorno" />
-          <QaKpiCard label="Tempo médio QA" value={agg.avgDays} suffix="d" decimals={1} icon={Clock} tone="info" delay={300}
-            tooltip="Tempo médio (dias) na etapa de qualidade" />
+      ) : atemporal ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          <QaKpiCard label="Itens concluídos" value={atemporal.concluidos} icon={ShieldCheck} tone="primary" delay={0}
+            onClick={() => setKpiDrill(kpiDrill === 'concluidos' ? null : 'concluidos')} active={kpiDrill === 'concluidos'}
+            sublabel={`${atemporal.qtd_tasks} tasks · ${atemporal.qtd_pbis} PBIs · ${atemporal.qtd_bugs} bugs`}
+            tooltip="Qualquer tipo de item em Done com Closed By do QA (mesma régua da query oficial do DevOps). Clique para listar." />
+          <QaKpiCard label="Encerradas sem Retorno" value={atemporal.sem_retorno} icon={CheckCircle2} tone="success" delay={60}
+            onClick={() => setKpiDrill(kpiDrill === 'sem_retorno' ? null : 'sem_retorno')} active={kpiDrill === 'sem_retorno'}
+            tooltip="Concluídos QA sem a tag RETORNO QA. Clique para listar." />
+          <QaKpiCard label="Com retorno QA" value={atemporal.com_retorno} icon={XCircle} delay={120}
+            tone={atemporal.com_retorno > 0 ? 'warning' : 'neutral'}
+            onClick={() => setKpiDrill(kpiDrill === 'com_retorno' ? null : 'com_retorno')} active={kpiDrill === 'com_retorno'}
+            tooltip="Concluídos QA com a tag RETORNO QA (marcador oficial de retorno). Clique para listar." />
+          <QaKpiCard label="% sem retorno" value={atemporal.pct_sem_retorno} suffix="%" decimals={1} icon={TrendingUp} delay={180}
+            tone={atemporal.pct_sem_retorno >= 80 ? 'success' : atemporal.pct_sem_retorno >= 60 ? 'warning' : 'danger'}
+            valueColor={thresholdColorHigh(atemporal.pct_sem_retorno)} progress={atemporal.pct_sem_retorno}
+            tooltip="Percentual de concluídos QA sem a tag RETORNO QA" />
+          <QaKpiCard label="Crítico (3+)" value={agg?.criticos ?? 0} icon={AlertTriangle} delay={240}
+            tone={(agg?.criticos ?? 0) > 0 ? 'danger' : 'neutral'}
+            tooltip="Itens com 3 ou mais ciclos de retorno no histórico de estados" />
         </div>
       ) : null}
+
+      {kpiDrill && (
+        <Card className="animate-fade-in">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              {drillLabel[kpiDrill]}
+              <Badge variant="outline" className="text-xs">{drillItems.length} itens</Badge>
+            </CardTitle>
+            <button onClick={() => setKpiDrill(null)} className="text-xs text-muted-foreground hover:text-foreground">Fechar ✕</button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto max-h-[420px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-20">ID</TableHead>
+                    <TableHead className="w-24">Tipo</TableHead>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Encerrado por</TableHead>
+                    <TableHead className="w-28">Data</TableHead>
+                    <TableHead className="w-28">Sprint origem</TableHead>
+                    <TableHead className="w-24 text-center">Retorno</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {drillItems.map((it) => (
+                    <TableRow key={it.work_item_id}>
+                      <TableCell className="font-mono text-xs">
+                        {it.web_url ? (
+                          <a href={it.web_url} target="_blank" rel="noopener noreferrer"
+                            className="text-primary hover:underline inline-flex items-center gap-0.5">
+                            {it.work_item_id}<ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : it.work_item_id}
+                      </TableCell>
+                      <TableCell><Badge variant="outline" className="text-[10px]">{it.work_item_type || '—'}</Badge></TableCell>
+                      <TableCell className="max-w-[360px] truncate text-sm">{it.title}</TableCell>
+                      <TableCell className="text-sm">{it.closed_by || '—'}</TableCell>
+                      <TableCell className="text-xs">{it.closed_date ? new Date(it.closed_date).toLocaleDateString('pt-BR') : '—'}</TableCell>
+                      <TableCell className="text-xs">{it.sprint_origem}</TableCell>
+                      <TableCell className="text-center">
+                        {it.tem_retorno
+                          ? <Badge variant="destructive" className="text-[10px]">RETORNO QA</Badge>
+                          : <span className="text-muted-foreground text-xs">—</span>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="evolucao" className="space-y-4">
         <TabsList>
           <TabsTrigger value="evolucao">Evolução Sprint</TabsTrigger>
           <TabsTrigger value="encerramentos">Encerramentos QA</TabsTrigger>
-          <TabsTrigger value="historico">Histórico (snapshots)</TabsTrigger>
+          <TabsTrigger value="historico">Histórico por Período</TabsTrigger>
+          <TabsTrigger value="handoff">Handoff Dev→QA</TabsTrigger>
           <TabsTrigger value="produtos">Produtos/Sistemas</TabsTrigger>
           <TabsTrigger value="retrabalho">Retrabalho</TabsTrigger>
           <TabsTrigger value="desempenho">Desempenho QA</TabsTrigger>
@@ -360,7 +465,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               )}
               <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
                 <Info className="h-3.5 w-3.5" />
-                Conta itens encerrados por Closed By autorizado, por sprint.
+                Conta itens (qualquer tipo) encerrados por Closed By autorizado, agrupados pelo período
+                de sprint da data de fechamento.
               </p>
             </CardContent>
           </Card>
@@ -370,46 +476,79 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                Concluídos por Sprint (Closed By) — {historicalYear}
-                <Badge variant="outline" className="ml-2 text-xs">
-                  {historicalReconCount}/{historicalData.length} reconstruídas
-                </Badge>
+                Encerradas no Período de Cada Sprint — {historicalYear}
+                <Badge variant="outline" className="ml-2 text-xs">{totalPeriodo} encerramentos</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {historicalData.length > 0 ? (
+              {periodoData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={historicalData}>
+                  <ResponsiveContainer width="100%" height={340}>
+                    <BarChart data={periodoData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                       <XAxis dataKey="sprint" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <RTooltip content={<HistoricalTooltip />} />
-                      <Bar dataKey="concluidos" name="Concluídos (Closed By)">
-                        {historicalData.map((d, i) => (
-                          <Cell key={i} fill={sourceMeta(d.source).color} />
-                        ))}
-                      </Bar>
+                      <RTooltip />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      {origens.map((o, i) => (
+                        <Bar key={o} dataKey={o} stackId="origem" name={o}
+                          fill={o === 'Sem sprint' ? '#94a3b8' : SERIES_COLORS[i % SERIES_COLORS.length]} />
+                      ))}
                     </BarChart>
                   </ResponsiveContainer>
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: SOURCE_META.fim_sprint_reconstruido.color }} />
-                      {SOURCE_META.fim_sprint_reconstruido.label}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: SOURCE_META.estado_atual.color }} />
-                      {SOURCE_META.estado_atual.label}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Info className="h-3.5 w-3.5" />
-                      "Reconstruído" = estado real no fim da sprint (via histórico de transições); "Estado atual" = estado das tasks na captura.
-                    </span>
-                  </div>
+                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                    <Info className="h-3.5 w-3.5" />
+                    QA é atemporal: cada barra conta o que foi ENCERRADO dentro do período oficial da sprint
+                    (data de fechamento), empilhado pela sprint de ORIGEM da task. Ex.: tasks alocadas na S6
+                    e encerradas na S9 contam na barra da S9, na cor da S6.
+                  </p>
                 </>
               ) : (
                 <p className="text-muted-foreground text-sm py-8 text-center">
-                  Sem snapshots históricos para {historicalYear}.
+                  Sem encerramentos registrados em {historicalYear}.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="handoff" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                Distribuição de Tasks ao QA (entradas em "Em Teste")
+                <Badge variant="outline" className="ml-2 text-xs">{totalHandoff} entradas</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {handoffData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={handoffData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                      <XAxis dataKey="label" tick={{ fontSize: 9 }} interval="preserveStartEnd" minTickGap={24} />
+                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <RTooltip />
+                      {sprintEndMarkers.map(m => {
+                        const point = handoffData.find(h => h.dia === m.dia);
+                        return point ? (
+                          <ReferenceLine key={m.sprint} x={point.label} stroke={QA_TONES.danger.solid}
+                            strokeDasharray="4 3" label={{ value: `fim ${m.sprint.split('-')[0]}`, fontSize: 9, fill: QA_TONES.danger.solid, position: 'top' }} />
+                        ) : null;
+                      })}
+                      <Bar dataKey="entradas" fill={QA_TONES.info.solid} name="Itens entregues ao QA" radius={[2,2,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                    <Info className="h-3.5 w-3.5" />
+                    Volume diário de itens transicionados para "Em Teste" (handoff do desenvolvimento ao QA).
+                    Linhas tracejadas marcam o fim de cada sprint — picos próximos delas indicam concentração
+                    de entregas no fim da sprint. Cobertura cresce conforme o histórico das Tasks é sincronizado.
+                  </p>
+                </>
+              ) : (
+                <p className="text-muted-foreground text-sm py-8 text-center">
+                  Sem entradas em "Em Teste" registradas no recorte.
                 </p>
               )}
             </CardContent>
@@ -455,11 +594,41 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                 ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
                 <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
                   <Info className="h-3.5 w-3.5" />
-                  Volumetria por produto (tag do item). Bandeira comercial por cliente ainda não vinculável aos work items.
+                  Volumetria por produto (tag do item), sobre os concluídos pelo QA.
                 </p>
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Tasks Trabalhadas por Cliente</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {tasksPorCliente.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={Math.max(220, tasksPorCliente.length * 26)}>
+                    <BarChart data={tasksPorCliente} layout="vertical" margin={{ left: 30 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                      <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <YAxis type="category" dataKey="cliente" tick={{ fontSize: 10 }} width={130} />
+                      <RTooltip />
+                      <Bar dataKey="itens" name="Tasks" radius={[0,4,4,0]}>
+                        {tasksPorCliente.map((c, i) => (
+                          <Cell key={i} fill={c.cliente === 'Sem cliente' ? '#94a3b8' : QA_TONES.violet.solid} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                    <Info className="h-3.5 w-3.5" />
+                    Cliente identificado pela tag do work item (ex.: HEINEKEN, RIONORTE, BROKERxxx).
+                    Itens sem tag de cliente entram em "Sem cliente".
+                  </p>
+                </>
+              ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="retrabalho" className="space-y-4">
@@ -473,7 +642,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               progress={agg.taxaRetrabalho} progressColor={thresholdColorLow(agg.taxaRetrabalho)}
               stats={[
                 { label: 'Crítico 3+', value: agg.criticos, color: agg.criticos > 0 ? QA_TONES.danger.solid : undefined },
-                { label: 'Tempo médio QA', value: `${agg.avgDays}d` },
+                { label: 'Com retorno (tag)', value: atemporal?.com_retorno ?? 0, color: (atemporal?.com_retorno ?? 0) > 0 ? QA_TONES.warning.solid : undefined },
               ]}
               className="max-w-sm"
             />
