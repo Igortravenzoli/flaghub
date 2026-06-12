@@ -10,10 +10,54 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   FolderKanban, GitBranch, Workflow, Target, CheckCircle2, AlertTriangle,
-  Archive, HelpCircle, Rocket, Database, Wand2,
+  Archive, HelpCircle, Rocket, Database, Wand2, Filter, ChevronRight,
 } from 'lucide-react';
+
+// Filtro de coluna estilo funil com multi-seleção (vazio = todos)
+function FunnelFilter({ opcoes, sel, onChange }: {
+  opcoes: { value: string; label: string }[];
+  sel: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const ativo = sel.size > 0;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Filtrar coluna"
+          className={`inline-flex items-center ml-1 align-middle transition-colors ${ativo ? 'text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}`}
+        >
+          <Filter className={`h-3 w-3 ${ativo ? 'fill-current' : ''}`} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        {opcoes.map((o) => (
+          <DropdownMenuCheckboxItem
+            key={o.value}
+            checked={sel.has(o.value)}
+            onCheckedChange={() => {
+              const next = new Set(sel);
+              if (next.has(o.value)) next.delete(o.value); else next.add(o.value);
+              onChange(next);
+            }}
+            onSelect={(e) => e.preventDefault()}
+            className="text-xs"
+          >
+            {o.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuCheckboxItem checked={!ativo} onCheckedChange={() => onChange(new Set())} onSelect={(e) => e.preventDefault()} className="text-xs">
+          Todos (limpar)
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 // ── Constantes ────────────────────────────────────────────────────────
 // Visão gerencial: Projetos → Repositórios → Pipelines ativas, com
@@ -47,6 +91,30 @@ export function DevopsCoberturaPanel() {
   const classificar = useClassificarRepo();
   const [filtro, setFiltro] = useState<RepoFiltro>('todos');
   const [bulkPending, setBulkPending] = useState(false);
+  // Tabela analítica: agrupamento por projeto + filtros de coluna (funil)
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const [fCicd, setFCicd] = useState<Set<string>>(new Set());
+  const [fSituacao, setFSituacao] = useState<Set<string>>(new Set());
+  const [fAplicavel, setFAplicavel] = useState<Set<string>>(new Set());
+
+  const situacaoDe = (r: DevopsRepo) => {
+    if (r.is_disabled) return 'desabilitado';
+    const dias = diasDesde(r.last_commit_date);
+    return dias != null && dias > LEGADO_DIAS_SEM_COMMIT ? 'legado' : 'ativo';
+  };
+  const cicdKeyDe = (r: DevopsRepo) => {
+    const nivel = ciCdNivel(r);
+    return nivel === 'descoberto' ? 'sem_pipeline' : nivel;
+  };
+  const aplicavelKeyDe = (r: DevopsRepo) =>
+    r.aplicavel === true ? 'aplicavel' : r.aplicavel === false ? 'nao_aplicavel' : 'pendente';
+
+  const toggleExpandido = (proj: string) =>
+    setExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(proj)) next.delete(proj); else next.add(proj);
+      return next;
+    });
 
   const legadosAuto = useMemo(() => reposLegadoAutomatico(repos ?? [], LEGADO_DIAS_SEM_COMMIT), [repos]);
 
@@ -85,6 +153,25 @@ export function DevopsCoberturaPanel() {
       default: return lista;
     }
   }, [repos, filtro]);
+
+  // Filtros de coluna (funil) aplicados sobre os chips
+  const reposFiltrados = useMemo(() => filtrados.filter((r) => {
+    if (fCicd.size > 0 && !fCicd.has(cicdKeyDe(r))) return false;
+    if (fSituacao.size > 0 && !fSituacao.has(situacaoDe(r))) return false;
+    if (fAplicavel.size > 0 && !fAplicavel.has(aplicavelKeyDe(r))) return false;
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [filtrados, fCicd, fSituacao, fAplicavel]);
+
+  // Agrupamento por projeto
+  const grupos = useMemo(() => {
+    const map = new Map<string, DevopsRepo[]>();
+    for (const r of reposFiltrados) {
+      if (!map.has(r.project_name)) map.set(r.project_name, []);
+      map.get(r.project_name)!.push(r);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [reposFiltrados]);
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
@@ -269,7 +356,7 @@ export function DevopsCoberturaPanel() {
             {filtro !== 'todos' && <Badge variant="secondary" className="text-[10px]">{filtro.replace('_', ' ')}</Badge>}
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            {filtrados.length} repositório{filtrados.length !== 1 ? 's' : ''} · classifique a aplicabilidade para compor a cobertura
+            {reposFiltrados.length} repositório{reposFiltrados.length !== 1 ? 's' : ''} em {grupos.length} projeto{grupos.length !== 1 ? 's' : ''} · clique no projeto para expandir · funil nas colunas filtra
           </p>
         </CardHeader>
         <CardContent className="p-0">
@@ -280,81 +367,148 @@ export function DevopsCoberturaPanel() {
               <p className="text-sm text-muted-foreground">Nenhum repositório sincronizado ainda.</p>
               <p className="text-xs text-muted-foreground">Use "Sincronizar repositórios DevOps" no menu de sincronização do setor.</p>
             </div>
-          ) : filtrados.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">Nenhum repositório para o filtro selecionado.</p>
+          ) : reposFiltrados.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">Nenhum repositório para os filtros selecionados.</p>
           ) : (
             <div className="overflow-x-auto">
+              <div className="flex items-center justify-end gap-2 px-4 py-1.5 border-b border-border/60">
+                <button type="button" className="text-[11px] text-muted-foreground hover:text-foreground transition-colors" onClick={() => setExpandidos(new Set(grupos.map(([p]) => p)))}>Expandir todos</button>
+                <span className="text-muted-foreground/40">·</span>
+                <button type="button" className="text-[11px] text-muted-foreground hover:text-foreground transition-colors" onClick={() => setExpandidos(new Set())}>Recolher todos</button>
+              </div>
               <table className="w-full text-xs">
                 <thead className="border-b border-border">
                   <tr className="text-muted-foreground text-[11px]">
-                    <th className="py-2 pl-4 pr-3 text-left font-medium">Projeto</th>
-                    <th className="py-2 px-3 text-left font-medium">Repositório</th>
+                    <th className="py-2 pl-4 pr-3 text-left font-medium">Projeto / Repositório</th>
                     <th className="py-2 px-3 text-left font-medium">Último commit</th>
-                    <th className="py-2 px-3 text-center font-medium">Pipelines (ativas/total)</th>
-                    <th className="py-2 px-3 text-left font-medium">CI/CD</th>
-                    <th className="py-2 px-3 text-left font-medium">Situação</th>
-                    <th className="py-2 px-4 text-left font-medium w-44">Aplicável?</th>
+                    <th className="py-2 px-3 text-center font-medium">Pipelines</th>
+                    <th className="py-2 px-3 text-left font-medium whitespace-nowrap">
+                      CI/CD
+                      <FunnelFilter
+                        opcoes={[
+                          { value: 'completo', label: 'Completo (CI+CD)' },
+                          { value: 'parcial', label: 'Parcial (só CI)' },
+                          { value: 'sem_pipeline', label: 'Sem pipeline' },
+                        ]}
+                        sel={fCicd}
+                        onChange={setFCicd}
+                      />
+                    </th>
+                    <th className="py-2 px-3 text-left font-medium whitespace-nowrap">
+                      Situação
+                      <FunnelFilter
+                        opcoes={[
+                          { value: 'ativo', label: 'Ativo' },
+                          { value: 'legado', label: 'Possível legado' },
+                          { value: 'desabilitado', label: 'Desabilitado' },
+                        ]}
+                        sel={fSituacao}
+                        onChange={setFSituacao}
+                      />
+                    </th>
+                    <th className="py-2 px-4 text-left font-medium w-44 whitespace-nowrap">
+                      Aplicável?
+                      <FunnelFilter
+                        opcoes={[
+                          { value: 'aplicavel', label: 'Aplicável' },
+                          { value: 'nao_aplicavel', label: 'Não aplicável' },
+                          { value: 'pendente', label: 'Não classificado' },
+                        ]}
+                        sel={fAplicavel}
+                        onChange={setFAplicavel}
+                      />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrados.map(repo => {
-                    const dias = diasDesde(repo.last_commit_date);
-                    const possLegado = !repo.is_disabled && dias != null && dias > LEGADO_DIAS_SEM_COMMIT;
-                    return (
-                      <tr key={repo.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
-                        <td className="py-2 pl-4 pr-3 text-muted-foreground">{repo.project_name}</td>
-                        <td className="py-2 px-3 font-semibold">
-                          {repo.web_url ? (
-                            <a href={repo.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
-                              <GitBranch className="h-3 w-3" />{repo.name}
-                            </a>
-                          ) : repo.name}
-                        </td>
-                        <td className="py-2 px-3">
-                          {repo.last_commit_date ? (
-                            <span className={possLegado ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
-                              {fmtDate(repo.last_commit_date)}{dias != null && <span className="font-mono"> ({dias}d)</span>}
+                  {grupos.length === 0 && (
+                    <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">Nenhum repositório para os filtros selecionados.</td></tr>
+                  )}
+                  {grupos.map(([proj, lista]) => {
+                    const aberto = expandidos.has(proj);
+                    const ativas = lista.reduce((s, r) => s + r.active_pipeline_count, 0);
+                    const completos = lista.filter(r => ciCdNivel(r) === 'completo').length;
+                    const comCi = lista.filter(r => r.active_pipeline_count > 0).length;
+                    return [
+                      <tr
+                        key={proj}
+                        className="bg-muted/40 border-b border-border cursor-pointer hover:bg-muted/60 transition-colors"
+                        onClick={() => toggleExpandido(proj)}
+                      >
+                        <td colSpan={6} className="py-2 pl-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${aberto ? 'rotate-90' : ''}`} />
+                            <FolderKanban className="h-3.5 w-3.5 text-primary" />
+                            <span className="font-semibold">{proj}</span>
+                            <span className="text-[11px] text-muted-foreground ml-2">
+                              {lista.length} repo{lista.length !== 1 ? 's' : ''} · {comCi} com CI · {completos} CI/CD completo · {ativas} pipelines ativas
                             </span>
-                          ) : <span className="text-muted-foreground">—</span>}
+                          </div>
                         </td>
-                        <td className="py-2 px-3 text-center">
-                          <span className={`font-mono font-bold ${repo.active_pipeline_count > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
-                            {repo.active_pipeline_count}/{repo.pipeline_count}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3">
-                          {(() => {
-                            const nivel = ciCdNivel(repo);
-                            if (nivel === 'completo') return <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/40" title={`${repo.active_pipeline_count} pipeline(s) + ${repo.release_count} release(s) — build ao deploy`}>Completo</Badge>;
-                            if (nivel === 'parcial') return <Badge variant="outline" className="text-[10px] text-blue-600 dark:text-blue-400 border-blue-500/40" title="Pipeline sem release definition — CI sem CD (ou deploy embutido em YAML)">Parcial</Badge>;
-                            return <span className="text-muted-foreground">—</span>;
-                          })()}
-                        </td>
-                        <td className="py-2 px-3">
-                          {repo.is_disabled
-                            ? <Badge variant="outline" className="text-[10px] text-muted-foreground">Desabilitado</Badge>
-                            : possLegado
-                              ? <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-500/40">Possível legado</Badge>
-                              : <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/40">Ativo</Badge>}
-                        </td>
-                        <td className="py-2 px-4">
-                          <Select
-                            value={repo.aplicavel === true ? 'aplicavel' : repo.aplicavel === false ? 'nao_aplicavel' : 'pendente'}
-                            onValueChange={(v) => handleClassificar(repo, v)}
-                            disabled={classificar.isPending}
-                          >
-                            <SelectTrigger className="h-7 text-xs w-40">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pendente">— Classificar</SelectItem>
-                              <SelectItem value="aplicavel">✓ Aplicável</SelectItem>
-                              <SelectItem value="nao_aplicavel">✗ Não aplicável</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </td>
-                      </tr>
-                    );
+                      </tr>,
+                      ...(aberto ? lista.map(repo => {
+                        const dias = diasDesde(repo.last_commit_date);
+                        const possLegado = !repo.is_disabled && dias != null && dias > LEGADO_DIAS_SEM_COMMIT;
+                        const nivel = ciCdNivel(repo);
+                        return (
+                          <tr key={repo.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                            <td className="py-2 pl-10 pr-3 font-semibold">
+                              {repo.web_url ? (
+                                <a href={repo.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                                  <GitBranch className="h-3 w-3" />{repo.name}
+                                </a>
+                              ) : repo.name}
+                            </td>
+                            <td className="py-2 px-3">
+                              {repo.last_commit_date ? (
+                                <span className={possLegado ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>
+                                  {fmtDate(repo.last_commit_date)}{dias != null && <span className="font-mono"> ({dias}d)</span>}
+                                </span>
+                              ) : <span className="text-muted-foreground">—</span>}
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              <span className={`font-mono font-bold ${repo.active_pipeline_count > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
+                                {repo.active_pipeline_count}/{repo.pipeline_count}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 whitespace-nowrap">
+                              {nivel === 'descoberto' ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                <span className="font-mono text-[10px]" title={nivel === 'completo' ? `${repo.active_pipeline_count} pipeline(s) + ${repo.release_count} release(s) — build ao deploy` : 'Pipeline sem release definition — CI sem CD (ou deploy embutido em YAML)'}>
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">CI ✓</span>
+                                  <span className="text-muted-foreground"> · </span>
+                                  <span className={repo.release_count > 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-muted-foreground'}>CD {repo.release_count > 0 ? '✓' : '—'}</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3">
+                              {repo.is_disabled
+                                ? <Badge variant="outline" className="text-[10px] text-muted-foreground">Desabilitado</Badge>
+                                : possLegado
+                                  ? <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-500/40">Possível legado</Badge>
+                                  : <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/40">Ativo</Badge>}
+                            </td>
+                            <td className="py-2 px-4">
+                              <Select
+                                value={repo.aplicavel === true ? 'aplicavel' : repo.aplicavel === false ? 'nao_aplicavel' : 'pendente'}
+                                onValueChange={(v) => handleClassificar(repo, v)}
+                                disabled={classificar.isPending}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-40">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pendente">— Classificar</SelectItem>
+                                  <SelectItem value="aplicavel">✓ Aplicável</SelectItem>
+                                  <SelectItem value="nao_aplicavel">✗ Não aplicável</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </td>
+                          </tr>
+                        );
+                      }) : []),
+                    ];
                   })}
                 </tbody>
               </table>
