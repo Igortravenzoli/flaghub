@@ -2,10 +2,13 @@
 // Fonte: https://flagcom.sharepoint.com/sites/PORTALSGSI (mesma do PBIX
 // "SG-LST Usecase 1.04"). Lê via Microsoft Graph com client credentials.
 //
-// Secrets necessários (Supabase):
-//   SHAREPOINT_TENANT_ID, SHAREPOINT_CLIENT_ID, SHAREPOINT_CLIENT_SECRET
-// App registration no Entra ID com permissão de APLICAÇÃO no Graph:
-//   Sites.Read.All (ou Sites.Selected com grant no site PORTALSGSI).
+// Credenciais (Supabase secrets): usa SHAREPOINT_TENANT_ID/CLIENT_ID/CLIENT_SECRET
+// quando existirem; senão reaproveita o app Entra do Teams
+// (TEAMS_GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET) — o mesmo app atende
+// Teams + SharePoint. [DÉBITO TÉCNICO] renomear o app no Entra ID para um
+// nome que represente a função híbrida (ver docs/DEBITOS_TECNICOS.md).
+// O app precisa da permissão de APLICAÇÃO no Graph: Sites.Read.All
+// (ou Sites.Selected com grant no site PORTALSGSI) + admin consent.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -75,11 +78,11 @@ async function validateAuth(req: Request): Promise<string | null> {
 }
 
 async function acquireGraphToken(): Promise<string> {
-  const tenantId = Deno.env.get('SHAREPOINT_TENANT_ID')
-  const clientId = Deno.env.get('SHAREPOINT_CLIENT_ID')
-  const clientSecret = Deno.env.get('SHAREPOINT_CLIENT_SECRET')
+  const tenantId = Deno.env.get('SHAREPOINT_TENANT_ID') ?? Deno.env.get('TEAMS_GRAPH_TENANT_ID')
+  const clientId = Deno.env.get('SHAREPOINT_CLIENT_ID') ?? Deno.env.get('TEAMS_GRAPH_CLIENT_ID')
+  const clientSecret = Deno.env.get('SHAREPOINT_CLIENT_SECRET') ?? Deno.env.get('TEAMS_GRAPH_CLIENT_SECRET')
   if (!tenantId || !clientId || !clientSecret) {
-    throw new Error('Secrets SHAREPOINT_TENANT_ID / SHAREPOINT_CLIENT_ID / SHAREPOINT_CLIENT_SECRET não configurados')
+    throw new Error('Credenciais Graph ausentes: configure SHAREPOINT_* ou TEAMS_GRAPH_* (tenant/client/secret)')
   }
   const resp = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
     method: 'POST',
