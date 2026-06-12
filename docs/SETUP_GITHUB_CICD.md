@@ -20,10 +20,12 @@ Para ativá-los por completo, faça as configurações abaixo no GitHub (`Igortr
 No environment `prod`, ative **Required reviewers** (você mesmo) — assim toda migration
 em PROD exige aprovação explícita além do `yes-prod` digitado.
 
-### Repository secret (vale para os dois)
-| Secret | Onde obter |
-|--------|-----------|
-| `SUPABASE_ACCESS_TOKEN` | https://supabase.com/dashboard/account/tokens → Generate new token |
+### Repository secrets (valem para todos os workflows)
+| Secret | Onde obter | Usado por |
+|--------|-----------|-----------|
+| `SUPABASE_ACCESS_TOKEN` | https://supabase.com/dashboard/account/tokens → Generate new token | migrate-dev, migrate-prod |
+| `SUPABASE_PROD_DB_URL` | Dashboard PROD → Settings → Database → Connection string (Direct) | backup-prod |
+| `BACKUP_PASSPHRASE` | Gerar senha forte e guardar no cofre da equipe — **sem ela o backup é irrecuperável** | backup-prod |
 
 ## 2. Code security (Settings → Code security and analysis)
 
@@ -55,7 +57,12 @@ push em dev ──► CI + Security rodam ──► migrate-dev aplica migration
 PR dev → main ──► CI + Security como required checks ──► merge só se verde
 push em main ──► Vercel faz production deploy
 migrations PROD ──► manual: Actions → "Migration — PROD" → confirm "yes-prod" + aprovação
+backup PROD ──► diário 03:00 BRT: dump criptografado retido 30 dias como artifact
 ```
+
+> **Backup v2 (futuro):** mover o destino de artifact do GitHub para storage externo
+> (S3/Azure Blob/SharePoint) com retenção GFS (7 diários/4 semanais/12 mensais) e
+> agendar teste de restore mensal no projeto DEV — Fase 5 do plano.
 
 ## Observações
 

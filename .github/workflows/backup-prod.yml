@@ -1,0 +1,67 @@
+name: Backup — PROD
+
+# Dump lógico diário da base de produção, criptografado, retido por 30 dias
+# como artifact do workflow. Também executável manualmente.
+#
+# Secrets necessários (repository secrets):
+#   SUPABASE_PROD_DB_URL  — connection string direta (Settings → Database → Connection string)
+#   BACKUP_PASSPHRASE     — senha forte para criptografia simétrica (guardar no cofre da equipe;
+#                           sem ela o backup é IRRECUPERÁVEL)
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC = 03:00 BRT, diário
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Dump + criptografia + retenção
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Dump (roles, schema, data)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: |
+          mkdir -p backup
+          supabase db dump --db-url "$DB_URL" -f backup/roles.sql --role-only
+          supabase db dump --db-url "$DB_URL" -f backup/schema.sql
+          supabase db dump --db-url "$DB_URL" -f backup/data.sql --data-only --use-copy
+          ls -lh backup/
+
+      - name: Compactar e criptografar
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          tar -czf "flaghub-prod-$STAMP.tar.gz" backup/
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+              --passphrase "$BACKUP_PASSPHRASE" \
+              -o "flaghub-prod-$STAMP.tar.gz.gpg" "flaghub-prod-$STAMP.tar.gz"
+          rm "flaghub-prod-$STAMP.tar.gz"
+          rm -rf backup/
+          echo "ARTIFACT_NAME=flaghub-prod-$STAMP" >> "$GITHUB_ENV"
+          ls -lh flaghub-prod-*.gpg
+
+      - name: Upload artifact (retenção 30 dias)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: "*.tar.gz.gpg"
+          retention-days: 30
+          if-no-files-found: error
+
+      # Para restaurar:
+      #   gpg --decrypt --passphrase "$BACKUP_PASSPHRASE" flaghub-prod-<stamp>.tar.gz.gpg > backup.tar.gz
+      #   tar -xzf backup.tar.gz
+      #   psql "$DB_URL_DESTINO" -f backup/roles.sql
+      #   psql "$DB_URL_DESTINO" -f backup/schema.sql
+      #   psql "$DB_URL_DESTINO" -f backup/data.sql
+      # Teste de restore mensal no projeto DEV: ver docs/PLANO_DEVOPS_CICD_BACKUP.md (Fase 5).
