@@ -1,5 +1,8 @@
 -- ============================================================================
--- Migration: 20260609120000_qa_closed_by.sql
+-- Migration: 20260609120500_qa_closed_by.sql
+-- (renomeada de 20260609120000 em 12/06/2026: versão duplicada com
+--  add_meta_valor_total quebrava o registro em schema_migrations no CI.
+--  Conteúdo 100% idempotente — reaplicação em DEV/PROD é no-op.)
 -- DASH QA — Conceito de "concluído" por Closed By
 --
 -- Para o DASH QA, um item só é "concluído" quando o Closed By for um dos
