@@ -41,10 +41,10 @@ ON CONFLICT (produto, tipo, mes_referencia) DO NOTHING;
 INSERT INTO comercial_vendas
   (deal_title, organization, observation, deal_value, closed_date, period_month, source_sheet, created_at)
 VALUES
-  ('Pam Dist. - ERP completo',                                       'Outros',          'Novo Cliente',                             18400.00, '2026-04-30', '2026-04', 'Venda_Produtos', NOW()),
-  ('Dist. Lopes - Licença Consulta, sem edição de dados - D.C',      'Garoto (Nestlé)', '',                                        10560.00, '2026-04-30', '2026-04', 'Venda_Produtos', NOW()),
-  ('Renovação Contratual Anual - Clientes - Abril/2026',             'Flag',            'Novo Cliente',                              2581.32, '2026-04-23', '2026-04', 'Venda_Produtos', NOW()),
-  ('Renovação Contratual Anual - Clientes - Mar/26',                 'Flag',            'Novo Cliente',                              8529.12, '2026-04-23', '2026-04', 'Venda_Produtos', NOW()),
-  ('Faturamento Merchan - Extra Nestlé',                             'Nestlé',          'Novo Cliente',                              7770.62, '2026-04-10', '2026-04', 'Venda_Produtos', NOW()),
-  ('Alegari - ERP Completo',                                         'Flag',            'Novo Cliente',                             63380.00, '2026-04-23', '2026-04', 'Venda_Produtos', NOW()),
-  ('Nestlé Merchan | Faturamento Maio 2026',                         'Flag',            'Receita Recorrente / Faturamento Mensal',   7009.86, '2026-05-21', '2026-05', 'Venda_Produtos', NOW());
+  ('Pam Dist. - ERP completo',                                       'Outros',          'Novo Cliente',                             18400.00, '2026-04-30', '2026-04-01', 'Venda_Produtos', NOW()),
+  ('Dist. Lopes - Licença Consulta, sem edição de dados - D.C',      'Garoto (Nestlé)', '',                                        10560.00, '2026-04-30', '2026-04-01', 'Venda_Produtos', NOW()),
+  ('Renovação Contratual Anual - Clientes - Abril/2026',             'Flag',            'Novo Cliente',                              2581.32, '2026-04-23', '2026-04-01', 'Venda_Produtos', NOW()),
+  ('Renovação Contratual Anual - Clientes - Mar/26',                 'Flag',            'Novo Cliente',                              8529.12, '2026-04-23', '2026-04-01', 'Venda_Produtos', NOW()),
+  ('Faturamento Merchan - Extra Nestlé',                             'Nestlé',          'Novo Cliente',                              7770.62, '2026-04-10', '2026-04-01', 'Venda_Produtos', NOW()),
+  ('Alegari - ERP Completo',                                         'Flag',            'Novo Cliente',                             63380.00, '2026-04-23', '2026-04-01', 'Venda_Produtos', NOW()),
+  ('Nestlé Merchan | Faturamento Maio 2026',                         'Flag',            'Receita Recorrente / Faturamento Mensal',   7009.86, '2026-05-21', '2026-05-01', 'Venda_Produtos', NOW());
