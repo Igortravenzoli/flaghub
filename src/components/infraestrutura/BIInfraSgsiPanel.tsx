@@ -191,12 +191,18 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Painel principal ──────────────────────────────────────────────────
 
-export function BIInfraSgsiPanel() {
-  const { data, isLoading, isError, refetch } = useBIInfraSgsi();
+export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo?: Date }) {
+  const { data, isLoading, isError, refetch } = useBIInfraSgsi(dateFrom, dateTo);
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
   const d = data;
+
+  if (d && d.totalItensBase === 0) {
+    return (
+      <DashboardEmptyState description="Nenhum dado SGSI sincronizado ainda — use 'Sincronizar SGSI (SharePoint)' no menu de sincronização do setor para espelhar as listas do site PORTALSGSI." />
+    );
+  }
 
   const diasSemCards = [
     { label: 'Dias sem incidentes', value: d?.diasSem.incidentes, icon: Flame, color: '#10b981' },
@@ -213,6 +219,9 @@ export function BIInfraSgsiPanel() {
         {d && (
           <span className="text-[11px] text-muted-foreground ml-1 inline-flex items-center gap-1">
             <CalendarCheck className="h-3 w-3" /> atualizado em {fmtDate(d.atualizadoEm)}
+            {dateFrom && dateTo
+              ? <> · {d.totalItens} de {d.totalItensBase} itens no período</>
+              : <> · {d.totalItensBase} itens</>}
           </span>
         )}
       </div>
@@ -228,12 +237,15 @@ export function BIInfraSgsiPanel() {
               <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
             </div>
             {isLoading ? <Skeleton className="h-8 w-16" /> : (
-              <span className="text-3xl font-bold font-mono" style={{ color }}>{value}</span>
+              <span className="text-3xl font-bold font-mono" style={{ color }}>{value ?? '—'}</span>
             )}
           </div>
         ))}
       </div>
 
+      {d && d.totalItens === 0 && d.totalItensBase > 0 ? (
+        <DashboardEmptyState description={`Nenhuma atividade SG no período selecionado (${d.totalItensBase} itens no histórico). Selecione "Todas as Sprints" para ver o panorama completo.`} />
+      ) : (
       <Tabs defaultValue="mudancas">
         <TabsList className="bg-muted/50 p-1 flex-wrap h-auto">
           <TabsTrigger value="mudancas" className="gap-1.5 text-xs"><RefreshCw className="h-3.5 w-3.5" />Mudanças (010)</TabsTrigger>
@@ -323,7 +335,7 @@ export function BIInfraSgsiPanel() {
             <MiniDonut title="Tipo de ameaça" data={d?.riscos.porTipoAmeaca} isLoading={isLoading} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <MiniBars title="Ativo afetado" data={d?.riscos.porAtivoAfetado} isLoading={isLoading} />
+            <MiniBars title="O que o risco afeta" data={d?.riscos.porAtivoAfetado} isLoading={isLoading} />
             <MiniBars title="Por ambiente" data={d?.riscos.porAmbiente} isLoading={isLoading} />
           </div>
           <SgTable
@@ -381,7 +393,7 @@ export function BIInfraSgsiPanel() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <MiniDonut title="Por status" data={d?.melhorias.porStatus} isLoading={isLoading} />
-                <MiniBars title="Ambiente afetado" data={d?.melhorias.porAmbiente} isLoading={isLoading} />
+                <MiniBars title="Processo afetado" data={d?.melhorias.porAmbiente} isLoading={isLoading} />
               </div>
               <SgTable
                 title="OM recentes"
@@ -431,6 +443,7 @@ export function BIInfraSgsiPanel() {
           />
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }

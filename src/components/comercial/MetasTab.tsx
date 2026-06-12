@@ -24,7 +24,8 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine, AreaChart, Area,
 } from "recharts";
-import { AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Filter } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface MetasTabProps {
   canViewValues?: boolean;
@@ -147,6 +148,72 @@ function PctBar({ value }: { value: number }) {
   );
 }
 
+// ── Filtro de coluna (ícone + popover multi-seleção) ─────────────
+function ColumnFilterButton({
+  options,
+  selected,
+  onChange,
+}: {
+  options: { value: string; label?: string }[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const active = selected.size > 0;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className={`inline-flex h-5 w-5 items-center justify-center rounded transition-colors align-middle
+            ${active ? "text-primary bg-primary/10" : "text-muted-foreground/60 hover:text-foreground hover:bg-muted"}`}
+          title="Filtrar coluna"
+        >
+          <Filter className="h-3 w-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-2" align="start">
+        <div className="max-h-56 overflow-y-auto space-y-0.5">
+          {options.map((o) => {
+            const isOn = selected.has(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => {
+                  const next = new Set(selected);
+                  if (isOn) next.delete(o.value);
+                  else next.add(o.value);
+                  onChange(next);
+                }}
+                className={`flex w-full items-center gap-2 rounded px-2 py-1 text-xs text-left transition-colors hover:bg-muted
+                  ${isOn ? "font-medium" : ""}`}
+              >
+                <span
+                  className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border text-[9px] leading-none flex-shrink-0
+                    ${isOn ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}
+                >
+                  {isOn ? "✓" : ""}
+                </span>
+                <span className="truncate">{o.label ?? o.value}</span>
+              </button>
+            );
+          })}
+        </div>
+        {active && (
+          <button
+            type="button"
+            onClick={() => onChange(new Set())}
+            className="mt-1.5 w-full border-t pt-1.5 text-center text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Limpar filtro
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function WaveTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   const colorFor = (p: number) => (p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444");
@@ -193,6 +260,12 @@ const MetasTab: React.FC<MetasTabProps> = ({
   const [metaTableOpen, setMetaTableOpen] = useState(true);
   const [vendaTableOpen, setVendaTableOpen] = useState(true);
 
+  // ── Tabela Meta Produtos: visão + filtros de coluna ──────────
+  const [metaView, setMetaView] = useState<"consolidado" | "mensal">("consolidado");
+  const [filtroProdutos, setFiltroProdutos] = useState<Set<string>>(new Set());
+  const [filtroMeses, setFiltroMeses] = useState<Set<string>>(new Set());
+  const [filtroStatus, setFiltroStatus] = useState<Set<string>>(new Set());
+
   const { data: metas = [], isLoading, isError, refetch } = useComercialMetas();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
   const createMeta = useCreateMetaComercial();
@@ -236,25 +309,60 @@ const MetasTab: React.FC<MetasTabProps> = ({
   );
 
   // ── Filter vendas by page-level period ───────────────────────
+  // Comparação por ano-mês em string ("YYYY-MM") — evita o bug de fuso em que
+  // "2026-04-01" é interpretado como 31/03 local e o mês some do período.
   const vendasFiltradas = useMemo(() => {
     if (!dateFrom && !dateTo) return vendasItems;
+    const ymOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const fromYm = dateFrom ? ymOf(dateFrom) : null;
+    const toYm = dateTo ? ymOf(dateTo) : null;
     return vendasItems.filter((item) => {
-      const dateStr = item.period_month || item.closed_date;
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return false;
-      const itemMonthStart = new Date(d.getFullYear(), d.getMonth(), 1);
-      if (dateFrom) {
-        const fromStart = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), 1);
-        if (itemMonthStart < fromStart) return false;
-      }
-      if (dateTo) {
-        const toEnd = new Date(dateTo.getFullYear(), dateTo.getMonth() + 1, 0);
-        if (d > toEnd) return false;
-      }
+      const itemYm = item.period_month?.slice(0, 7) || item.closed_date?.slice(0, 7);
+      if (!itemYm) return false;
+      if (fromYm && itemYm < fromYm) return false;
+      if (toYm && itemYm > toYm) return false;
       return true;
     });
   }, [vendasItems, dateFrom, dateTo]);
+
+  // ── Qtd vendida por produto+mês (itens de venda → realizado) ──
+  const vendaQtyMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const v of vendasFiltradas) {
+      const ym = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
+      if (!ym) continue;
+      for (const item of v.itens ?? []) {
+        const key = `${item.produto}|${ym}`;
+        map.set(key, (map.get(key) ?? 0) + (item.quantidade || 0));
+      }
+    }
+    return map;
+  }, [vendasFiltradas]);
+
+  const qtyVendidaPara = (produto: string, mes: string) => {
+    const d = getMesDate(mes);
+    if (!d) return 0;
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return vendaQtyMap.get(`${produto}|${ym}`) ?? 0;
+  };
+
+  // ── Produtos das metas + meses com meta (para o form de venda) ─
+  const produtosMeta = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of metas) if (m.tipo !== "faturamento") set.add(m.nome_indicador);
+    return [...set].sort();
+  }, [metas]);
+
+  const metaMesSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of metas) {
+      if (m.tipo === "faturamento") continue;
+      const d = getMesDate(m.mes);
+      if (!d) continue;
+      s.add(`${m.nome_indicador}|${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    return s;
+  }, [metas]);
 
   // ── Pillar 1: Meta de Faturamento (combined) ─────────────────
   const faturamentoStats = useMemo(() => {
@@ -294,8 +402,9 @@ const MetasTab: React.FC<MetasTabProps> = ({
       [...mesesEscopo].reduce((s, k) => s + (fatPorMes.get(k) ?? META_MENSAL_DEFAULT), 0) ||
       META_MENSAL_DEFAULT * mesesNoEscopo;
 
+    // Contribuição financeira dos produtos: (manual + itens de venda) × valor unitário
     const realizadoProdutos = metasProduto.reduce((sum, m) => {
-      const qty = parseInt(m.realizado) || 0;
+      const qty = (parseInt(m.realizado) || 0) + qtyVendidaPara(m.nome_indicador, m.mes);
       const vu = parseFloat(m.valor_unitario) || 0;
       return sum + qty * vu;
     }, 0);
@@ -315,7 +424,8 @@ const MetasTab: React.FC<MetasTabProps> = ({
       const d = getMesDate(m.mes);
       if (!d) continue;
       const pm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const contrib = (parseInt(m.realizado) || 0) * (parseFloat(m.valor_unitario) || 0);
+      const qtyTotal = (parseInt(m.realizado) || 0) + (vendaQtyMap.get(`${m.nome_indicador}|${pm}`) ?? 0);
+      const contrib = qtyTotal * (parseFloat(m.valor_unitario) || 0);
       if (contrib > 0) mesMap.set(pm, (mesMap.get(pm) ?? 0) + contrib);
     }
 
@@ -353,7 +463,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
       media,
       hasCadastrado: targetCadastrado > 0,
     };
-  }, [metasFaturamento, metasProduto, vendasFiltradas]);
+  }, [metasFaturamento, metasProduto, vendasFiltradas, vendaQtyMap]);
 
   // ── Histograma de ondas: atingimento Produtos × Financeiro ───
   const waveData = useMemo(() => {
@@ -374,15 +484,16 @@ const MetasTab: React.FC<MetasTabProps> = ({
     };
 
     // Metas de produto → quantidade + contribuição financeira (realizado × vu)
+    // realQty combina o manual com o vendido via itens de venda (sem dupla digitação)
     for (const m of metasProduto) {
       const d = getMesDate(m.mes);
       if (!d) continue;
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const a = ensure(k);
       a.metaQty += parseFloat(m.valor) || 0;
-      const rq = parseInt(m.realizado) || 0;
-      a.realQty += rq;
-      a.finReal += rq * (parseFloat(m.valor_unitario) || 0);
+      const rqTotal = (parseInt(m.realizado) || 0) + (vendaQtyMap.get(`${m.nome_indicador}|${k}`) ?? 0);
+      a.realQty += rqTotal;
+      a.finReal += rqTotal * (parseFloat(m.valor_unitario) || 0);
     }
     // Metas de faturamento cadastradas → target financeiro do mês
     for (const m of metasFaturamento) {
@@ -440,24 +551,99 @@ const MetasTab: React.FC<MetasTabProps> = ({
         financeiro: pctOf(a.finReal, a.finMeta),
       };
     });
-  }, [metasProduto, metasFaturamento, vendasFiltradas, waveView]);
+  }, [metasProduto, metasFaturamento, vendasFiltradas, vendaQtyMap, waveView]);
 
-  // ── Pillar 2: Meta Produtos KPIs ─────────────────────────────
+  // ── Pillar 2: Meta Produtos KPIs (manual + vendas) ───────────
   const kpisProdutos = useMemo(() => {
+    const realizadoDe = (m: (typeof metasProduto)[number]) =>
+      (parseInt(m.realizado) || 0) + qtyVendidaPara(m.nome_indicador, m.mes);
     const batidas = metasProduto.filter((m) => {
       const metaQty = parseFloat(m.valor) || 0;
-      const realizadoQty = parseInt(m.realizado) || 0;
-      return metaQty > 0 && realizadoQty >= metaQty;
+      return metaQty > 0 && realizadoDe(m) >= metaQty;
     }).length;
-    const semRealizado = metasProduto.filter(
-      (m) => !m.realizado || parseInt(m.realizado) === 0
-    ).length;
+    const semRealizado = metasProduto.filter((m) => realizadoDe(m) === 0).length;
     const pctBatidas =
       metasProduto.length > 0
         ? Math.round((batidas / metasProduto.length) * 1000) / 10
         : 0;
     return { batidas, semRealizado, pctBatidas, total: metasProduto.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metasProduto, vendaQtyMap]);
+
+  // ── Tabela: aplica filtros de coluna ──────────────────────────
+  const metasTabela = useMemo(
+    () =>
+      metasProduto.filter(
+        (m) =>
+          (filtroProdutos.size === 0 || filtroProdutos.has(m.nome_indicador)) &&
+          (filtroMeses.size === 0 || filtroMeses.has(m.mes)) &&
+          (filtroStatus.size === 0 || filtroStatus.has(m.status))
+      ),
+    [metasProduto, filtroProdutos, filtroMeses, filtroStatus]
+  );
+
+  // ── Tabela: visão consolidada (1 linha por produto no período) ─
+  const metasConsolidadas = useMemo(() => {
+    type Cons = {
+      produto: string;
+      meses: string[];
+      metaQty: number;
+      manualQty: number;
+      vendaQty: number;
+      metaValor: number;
+      realizadoValor: number;
+      vus: Set<number>;
+    };
+    const map = new Map<string, Cons>();
+    for (const m of metasTabela) {
+      let c = map.get(m.nome_indicador);
+      if (!c) {
+        c = { produto: m.nome_indicador, meses: [], metaQty: 0, manualQty: 0, vendaQty: 0, metaValor: 0, realizadoValor: 0, vus: new Set() };
+        map.set(m.nome_indicador, c);
+      }
+      const metaQty = parseFloat(m.valor) || 0;
+      const manualQty = parseInt(m.realizado) || 0;
+      const vendaQty = qtyVendidaPara(m.nome_indicador, m.mes);
+      const vu = parseFloat(m.valor_unitario) || 0;
+      const metaValorTotal = parseFloat(m.meta_valor_total || "") || 0;
+      c.meses.push(m.mes);
+      c.metaQty += metaQty;
+      c.manualQty += manualQty;
+      c.vendaQty += vendaQty;
+      c.metaValor += metaValorTotal > 0 ? metaValorTotal : metaQty * vu;
+      c.realizadoValor += (manualQty + vendaQty) * vu;
+      if (vu > 0) c.vus.add(vu);
+    }
+    return [...map.values()]
+      .map((c) => ({
+        ...c,
+        realizadoQty: c.manualQty + c.vendaQty,
+        vuUniforme: c.vus.size === 1 ? [...c.vus][0] : null,
+      }))
+      .sort((a, b) => a.produto.localeCompare(b.produto));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metasTabela, vendaQtyMap]);
+
+  const filtrosAtivos = filtroProdutos.size + filtroMeses.size + filtroStatus.size;
+
+  // Opções dos filtros (a partir do período corrente, ordenadas)
+  const opcoesProduto = useMemo(
+    () => [...new Set(metasProduto.map((m) => m.nome_indicador))].sort().map((v) => ({ value: v })),
+    [metasProduto]
+  );
+  const opcoesMes = useMemo(() => {
+    const set = [...new Set(metasProduto.map((m) => m.mes))];
+    set.sort((a, b) => (getMesDate(a)?.getTime() ?? 0) - (getMesDate(b)?.getTime() ?? 0));
+    return set.map((v) => ({ value: v }));
   }, [metasProduto]);
+  const opcoesStatus = useMemo(
+    () =>
+      [...new Set(metasProduto.map((m) => m.status))].map((v) => ({
+        value: v,
+        label: STATUS_LABELS[v as MetaFormData["status"]] ?? v,
+      })),
+    [metasProduto]
+  );
 
   // ── Pillar 3: Venda Produtos ──────────────────────────────────
   const vendaStats = useMemo(() => {
@@ -492,7 +678,24 @@ const MetasTab: React.FC<MetasTabProps> = ({
         if (editingId && list.length === 1) {
           await updateMeta.mutateAsync({ id: editingId, payload: meta });
         } else {
-          await createMeta.mutateAsync(meta);
+          // Upsert no cliente: se já existe meta com mesmo produto/tipo/mês,
+          // atualiza em vez de inserir (evita violar comercial_metas_unique
+          // no cadastro trimestral quando um dos meses já existe).
+          const mesNorm = meta.mes.trim().toLowerCase();
+          const existing = metas.find(
+            (m) =>
+              m.nome_indicador === meta.nome_indicador &&
+              m.tipo === meta.tipo &&
+              m.mes === mesNorm
+          );
+          if (existing) {
+            await updateMeta.mutateAsync({
+              id: existing.id,
+              payload: { ...meta, mes: mesNorm, realizado: meta.realizado || existing.realizado },
+            });
+          } else {
+            await createMeta.mutateAsync(meta);
+          }
         }
       }
       setEditingId(null);
@@ -620,6 +823,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
       closed_date: v.closed_date ? v.closed_date.slice(0, 10) : "",
       period_month: v.period_month ? v.period_month.slice(0, 10) : "",
       source_sheet: v.source_sheet ?? "Venda_Produtos",
+      itens: (v.itens ?? []).map((i) => ({ produto: i.produto, quantidade: String(i.quantidade) })),
     };
   }
 
@@ -981,7 +1185,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
               <>
                 <div style={{ height: 196 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={waveData} margin={{ left: -18, right: 8, top: 8, bottom: 0 }}>
+                    <AreaChart data={waveData} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
                       <defs>
                         <linearGradient id="waveProduto" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.45} />
@@ -1005,7 +1209,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                         tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
                         tickLine={false}
                         axisLine={false}
-                        width={42}
+                        width={52}
                         domain={[
                           0,
                           Math.max(
@@ -1079,12 +1283,60 @@ const MetasTab: React.FC<MetasTabProps> = ({
             </div>
           </button>
           {metaTableOpen && (
+          <>
+          {/* Controles: visão + filtros ativos */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex gap-1">
+              {([
+                { key: "consolidado", label: "Consolidado" },
+                { key: "mensal", label: "Por mês" },
+              ] as const).map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => setMetaView(v.key)}
+                  className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                    metaView === v.key
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+              <span className="self-center ml-1 text-[11px] text-muted-foreground">
+                {metaView === "consolidado"
+                  ? "1 linha por produto, somando os meses do período"
+                  : "1 linha por produto/mês — edição e status"}
+              </span>
+            </div>
+            {filtrosAtivos > 0 && (
+              <button
+                type="button"
+                onClick={() => { setFiltroProdutos(new Set()); setFiltroMeses(new Set()); setFiltroStatus(new Set()); }}
+                className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Limpar filtros ({filtrosAtivos}) ✕
+              </button>
+            )}
+          </div>
+
           <div className="rounded-md border overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-muted border-b">
-                  <th className="px-3 py-2 text-left font-semibold">Produto</th>
-                  <th className="px-3 py-2 text-left font-semibold">Mês</th>
+                  <th className="px-3 py-2 text-left font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      Produto
+                      <ColumnFilterButton options={opcoesProduto} selected={filtroProdutos} onChange={setFiltroProdutos} />
+                    </span>
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      {metaView === "consolidado" ? "Meses" : "Mês"}
+                      <ColumnFilterButton options={opcoesMes} selected={filtroMeses} onChange={setFiltroMeses} />
+                    </span>
+                  </th>
                   <th className="px-3 py-2 text-center font-semibold">
                     Qtd Meta
                     <span className="block text-[10px] font-normal text-muted-foreground">unidades</span>
@@ -1110,14 +1362,93 @@ const MetasTab: React.FC<MetasTabProps> = ({
                     </>
                   )}
                   <th className="px-3 py-2 text-left font-semibold min-w-[150px]">% Atingimento</th>
-                  <th className="px-3 py-2 text-left font-semibold min-w-[200px]">Status</th>
-                  <th className="px-3 py-2 text-left font-semibold">Ações</th>
+                  {metaView === "mensal" && (
+                    <>
+                      <th className="px-3 py-2 text-left font-semibold min-w-[200px]">
+                        <span className="inline-flex items-center gap-1">
+                          Status
+                          <ColumnFilterButton options={opcoesStatus} selected={filtroStatus} onChange={setFiltroStatus} />
+                        </span>
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold">Ações</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {metasProduto.map((meta) => {
+                {metasTabela.length === 0 && (
+                  <tr>
+                    <td colSpan={12} className="px-3 py-6 text-center text-xs text-muted-foreground">
+                      Nenhuma meta corresponde aos filtros aplicados.
+                    </td>
+                  </tr>
+                )}
+                {metaView === "consolidado" && metasConsolidadas.map((c) => {
+                  const p = pct(c.realizadoQty, c.metaQty);
+                  return (
+                    <tr key={c.produto} className="border-b hover:bg-muted/30 transition-colors">
+                      <td className="px-3 py-2 font-medium max-w-[220px]">
+                        <span title={c.produto} className="block truncate">{c.produto}</span>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground font-mono whitespace-nowrap">
+                        <span title={c.meses.join(", ")}>
+                          {c.meses.length === 1 ? c.meses[0] : `${c.meses.length} meses`}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center font-mono">
+                        {c.metaQty > 0 ? c.metaQty.toLocaleString("pt-BR") : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-center font-mono">
+                        {c.realizadoQty > 0 ? (
+                          <div>
+                            <span style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}>
+                              {c.realizadoQty.toLocaleString("pt-BR")}
+                            </span>
+                            {c.vendaQty > 0 && (
+                              <span
+                                className="block text-[10px] text-muted-foreground font-sans"
+                                title={`${c.manualQty} manual + ${c.vendaQty} via Venda Produtos`}
+                              >
+                                {c.manualQty > 0 ? `${c.manualQty} + ${c.vendaQty} vendas` : "via vendas"}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      {canViewValues && (
+                        <>
+                          <td className="px-3 py-2 text-right text-xs">
+                            {c.vuUniforme != null
+                              ? brl(c.vuUniforme, showValues)
+                              : c.vus.size > 1
+                                ? <span className="text-muted-foreground" title="Valor unitário varia entre os meses">varia</span>
+                                : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs">
+                            {c.metaValor > 0 ? brl(c.metaValor, showValues) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs">
+                            {c.realizadoValor > 0 ? brl(c.realizadoValor, showValues) : "—"}
+                          </td>
+                        </>
+                      )}
+                      <td className="px-3 py-2">
+                        {c.metaQty > 0 && c.realizadoQty > 0 ? (
+                          <PctBar value={p} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {metaView === "mensal" && metasTabela.map((meta) => {
                   const metaQty = parseFloat(meta.valor) || 0;
-                  const realizadoQty = parseInt(meta.realizado) || 0;
+                  const manualQty = parseInt(meta.realizado) || 0;
+                  const vendaQty = qtyVendidaPara(meta.nome_indicador, meta.mes);
+                  const realizadoQty = manualQty + vendaQty;
                   const vu = parseFloat(meta.valor_unitario) || 0;
                   const metaValorTotal = parseFloat(meta.meta_valor_total || "") || 0;
                   const metaValor = metaValorTotal > 0 ? metaValorTotal : metaQty * vu;
@@ -1130,7 +1461,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                         <span title={meta.nome_indicador} className="block truncate">
                           {meta.nome_indicador}
                         </span>
-                        {meta.observacao && (
+                        {meta.observacao && !/^meta em (r\$|milhares)/i.test(meta.observacao.trim()) && (
                           <span className="text-xs text-muted-foreground block truncate">
                             {meta.observacao}
                           </span>
@@ -1145,12 +1476,22 @@ const MetasTab: React.FC<MetasTabProps> = ({
                       </td>
 
                       <td className="px-3 py-2 text-center font-mono">
-                        {meta.realizado ? (
-                          <span
-                            style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}
-                          >
-                            {realizadoQty.toLocaleString("pt-BR")}
-                          </span>
+                        {realizadoQty > 0 ? (
+                          <div>
+                            <span
+                              style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}
+                            >
+                              {realizadoQty.toLocaleString("pt-BR")}
+                            </span>
+                            {vendaQty > 0 && (
+                              <span
+                                className="block text-[10px] text-muted-foreground font-sans"
+                                title={`${manualQty} manual + ${vendaQty} via Venda Produtos`}
+                              >
+                                {manualQty > 0 ? `${manualQty} + ${vendaQty} vendas` : "via vendas"}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -1171,7 +1512,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                       )}
 
                       <td className="px-3 py-2">
-                        {metaQty > 0 && meta.realizado ? (
+                        {metaQty > 0 && realizadoQty > 0 ? (
                           <PctBar value={p} />
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
@@ -1228,6 +1569,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
               </tbody>
             </table>
           </div>
+          </>
           )}
         </div>
       )}
@@ -1303,6 +1645,14 @@ const MetasTab: React.FC<MetasTabProps> = ({
                         <span title={venda.deal_title ?? ""} className="block truncate">
                           {venda.deal_title || "—"}
                         </span>
+                        {(venda.itens?.length ?? 0) > 0 && (
+                          <span
+                            className="block truncate text-[11px] text-muted-foreground font-normal"
+                            title={venda.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(", ")}
+                          >
+                            {venda.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(", ")}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-xs">
                         {venda.organization ? (
@@ -1436,6 +1786,8 @@ const MetasTab: React.FC<MetasTabProps> = ({
         onSubmit={handleVendaSubmit}
         initialData={editingVendaId ? vendaToFormData(editingVendaId) : undefined}
         mode={editingVendaId ? "edit" : "create"}
+        produtosDisponiveis={produtosMeta}
+        hasMetaFor={(produto, ym) => metaMesSet.has(`${produto}|${ym}`)}
       />
     </div>
   );

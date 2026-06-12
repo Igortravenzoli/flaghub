@@ -2,6 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useMemo } from 'react';
 
+export interface VendaItem {
+  id?: string;
+  produto: string;
+  quantidade: number;
+}
+
 export interface ComercialVenda {
   id: string;
   deal_title: string | null;
@@ -12,18 +18,27 @@ export interface ComercialVenda {
   period_month: string | null;
   source_sheet: string | null;
   created_at: string;
+  itens: VendaItem[];
 }
 
 export function useComercialVendas() {
   const query = useQuery({
     queryKey: ['comercial', 'vendas'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const db = supabase as any;
+      const { data, error } = await db
         .from('comercial_vendas')
-        .select('*')
+        .select('*, comercial_venda_itens(id, produto, quantidade)')
         .order('closed_date', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as ComercialVenda[];
+      return ((data ?? []) as any[]).map((row) => ({
+        ...row,
+        itens: (row.comercial_venda_itens ?? []).map((i: any) => ({
+          id: i.id,
+          produto: i.produto,
+          quantidade: i.quantidade ?? 0,
+        })),
+      })) as ComercialVenda[];
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -86,6 +101,11 @@ export function useComercialVendas() {
 
 // ── CRUD payload ──────────────────────────────────────────────────────────────
 
+export interface VendaItemForm {
+  produto: string;
+  quantidade: string; // string no form → parsed to int
+}
+
 export interface VendaFormData {
   deal_title: string;
   organization: string;
@@ -94,6 +114,13 @@ export interface VendaFormData {
   closed_date: string;  // yyyy-mm-dd (input[type=date] format)
   period_month: string; // yyyy-mm-dd (1st day of month, derived if empty)
   source_sheet: string;
+  itens: VendaItemForm[]; // produtos vendidos — alimentam Meta Produtos
+}
+
+function parseItens(data: VendaFormData) {
+  return (data.itens ?? [])
+    .map((i) => ({ produto: i.produto.trim(), quantidade: parseInt(i.quantidade, 10) || 0 }))
+    .filter((i) => i.produto && i.quantidade > 0);
 }
 
 function buildRow(data: VendaFormData) {
@@ -122,8 +149,20 @@ export function useCreateVenda() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: VendaFormData) => {
-      const { error } = await supabase.from('comercial_vendas').insert([buildRow(data)]);
+      const db = supabase as any;
+      const { data: created, error } = await db
+        .from('comercial_vendas')
+        .insert([buildRow(data)])
+        .select('id')
+        .single();
       if (error) throw error;
+      const itens = parseItens(data);
+      if (itens.length > 0 && created?.id) {
+        const { error: itensError } = await db
+          .from('comercial_venda_itens')
+          .insert(itens.map((i) => ({ ...i, venda_id: created.id })));
+        if (itensError) throw itensError;
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['comercial', 'vendas'] }),
   });
@@ -133,11 +172,25 @@ export function useUpdateVenda() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: VendaFormData }) => {
-      const { error } = await supabase
+      const db = supabase as any;
+      const { error } = await db
         .from('comercial_vendas')
         .update(buildRow(data))
         .eq('id', id);
       if (error) throw error;
+      // Substitui os itens (delete + insert) para refletir o estado do form
+      const { error: delError } = await db
+        .from('comercial_venda_itens')
+        .delete()
+        .eq('venda_id', id);
+      if (delError) throw delError;
+      const itens = parseItens(data);
+      if (itens.length > 0) {
+        const { error: insError } = await db
+          .from('comercial_venda_itens')
+          .insert(itens.map((i) => ({ ...i, venda_id: id })));
+        if (insError) throw insError;
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['comercial', 'vendas'] }),
   });

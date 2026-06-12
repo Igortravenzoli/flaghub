@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { VendaFormData } from "@/hooks/useComercialVendas";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
+import { AlertTriangle, X } from "lucide-react";
+import type { VendaFormData, VendaItemForm } from "@/hooks/useComercialVendas";
 
 interface VendaFormDialogProps {
   open: boolean;
@@ -10,11 +12,17 @@ interface VendaFormDialogProps {
   onSubmit: (data: VendaFormData) => void;
   initialData?: Partial<VendaFormData>;
   mode?: "create" | "edit";
+  /** Produtos distintos cadastrados em Meta Produtos — para casar nome com a meta */
+  produtosDisponiveis?: string[];
+  /** Verifica se existe meta do produto no mês (YYYY-MM) — para o aviso */
+  hasMetaFor?: (produto: string, ym: string) => boolean;
 }
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+const OUTRO = "__outro__";
 
 const DEFAULT: VendaFormData = {
   deal_title: "",
@@ -24,7 +32,12 @@ const DEFAULT: VendaFormData = {
   closed_date: today(),
   period_month: "",
   source_sheet: "Venda_Produtos",
+  itens: [],
 };
+
+interface ItemRow extends VendaItemForm {
+  livre: boolean; // produto digitado manualmente (fora da lista de metas)
+}
 
 export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
   open,
@@ -32,21 +45,47 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
   onSubmit,
   initialData,
   mode = "create",
+  produtosDisponiveis = [],
+  hasMetaFor,
 }) => {
   const [form, setForm] = useState<VendaFormData>({ ...DEFAULT, ...initialData });
+  const [itens, setItens] = useState<ItemRow[]>([]);
 
   useEffect(() => {
     setForm({ ...DEFAULT, ...initialData });
+    setItens(
+      (initialData?.itens ?? []).map((i) => ({
+        ...i,
+        livre: produtosDisponiveis.length > 0 && !produtosDisponiveis.includes(i.produto),
+      }))
+    );
+    // produtosDisponiveis intencionalmente fora das deps: só reseta ao abrir/trocar registro
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialData]);
 
   function set(field: keyof VendaFormData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function setItem(idx: number, patch: Partial<ItemRow>) {
+    setItens((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  }
+
+  function addItem() {
+    setItens((prev) => [...prev, { produto: "", quantidade: "1", livre: produtosDisponiveis.length === 0 }]);
+  }
+
+  function removeItem(idx: number) {
+    setItens((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  // Mês de referência efetivo (YYYY-MM) para o aviso de meta ausente
+  const ymRef = (form.period_month || form.closed_date || "").slice(0, 7);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.deal_title.trim()) return;
-    onSubmit(form);
+    onSubmit({ ...form, itens: itens.map(({ livre: _livre, ...i }) => i) });
   }
 
   return (
@@ -130,6 +169,93 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
                 onChange={(e) => set("period_month", e.target.value)}
               />
             </div>
+          </div>
+
+          {/* ── Itens vendidos (alimentam Meta Produtos) ── */}
+          <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold">Produtos vendidos neste contrato</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Alimenta automaticamente a Qtd Realizada em Meta Produtos — sem digitar duas vezes.
+                </p>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={addItem}>
+                + Produto
+              </Button>
+            </div>
+
+            {itens.length === 0 && (
+              <p className="text-[11px] text-muted-foreground italic">
+                Nenhum item — a venda conta só no faturamento, sem refletir nas quantidades de Meta Produtos.
+              </p>
+            )}
+
+            {itens.map((item, idx) => {
+              const semMeta =
+                !!item.produto &&
+                !!ymRef &&
+                !!hasMetaFor &&
+                !hasMetaFor(item.produto, ymRef);
+              return (
+                <div key={idx} className="space-y-1">
+                  <div className="flex gap-2 items-center">
+                    <div className="flex-1 min-w-0">
+                      {produtosDisponiveis.length > 0 && !item.livre ? (
+                        <Select
+                          value={item.produto || ""}
+                          onValueChange={(v) => {
+                            if (v === OUTRO) setItem(idx, { livre: true, produto: "" });
+                            else setItem(idx, { produto: v });
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Selecione o produto..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {produtosDisponiveis.map((p) => (
+                              <SelectItem key={p} value={p} className="text-xs">{p}</SelectItem>
+                            ))}
+                            <SelectItem value={OUTRO} className="text-xs">Outro (digitar)...</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          className="h-8 text-xs"
+                          placeholder="Nome do produto"
+                          value={item.produto}
+                          onChange={(e) => setItem(idx, { produto: e.target.value })}
+                        />
+                      )}
+                    </div>
+                    <Input
+                      className="h-8 text-xs w-20 text-center"
+                      type="number"
+                      min={1}
+                      placeholder="Qtd"
+                      value={item.quantidade}
+                      onChange={(e) => setItem(idx, { quantidade: e.target.value })}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive flex-shrink-0"
+                      onClick={() => removeItem(idx)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  {semMeta && (
+                    <p className="flex items-center gap-1 text-[11px] text-amber-600">
+                      <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                      Sem meta cadastrada para “{item.produto}” em {ymRef} — a quantidade só
+                      aparecerá em Meta Produtos quando a meta do mês existir.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Observação */}

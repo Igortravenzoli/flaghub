@@ -8,20 +8,26 @@ import { TrendingUp, TrendingDown, Target, BarChart3, FileText, Activity, Buildi
 import { useComercialVendas, ComercialVenda } from '@/hooks/useComercialVendas';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  CartesianGrid, ReferenceLine,
+  CartesianGrid, ReferenceLine, PieChart, Pie,
 } from 'recharts';
 
-const BAR_COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
-  'hsl(var(--primary))',
-];
-
 const columns: DataTableColumn<ComercialVenda>[] = [
-  { key: 'deal_title', header: 'Negócio', className: 'max-w-[250px] truncate font-medium' },
+  {
+    key: 'deal_title', header: 'Negócio', className: 'max-w-[250px] font-medium',
+    render: (r) => (
+      <div className="max-w-[250px]">
+        <span title={r.deal_title ?? ''} className="block truncate">{r.deal_title || '—'}</span>
+        {(r.itens?.length ?? 0) > 0 && (
+          <span
+            className="block truncate text-[11px] text-muted-foreground font-normal"
+            title={r.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(', ')}
+          >
+            {r.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(', ')}
+          </span>
+        )}
+      </div>
+    ),
+  },
   {
     key: 'organization', header: 'Organização',
     render: (r) => r.organization ? <Badge variant="outline" className="text-xs">{r.organization}</Badge> : '—',
@@ -33,13 +39,23 @@ const columns: DataTableColumn<ComercialVenda>[] = [
   },
 ];
 
+const META_MENSAL = 110_000; // referência 100% — exibição apenas percentual
+
+function formatMonthYm(ym: string) {
+  const [y, m] = ym.split('-');
+  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  return `${months[parseInt(m, 10) - 1] ?? m} ${y}`;
+}
+
 function CustomTooltipVendas({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md">
       <p className="font-medium text-foreground">{d.bandeira}</p>
-      <p className="text-muted-foreground">{d.percentual.toFixed(1)}% do total</p>
+      <p className="text-muted-foreground">
+        {d.count} negócio{d.count !== 1 ? 's' : ''} · {d.percentual.toFixed(1)}% do total
+      </p>
     </div>
   );
 }
@@ -72,17 +88,90 @@ function getDealValueSentiment(mesesComDados: { percentualMeta: number; atingiuM
 interface PipeDriveTabProps {
   canViewValues?: boolean;
   showValues?: boolean;
+  dateFrom?: Date;
+  dateTo?: Date;
+  periodLabel?: string;
 }
 
-export function PipeDriveTab({ canViewValues = false, showValues = false }: PipeDriveTabProps) {
-  const { items, stats, isLoading, isError, refetch } = useComercialVendas();
+export function PipeDriveTab({
+  canViewValues = false,
+  showValues = false,
+  dateFrom,
+  dateTo,
+  periodLabel,
+}: PipeDriveTabProps) {
+  const { items, isLoading, isError, refetch } = useComercialVendas();
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [drawerItem, setDrawerItem] = useState<ComercialVenda | null>(null);
 
-  const filteredVendas = useMemo(() => {
-    if (!selectedBandeira) return stats.vendasPorOrg;
-    return stats.vendasPorOrg.filter((v) => v.bandeira === selectedBandeira);
-  }, [selectedBandeira, stats.vendasPorOrg]);
+  // ── Filtro de período da página (calendário) aplicado aos negócios ──
+  // Comparação por ano-mês em string ("YYYY-MM") — evita o bug de fuso em que
+  // "2026-04-01" vira 31/03 local e o mês inteiro some do trimestre.
+  const itemsFiltrados = useMemo(() => {
+    if (!dateFrom && !dateTo) return items;
+    const ymOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const fromYm = dateFrom ? ymOf(dateFrom) : null;
+    const toYm = dateTo ? ymOf(dateTo) : null;
+    return items.filter((item) => {
+      const itemYm = item.period_month?.slice(0, 7) || item.closed_date?.slice(0, 7);
+      if (!itemYm) return false;
+      if (fromYm && itemYm < fromYm) return false;
+      if (toYm && itemYm > toYm) return false;
+      return true;
+    });
+  }, [items, dateFrom, dateTo]);
+
+  // ── Stats sobre o período filtrado (somente percentuais) ──
+  const stats = useMemo(() => {
+    const totalValue = itemsFiltrados.reduce((s, i) => s + (i.deal_value ?? 0), 0);
+
+    const orgMap = new Map<string, { valor: number; count: number }>();
+    for (const item of itemsFiltrados) {
+      const org = item.organization || 'Outros';
+      const acc = orgMap.get(org) ?? { valor: 0, count: 0 };
+      acc.valor += item.deal_value ?? 0;
+      acc.count += 1;
+      orgMap.set(org, acc);
+    }
+    const vendasPorOrg = [...orgMap.entries()]
+      .map(([bandeira, { valor, count }]) => ({
+        bandeira,
+        count,
+        percentual: totalValue > 0 ? Math.round((valor / totalValue) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.percentual - a.percentual);
+
+    const mesMap = new Map<string, number>();
+    for (const item of itemsFiltrados) {
+      const pm = item.period_month?.slice(0, 7) || item.closed_date?.slice(0, 7);
+      if (!pm) continue;
+      mesMap.set(pm, (mesMap.get(pm) ?? 0) + (item.deal_value ?? 0));
+    }
+    // Garante TODOS os meses do período selecionado no eixo — meses sem venda
+    // entram com 0% e aparecem como silhueta esmaecida no gráfico.
+    if (dateFrom && dateTo) {
+      const cursor = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), 1);
+      const last = new Date(dateTo.getFullYear(), dateTo.getMonth(), 1);
+      while (cursor <= last) {
+        const ym = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+        if (!mesMap.has(ym)) mesMap.set(ym, 0);
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    }
+    const vendasPorMes = [...mesMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([ym, val]) => {
+        const pct = Math.round((val / META_MENSAL) * 1000) / 10;
+        return { mes: formatMonthYm(ym), percentualMeta: pct, atingiuMeta: pct >= 100 };
+      });
+
+    return {
+      totalDeals: itemsFiltrados.length,
+      vendasPorOrg,
+      vendasPorMes,
+      orgs: vendasPorOrg.map((v) => v.bandeira),
+    };
+  }, [itemsFiltrados, dateFrom, dateTo]);
 
   const mesesComDados = stats.vendasPorMes.filter((m) => m.percentualMeta > 0);
   const mediaAtingimento = mesesComDados.length > 0
@@ -128,29 +217,37 @@ export function PipeDriveTab({ canViewValues = false, showValues = false }: Pipe
     { label: 'Observação', value: drawerItem.observation },
     { label: 'Fechamento', value: drawerItem.closed_date ? new Date(drawerItem.closed_date).toLocaleDateString('pt-BR') : '—' },
     { label: 'Período', value: drawerItem.period_month ? new Date(drawerItem.period_month).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : '—' },
+    {
+      label: 'Produtos vendidos',
+      value: (drawerItem.itens?.length ?? 0) > 0
+        ? drawerItem.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(', ')
+        : '—',
+    },
   ] : [];
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_1fr] gap-4 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch">
         <div className="grid gap-4 min-h-[352px] xl:grid-rows-[auto_1fr]">
           <Card className="border bg-card">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
-                <p className="text-sm font-semibold text-foreground">Resumo do Fechamento</p>
+                <p className="text-sm font-semibold text-foreground">
+                  Resumo do Fechamento{periodLabel ? ` — ${periodLabel}` : ''}
+                </p>
                 <p className="text-xs text-muted-foreground">Negócios, organizações e leitura da meta mensal</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2">
               {kpiCards.map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <div
                     key={item.key}
-                    className={`flex min-h-[116px] flex-col justify-between px-4 py-4 text-left ${index < kpiCards.length - 1 ? 'lg:border-r lg:border-border' : ''} ${index < 2 ? 'border-b border-border lg:border-b-0' : ''}`}
+                    className={`flex min-h-[116px] flex-col justify-between px-4 py-4 text-left ${index % 2 === 0 ? 'border-r border-border' : ''} ${index < 2 ? 'border-b border-border' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -208,7 +305,7 @@ export function PipeDriveTab({ canViewValues = false, showValues = false }: Pipe
         <Card className="p-4 min-h-[352px]">
           <div className="mb-1">
             <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Meta Mensal</h3>
-            <p className="text-xs text-muted-foreground">Referência: meta mensal = R$ 110K (100%)</p>
+            <p className="text-xs text-muted-foreground">Linha pontilhada = meta do mês (100%)</p>
           </div>
           <div className="h-[280px] mt-2">
             <ResponsiveContainer width="100%" height="100%">
@@ -218,8 +315,14 @@ export function PipeDriveTab({ canViewValues = false, showValues = false }: Pipe
                 <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
                 <Tooltip content={<CustomTooltipMensal />} />
                 <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
-                <Bar dataKey="percentualMeta" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                <Bar
+                  dataKey="percentualMeta"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={60}
+                  background={{ fill: 'hsl(var(--muted))', opacity: 0.45, radius: 4 }}
+                >
                   {stats.vendasPorMes.map((entry, i) => {
+                    if (entry.percentualMeta === 0) return <Cell key={i} fill="transparent" />;
                     if (entry.percentualMeta < 50) return <Cell key={i} fill="hsl(var(--destructive))" />;
                     const intensity = Math.min(1, Math.max(0, (entry.percentualMeta - 50) / 100));
                     const lightness = 55 - intensity * 20;
@@ -231,46 +334,117 @@ export function PipeDriveTab({ canViewValues = false, showValues = false }: Pipe
             </ResponsiveContainer>
           </div>
         </Card>
-      </div>
 
-      <Card className="p-4">
+        {/* Vendas por Organização — donut com KPI central + barras de % */}
+        <Card className="p-4 min-h-[352px] lg:col-span-2 xl:col-span-1">
           <div className="flex items-center justify-between mb-1">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Vendas por Organização</h3>
-              <p className="text-xs text-muted-foreground">Distribuição percentual</p>
+              <p className="text-xs text-muted-foreground">Participação no período · {stats.totalDeals} negócio{stats.totalDeals !== 1 ? 's' : ''}</p>
             </div>
             {selectedBandeira && (
-              <Badge variant="secondary" className="cursor-pointer text-xs" onClick={() => setSelectedBandeira(null)}>
+              <Badge variant="secondary" className="cursor-pointer text-xs flex-shrink-0" onClick={() => setSelectedBandeira(null)}>
                 {selectedBandeira} ✕
               </Badge>
             )}
           </div>
-          <div className="h-[260px] mt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={filteredVendas} layout="vertical" margin={{ left: 70, right: 30, top: 5, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                <XAxis type="number" domain={[0, 'auto']} tickFormatter={(v) => `${v}%`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-                <YAxis type="category" dataKey="bandeira" tick={{ fill: 'hsl(var(--foreground))', fontSize: 12 }} width={65} />
-                <Tooltip content={<CustomTooltipVendas />} />
-                <Bar dataKey="percentual" radius={[0, 4, 4, 0]} cursor="pointer" onClick={(d: any) => setSelectedBandeira(d.bandeira === selectedBandeira ? null : d.bandeira)}>
-                  {filteredVendas.map((_, i) => (
-                    <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {stats.vendasPorOrg.length === 0 ? (
+            <div className="h-[260px] flex items-center justify-center text-xs text-muted-foreground">
+              Sem vendas no período.
+            </div>
+          ) : (
+            <div className="flex items-center gap-4 mt-2">
+              <div className="relative flex-shrink-0" style={{ width: 150, height: 150 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={stats.vendasPorOrg}
+                      dataKey="percentual"
+                      nameKey="bandeira"
+                      innerRadius={48}
+                      outerRadius={70}
+                      paddingAngle={1.5}
+                      stroke="none"
+                      startAngle={90}
+                      endAngle={-270}
+                      cursor="pointer"
+                      onClick={(d: any) => {
+                        const name = d?.bandeira ?? d?.payload?.bandeira;
+                        if (name) setSelectedBandeira(prev => prev === name ? null : name);
+                      }}
+                      isAnimationActive
+                      animationBegin={150}
+                      animationDuration={900}
+                      animationEasing="ease-out"
+                    >
+                      {stats.vendasPorOrg.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          fill="hsl(var(--primary))"
+                          fillOpacity={
+                            selectedBandeira && selectedBandeira !== entry.bandeira
+                              ? 0.18
+                              : Math.max(0.25, 1 - i * 0.16)
+                          }
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomTooltipVendas />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-2xl font-bold text-foreground leading-none">{stats.orgs.length}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">orgs</span>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0 space-y-1.5 overflow-y-auto max-h-[230px] pr-1">
+                {stats.vendasPorOrg.map((o, i) => {
+                  const isActive = selectedBandeira === o.bandeira;
+                  return (
+                    <button
+                      key={o.bandeira}
+                      type="button"
+                      onClick={() => setSelectedBandeira(prev => prev === o.bandeira ? null : o.bandeira)}
+                      style={{ animationDelay: `${i * 70}ms`, animationFillMode: 'both' }}
+                      className={`w-full rounded px-1.5 py-1 text-left animate-in fade-in slide-in-from-left-1 duration-500 hover:bg-muted/50
+                        ${isActive ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="h-2 w-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: 'hsl(var(--primary))', opacity: Math.max(0.25, 1 - i * 0.16) }}
+                          />
+                          <span className="truncate text-foreground">{o.bandeira}</span>
+                        </span>
+                        <span className="font-mono text-muted-foreground flex-shrink-0">
+                          {o.count} neg. · {o.percentual.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${Math.min(o.percentual, 100)}%`, backgroundColor: 'hsl(var(--primary))', opacity: 0.8 }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </Card>
+      </div>
 
       {/* Data table */}
-      {!isLoading && items.length === 0 ? (
-        <DashboardEmptyState description="Nenhum negócio encontrado. Importe dados na aba de Importações." />
+      {!isLoading && itemsFiltrados.length === 0 ? (
+        <DashboardEmptyState description="Nenhum negócio no período selecionado." />
       ) : (
         <DashboardDataTable
-          title="Negócios Fechados"
-          subtitle={`${items.length} registros`}
+          title={`Negócios Fechados${periodLabel ? ` — ${periodLabel}` : ''}`}
+          subtitle={`${itemsFiltrados.length} registros no período`}
           columns={columns}
-          data={items}
+          data={itemsFiltrados}
           isLoading={isLoading}
           getRowKey={(r) => r.id}
           onRowClick={(r) => setDrawerItem(r)}
