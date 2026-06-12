@@ -329,8 +329,9 @@ const MetasTab: React.FC<MetasTabProps> = ({
       [...mesesEscopo].reduce((s, k) => s + (fatPorMes.get(k) ?? META_MENSAL_DEFAULT), 0) ||
       META_MENSAL_DEFAULT * mesesNoEscopo;
 
+    // Contribuição financeira dos produtos: (manual + itens de venda) × valor unitário
     const realizadoProdutos = metasProduto.reduce((sum, m) => {
-      const qty = parseInt(m.realizado) || 0;
+      const qty = (parseInt(m.realizado) || 0) + qtyVendidaPara(m.nome_indicador, m.mes);
       const vu = parseFloat(m.valor_unitario) || 0;
       return sum + qty * vu;
     }, 0);
@@ -350,7 +351,8 @@ const MetasTab: React.FC<MetasTabProps> = ({
       const d = getMesDate(m.mes);
       if (!d) continue;
       const pm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const contrib = (parseInt(m.realizado) || 0) * (parseFloat(m.valor_unitario) || 0);
+      const qtyTotal = (parseInt(m.realizado) || 0) + (vendaQtyMap.get(`${m.nome_indicador}|${pm}`) ?? 0);
+      const contrib = qtyTotal * (parseFloat(m.valor_unitario) || 0);
       if (contrib > 0) mesMap.set(pm, (mesMap.get(pm) ?? 0) + contrib);
     }
 
@@ -388,7 +390,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
       media,
       hasCadastrado: targetCadastrado > 0,
     };
-  }, [metasFaturamento, metasProduto, vendasFiltradas]);
+  }, [metasFaturamento, metasProduto, vendasFiltradas, vendaQtyMap]);
 
   // ── Histograma de ondas: atingimento Produtos × Financeiro ───
   const waveData = useMemo(() => {
@@ -416,9 +418,9 @@ const MetasTab: React.FC<MetasTabProps> = ({
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const a = ensure(k);
       a.metaQty += parseFloat(m.valor) || 0;
-      const rq = parseInt(m.realizado) || 0;
-      a.realQty += rq + (vendaQtyMap.get(`${m.nome_indicador}|${k}`) ?? 0);
-      a.finReal += rq * (parseFloat(m.valor_unitario) || 0);
+      const rqTotal = (parseInt(m.realizado) || 0) + (vendaQtyMap.get(`${m.nome_indicador}|${k}`) ?? 0);
+      a.realQty += rqTotal;
+      a.finReal += rqTotal * (parseFloat(m.valor_unitario) || 0);
     }
     // Metas de faturamento cadastradas → target financeiro do mês
     for (const m of metasFaturamento) {
@@ -1035,7 +1037,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
               <>
                 <div style={{ height: 196 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={waveData} margin={{ left: -18, right: 8, top: 8, bottom: 0 }}>
+                    <AreaChart data={waveData} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
                       <defs>
                         <linearGradient id="waveProduto" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.45} />
@@ -1059,7 +1061,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                         tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
                         tickLine={false}
                         axisLine={false}
-                        width={42}
+                        width={52}
                         domain={[
                           0,
                           Math.max(

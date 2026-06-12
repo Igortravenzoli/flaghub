@@ -150,6 +150,17 @@ export function PipeDriveTab({
       if (!pm) continue;
       mesMap.set(pm, (mesMap.get(pm) ?? 0) + (item.deal_value ?? 0));
     }
+    // Garante TODOS os meses do período selecionado no eixo — meses sem venda
+    // entram com 0% e aparecem como silhueta esmaecida no gráfico.
+    if (dateFrom && dateTo) {
+      const cursor = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), 1);
+      const last = new Date(dateTo.getFullYear(), dateTo.getMonth(), 1);
+      while (cursor <= last) {
+        const ym = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+        if (!mesMap.has(ym)) mesMap.set(ym, 0);
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    }
     const vendasPorMes = [...mesMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([ym, val]) => {
@@ -163,7 +174,7 @@ export function PipeDriveTab({
       vendasPorMes,
       orgs: vendasPorOrg.map((v) => v.bandeira),
     };
-  }, [itemsFiltrados]);
+  }, [itemsFiltrados, dateFrom, dateTo]);
 
   const filteredVendas = useMemo(() => {
     if (!selectedBandeira) return stats.vendasPorOrg;
@@ -312,8 +323,14 @@ export function PipeDriveTab({
                 <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
                 <Tooltip content={<CustomTooltipMensal />} />
                 <ReferenceLine y={100} stroke="hsl(var(--primary))" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: 'Meta 100%', position: 'right', fill: 'hsl(var(--primary))', fontSize: 10 }} />
-                <Bar dataKey="percentualMeta" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                <Bar
+                  dataKey="percentualMeta"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={60}
+                  background={{ fill: 'hsl(var(--muted))', opacity: 0.45, radius: 4 }}
+                >
                   {stats.vendasPorMes.map((entry, i) => {
+                    if (entry.percentualMeta === 0) return <Cell key={i} fill="transparent" />;
                     if (entry.percentualMeta < 50) return <Cell key={i} fill="hsl(var(--destructive))" />;
                     const intensity = Math.min(1, Math.max(0, (entry.percentualMeta - 50) / 100));
                     const lightness = 55 - intensity * 20;
