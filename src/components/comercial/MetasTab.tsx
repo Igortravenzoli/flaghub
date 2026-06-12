@@ -404,14 +404,22 @@ const MetasTab: React.FC<MetasTabProps> = ({
       [...mesesEscopo].reduce((s, k) => s + (fatPorMes.get(k) ?? META_MENSAL_DEFAULT), 0) ||
       META_MENSAL_DEFAULT * mesesNoEscopo;
 
-    // Contribuição financeira dos produtos: (manual + itens de venda) × valor unitário
-    const realizadoProdutos = metasProduto.reduce((sum, m) => {
-      const qty = (parseInt(m.realizado) || 0) + qtyVendidaPara(m.nome_indicador, m.mes);
+    // Contribuição financeira dos produtos:
+    // - "manual" (realizado digitado na meta) SOMA no total
+    // - "via itens de venda" é só informativa: o R$ desses itens já está
+    //   dentro do deal_value da venda (evita dupla contagem — caso Serrana)
+    let realizadoProdutosManual = 0;
+    let realizadoProdutos = 0; // manual + via vendas (exibição da linha)
+    for (const m of metasProduto) {
       const vu = parseFloat(m.valor_unitario) || 0;
-      return sum + qty * vu;
-    }, 0);
+      const manualQty = parseInt(m.realizado) || 0;
+      const vendaQty = qtyVendidaPara(m.nome_indicador, m.mes);
+      realizadoProdutosManual += manualQty * vu;
+      realizadoProdutos += (manualQty + vendaQty) * vu;
+    }
     const realizadoVendas = vendasFiltradas.reduce((s, i) => s + (i.deal_value ?? 0), 0);
-    const totalRealizado = realizadoProdutos + realizadoVendas;
+    const totalRealizado = realizadoProdutosManual + realizadoVendas;
+    const produtosViaVendas = realizadoProdutos - realizadoProdutosManual;
 
     const pctAtingimento = target > 0 ? Math.round((totalRealizado / target) * 1000) / 10 : 0;
 
@@ -426,8 +434,9 @@ const MetasTab: React.FC<MetasTabProps> = ({
       const d = getMesDate(m.mes);
       if (!d) continue;
       const pm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const qtyTotal = (parseInt(m.realizado) || 0) + (vendaQtyMap.get(`${m.nome_indicador}|${pm}`) ?? 0);
-      const contrib = qtyTotal * (parseFloat(m.valor_unitario) || 0);
+      // Só o realizado manual soma no financeiro mensal (itens de venda já
+      // estão no deal_value somado acima)
+      const contrib = (parseInt(m.realizado) || 0) * (parseFloat(m.valor_unitario) || 0);
       if (contrib > 0) mesMap.set(pm, (mesMap.get(pm) ?? 0) + contrib);
     }
 
@@ -458,6 +467,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
       target,
       totalRealizado,
       realizadoProdutos,
+      produtosViaVendas,
       realizadoVendas,
       latest,
       mesesBatidos,
@@ -493,9 +503,11 @@ const MetasTab: React.FC<MetasTabProps> = ({
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const a = ensure(k);
       a.metaQty += parseFloat(m.valor) || 0;
-      const rqTotal = (parseInt(m.realizado) || 0) + (vendaQtyMap.get(`${m.nome_indicador}|${k}`) ?? 0);
-      a.realQty += rqTotal;
-      a.finReal += rqTotal * (parseFloat(m.valor_unitario) || 0);
+      const manualQty = parseInt(m.realizado) || 0;
+      // Quantidade: manual + itens de venda (acompanhamento de unidades)
+      a.realQty += manualQty + (vendaQtyMap.get(`${m.nome_indicador}|${k}`) ?? 0);
+      // Financeiro: só o manual soma (itens de venda já estão no deal_value)
+      a.finReal += manualQty * (parseFloat(m.valor_unitario) || 0);
     }
     // Metas de faturamento cadastradas → target financeiro do mês
     for (const m of metasFaturamento) {
@@ -982,12 +994,23 @@ const MetasTab: React.FC<MetasTabProps> = ({
                       </div>
                     </div>
                   );
+                  const temViaVendas = faturamentoStats.produtosViaVendas > 0;
                   return (
                     <div className="pt-1 border-t">
                       <Row label="Target período" pctVal={null} value={faturamentoStats.target} />
-                      <Row label="Metas Produtos" pctVal={faturamentoStats.pctMetas} value={faturamentoStats.realizadoProdutos} />
+                      <Row
+                        label={temViaVendas ? "Metas Produtos *" : "Metas Produtos"}
+                        pctVal={faturamentoStats.pctMetas}
+                        value={faturamentoStats.realizadoProdutos}
+                      />
                       <Row label="Venda Produtos" pctVal={faturamentoStats.pctVendas} value={faturamentoStats.realizadoVendas} />
                       <Row label="Total realizado" pctVal={faturamentoPct} value={faturamentoStats.totalRealizado} bold />
+                      {temViaVendas && (
+                        <p className="text-[10px] text-muted-foreground pt-1.5 leading-snug">
+                          * inclui {brl(faturamentoStats.produtosViaVendas, showValues)} de itens de venda —
+                          já contidos em Venda Produtos; não somam no total.
+                        </p>
+                      )}
                     </div>
                   );
                 })()}
