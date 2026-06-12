@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   useDevopsRepos, useDevopsProjects, useClassificarRepo,
   computeCoberturaKpis, computeCoberturaPorProjeto, countPipelinesNovasTrimestre,
-  reposLegadoAutomatico, DevopsRepo,
+  reposLegadoAutomatico, ciCdNivel, DevopsRepo,
 } from '@/hooks/useDevopsCobertura';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -234,7 +234,7 @@ export function DevopsCoberturaPanel() {
                         <div className="flex items-center justify-between text-xs mb-1">
                           <span className="font-medium truncate pr-2">{p.projeto}</span>
                           <span className="text-muted-foreground shrink-0">
-                            {p.repos} repos · {p.pipelinesAtivas} pipelines ·{' '}
+                            {p.repos} repos · {p.pipelinesAtivas} pipelines · {p.completos} CI/CD ·{' '}
                             <span className={`font-bold font-mono ${!classificado ? 'text-blue-500' : pct >= META_COBERTURA_PCT ? 'text-emerald-500' : 'text-amber-500'}`}>
                               {pct}%{!classificado && '*'}
                             </span>
@@ -291,6 +291,7 @@ export function DevopsCoberturaPanel() {
                     <th className="py-2 px-3 text-left font-medium">Repositório</th>
                     <th className="py-2 px-3 text-left font-medium">Último commit</th>
                     <th className="py-2 px-3 text-center font-medium">Pipelines (ativas/total)</th>
+                    <th className="py-2 px-3 text-left font-medium">CI/CD</th>
                     <th className="py-2 px-3 text-left font-medium">Situação</th>
                     <th className="py-2 px-4 text-left font-medium w-44">Aplicável?</th>
                   </tr>
@@ -320,6 +321,14 @@ export function DevopsCoberturaPanel() {
                           <span className={`font-mono font-bold ${repo.active_pipeline_count > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
                             {repo.active_pipeline_count}/{repo.pipeline_count}
                           </span>
+                        </td>
+                        <td className="py-2 px-3">
+                          {(() => {
+                            const nivel = ciCdNivel(repo);
+                            if (nivel === 'completo') return <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/40" title={`${repo.active_pipeline_count} pipeline(s) + ${repo.release_count} release(s) — build ao deploy`}>Completo</Badge>;
+                            if (nivel === 'parcial') return <Badge variant="outline" className="text-[10px] text-blue-600 dark:text-blue-400 border-blue-500/40" title="Pipeline sem release definition — CI sem CD (ou deploy embutido em YAML)">Parcial</Badge>;
+                            return <span className="text-muted-foreground">—</span>;
+                          })()}
                         </td>
                         <td className="py-2 px-3">
                           {repo.is_disabled

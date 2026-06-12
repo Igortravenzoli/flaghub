@@ -27,6 +27,8 @@ export interface DevopsRepo {
   last_commit_date: string | null;
   pipeline_count: number;
   active_pipeline_count: number;
+  /** Release definitions (classic CD) ligadas aos builds deste repo */
+  release_count: number;
   pipelines: DevopsRepoPipeline[];
   aplicavel: boolean | null;
   classificacao_obs: string | null;
@@ -72,6 +74,8 @@ export interface CoberturaProjeto {
   pipelinesAtivas: number;
   /** % repos com pipeline ativa — fallback informativo sem classificação */
   pipelinePct: number;
+  /** Repos com CI/CD completo (pipeline ativa + release) */
+  completos: number;
 }
 
 // ── Pure helpers (testáveis) ───────────────────────────────────────────
@@ -115,9 +119,22 @@ export function computeCoberturaPorProjeto(repos: DevopsRepo[]): CoberturaProjet
         comPipeline,
         pipelinesAtivas: list.reduce((s, r) => s + r.active_pipeline_count, 0),
         pipelinePct: list.length > 0 ? Math.round((comPipeline / list.length) * 100) : 0,
+        completos: list.filter(r => ciCdNivel(r) === 'completo').length,
       };
     })
     .sort((a, b) => b.repos - a.repos);
+}
+
+/** Nível de cobertura CI/CD de um repo:
+ *  completo = pipeline ativa + release (build ao deploy);
+ *  parcial = só pipeline (falta release/CD — obs.: YAML multi-stage com deploy
+ *  embutido também cai aqui, pois não usa classic release);
+ *  descoberto = sem pipeline ativa. */
+export type CiCdNivel = 'completo' | 'parcial' | 'descoberto';
+
+export function ciCdNivel(repo: Pick<DevopsRepo, 'active_pipeline_count' | 'release_count'>): CiCdNivel {
+  if (repo.active_pipeline_count <= 0) return 'descoberto';
+  return (repo.release_count ?? 0) > 0 ? 'completo' : 'parcial';
 }
 
 /** Repos elegíveis à categorização automática de legado: não classificados e

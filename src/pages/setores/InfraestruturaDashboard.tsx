@@ -168,7 +168,7 @@ export default function InfraestruturaDashboard() {
     title: 'Dashboard Infraestrutura', area: 'Infraestrutura', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : sprintLabel),
     kpis: [
       { label: 'Total', value: scoped.total },
-      { label: 'Pendentes', value: scoped.pendentes },
+      { label: 'Backlog', value: scoped.pendentes },
       { label: 'Em Andamento', value: scoped.emAndamento },
       { label: 'Melhorias', value: scoped.melhorias },
       { label: 'ISO 27001', value: scoped.iso27001 },
@@ -254,12 +254,31 @@ export default function InfraestruturaDashboard() {
         <DashboardEmptyState variant="error" onRetry={() => scoped.refetch()} />
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="bg-muted/50 p-1">
+          <TabsList className="bg-muted/50 p-1 flex w-full justify-start">
             <TabsTrigger value="overview" className="gap-1.5 text-xs"><Server className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
             <TabsTrigger value="gestao-sg" className="gap-1.5 text-xs"><ShieldCheck className="h-3.5 w-3.5" />Gestão SG</TabsTrigger>
             <TabsTrigger value="projetos-pipelines" className="gap-1.5 text-xs"><FolderKanban className="h-3.5 w-3.5" />Projetos & Pipelines</TabsTrigger>
             <TabsTrigger value="timelog" className="gap-1.5 text-xs"><Timer className="h-3.5 w-3.5" />Timelog</TabsTrigger>
-            <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
+            <div className="ml-auto">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === 'esteira-saude' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    ⋯ mais
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuCheckboxItem
+                    checked={activeTab === 'esteira-saude'}
+                    onCheckedChange={() => setActiveTab('esteira-saude')}
+                    className="text-xs gap-1.5"
+                  >
+                    <HeartPulse className="h-3.5 w-3.5" /> Esteira / Saúde
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4 mt-0">
@@ -271,16 +290,16 @@ export default function InfraestruturaDashboard() {
               <Card className="p-6">
                 <p className="text-xs font-medium text-muted-foreground mb-4">STATUS SPRINT</p>
                 <div className="flex items-start justify-between mb-3">
-                  <div>
+                  <button type="button" onClick={() => setKpiFilter('all')} className={`text-left rounded-lg px-1 transition-colors hover:bg-muted/40 ${kpiFilter === 'all' ? '' : 'opacity-80'}`}>
                     <p className="text-xs font-medium text-muted-foreground mb-1">Total de atividades</p>
                     <span className="text-4xl font-bold text-foreground">{scoped.total}</span>
-                  </div>
-                  <div className="text-right">
+                  </button>
+                  <button type="button" onClick={() => toggleKpi('concluidos')} className={`text-right rounded-lg px-1 transition-colors hover:bg-muted/40 ${kpiFilter === 'concluidos' ? 'ring-1 ring-primary bg-muted/40' : ''}`}>
                     <p className="text-xs font-medium text-muted-foreground mb-1">Concluídas</p>
                     <span className={`text-2xl font-semibold ${scoped.concluidos > 0 ? 'text-[hsl(142,71%,45%)]' : 'text-muted-foreground'}`}>
                       {scoped.total > 0 ? Math.round((scoped.concluidos / scoped.total) * 100) : 0}%
                     </span>
-                  </div>
+                  </button>
                 </div>
                 {(() => {
                   const total = scoped.total || 1;
@@ -296,7 +315,7 @@ export default function InfraestruturaDashboard() {
                 <div className="grid grid-cols-3 gap-2 pt-4 border-t border-border">
                   {[
                     { key: 'em_andamento' as InfraKpiFilter, label: 'Em Andamento', value: scoped.emAndamento, dotColor: 'bg-[hsl(var(--info))]' },
-                    { key: 'pendentes' as InfraKpiFilter, label: 'Pendentes', value: scoped.pendentes, dotColor: 'bg-amber-400' },
+                    { key: 'pendentes' as InfraKpiFilter, label: 'Backlog', value: scoped.pendentes, dotColor: 'bg-amber-400' },
                     { key: 'concluidos' as InfraKpiFilter, label: 'Concluídos', value: scoped.concluidos, dotColor: 'bg-[hsl(142,71%,45%)]' },
                   ].map(item => (
                     <button key={item.key} onClick={() => toggleKpi(item.key)}

@@ -116,17 +116,35 @@ async function fetchLastCommitDate(projectId: string, repoId: string): Promise<s
   }
 }
 
-/** Contagem de release definitions (classic releases); 0 quando indisponível. */
-async function fetchReleaseDefCount(projectId: string): Promise<number> {
+interface ReleaseInfo {
+  count: number
+  /** build definition id → quantidade de release definitions que o consomem */
+  byBuildDefId: Map<number, number>
+}
+
+/** Release definitions (classic CD) com artefatos: permite associar releases
+ *  aos repositórios via build definition de origem. */
+async function fetchReleaseDefs(projectId: string): Promise<ReleaseInfo> {
+  const empty: ReleaseInfo = { count: 0, byBuildDefId: new Map() }
   try {
     const resp = await devopsFetch(
-      `https://vsrm.dev.azure.com/${DEVOPS_ORG}/${projectId}/_apis/release/definitions?api-version=${API}`
+      `https://vsrm.dev.azure.com/${DEVOPS_ORG}/${projectId}/_apis/release/definitions?$expand=artifacts&api-version=${API}`
     )
-    if (!resp.ok) return 0
+    if (!resp.ok) return empty
     const data = await resp.json()
-    return data.count ?? (data.value?.length ?? 0)
+    const defs = data.value ?? []
+    const byBuildDefId = new Map<number, number>()
+    for (const rd of defs) {
+      for (const art of (rd.artifacts ?? [])) {
+        if (art.type !== 'Build') continue
+        const buildDefId = parseInt(art.definitionReference?.definition?.id ?? '', 10)
+        if (!Number.isFinite(buildDefId)) continue
+        byBuildDefId.set(buildDefId, (byBuildDefId.get(buildDefId) ?? 0) + 1)
+      }
+    }
+    return { count: defs.length, byBuildDefId }
   } catch {
-    return 0
+    return empty
   }
 }
 
@@ -184,12 +202,12 @@ serve(async (req) => {
 
     // 2. Por projeto: repos + build definitions + releases
     for (const proj of projects) {
-      const [reposData, defsData, releaseDefCount] = await Promise.all([
+      const [reposData, defsData, releaseInfo] = await Promise.all([
         devopsJson<{ value: AdoRepo[] }>(`${proj.id}/_apis/git/repositories?includeHidden=false&api-version=${API}`)
           .catch((e) => { console.error(`[DevOpsRepos] repos ${proj.name}: ${e.message}`); return { value: [] as AdoRepo[] } }),
         devopsJson<{ value: AdoBuildDef[] }>(`${proj.id}/_apis/build/definitions?includeAllProperties=true&$top=1000&api-version=${API}`)
           .catch((e) => { console.error(`[DevOpsRepos] defs ${proj.name}: ${e.message}`); return { value: [] as AdoBuildDef[] } }),
-        fetchReleaseDefCount(proj.id),
+        fetchReleaseDefs(proj.id),
       ])
 
       const repos = reposData.value || []
@@ -214,7 +232,7 @@ serve(async (req) => {
         last_update_time: proj.lastUpdateTime ?? null,
         repo_count: repos.length,
         pipeline_count: defs.length,
-        release_definition_count: releaseDefCount,
+        release_definition_count: releaseInfo.count,
         synced_at: syncedAt,
       })
 
@@ -237,6 +255,7 @@ serve(async (req) => {
           last_commit_date: lastCommit,
           pipeline_count: repoDefs.length,
           active_pipeline_count: repoDefs.filter(d => d.queueStatus === 'enabled').length,
+          release_count: repoDefs.reduce((s, d) => s + (releaseInfo.byBuildDefId.get(d.id) ?? 0), 0),
           pipelines: repoDefs.map(d => ({
             id: d.id,
             name: d.name,

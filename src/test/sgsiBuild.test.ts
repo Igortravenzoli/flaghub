@@ -44,8 +44,9 @@ describe('buildSgsiResponse', () => {
     item('010', 12, { Status: 'Aguardando aprovação TI', 'Título': ['Broker PA', 'Broker PROD'], Risco: 'Alto', 'Atualizações bem sucedidas': 'Não' }, '2026-06-01T08:00:00Z'),
     item('010', 13, { Status: 'Aguardando aprovação Gestores', 'Título': ['Staging Área PROD'] }, '2026-06-05T08:00:00Z'),
     item('010', 14, { Status: 'Rejeitado' }, '2026-04-10T08:00:00Z'),
-    // 017 — incidentes (último em 06/06 → 5 dias sem incidentes em 11/06)
-    item('017', 21, { Status: 'Resolvido', SLA: 'Dentro do SLA', Categoria: 'Disponibilidade', Protocolo: 'INC-21', 'Data e hora inicio Incidente': '2026-06-06T03:00:00Z', 'Tempo Downtime': '2,5' }),
+    // 017 — incidentes (último criado em 06/06 → 5 dias sem incidentes em 11/06;
+    // o campo "Data e hora inicio Incidente" é texto livre e não conta p/ diasSem)
+    item('017', 21, { Status: 'Resolvido', SLA: 'Dentro do SLA', Categoria: 'Disponibilidade', Protocolo: 'INC-21', 'Data e hora inicio Incidente': 'Dia: 06/06/2026 - Horário: 03h00', 'Tempo Downtime': '2,5' }, '2026-06-06T03:00:00Z'),
     item('017', 22, { Status: 'Ativo', SLA: 'Fora do SLA', Categoria: 'Segurança' }, '2026-05-20T03:00:00Z'),
     // 012 — riscos (status reais: Encerrado/Rejeitado/Plano de Tratamento
     // Definido/Em monitoramento TI; ativo = "O que este risco afeta")
