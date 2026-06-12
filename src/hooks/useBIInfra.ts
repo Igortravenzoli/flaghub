@@ -211,14 +211,24 @@ export interface SgsiRawItem {
 
 // ── Helpers puros (testáveis) ──────────────────────────────────────────
 
-function str(item: SgsiRawItem, ...names: string[]): string {
+/** Valores de um campo: colunas multi-escolha do SharePoint chegam como array. */
+function valuesOf(item: SgsiRawItem, ...names: string[]): string[] {
   for (const name of names) {
     const v = item.fields[name];
     if (v === null || v === undefined || v === '') continue;
-    if (typeof v === 'string') return v;
-    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (Array.isArray(v)) {
+      const arr = v.map((x) => String(x)).filter(Boolean);
+      if (arr.length > 0) return arr;
+      continue;
+    }
+    if (typeof v === 'string') return [v];
+    if (typeof v === 'number' || typeof v === 'boolean') return [String(v)];
   }
-  return '';
+  return [];
+}
+
+function str(item: SgsiRawItem, ...names: string[]): string {
+  return valuesOf(item, ...names).join(', ');
 }
 
 function num(item: SgsiRawItem, ...names: string[]): number {
@@ -243,9 +253,9 @@ function isNao(value: unknown): boolean {
 export function countBy(items: SgsiRawItem[], ...fieldNames: string[]): NameValue[] {
   const map = new Map<string, number>();
   for (const item of items) {
-    const v = str(item, ...fieldNames);
-    if (!v) continue;
-    map.set(v, (map.get(v) ?? 0) + 1);
+    for (const v of valuesOf(item, ...fieldNames)) {
+      map.set(v, (map.get(v) ?? 0) + 1);
+    }
   }
   return [...map.entries()]
     .map(([name, value]) => ({ name, value }))
@@ -309,18 +319,24 @@ export function buildSgsiResponse(
   const l018 = by('018');
 
   // ── 010 Mudanças ──
+  // Status reais da lista: Realizado | Aprovado | Rejeitado |
+  // Aguardando aprovação Gestores | Aguardando aprovação TI.
+  // "Pendentes" = em andamento (exclui realizadas e rejeitadas).
+  // O campo "Título" da lista carrega o(s) ambiente(s) (multi-escolha) —
+  // no PBIX ele era expandido na tabela auxiliar "Aux Ambientes".
   const STATUS_010 = ['Status'];
-  const concluidos = l010.filter((i) => statusMatches(i, STATUS_010, /conclu/i)).length;
+  const concluidos = l010.filter((i) => statusMatches(i, STATUS_010, /realizado|conclu/i)).length;
+  const rejeitados010 = l010.filter((i) => statusMatches(i, STATUS_010, /rejeitad/i)).length;
   const aguardandoGestor = l010.filter((i) => statusMatches(i, STATUS_010, /gestor/i)).length;
   const aguardandoTI = l010.filter((i) => statusMatches(i, STATUS_010, /aguard.*\bti\b/i)).length;
   const mudancas: SgMudancasBloco = {
     total: l010.length,
     concluidos,
-    pendentes: l010.length - concluidos,
+    pendentes: Math.max(0, l010.length - concluidos - rejeitados010),
     aguardandoGestor,
     aguardandoTI,
     porStatus: countBy(l010, 'Status'),
-    porAmbiente: countBy(l010, 'Ambiente'),
+    porAmbiente: countBy(l010, 'Ambiente', 'Título'),
     porRisco: countBy(l010, 'Risco'),
     porCategoria: countBy(l010, 'Categoria da mudança', 'Categoria'),
     atualizacoesBemSucedidas: simNaoOf(l010, 'Atualizações bem sucedidas'),
@@ -328,7 +344,7 @@ export function buildSgsiResponse(
     itens: recentes(l010, 12).map((i) => ({
       id: i.item_id,
       chamado: str(i, 'Número do chamado') || `#${i.item_id}`,
-      ambiente: str(i, 'Ambiente') || DASH,
+      ambiente: str(i, 'Ambiente', 'Título') || DASH,
       tipoMudanca: str(i, 'Tipo Mudança', 'Tipo de mudança') || DASH,
       categoria: str(i, 'Categoria da mudança', 'Categoria') || DASH,
       motivo: str(i, 'Motivo da mudança ou atualização') || DASH,
@@ -352,12 +368,12 @@ export function buildSgsiResponse(
     itens: recentes(l017, 12).map((i) => ({
       id: i.item_id,
       titulo: str(i, 'Título', 'Title') || DASH,
-      ativo: str(i, 'Identificação do Ativo') || DASH,
-      motivo: str(i, 'Motivo incidente') || DASH,
+      ativo: str(i, 'Identificação do Ativo', 'Ativo afetado') || DASH,
+      motivo: str(i, 'Motivo incidente', 'Motivo identificado') || DASH,
       priorizacao: str(i, 'Priorização') || DASH,
       protocolo: str(i, 'Protocolo') || `#${i.item_id}`,
       status: str(i, ...STATUS_017) || DASH,
-      tipo: str(i, 'Tipo') || DASH,
+      tipo: str(i, 'Tipo Incidente', 'Tipo') || DASH,
       sla: str(i, 'SLA') || DASH,
       categoria: str(i, 'Categoria') || DASH,
       downtimeHoras: num(i, 'Tempo Downtime'),
@@ -366,16 +382,19 @@ export function buildSgsiResponse(
   };
 
   // ── 012 Riscos ──
+  // Status reais: Encerrado | Rejeitado | Plano de Tratamento Definido |
+  // Em monitoramento TI. Aberto = nem encerrado/tratado nem rejeitado.
+  // "Ativo afetado" não existe na lista — o campo real é "O que este risco afeta".
   const STATUS_012 = ['Status solicitação', 'Status'];
   const riscos: SgRiscosBloco = {
     total: l012.length,
-    abertos: l012.filter((i) => !statusMatches(i, STATUS_012, /tratad|encerr|conclu|finaliz/i)).length,
+    abertos: l012.filter((i) => !statusMatches(i, STATUS_012, /tratad|encerr|conclu|finaliz|rejeitad/i)).length,
     porStatus: countBy(l012, ...STATUS_012),
     porAmbiente: countBy(l012, 'Ambiente Afetado', 'Ambiente afetado'),
     porCID: countBy(l012, 'CID afetado'),
     porCategoriaAmeaca: countBy(l012, 'Categoria Ameaça'),
-    porTipoAmeaca: countBy(l012, 'Tipo ameaça'),
-    porAtivoAfetado: countBy(l012, 'Ativo afetado'),
+    porTipoAmeaca: countBy(l012, 'Tipo ameaça', 'Tipo da ameaça'),
+    porAtivoAfetado: countBy(l012, 'Ativo afetado', 'O que este risco afeta'),
     tratamentoEficaz: simNaoOf(l012, 'O plano de tratamento de risco foi eficaz?'),
     itens: recentes(l012, 12).map((i) => ({
       id: i.item_id,
@@ -384,7 +403,7 @@ export function buildSgsiResponse(
       cid: str(i, 'CID afetado') || DASH,
       categoriaAmeaca: str(i, 'Categoria Ameaça') || DASH,
       tipoAmeaca: str(i, 'Tipo ameaça') || DASH,
-      ativoAfetado: str(i, 'Ativo afetado') || DASH,
+      ativoAfetado: str(i, 'Ativo afetado', 'O que este risco afeta') || DASH,
       status: str(i, ...STATUS_012) || DASH,
       responsavelAjuste: str(i, 'Responsável pelo ajuste') || DASH,
       dataLimite: str(i, 'Data limite solução') || '',
@@ -417,12 +436,13 @@ export function buildSgsiResponse(
   const melhorias: SgOmBloco = {
     total: l011.length,
     eficazes: l011.filter((i) => isSim(i.fields['Melhoria foi eficaz?'])).length,
+    // "Ambiente afetado" não existe na lista 011 — usa "Processo afetado".
     porStatus: countBy(l011, 'Status Análise', 'Status'),
-    porAmbiente: countBy(l011, 'Ambiente afetado'),
+    porAmbiente: countBy(l011, 'Ambiente afetado', 'Processo afetado'),
     itens: recentes(l011, 12).map((i) => ({
       id: i.item_id,
       oportunidade: str(i, 'Oportunidade de melhoria') || DASH,
-      ambiente: str(i, 'Ambiente afetado') || DASH,
+      ambiente: str(i, 'Ambiente afetado', 'Processo afetado') || DASH,
       processo: str(i, 'Processo afetado') || DASH,
       beneficios: str(i, 'Beneficos da melhoria', 'Benefícios da melhoria') || DASH,
       status: str(i, 'Status Análise', 'Status') || DASH,

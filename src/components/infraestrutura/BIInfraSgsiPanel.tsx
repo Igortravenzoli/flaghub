@@ -329,7 +329,7 @@ export function BIInfraSgsiPanel() {
             <MiniDonut title="Tipo de ameaça" data={d?.riscos.porTipoAmeaca} isLoading={isLoading} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <MiniBars title="Ativo afetado" data={d?.riscos.porAtivoAfetado} isLoading={isLoading} />
+            <MiniBars title="O que o risco afeta" data={d?.riscos.porAtivoAfetado} isLoading={isLoading} />
             <MiniBars title="Por ambiente" data={d?.riscos.porAmbiente} isLoading={isLoading} />
           </div>
           <SgTable
@@ -387,7 +387,7 @@ export function BIInfraSgsiPanel() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <MiniDonut title="Por status" data={d?.melhorias.porStatus} isLoading={isLoading} />
-                <MiniBars title="Ambiente afetado" data={d?.melhorias.porAmbiente} isLoading={isLoading} />
+                <MiniBars title="Processo afetado" data={d?.melhorias.porAmbiente} isLoading={isLoading} />
               </div>
               <SgTable
                 title="OM recentes"
