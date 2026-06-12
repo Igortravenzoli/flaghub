@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useBIInfraSgsi, NameValue, SimNao } from '@/hooks/useBIInfra';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,14 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   ShieldCheck, RefreshCw, Flame, AlertTriangle, FileWarning, KeyRound,
-  Lightbulb, CalendarCheck, ChevronDown,
+  Lightbulb, CalendarCheck,
 } from 'lucide-react';
 
-// Seções da Gestão SG (submenu dropdown)
-const SGSI_SECOES = [
+// Seções da Gestão SG — o seletor fica no dropdown da própria aba
+// "Gestão SG" do dashboard (InfraestruturaDashboard).
+export const SGSI_SECOES = [
   { value: 'mudancas', label: 'Mudanças (010)', Icon: RefreshCw },
   { value: 'incidentes', label: 'Incidentes (017)', Icon: Flame },
   { value: 'riscos', label: 'Riscos (012)', Icon: AlertTriangle },
@@ -209,14 +209,16 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Painel principal ──────────────────────────────────────────────────
 
-export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo?: Date }) {
+export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
+  dateFrom?: Date; dateTo?: Date;
+  /** Seção ativa — controlada pelo dropdown da aba Gestão SG no dashboard */
+  secao?: string;
+}) {
   const { data, isLoading, isError, refetch } = useBIInfraSgsi(dateFrom, dateTo);
   // Drill-through: clique nos KPIs filtra a tabela analítica do bloco
   const [drill, setDrill] = useState<string | null>(null);
   const toggleDrill = (k: string) => setDrill((p) => (p === k ? null : k));
-  // Seção ativa do submenu (substitui as abas internas)
-  const [secao, setSecao] = useState<string>('mudancas');
-  const secaoAtual = SGSI_SECOES.find((s) => s.value === secao) ?? SGSI_SECOES[0];
+  useEffect(() => { setDrill(null); }, [secao]);
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
@@ -303,28 +305,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
       {d && d.totalItens === 0 && d.totalItensBase > 0 ? (
         <DashboardEmptyState description={`Nenhuma atividade SG no período selecionado (${d.totalItensBase} itens no histórico). Selecione "Todas as Sprints" para ver o panorama completo.`} />
       ) : (
-      <Tabs value={secao} onValueChange={setSecao}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted/40">
-              <secaoAtual.Icon className="h-4 w-4 text-primary" />
-              {secaoAtual.label}
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-[260px]">
-            {SGSI_SECOES.map(({ value, label, Icon }) => (
-              <DropdownMenuCheckboxItem
-                key={value}
-                checked={secao === value}
-                onCheckedChange={() => { setSecao(value); setDrill(null); }}
-                className="text-xs gap-1.5"
-              >
-                <Icon className="h-3.5 w-3.5" /> {label}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <Tabs value={secao}>
 
         {/* ── Mudanças (SG-LST-010) ── */}
         <TabsContent value="mudancas" className="space-y-3 mt-3">
