@@ -29,7 +29,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileCheck, Clock, TrendingUp, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo, Users, Filter } from 'lucide-react';
+import { FileCheck, Clock, TrendingUp, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo, Users, Filter, MoreHorizontal } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import type { Integration } from '@/components/setores/SectorIntegrations';
@@ -187,7 +188,6 @@ export default function QualidadeDashboard() {
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
-  const [gerencialTab, setGerencialTab] = useState('executivo');
   const [tableSearch, setTableSearch] = useState('');
 
   const localItemIds = useMemo(() => allItems.map(i => i.id).filter(Boolean) as number[], [allItems]);
@@ -561,11 +561,41 @@ export default function QualidadeDashboard() {
         <DashboardEmptyState variant="error" onRetry={() => scoped.refetch()} />
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="bg-muted/50 p-1">
-            <TabsTrigger value="overview" className="gap-1.5 text-xs"><FileCheck className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
-            <TabsTrigger value="retrabalho" className="gap-1.5 text-xs"><RotateCcw className="h-3.5 w-3.5" />Retrabalho</TabsTrigger>
-            <TabsTrigger value="gerencial" className="gap-1.5 text-xs"><TrendingUp className="h-3.5 w-3.5" />Gerencial</TabsTrigger>
-          </TabsList>
+          <div className="flex items-center gap-2">
+            <TabsList className="bg-muted/50 p-1">
+              <TabsTrigger value="overview" className="gap-1.5 text-xs"><FileCheck className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
+              <TabsTrigger value="gerencial" className="gap-1.5 text-xs"><TrendingUp className="h-3.5 w-3.5" />Gerencial</TabsTrigger>
+            </TabsList>
+            {/* Visões secundárias no dropdown "Mais" (padrão dos demais setores) */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md transition-colors flex-shrink-0 ml-auto
+                  ${['retrabalho','esteira-saude','gargalos','por-feature'].includes(activeTab)
+                    ? 'bg-background shadow-sm text-foreground font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background/60'}`}>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  Mais
+                  {['retrabalho','esteira-saude','gargalos','por-feature'].includes(activeTab) && (
+                    <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => setActiveTab('retrabalho')} className={`gap-2 text-xs ${activeTab === 'retrabalho' ? 'font-medium text-primary' : ''}`}>
+                  <RotateCcw className="h-3.5 w-3.5" />Retrabalho
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setActiveTab('esteira-saude')} className={`gap-2 text-xs ${activeTab === 'esteira-saude' ? 'font-medium text-primary' : ''}`}>
+                  <HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setActiveTab('gargalos')} className={`gap-2 text-xs ${activeTab === 'gargalos' ? 'font-medium text-primary' : ''}`}>
+                  <AlertTriangle className="h-3.5 w-3.5" />Gargalos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setActiveTab('por-feature')} className={`gap-2 text-xs ${activeTab === 'por-feature' ? 'font-medium text-primary' : ''}`}>
+                  <Workflow className="h-3.5 w-3.5" />Por Feature
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
@@ -930,23 +960,14 @@ export default function QualidadeDashboard() {
           </TabsContent>
 
           <TabsContent value="gerencial" className="space-y-4 mt-0">
-            <Tabs value={gerencialTab} onValueChange={setGerencialTab} className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="executivo" className="gap-1.5 text-xs"><TrendingUp className="h-3.5 w-3.5" />Executivo</TabsTrigger>
-                <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
-                <TabsTrigger value="gargalos" className="gap-1.5 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Gargalos</TabsTrigger>
-                <TabsTrigger value="por-feature" className="gap-1.5 text-xs"><Workflow className="h-3.5 w-3.5" />Por Feature</TabsTrigger>
-              </TabsList>
+            <GerencialQaPanel
+              lockedSprintCode={selectedSprintCode}
+              dateStart={effectiveRange.from}
+              dateEnd={effectiveRange.to}
+            />
+          </TabsContent>
 
-              <TabsContent value="executivo" className="space-y-4 mt-0">
-                <GerencialQaPanel
-                  lockedSprintCode={selectedSprintCode}
-                  dateStart={effectiveRange.from}
-                  dateEnd={effectiveRange.to}
-                />
-              </TabsContent>
-
-              <TabsContent value="esteira-saude" className="space-y-4 mt-0">
+          <TabsContent value="esteira-saude" className="space-y-4 mt-0">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <QaKpiCard label="PBIs monitorados" value={pbiHealthBatch.overview.total} icon={FileCheck} tone="primary" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter('all')} active={healthFilter === 'all'} delay={0} />
                   <QaKpiCard label="Saudável" value={pbiHealthBatch.overview.verde} icon={HeartPulse} tone="success" isLoading={pbiHealthBatch.isLoading} onClick={() => setHealthFilter((prev) => prev === 'verde' ? 'all' : 'verde')} active={healthFilter === 'verde'} delay={80} />
@@ -1107,8 +1128,6 @@ export default function QualidadeDashboard() {
                   )}
                 </Card>
               </TabsContent>
-            </Tabs>
-          </TabsContent>
         </Tabs>
       )}
 

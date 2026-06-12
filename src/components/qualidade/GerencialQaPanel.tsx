@@ -12,7 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MultiSprintFilter } from '@/components/gerencial/MultiSprintFilter';
 import { SortableTableHead, useTableSort } from '@/components/gerencial/SortableTableHead';
 import {
@@ -31,6 +30,19 @@ const HEALTH_COLORS = QA_HEALTH;
 const SERIES_COLORS = QA_CHART_SERIES;
 
 type QaDrillFilter = 'concluidos' | 'sem_retorno' | 'com_retorno' | null;
+
+/** Divisor de seção da visão executiva (Visão Sprint / Desempenho) */
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-4">
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{title}</h3>
+        {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
+      </div>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
 
 interface GerencialQaPanelProps {
   lockedSprintCode?: string | null;
@@ -379,19 +391,9 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
         </Card>
       )}
 
-      <Tabs defaultValue="evolucao" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="evolucao">Evolução Sprint</TabsTrigger>
-          <TabsTrigger value="encerramentos">Encerramentos QA</TabsTrigger>
-          <TabsTrigger value="historico">Histórico por Período</TabsTrigger>
-          <TabsTrigger value="handoff">Handoff Dev→QA</TabsTrigger>
-          <TabsTrigger value="produtos">Produtos/Sistemas</TabsTrigger>
-          <TabsTrigger value="retrabalho">Retrabalho</TabsTrigger>
-          <TabsTrigger value="desempenho">Desempenho QA</TabsTrigger>
-        </TabsList>
+      <SectionHeader title="Visão Sprint" subtitle="evolução, encerramentos e distribuição" />
 
-        <TabsContent value="evolucao" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Resultado por Sprint</CardTitle>
@@ -433,10 +435,9 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                 ) : <p className="text-muted-foreground text-sm py-8">Sem dados</p>}
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
+      </div>
 
-        <TabsContent value="encerramentos" className="space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -446,7 +447,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
             </CardHeader>
             <CardContent>
               {encerramentosByCloser.length > 0 ? (
-                <ResponsiveContainer width="100%" height={320}>
+                <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={encerramentosByCloser}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                     <XAxis dataKey="sprint" tick={{ fontSize: 10 }} />
@@ -470,9 +471,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               </p>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="historico" className="space-y-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -483,7 +482,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
             <CardContent>
               {periodoData.length > 0 ? (
                 <>
-                  <ResponsiveContainer width="100%" height={340}>
+                  <ResponsiveContainer width="100%" height={280}>
                     <BarChart data={periodoData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                       <XAxis dataKey="sprint" tick={{ fontSize: 10 }} />
@@ -510,9 +509,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+      </div>
 
-        <TabsContent value="handoff" className="space-y-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -553,9 +551,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               )}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="produtos" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader className="pb-2">
@@ -629,9 +625,10 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="retrabalho" className="space-y-4">
+      <SectionHeader title="Desempenho" subtitle="retrabalho e desempenho por responsável" />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {agg && (
             <QaPillarCard
               title="Saúde do Retrabalho QA"
@@ -644,10 +641,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                 { label: 'Crítico 3+', value: agg.criticos, color: agg.criticos > 0 ? QA_TONES.danger.solid : undefined },
                 { label: 'Com retorno (tag)', value: atemporal?.com_retorno ?? 0, color: (atemporal?.com_retorno ?? 0) > 0 ? QA_TONES.warning.solid : undefined },
               ]}
-              className="max-w-sm"
             />
           )}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Tendência de Retrabalho por Sprint</CardTitle>
@@ -688,10 +683,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                 ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
+      </div>
 
-        <TabsContent value="desempenho" className="space-y-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -752,8 +745,6 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
