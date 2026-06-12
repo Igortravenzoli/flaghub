@@ -1,13 +1,19 @@
 import { useMemo, useState } from 'react';
 import {
-  useInfraTimelog, aggregateInfraTimelog, INFRA_TIMELOG_DEFAULT_COLLABS,
+  useInfraTimelog, aggregateInfraTimelog, buildDailySeries,
+  INFRA_TIMELOG_DEFAULT_COLLABS, CAPACIDADE_DIARIA_HORAS,
 } from '@/hooks/useInfraTimelog';
 import { InfraItem } from '@/hooks/useInfraestruturaKpis';
 import { HoursRankingCard } from '@/components/timelog/HoursRankingCard';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Timer, Users, ListChecks, CalendarClock } from 'lucide-react';
+import { Timer, Users, ListChecks, CalendarClock, BarChart3 } from 'lucide-react';
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Legend,
+} from 'recharts';
+
+const COLLAB_COLORS: Record<string, string> = { igor: '#3b82f6', rodolfo: '#8b5cf6' };
 
 // Aba Timelog do setor Infraestrutura — reaproveita o pipeline da Fábrica
 // (devops_time_logs + rpc_devops_timelog_agg + HoursRankingCard); a única
@@ -55,6 +61,11 @@ export function InfraTimelogTab({ dateFrom, dateTo, items }: {
   const agg = useMemo(
     () => aggregateInfraTimelog(data?.rows ?? [], activeCollabs, titleById),
     [data?.rows, activeCollabs, titleById],
+  );
+
+  const dailySeries = useMemo(
+    () => buildDailySeries(data?.daily ?? [], activeCollabs, dateFrom, dateTo),
+    [data?.daily, activeCollabs, dateFrom, dateTo],
   );
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
@@ -114,6 +125,63 @@ export function InfraTimelogTab({ dateFrom, dateTo, items }: {
           </div>
         ))}
       </div>
+
+      {/* Histograma diário: evolução de tasks e horas vs capacidade de 7h/dia */}
+      <Card>
+        <CardHeader className="pb-1 pt-4 px-4">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Evolução diária — horas × capacidade ({CAPACIDADE_DIARIA_HORAS}h/dia)
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Barra cheia = horas apontadas · contorno claro = capacidade ociosa · vermelho = acima da capacidade (trabalho extra) · linha = tasks distintas no dia
+          </p>
+        </CardHeader>
+        <CardContent className="pt-2 pb-4">
+          {isLoading ? <Skeleton className="h-56 w-full" /> : dailySeries.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-10">Sem apontamentos no período para montar a evolução.</p>
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={dailySeries} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                  <YAxis yAxisId="horas" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit="h" />
+                  <YAxis yAxisId="tasks" orientation="right" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12 }}
+                    formatter={(value: number, name: string) => {
+                      if (name.endsWith('_rest')) return [null, null];
+                      if (name === 'tasks') return [value, 'Tasks no dia'];
+                      const [chip, parte] = name.split('_');
+                      const label = chip.charAt(0).toUpperCase() + chip.slice(1);
+                      return [`${value}h`, parte === 'extra' ? `${label} — extra (>${CAPACIDADE_DIARIA_HORAS}h)` : label];
+                    }}
+                  />
+                  <Legend
+                    formatter={(value: string) => {
+                      if (value === 'tasks') return 'Tasks/dia';
+                      const [chip, parte] = value.split('_');
+                      const label = chip.charAt(0).toUpperCase() + chip.slice(1);
+                      return parte === 'extra' ? `${label} (extra)` : parte === 'rest' ? `${label} (capacidade)` : label;
+                    }}
+                    wrapperStyle={{ fontSize: 11 }}
+                  />
+                  <ReferenceLine yAxisId="horas" y={CAPACIDADE_DIARIA_HORAS} stroke="#94a3b8" strokeDasharray="4 4" />
+                  {[...activeCollabs].map((chip) => {
+                    const cor = COLLAB_COLORS[chip] ?? '#64748b';
+                    return [
+                      <Bar key={`${chip}_base`} yAxisId="horas" dataKey={`${chip}_base`} stackId={chip} fill={cor} maxBarSize={22} />,
+                      <Bar key={`${chip}_extra`} yAxisId="horas" dataKey={`${chip}_extra`} stackId={chip} fill="#ef4444" maxBarSize={22} />,
+                      <Bar key={`${chip}_rest`} yAxisId="horas" dataKey={`${chip}_rest`} stackId={chip} fill={cor} fillOpacity={0.12} stroke={cor} strokeOpacity={0.35} strokeDasharray="3 2" maxBarSize={22} />,
+                    ];
+                  })}
+                  <Line yAxisId="tasks" type="monotone" dataKey="tasks" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <HoursRankingCard

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { useBIInfraSgsi, NameValue, SimNao } from '@/hooks/useBIInfra';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,14 +40,21 @@ function pct(parte: number, todo: number) {
 
 // ── Building blocks ───────────────────────────────────────────────────
 
-function KpiTile({ label, value, sub, color }: { label: string; value: ReactNode; sub?: ReactNode; color?: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3 space-y-1">
+function KpiTile({ label, value, sub, color, onClick, active }: {
+  label: string; value: ReactNode; sub?: ReactNode; color?: string;
+  onClick?: () => void; active?: boolean;
+}) {
+  const className = `text-left w-full rounded-xl border bg-card px-4 py-3 space-y-1 ${onClick ? 'transition-colors hover:bg-muted/30 cursor-pointer' : ''} ${active ? 'border-primary bg-primary/5' : 'border-border'}`;
+  const inner = (
+    <>
       <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">{label}</p>
       <p className="text-2xl font-bold font-mono leading-none" style={color ? { color } : undefined}>{value}</p>
       {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
-    </div>
+    </>
   );
+  return onClick
+    ? <button type="button" onClick={onClick} className={className}>{inner}</button>
+    : <div className={className}>{inner}</div>;
 }
 
 function MiniDonut({ title, data, isLoading }: { title: string; data?: NameValue[]; isLoading: boolean }) {
@@ -148,7 +155,7 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading }: 
     <Card className="overflow-hidden">
       <CardHeader className="pb-2 pt-4 px-4">
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-        {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens recentes</p>}
+        {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens</p>}
       </CardHeader>
       <CardContent className="p-0">
         {isLoading || !rows ? (
@@ -193,10 +200,46 @@ function StatusBadge({ status }: { status: string }) {
 
 export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo?: Date }) {
   const { data, isLoading, isError, refetch } = useBIInfraSgsi(dateFrom, dateTo);
+  // Drill-through: clique nos KPIs filtra a tabela analítica do bloco
+  const [drill, setDrill] = useState<string | null>(null);
+  const toggleDrill = (k: string) => setDrill((p) => (p === k ? null : k));
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
   const d = data;
+
+  // Visões analíticas filtradas pelos KPIs clicados
+  const mudItens = (d?.mudancas.itens ?? []).filter((i) => {
+    switch (drill) {
+      case 'mud:concluidas': return /realizado|conclu/i.test(i.status);
+      case 'mud:pendentes': return !/realizado|conclu|rejeitad/i.test(i.status);
+      case 'mud:gestor': return /gestor/i.test(i.status);
+      case 'mud:ti': return /aguard/i.test(i.status) && /\bti\b/i.test(i.status);
+      default: return true;
+    }
+  });
+  const incItens = (d?.incidentes.itens ?? []).filter((i) => {
+    switch (drill) {
+      case 'inc:ativos': return /ativo|aberto|andamento/i.test(i.status);
+      case 'inc:contornados': return /contorn/i.test(i.status);
+      case 'inc:resolvidos': return /resolv|encerr|conclu/i.test(i.status);
+      default: return true;
+    }
+  });
+  const riscoItens = (d?.riscos.itens ?? []).filter((i) =>
+    drill === 'risco:abertos' ? !/tratad|encerr|conclu|finaliz|rejeitad/i.test(i.status) : true,
+  );
+  const ncItens = (d?.naoConformidades.itens ?? []).filter((i) =>
+    drill === 'nc:recorrentes' ? i.recorrente : true,
+  );
+  const acessoItens = (d?.acessos.itens ?? []).filter((i) => {
+    switch (drill) {
+      case 'acs:pendentes': return /pendente|aguard|análise|analise/i.test(i.status);
+      case 'acs:admin': return i.permissoesAdmin;
+      default: return true;
+    }
+  });
+  const drillBadge = drill ? ' · filtro do KPI ativo (clique novamente para limpar)' : '';
 
   if (d && d.totalItensBase === 0) {
     return (
@@ -258,11 +301,11 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
         {/* ── Mudanças (SG-LST-010) ── */}
         <TabsContent value="mudancas" className="space-y-3 mt-3">
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            <KpiTile label="Solicitações" value={d?.mudancas.total ?? '—'} />
-            <KpiTile label="Concluídas" value={d ? `${pct(d.mudancas.concluidos, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.concluidos} itens`} color="#10b981" />
-            <KpiTile label="Pendentes" value={d ? `${pct(d.mudancas.pendentes, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.pendentes} itens`} color="#f59e0b" />
-            <KpiTile label="Aguardando Gestor" value={d?.mudancas.aguardandoGestor ?? '—'} color="#8b5cf6" />
-            <KpiTile label="Aguardando TI" value={d?.mudancas.aguardandoTI ?? '—'} color="#3b82f6" />
+            <KpiTile label="Solicitações" value={d?.mudancas.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+            <KpiTile label="Concluídas" value={d ? `${pct(d.mudancas.concluidos, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.concluidos} itens`} color="#10b981" onClick={() => toggleDrill('mud:concluidas')} active={drill === 'mud:concluidas'} />
+            <KpiTile label="Pendentes" value={d ? `${pct(d.mudancas.pendentes, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.pendentes} itens`} color="#f59e0b" onClick={() => toggleDrill('mud:pendentes')} active={drill === 'mud:pendentes'} />
+            <KpiTile label="Aguardando Gestor" value={d?.mudancas.aguardandoGestor ?? '—'} color="#8b5cf6" onClick={() => toggleDrill('mud:gestor')} active={drill === 'mud:gestor'} />
+            <KpiTile label="Aguardando TI" value={d?.mudancas.aguardandoTI ?? '—'} color="#3b82f6" onClick={() => toggleDrill('mud:ti')} active={drill === 'mud:ti'} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <SimNaoTile label="Atualizações bem-sucedidas" valor={d?.mudancas.atualizacoesBemSucedidas} isLoading={isLoading} />
@@ -275,9 +318,9 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
             <MiniBars title="Por categoria" data={d?.mudancas.porCategoria} isLoading={isLoading} />
           </div>
           <SgTable
-            title="Mudanças e atualizações recentes"
+            title={`Mudanças e atualizações${drillBadge}`}
             isLoading={isLoading}
-            rows={d?.mudancas.itens}
+            rows={mudItens}
             columns={[
               { key: 'chamado', header: 'Chamado', className: 'font-mono', render: r => <span className="font-semibold text-primary">{r.chamado}</span> },
               { key: 'ambiente', header: 'Ambiente' },
@@ -295,19 +338,19 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
         {/* ── Incidentes (SG-LST-017) ── */}
         <TabsContent value="incidentes" className="space-y-3 mt-3">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <KpiTile label="Incidentes" value={d?.incidentes.total ?? '—'} />
-            <KpiTile label="Ativos" value={d?.incidentes.ativos ?? '—'} sub={d && `${pct(d.incidentes.ativos, d.incidentes.total)}% do total`} color="#ef4444" />
-            <KpiTile label="Contornados" value={d?.incidentes.contornados ?? '—'} sub={d && `${pct(d.incidentes.contornados, d.incidentes.total)}% do total`} color="#f59e0b" />
-            <KpiTile label="Resolvidos" value={d?.incidentes.resolvidos ?? '—'} sub={d && `${pct(d.incidentes.resolvidos, d.incidentes.total)}% do total`} color="#10b981" />
+            <KpiTile label="Incidentes" value={d?.incidentes.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+            <KpiTile label="Ativos" value={d?.incidentes.ativos ?? '—'} sub={d && `${pct(d.incidentes.ativos, d.incidentes.total)}% do total`} color="#ef4444" onClick={() => toggleDrill('inc:ativos')} active={drill === 'inc:ativos'} />
+            <KpiTile label="Contornados" value={d?.incidentes.contornados ?? '—'} sub={d && `${pct(d.incidentes.contornados, d.incidentes.total)}% do total`} color="#f59e0b" onClick={() => toggleDrill('inc:contornados')} active={drill === 'inc:contornados'} />
+            <KpiTile label="Resolvidos" value={d?.incidentes.resolvidos ?? '—'} sub={d && `${pct(d.incidentes.resolvidos, d.incidentes.total)}% do total`} color="#10b981" onClick={() => toggleDrill('inc:resolvidos')} active={drill === 'inc:resolvidos'} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <MiniDonut title="SLA" data={d?.incidentes.porSLA} isLoading={isLoading} />
             <MiniDonut title="Por categoria" data={d?.incidentes.porCategoria} isLoading={isLoading} />
           </div>
           <SgTable
-            title="Incidentes recentes"
+            title={`Incidentes${drillBadge}`}
             isLoading={isLoading}
-            rows={d?.incidentes.itens}
+            rows={incItens}
             columns={[
               { key: 'protocolo', header: 'Protocolo', className: 'font-mono', render: r => <span className="font-semibold text-primary">{r.protocolo}</span> },
               { key: 'titulo', header: 'Título', className: 'max-w-[200px] truncate' },
@@ -324,8 +367,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
         {/* ── Riscos (SG-LST-012) ── */}
         <TabsContent value="riscos" className="space-y-3 mt-3">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <KpiTile label="Riscos mapeados" value={d?.riscos.total ?? '—'} />
-            <KpiTile label="Em aberto" value={d?.riscos.abertos ?? '—'} color="#f59e0b" />
+            <KpiTile label="Riscos mapeados" value={d?.riscos.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+            <KpiTile label="Em aberto" value={d?.riscos.abertos ?? '—'} color="#f59e0b" onClick={() => toggleDrill('risco:abertos')} active={drill === 'risco:abertos'} />
             <SimNaoTile label="Plano de tratamento eficaz" valor={d?.riscos.tratamentoEficaz} isLoading={isLoading} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -339,9 +382,9 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
             <MiniBars title="Por ambiente" data={d?.riscos.porAmbiente} isLoading={isLoading} />
           </div>
           <SgTable
-            title="Análises de risco recentes"
+            title={`Análises de risco${drillBadge}`}
             isLoading={isLoading}
-            rows={d?.riscos.itens}
+            rows={riscoItens}
             columns={[
               { key: 'id', header: 'ID', className: 'font-mono' },
               { key: 'descricao', header: 'Risco', className: 'max-w-[220px] truncate' },
@@ -362,8 +405,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
             <div className="space-y-3 rounded-2xl border border-border bg-muted/20 p-4">
               <h3 className="text-sm font-bold uppercase tracking-tight">Não conformidades (018)</h3>
               <div className="grid grid-cols-2 gap-3">
-                <KpiTile label="Total NC" value={d?.naoConformidades.total ?? '—'} />
-                <KpiTile label="Recorrentes" value={d?.naoConformidades.recorrentes ?? '—'} color="#ef4444" />
+                <KpiTile label="Total NC" value={d?.naoConformidades.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+                <KpiTile label="Recorrentes" value={d?.naoConformidades.recorrentes ?? '—'} color="#ef4444" onClick={() => toggleDrill('nc:recorrentes')} active={drill === 'nc:recorrentes'} />
               </div>
               <SimNaoTile label="Tratamento eficaz" valor={d?.naoConformidades.tratamentoEficaz} isLoading={isLoading} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -371,9 +414,9 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
                 <MiniBars title="Causa raiz" data={d?.naoConformidades.porCausaRaiz} isLoading={isLoading} />
               </div>
               <SgTable
-                title="NC recentes"
+                title={`NC${drillBadge}`}
                 isLoading={isLoading}
-                rows={d?.naoConformidades.itens}
+                rows={ncItens}
                 columns={[
                   { key: 'processo', header: 'Processo' },
                   { key: 'detalhes', header: 'Detalhes', className: 'max-w-[180px] truncate' },
@@ -414,11 +457,11 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
         {/* ── Acessos (SG-LST-014) ── */}
         <TabsContent value="acessos" className="space-y-3 mt-3">
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            <KpiTile label="Solicitações" value={d?.acessos.total ?? '—'} />
-            <KpiTile label="Pendentes" value={d?.acessos.pendentes ?? '—'} color="#f59e0b" />
+            <KpiTile label="Solicitações" value={d?.acessos.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+            <KpiTile label="Pendentes" value={d?.acessos.pendentes ?? '—'} color="#f59e0b" onClick={() => toggleDrill('acs:pendentes')} active={drill === 'acs:pendentes'} />
             <KpiTile label="Acesso DevOps" value={d?.acessos.acessoDevOps.sim ?? '—'} sub="contas com acesso" color="#3b82f6" />
             <KpiTile label="Acesso TS" value={d?.acessos.acessoTS.sim ?? '—'} sub="contas com acesso" color="#8b5cf6" />
-            <KpiTile label="Permissões admin" value={d?.acessos.permissoesAdmin.sim ?? '—'} sub="exigem revisão" color="#ef4444" />
+            <KpiTile label="Permissões admin" value={d?.acessos.permissoesAdmin.sim ?? '—'} sub="exigem revisão" color="#ef4444" onClick={() => toggleDrill('acs:admin')} active={drill === 'acs:admin'} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <MiniDonut title="Por status" data={d?.acessos.porStatus} isLoading={isLoading} />
@@ -426,9 +469,9 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
             <MiniBars title="Por projeto" data={d?.acessos.porProjeto} isLoading={isLoading} />
           </div>
           <SgTable
-            title="Solicitações de acesso recentes"
+            title={`Solicitações de acesso${drillBadge}`}
             isLoading={isLoading}
-            rows={d?.acessos.itens}
+            rows={acessoItens}
             columns={[
               { key: 'titulo', header: 'Solicitação', className: 'font-mono', render: r => <span className="font-semibold text-primary">{r.titulo}</span> },
               { key: 'descricao', header: 'Descrição', className: 'max-w-[200px] truncate' },

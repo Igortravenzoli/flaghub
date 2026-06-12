@@ -357,7 +357,7 @@ export function buildSgsiResponse(
     porCategoria: countBy(l010, 'Categoria da mudança', 'Categoria'),
     atualizacoesBemSucedidas: simNaoOf(l010, 'Atualizações bem sucedidas'),
     validacaoTestes: simNaoOf(l010, 'Validação e testes do pacote de atualização'),
-    itens: recentes(l010, 12).map((i) => ({
+    itens: recentes(l010, 300).map((i) => ({
       id: i.item_id,
       chamado: str(i, 'Número do chamado') || `#${i.item_id}`,
       ambiente: str(i, 'Ambiente', 'Título') || DASH,
@@ -381,7 +381,7 @@ export function buildSgsiResponse(
     resolvidos: l017.filter((i) => statusMatches(i, STATUS_017, /resolv|encerr|conclu/i)).length,
     porSLA: countBy(l017, 'SLA'),
     porCategoria: countBy(l017, 'Categoria'),
-    itens: recentes(l017, 12).map((i) => ({
+    itens: recentes(l017, 150).map((i) => ({
       id: i.item_id,
       titulo: str(i, 'Título', 'Title') || DASH,
       ativo: str(i, 'Identificação do Ativo', 'Ativo afetado') || DASH,
@@ -412,7 +412,7 @@ export function buildSgsiResponse(
     porTipoAmeaca: countBy(l012, 'Tipo ameaça', 'Tipo da ameaça'),
     porAtivoAfetado: countBy(l012, 'Ativo afetado', 'O que este risco afeta'),
     tratamentoEficaz: simNaoOf(l012, 'O plano de tratamento de risco foi eficaz?'),
-    itens: recentes(l012, 12).map((i) => ({
+    itens: recentes(l012, 150).map((i) => ({
       id: i.item_id,
       descricao: str(i, 'Informações adicionais', 'Título', 'Title') || DASH,
       ambiente: str(i, 'Ambiente Afetado', 'Ambiente afetado') || DASH,
@@ -434,7 +434,7 @@ export function buildSgsiResponse(
     porStatus: countBy(l018, 'Status Análise', 'Status'),
     porCausaRaiz: countBy(l018, 'Causa Raiz'),
     tratamentoEficaz: simNaoOf(l018, 'Tratamento eficaz'),
-    itens: recentes(l018, 12).map((i) => ({
+    itens: recentes(l018, 150).map((i) => ({
       id: i.item_id,
       processo: str(i, 'Processo afetado') || DASH,
       detalhes: str(i, 'Detalhes NC') || DASH,
@@ -455,7 +455,7 @@ export function buildSgsiResponse(
     // "Ambiente afetado" não existe na lista 011 — usa "Processo afetado".
     porStatus: countBy(l011, 'Status Análise', 'Status'),
     porAmbiente: countBy(l011, 'Ambiente afetado', 'Processo afetado'),
-    itens: recentes(l011, 12).map((i) => ({
+    itens: recentes(l011, 150).map((i) => ({
       id: i.item_id,
       oportunidade: str(i, 'Oportunidade de melhoria') || DASH,
       ambiente: str(i, 'Ambiente afetado', 'Processo afetado') || DASH,
@@ -478,7 +478,7 @@ export function buildSgsiResponse(
     acessoDevOps: simNaoOf(l014, 'Acesso ao DevOps'),
     acessoTS: simNaoOf(l014, 'Acesso ao TS'),
     permissoesAdmin: simNaoOf(l014, 'Permissões administrativas'),
-    itens: recentes(l014, 12).map((i) => ({
+    itens: recentes(l014, 300).map((i) => ({
       id: i.item_id,
       titulo: str(i, 'TItulo', 'Título', 'Title') || `#${i.item_id}`,
       descricao: str(i, 'Descrição acesso') || DASH,

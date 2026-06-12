@@ -2,16 +2,17 @@ import { useMemo, useState } from 'react';
 import {
   useDevopsRepos, useDevopsProjects, useClassificarRepo,
   computeCoberturaKpis, computeCoberturaPorProjeto, countPipelinesNovasTrimestre,
-  DevopsRepo,
+  reposLegadoAutomatico, DevopsRepo,
 } from '@/hooks/useDevopsCobertura';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import {
   FolderKanban, GitBranch, Workflow, Target, CheckCircle2, AlertTriangle,
-  Archive, HelpCircle, Rocket, Database,
+  Archive, HelpCircle, Rocket, Database, Wand2,
 } from 'lucide-react';
 
 // ── Constantes ────────────────────────────────────────────────────────
@@ -45,6 +46,26 @@ export function DevopsCoberturaPanel() {
   const { data: projects, isLoading: loadingProjects } = useDevopsProjects();
   const classificar = useClassificarRepo();
   const [filtro, setFiltro] = useState<RepoFiltro>('todos');
+  const [bulkPending, setBulkPending] = useState(false);
+
+  const legadosAuto = useMemo(() => reposLegadoAutomatico(repos ?? [], LEGADO_DIAS_SEM_COMMIT), [repos]);
+
+  async function handleAutoLegado() {
+    if (legadosAuto.length === 0) return;
+    if (!window.confirm(`Marcar ${legadosAuto.length} repositório(s) sem interação há +${LEGADO_DIAS_SEM_COMMIT} dias (ou desabilitados) como NÃO aplicáveis (legado)?`)) return;
+    setBulkPending(true);
+    try {
+      for (const repo of legadosAuto) {
+        await classificar.mutateAsync({
+          repoId: repo.id,
+          aplicavel: false,
+          obs: `auto: sem interação há +${LEGADO_DIAS_SEM_COMMIT} dias`,
+        });
+      }
+    } finally {
+      setBulkPending(false);
+    }
+  }
 
   const isLoading = loadingRepos || loadingProjects;
   const kpis = useMemo(
@@ -85,6 +106,18 @@ export function DevopsCoberturaPanel() {
         <span className="text-[11px] text-muted-foreground ml-1">
           org FlagIW{lastSync ? ` · sincronizado em ${fmtDate(lastSync)}` : ''}
         </span>
+        {legadosAuto.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto h-7 text-xs gap-1.5"
+            onClick={handleAutoLegado}
+            disabled={bulkPending}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            {bulkPending ? 'Classificando…' : `Auto-classificar ${legadosAuto.length} legados`}
+          </Button>
+        )}
       </div>
 
       {/* Visão gerencial */}
@@ -191,25 +224,38 @@ export function DevopsCoberturaPanel() {
             {isLoading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-6 w-full" />)
               : porProjeto.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Sem dados — sincronize o inventário DevOps.</p>
-              ) : porProjeto.map(p => (
-                <div key={p.projeto}>
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-medium truncate pr-2">{p.projeto}</span>
-                    <span className="text-muted-foreground shrink-0">
-                      {p.repos} repos · {p.aplicaveis} aplic. ·{' '}
-                      <span className={`font-bold font-mono ${p.coberturaPct == null ? 'text-muted-foreground' : p.coberturaPct >= META_COBERTURA_PCT ? 'text-emerald-500' : 'text-amber-500'}`}>
-                        {p.coberturaPct != null ? `${p.coberturaPct}%` : '—'}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${p.coberturaPct != null && p.coberturaPct >= META_COBERTURA_PCT ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                      style={{ width: `${p.coberturaPct ?? 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+              ) : (
+                <>
+                  {porProjeto.map(p => {
+                    const classificado = p.coberturaPct != null;
+                    const pct = classificado ? p.coberturaPct! : p.pipelinePct;
+                    return (
+                      <div key={p.projeto}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="font-medium truncate pr-2">{p.projeto}</span>
+                          <span className="text-muted-foreground shrink-0">
+                            {p.repos} repos · {p.pipelinesAtivas} pipelines ·{' '}
+                            <span className={`font-bold font-mono ${!classificado ? 'text-blue-500' : pct >= META_COBERTURA_PCT ? 'text-emerald-500' : 'text-amber-500'}`}>
+                              {pct}%{!classificado && '*'}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${!classificado ? 'bg-blue-500/70' : pct >= META_COBERTURA_PCT ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {porProjeto.some(p => p.coberturaPct == null) && (
+                    <p className="text-[10px] text-muted-foreground pt-1">
+                      * % de repos com pipeline ativa — projeto ainda sem classificação de aplicabilidade (cobertura da meta usa só repos aplicáveis).
+                    </p>
+                  )}
+                </>
+              )}
           </CardContent>
         </Card>
       </div>

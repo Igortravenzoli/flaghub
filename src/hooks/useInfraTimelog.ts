@@ -16,6 +16,9 @@ import {
 /** Primeiro nome normalizado dos colaboradores visíveis por padrão na infra */
 export const INFRA_TIMELOG_DEFAULT_COLLABS = ['igor', 'rodolfo'] as const;
 
+/** Capacidade de trabalho diária por colaborador (horas) */
+export const CAPACIDADE_DIARIA_HORAS = 7;
+
 export interface InfraTimelogRow {
   work_item_id: number;
   user_name: string;
@@ -87,6 +90,86 @@ export function aggregateInfraTimelog(
   };
 }
 
+// ── Histograma diário (capacidade 7h/dia) ─────────────────────────────
+
+export interface InfraTimelogDailyRow {
+  work_item_id: number;
+  user_name: string;
+  log_date: string; // yyyy-mm-dd
+  time_minutes: number;
+}
+
+/** Ponto do histograma: por colaborador, horas divididas em
+ *  base (até a capacidade), extra (acima = trabalho extra) e
+ *  rest (capacidade ociosa — desenha a silhueta vazia de 7h). */
+export interface DailyPoint {
+  date: string;
+  label: string; // dd/mm
+  tasks: number; // tasks distintas com apontamento no dia
+  [serie: string]: string | number;
+}
+
+function* weekdaysBetween(from: Date, to: Date): Generator<string> {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  while (d <= end) {
+    const wd = d.getDay();
+    if (wd !== 0 && wd !== 6) {
+      yield `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+}
+
+export function buildDailySeries(
+  rows: InfraTimelogDailyRow[],
+  include: Set<string>,
+  from?: Date,
+  to?: Date,
+  capacity: number = CAPACIDADE_DIARIA_HORAS,
+): DailyPoint[] {
+  const chips = [...include];
+  const byDate = new Map<string, { tasks: Set<number>; horas: Map<string, number> }>();
+  for (const r of rows) {
+    const chip = chips.find((c) => getCollaboratorExclusionKeys(r.user_name).includes(c));
+    if (!chip || !r.log_date) continue;
+    const day = r.log_date.slice(0, 10);
+    const cur = byDate.get(day) ?? { tasks: new Set<number>(), horas: new Map<string, number>() };
+    cur.tasks.add(r.work_item_id);
+    cur.horas.set(chip, (cur.horas.get(chip) ?? 0) + r.time_minutes / 60);
+    byDate.set(day, cur);
+  }
+
+  // Eixo: dias úteis do período selecionado (dias sem horas mostram a
+  // silhueta vazia da capacidade). Sem período: do 1º ao último apontamento.
+  let start = from, end = to;
+  if (!start || !end) {
+    const days = [...byDate.keys()].sort();
+    if (days.length === 0) return [];
+    start = start ?? new Date(`${days[0]}T00:00:00`);
+    end = end ?? new Date(`${days[days.length - 1]}T00:00:00`);
+  }
+
+  const points: DailyPoint[] = [];
+  for (const day of weekdaysBetween(start, end)) {
+    const info = byDate.get(day);
+    const point: DailyPoint = {
+      date: day,
+      label: `${day.slice(8, 10)}/${day.slice(5, 7)}`,
+      tasks: info?.tasks.size ?? 0,
+    };
+    for (const chip of chips) {
+      const h = info?.horas.get(chip) ?? 0;
+      point[`${chip}_base`] = Math.round(Math.min(h, capacity) * 100) / 100;
+      point[`${chip}_extra`] = Math.round(Math.max(0, h - capacity) * 100) / 100;
+      point[`${chip}_rest`] = Math.round(Math.max(0, capacity - h) * 100) / 100;
+      point[`${chip}_total`] = Math.round(h * 100) / 100;
+    }
+    points.push(point);
+  }
+  return points;
+}
+
 interface ChildTask {
   id: number;
   parent_id: number | null;
@@ -120,7 +203,23 @@ export function useInfraTimelog(
 
       const allIds = [...new Set([...workItemIds, ...childTasks.map((t) => t.id)])];
       if (allIds.length === 0) {
-        return { rows: [] as InfraTimelogRow[], childTasks };
+        return { rows: [] as InfraTimelogRow[], daily: [] as InfraTimelogDailyRow[], childTasks };
+      }
+
+      // Apontamentos dia-a-dia (histograma de capacidade)
+      const daily: InfraTimelogDailyRow[] = [];
+      for (let i = 0; i < allIds.length; i += 200) {
+        const chunk = allIds.slice(i, i + 200);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let q = (supabase as any)
+          .from('devops_time_logs')
+          .select('work_item_id, user_name, log_date, time_minutes')
+          .in('work_item_id', chunk);
+        if (fromStr) q = q.gte('log_date', fromStr);
+        if (toStr) q = q.lte('log_date', toStr);
+        const { data, error } = await q.limit(5000);
+        if (error) throw error;
+        daily.push(...((data ?? []) as InfraTimelogDailyRow[]));
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,7 +238,7 @@ export function useInfraTimelog(
         max_log_date: (row.max_log_date as string) ?? null,
       }));
 
-      return { rows, childTasks };
+      return { rows, daily, childTasks };
     },
     enabled: workItemIds.length > 0,
     staleTime: 5 * 60 * 1000,
