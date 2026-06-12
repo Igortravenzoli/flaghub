@@ -404,7 +404,9 @@ export default function HelpdeskDashboard() {
           {/* === KPI Cards consolidados === */}
           {(() => {
             const dayData = horasTotaisPorDia.find(h => h.data === selectedDay);
-            const dayHoras = (dayData?.totalHoras ?? 0) > 0 ? dayData!.totalHoras : filteredTotalHoras;
+            // Horas do dia selecionado (0 quando não há registros nesse dia) —
+            // nunca cai no acumulado, para "Horas Hoje" não duplicar "Horas Acum.".
+            const dayHoras = dayData?.totalHoras ?? 0;
             const diaLabel = selectedDay === new Date().toISOString().slice(0, 10)
               ? 'Hoje'
               : new Date(selectedDay + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });

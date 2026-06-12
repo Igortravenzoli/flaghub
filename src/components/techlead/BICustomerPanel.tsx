@@ -220,8 +220,9 @@ function SegmentoBlock({ cfg, seg, isLoading }: {
                 sub: (
                   <span className={`text-[11px] font-medium inline-flex items-center gap-1 ${mt && mt.pctEncerrados24h >= META_24H_PCT ? 'text-emerald-500' : 'text-amber-500'}`}>
                     {mt && mt.pctEncerrados24h >= META_24H_PCT
-                      ? <><CheckCircle2 className="h-3 w-3" /> OK</>
-                      : <><AlertTriangle className="h-3 w-3" /> meta {META_24H_PCT}%</>}
+                      ? <CheckCircle2 className="h-3 w-3" />
+                      : <AlertTriangle className="h-3 w-3" />}
+                    meta ≥ {META_24H_PCT}%
                   </span>
                 ),
               },
