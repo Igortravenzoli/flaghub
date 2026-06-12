@@ -8,17 +8,8 @@ import { TrendingUp, TrendingDown, Target, BarChart3, FileText, Activity, Buildi
 import { useComercialVendas, ComercialVenda } from '@/hooks/useComercialVendas';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  CartesianGrid, ReferenceLine,
+  CartesianGrid, ReferenceLine, PieChart, Pie,
 } from 'recharts';
-
-const BAR_COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
-  'hsl(var(--primary))',
-];
 
 const columns: DataTableColumn<ComercialVenda>[] = [
   {
@@ -62,7 +53,9 @@ function CustomTooltipVendas({ active, payload }: any) {
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-md">
       <p className="font-medium text-foreground">{d.bandeira}</p>
-      <p className="text-muted-foreground">{d.percentual.toFixed(1)}% do total</p>
+      <p className="text-muted-foreground">
+        {d.count} negócio{d.count !== 1 ? 's' : ''} · {d.percentual.toFixed(1)}% do total
+      </p>
     </div>
   );
 }
@@ -132,15 +125,19 @@ export function PipeDriveTab({
   const stats = useMemo(() => {
     const totalValue = itemsFiltrados.reduce((s, i) => s + (i.deal_value ?? 0), 0);
 
-    const orgMap = new Map<string, number>();
+    const orgMap = new Map<string, { valor: number; count: number }>();
     for (const item of itemsFiltrados) {
       const org = item.organization || 'Outros';
-      orgMap.set(org, (orgMap.get(org) ?? 0) + (item.deal_value ?? 0));
+      const acc = orgMap.get(org) ?? { valor: 0, count: 0 };
+      acc.valor += item.deal_value ?? 0;
+      acc.count += 1;
+      orgMap.set(org, acc);
     }
     const vendasPorOrg = [...orgMap.entries()]
-      .map(([bandeira, val]) => ({
+      .map(([bandeira, { valor, count }]) => ({
         bandeira,
-        percentual: totalValue > 0 ? Math.round((val / totalValue) * 1000) / 10 : 0,
+        count,
+        percentual: totalValue > 0 ? Math.round((valor / totalValue) * 1000) / 10 : 0,
       }))
       .sort((a, b) => b.percentual - a.percentual);
 
@@ -175,11 +172,6 @@ export function PipeDriveTab({
       orgs: vendasPorOrg.map((v) => v.bandeira),
     };
   }, [itemsFiltrados, dateFrom, dateTo]);
-
-  const filteredVendas = useMemo(() => {
-    if (!selectedBandeira) return stats.vendasPorOrg;
-    return stats.vendasPorOrg.filter((v) => v.bandeira === selectedBandeira);
-  }, [selectedBandeira, stats.vendasPorOrg]);
 
   const mesesComDados = stats.vendasPorMes.filter((m) => m.percentualMeta > 0);
   const mediaAtingimento = mesesComDados.length > 0
@@ -237,7 +229,7 @@ export function PipeDriveTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_1fr] gap-4 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch">
         <div className="grid gap-4 min-h-[352px] xl:grid-rows-[auto_1fr]">
           <Card className="border bg-card">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -249,13 +241,13 @@ export function PipeDriveTab({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2">
               {kpiCards.map((item, index) => {
                 const Icon = item.icon;
                 return (
                   <div
                     key={item.key}
-                    className={`flex min-h-[116px] flex-col justify-between px-4 py-4 text-left ${index < kpiCards.length - 1 ? 'lg:border-r lg:border-border' : ''} ${index < 2 ? 'border-b border-border lg:border-b-0' : ''}`}
+                    className={`flex min-h-[116px] flex-col justify-between px-4 py-4 text-left ${index % 2 === 0 ? 'border-r border-border' : ''} ${index < 2 ? 'border-b border-border' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -342,36 +334,107 @@ export function PipeDriveTab({
             </ResponsiveContainer>
           </div>
         </Card>
-      </div>
 
-      <Card className="p-4">
+        {/* Vendas por Organização — donut com KPI central + barras de % */}
+        <Card className="p-4 min-h-[352px] lg:col-span-2 xl:col-span-1">
           <div className="flex items-center justify-between mb-1">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Vendas por Organização</h3>
-              <p className="text-xs text-muted-foreground">Distribuição percentual</p>
+              <p className="text-xs text-muted-foreground">Participação no período · {stats.totalDeals} negócio{stats.totalDeals !== 1 ? 's' : ''}</p>
             </div>
             {selectedBandeira && (
-              <Badge variant="secondary" className="cursor-pointer text-xs" onClick={() => setSelectedBandeira(null)}>
+              <Badge variant="secondary" className="cursor-pointer text-xs flex-shrink-0" onClick={() => setSelectedBandeira(null)}>
                 {selectedBandeira} ✕
               </Badge>
             )}
           </div>
-          <div className="h-[260px] mt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={filteredVendas} layout="vertical" margin={{ left: 70, right: 30, top: 5, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                <XAxis type="number" domain={[0, 'auto']} tickFormatter={(v) => `${v}%`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-                <YAxis type="category" dataKey="bandeira" tick={{ fill: 'hsl(var(--foreground))', fontSize: 12 }} width={65} />
-                <Tooltip content={<CustomTooltipVendas />} />
-                <Bar dataKey="percentual" radius={[0, 4, 4, 0]} cursor="pointer" onClick={(d: any) => setSelectedBandeira(d.bandeira === selectedBandeira ? null : d.bandeira)}>
-                  {filteredVendas.map((_, i) => (
-                    <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {stats.vendasPorOrg.length === 0 ? (
+            <div className="h-[260px] flex items-center justify-center text-xs text-muted-foreground">
+              Sem vendas no período.
+            </div>
+          ) : (
+            <div className="flex items-center gap-4 mt-2">
+              <div className="relative flex-shrink-0" style={{ width: 150, height: 150 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={stats.vendasPorOrg}
+                      dataKey="percentual"
+                      nameKey="bandeira"
+                      innerRadius={48}
+                      outerRadius={70}
+                      paddingAngle={1.5}
+                      stroke="none"
+                      startAngle={90}
+                      endAngle={-270}
+                      cursor="pointer"
+                      onClick={(d: any) => {
+                        const name = d?.bandeira ?? d?.payload?.bandeira;
+                        if (name) setSelectedBandeira(prev => prev === name ? null : name);
+                      }}
+                      isAnimationActive
+                      animationBegin={150}
+                      animationDuration={900}
+                      animationEasing="ease-out"
+                    >
+                      {stats.vendasPorOrg.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          fill="hsl(var(--primary))"
+                          fillOpacity={
+                            selectedBandeira && selectedBandeira !== entry.bandeira
+                              ? 0.18
+                              : Math.max(0.25, 1 - i * 0.16)
+                          }
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomTooltipVendas />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-2xl font-bold text-foreground leading-none">{stats.orgs.length}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">orgs</span>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0 space-y-1.5 overflow-y-auto max-h-[230px] pr-1">
+                {stats.vendasPorOrg.map((o, i) => {
+                  const isActive = selectedBandeira === o.bandeira;
+                  return (
+                    <button
+                      key={o.bandeira}
+                      type="button"
+                      onClick={() => setSelectedBandeira(prev => prev === o.bandeira ? null : o.bandeira)}
+                      style={{ animationDelay: `${i * 70}ms`, animationFillMode: 'both' }}
+                      className={`w-full rounded px-1.5 py-1 text-left animate-in fade-in slide-in-from-left-1 duration-500 hover:bg-muted/50
+                        ${isActive ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="h-2 w-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: 'hsl(var(--primary))', opacity: Math.max(0.25, 1 - i * 0.16) }}
+                          />
+                          <span className="truncate text-foreground">{o.bandeira}</span>
+                        </span>
+                        <span className="font-mono text-muted-foreground flex-shrink-0">
+                          {o.count} neg. · {o.percentual.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${Math.min(o.percentual, 100)}%`, backgroundColor: 'hsl(var(--primary))', opacity: 0.8 }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </Card>
+      </div>
 
       {/* Data table */}
       {!isLoading && itemsFiltrados.length === 0 ? (

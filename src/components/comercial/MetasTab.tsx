@@ -24,7 +24,8 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine, AreaChart, Area,
 } from "recharts";
-import { AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Filter } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface MetasTabProps {
   canViewValues?: boolean;
@@ -147,6 +148,72 @@ function PctBar({ value }: { value: number }) {
   );
 }
 
+// ── Filtro de coluna (ícone + popover multi-seleção) ─────────────
+function ColumnFilterButton({
+  options,
+  selected,
+  onChange,
+}: {
+  options: { value: string; label?: string }[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const active = selected.size > 0;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className={`inline-flex h-5 w-5 items-center justify-center rounded transition-colors align-middle
+            ${active ? "text-primary bg-primary/10" : "text-muted-foreground/60 hover:text-foreground hover:bg-muted"}`}
+          title="Filtrar coluna"
+        >
+          <Filter className="h-3 w-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-2" align="start">
+        <div className="max-h-56 overflow-y-auto space-y-0.5">
+          {options.map((o) => {
+            const isOn = selected.has(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => {
+                  const next = new Set(selected);
+                  if (isOn) next.delete(o.value);
+                  else next.add(o.value);
+                  onChange(next);
+                }}
+                className={`flex w-full items-center gap-2 rounded px-2 py-1 text-xs text-left transition-colors hover:bg-muted
+                  ${isOn ? "font-medium" : ""}`}
+              >
+                <span
+                  className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border text-[9px] leading-none flex-shrink-0
+                    ${isOn ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}
+                >
+                  {isOn ? "✓" : ""}
+                </span>
+                <span className="truncate">{o.label ?? o.value}</span>
+              </button>
+            );
+          })}
+        </div>
+        {active && (
+          <button
+            type="button"
+            onClick={() => onChange(new Set())}
+            className="mt-1.5 w-full border-t pt-1.5 text-center text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Limpar filtro
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function WaveTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   const colorFor = (p: number) => (p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444");
@@ -192,6 +259,12 @@ const MetasTab: React.FC<MetasTabProps> = ({
   // ── Seções de tabela minimizáveis ────────────────────────────
   const [metaTableOpen, setMetaTableOpen] = useState(true);
   const [vendaTableOpen, setVendaTableOpen] = useState(true);
+
+  // ── Tabela Meta Produtos: visão + filtros de coluna ──────────
+  const [metaView, setMetaView] = useState<"consolidado" | "mensal">("consolidado");
+  const [filtroProdutos, setFiltroProdutos] = useState<Set<string>>(new Set());
+  const [filtroMeses, setFiltroMeses] = useState<Set<string>>(new Set());
+  const [filtroStatus, setFiltroStatus] = useState<Set<string>>(new Set());
 
   const { data: metas = [], isLoading, isError, refetch } = useComercialMetas();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
@@ -496,6 +569,81 @@ const MetasTab: React.FC<MetasTabProps> = ({
     return { batidas, semRealizado, pctBatidas, total: metasProduto.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metasProduto, vendaQtyMap]);
+
+  // ── Tabela: aplica filtros de coluna ──────────────────────────
+  const metasTabela = useMemo(
+    () =>
+      metasProduto.filter(
+        (m) =>
+          (filtroProdutos.size === 0 || filtroProdutos.has(m.nome_indicador)) &&
+          (filtroMeses.size === 0 || filtroMeses.has(m.mes)) &&
+          (filtroStatus.size === 0 || filtroStatus.has(m.status))
+      ),
+    [metasProduto, filtroProdutos, filtroMeses, filtroStatus]
+  );
+
+  // ── Tabela: visão consolidada (1 linha por produto no período) ─
+  const metasConsolidadas = useMemo(() => {
+    type Cons = {
+      produto: string;
+      meses: string[];
+      metaQty: number;
+      manualQty: number;
+      vendaQty: number;
+      metaValor: number;
+      realizadoValor: number;
+      vus: Set<number>;
+    };
+    const map = new Map<string, Cons>();
+    for (const m of metasTabela) {
+      let c = map.get(m.nome_indicador);
+      if (!c) {
+        c = { produto: m.nome_indicador, meses: [], metaQty: 0, manualQty: 0, vendaQty: 0, metaValor: 0, realizadoValor: 0, vus: new Set() };
+        map.set(m.nome_indicador, c);
+      }
+      const metaQty = parseFloat(m.valor) || 0;
+      const manualQty = parseInt(m.realizado) || 0;
+      const vendaQty = qtyVendidaPara(m.nome_indicador, m.mes);
+      const vu = parseFloat(m.valor_unitario) || 0;
+      const metaValorTotal = parseFloat(m.meta_valor_total || "") || 0;
+      c.meses.push(m.mes);
+      c.metaQty += metaQty;
+      c.manualQty += manualQty;
+      c.vendaQty += vendaQty;
+      c.metaValor += metaValorTotal > 0 ? metaValorTotal : metaQty * vu;
+      c.realizadoValor += (manualQty + vendaQty) * vu;
+      if (vu > 0) c.vus.add(vu);
+    }
+    return [...map.values()]
+      .map((c) => ({
+        ...c,
+        realizadoQty: c.manualQty + c.vendaQty,
+        vuUniforme: c.vus.size === 1 ? [...c.vus][0] : null,
+      }))
+      .sort((a, b) => a.produto.localeCompare(b.produto));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metasTabela, vendaQtyMap]);
+
+  const filtrosAtivos = filtroProdutos.size + filtroMeses.size + filtroStatus.size;
+
+  // Opções dos filtros (a partir do período corrente, ordenadas)
+  const opcoesProduto = useMemo(
+    () => [...new Set(metasProduto.map((m) => m.nome_indicador))].sort().map((v) => ({ value: v })),
+    [metasProduto]
+  );
+  const opcoesMes = useMemo(() => {
+    const set = [...new Set(metasProduto.map((m) => m.mes))];
+    set.sort((a, b) => (getMesDate(a)?.getTime() ?? 0) - (getMesDate(b)?.getTime() ?? 0));
+    return set.map((v) => ({ value: v }));
+  }, [metasProduto]);
+  const opcoesStatus = useMemo(
+    () =>
+      [...new Set(metasProduto.map((m) => m.status))].map((v) => ({
+        value: v,
+        label: STATUS_LABELS[v as MetaFormData["status"]] ?? v,
+      })),
+    [metasProduto]
+  );
 
   // ── Pillar 3: Venda Produtos ──────────────────────────────────
   const vendaStats = useMemo(() => {
@@ -1135,12 +1283,60 @@ const MetasTab: React.FC<MetasTabProps> = ({
             </div>
           </button>
           {metaTableOpen && (
+          <>
+          {/* Controles: visão + filtros ativos */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex gap-1">
+              {([
+                { key: "consolidado", label: "Consolidado" },
+                { key: "mensal", label: "Por mês" },
+              ] as const).map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => setMetaView(v.key)}
+                  className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                    metaView === v.key
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+              <span className="self-center ml-1 text-[11px] text-muted-foreground">
+                {metaView === "consolidado"
+                  ? "1 linha por produto, somando os meses do período"
+                  : "1 linha por produto/mês — edição e status"}
+              </span>
+            </div>
+            {filtrosAtivos > 0 && (
+              <button
+                type="button"
+                onClick={() => { setFiltroProdutos(new Set()); setFiltroMeses(new Set()); setFiltroStatus(new Set()); }}
+                className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Limpar filtros ({filtrosAtivos}) ✕
+              </button>
+            )}
+          </div>
+
           <div className="rounded-md border overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-muted border-b">
-                  <th className="px-3 py-2 text-left font-semibold">Produto</th>
-                  <th className="px-3 py-2 text-left font-semibold">Mês</th>
+                  <th className="px-3 py-2 text-left font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      Produto
+                      <ColumnFilterButton options={opcoesProduto} selected={filtroProdutos} onChange={setFiltroProdutos} />
+                    </span>
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      {metaView === "consolidado" ? "Meses" : "Mês"}
+                      <ColumnFilterButton options={opcoesMes} selected={filtroMeses} onChange={setFiltroMeses} />
+                    </span>
+                  </th>
                   <th className="px-3 py-2 text-center font-semibold">
                     Qtd Meta
                     <span className="block text-[10px] font-normal text-muted-foreground">unidades</span>
@@ -1166,12 +1362,89 @@ const MetasTab: React.FC<MetasTabProps> = ({
                     </>
                   )}
                   <th className="px-3 py-2 text-left font-semibold min-w-[150px]">% Atingimento</th>
-                  <th className="px-3 py-2 text-left font-semibold min-w-[200px]">Status</th>
-                  <th className="px-3 py-2 text-left font-semibold">Ações</th>
+                  {metaView === "mensal" && (
+                    <>
+                      <th className="px-3 py-2 text-left font-semibold min-w-[200px]">
+                        <span className="inline-flex items-center gap-1">
+                          Status
+                          <ColumnFilterButton options={opcoesStatus} selected={filtroStatus} onChange={setFiltroStatus} />
+                        </span>
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold">Ações</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {metasProduto.map((meta) => {
+                {metasTabela.length === 0 && (
+                  <tr>
+                    <td colSpan={12} className="px-3 py-6 text-center text-xs text-muted-foreground">
+                      Nenhuma meta corresponde aos filtros aplicados.
+                    </td>
+                  </tr>
+                )}
+                {metaView === "consolidado" && metasConsolidadas.map((c) => {
+                  const p = pct(c.realizadoQty, c.metaQty);
+                  return (
+                    <tr key={c.produto} className="border-b hover:bg-muted/30 transition-colors">
+                      <td className="px-3 py-2 font-medium max-w-[220px]">
+                        <span title={c.produto} className="block truncate">{c.produto}</span>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground font-mono whitespace-nowrap">
+                        <span title={c.meses.join(", ")}>
+                          {c.meses.length === 1 ? c.meses[0] : `${c.meses.length} meses`}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center font-mono">
+                        {c.metaQty > 0 ? c.metaQty.toLocaleString("pt-BR") : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-center font-mono">
+                        {c.realizadoQty > 0 ? (
+                          <div>
+                            <span style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}>
+                              {c.realizadoQty.toLocaleString("pt-BR")}
+                            </span>
+                            {c.vendaQty > 0 && (
+                              <span
+                                className="block text-[10px] text-muted-foreground font-sans"
+                                title={`${c.manualQty} manual + ${c.vendaQty} via Venda Produtos`}
+                              >
+                                {c.manualQty > 0 ? `${c.manualQty} + ${c.vendaQty} vendas` : "via vendas"}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      {canViewValues && (
+                        <>
+                          <td className="px-3 py-2 text-right text-xs">
+                            {c.vuUniforme != null
+                              ? brl(c.vuUniforme, showValues)
+                              : c.vus.size > 1
+                                ? <span className="text-muted-foreground" title="Valor unitário varia entre os meses">varia</span>
+                                : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs">
+                            {c.metaValor > 0 ? brl(c.metaValor, showValues) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-xs">
+                            {c.realizadoValor > 0 ? brl(c.realizadoValor, showValues) : "—"}
+                          </td>
+                        </>
+                      )}
+                      <td className="px-3 py-2">
+                        {c.metaQty > 0 && c.realizadoQty > 0 ? (
+                          <PctBar value={p} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {metaView === "mensal" && metasTabela.map((meta) => {
                   const metaQty = parseFloat(meta.valor) || 0;
                   const manualQty = parseInt(meta.realizado) || 0;
                   const vendaQty = qtyVendidaPara(meta.nome_indicador, meta.mes);
@@ -1296,6 +1569,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
               </tbody>
             </table>
           </div>
+          </>
           )}
         </div>
       )}
