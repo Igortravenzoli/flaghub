@@ -398,47 +398,6 @@ function buildMocks(): Record<string, unknown> {
     },
   };
 
-  /* BI Infra — Projetos & Pipelines (gestão sem pipeline + meta 3/trimestre) */
-  const infraProjetosBase = [
-    { id: 1,  nome: 'Observabilidade Datacenter',   ambiente: 'Datacenter',       responsavel: 'Bruna',    status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'obs-datacenter-deploy',  pipelineCriadaEm: '2026-05-28', proximoPasso: null, previsaoPipeline: null },
-    { id: 2,  nome: 'Backup Imutável (Veeam)',      ambiente: 'Datacenter',       responsavel: 'Ronaldo',  status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'veeam-policy-as-code',   pipelineCriadaEm: '2026-04-17', proximoPasso: null, previsaoPipeline: null },
-    { id: 3,  nome: 'IaC Terraform Núcleo Azure',   ambiente: 'Cloud Azure',      responsavel: 'Igor',     status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'tf-core-azure',          pipelineCriadaEm: '2026-02-19', proximoPasso: null, previsaoPipeline: null },
-    { id: 4,  nome: 'SSO Entra ID Apps Internas',   ambiente: 'Cloud Azure',      responsavel: 'Henrique', status: 'Ativo',           prioridade: 'Média', temPipeline: true,  pipelineNome: 'sso-app-onboarding',     pipelineCriadaEm: '2026-03-05', proximoPasso: null, previsaoPipeline: null },
-    { id: 5,  nome: 'Hardening Active Directory',   ambiente: 'Rede Corporativa', responsavel: 'Marcos',   status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'ad-baseline-check',      pipelineCriadaEm: '2025-11-12', proximoPasso: null, previsaoPipeline: null },
-    { id: 6,  nome: 'Migração VMware → Proxmox',    ambiente: 'Datacenter',       responsavel: 'Ronaldo',  status: 'Em implantação',  prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'pve-migration-waves',    pipelineCriadaEm: '2025-12-03', proximoPasso: null, previsaoPipeline: null },
-    { id: 7,  nome: 'Zabbix → Grafana Cloud',       ambiente: 'Datacenter',       responsavel: 'Bruna',    status: 'Em implantação',  prioridade: 'Média', temPipeline: true,  pipelineNome: 'grafana-dash-sync',      pipelineCriadaEm: '2025-10-21', proximoPasso: null, previsaoPipeline: null },
-    { id: 8,  nome: 'Vault de Secrets',             ambiente: 'Cloud Azure',      responsavel: 'Igor',     status: 'Ativo',           prioridade: 'Alta',  temPipeline: true,  pipelineNome: 'vault-rotate-secrets',   pipelineCriadaEm: '2025-09-30', proximoPasso: null, previsaoPipeline: null },
-    { id: 9,  nome: 'DR Site Secundário',           ambiente: 'Datacenter',       responsavel: 'Ronaldo',  status: 'Em implantação',  prioridade: 'Alta',  temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Definir runbook de failover e automatizar replicação', previsaoPipeline: 'T3/2026' },
-    { id: 10, nome: 'FinOps Azure',                 ambiente: 'Cloud Azure',      responsavel: 'Henrique', status: 'Ativo',           prioridade: 'Média', temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Exportar custos via API e versionar budgets',           previsaoPipeline: 'T3/2026' },
-    { id: 11, nome: 'Atualização Firewalls Edge',   ambiente: 'Rede Corporativa', responsavel: 'Marcos',   status: 'Ativo',           prioridade: 'Alta',  temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Backup de config automatizado pré-upgrade',             previsaoPipeline: 'T2/2026' },
-    { id: 12, nome: 'Inventário CMDB Automatizado', ambiente: 'Datacenter',       responsavel: 'Bruna',    status: 'Ativo',           prioridade: 'Média', temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Agente de discovery + sync agendado',                    previsaoPipeline: 'T3/2026' },
-    { id: 13, nome: 'Automação N1 NOC',             ambiente: 'Datacenter',       responsavel: 'Igor',     status: 'Pausado',         prioridade: 'Baixa', temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Repriorizar após DR Site',                               previsaoPipeline: 'T4/2026' },
-    { id: 14, nome: 'Refresh Wi-Fi Corporativo',    ambiente: 'Rede Corporativa', responsavel: 'Marcos',   status: 'Pausado',         prioridade: 'Baixa', temPipeline: false, pipelineNome: null, pipelineCriadaEm: null, proximoPasso: 'Aguardando orçamento aprovado',                          previsaoPipeline: 'T4/2026' },
-  ];
-
-  const biInfraProjetos = {
-    success: true,
-    message: '[MOCK] Dados simulados',
-    meta: { pipelinesPorTrimestre: 3 },
-    trimestreAtual: { trimestre: 'T2/2026', inicio: '2026-04-01', fim: '2026-06-30', criadas: 2 },
-    historico: [
-      { trimestre: 'T3/2025', criadas: 1 },
-      { trimestre: 'T4/2025', criadas: 3 },
-      { trimestre: 'T1/2026', criadas: 2 },
-      { trimestre: 'T2/2026', criadas: 2 },
-    ],
-    resumo: {
-      totalProjetos: infraProjetosBase.length,
-      comPipeline: infraProjetosBase.filter(p => p.temPipeline).length,
-      semPipeline: infraProjetosBase.filter(p => !p.temPipeline).length,
-    },
-    projetos: infraProjetosBase,
-    pipelinesNovas: [
-      { nome: 'veeam-policy-as-code',  projeto: 'Backup Imutável (Veeam)',    responsavel: 'Ronaldo', criadaEm: '2026-04-17' },
-      { nome: 'obs-datacenter-deploy', projeto: 'Observabilidade Datacenter', responsavel: 'Bruna',   criadaEm: '2026-05-28' },
-    ],
-  };
-
   /* SLA Nestlé */
   const slaNestle = {
     success: true,
@@ -560,7 +519,6 @@ function buildMocks(): Record<string, unknown> {
     '/api/bi-customer/kpis': biCustomerKpis,
     '/api/bi-customer/detalhe': biCustomerDetalhe,
     '/api/bi-infra/sgsi': biInfraSgsi,
-    '/api/bi-infra/projetos': biInfraProjetos,
     '/api/gestao/sla-flag': slaFlag,
     '/api/gestao/sla-nestle': slaNestle,
     '/api/gestao/sla-nestle-historico': slaNestleHistorico,

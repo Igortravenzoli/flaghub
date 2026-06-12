@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { BIInfraSgsiPanel } from '@/components/infraestrutura/BIInfraSgsiPanel';
-import { InfraProjetosPanel } from '@/components/infraestrutura/InfraProjetosPanel';
+import { DevopsCoberturaPanel } from '@/components/infraestrutura/DevopsCoberturaPanel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
@@ -161,7 +161,7 @@ export default function InfraestruturaDashboard() {
   ] : [];
 
   return (
-    <SectorLayout title="Infraestrutura" subtitle="Atividades, Melhorias e Monitoramento" lastUpdate="" integrations={integrations} areaKey="infraestrutura" syncFunctions={[{ name: 'devops-sync-query', label: 'Atualizar query 07-Infraestrutura', payload: { wiql_id: 'e6af59bf-64c5-4bf5-b926-d5039e9222f2', query_name: '07-Infraestrutura', sector: 'infraestrutura' } }, { name: 'devops-sync-all', label: 'Sincronizar base DevOps', payload: { sector: 'infraestrutura' } }]}>
+    <SectorLayout title="Infraestrutura" subtitle="Atividades, Melhorias e Monitoramento" lastUpdate="" integrations={integrations} areaKey="infraestrutura" syncFunctions={[{ name: 'devops-sync-query', label: 'Atualizar query 07-Infraestrutura', payload: { wiql_id: 'e6af59bf-64c5-4bf5-b926-d5039e9222f2', query_name: '07-Infraestrutura', sector: 'infraestrutura' } }, { name: 'devops-sync-all', label: 'Sincronizar base DevOps', payload: { sector: 'infraestrutura' } }, { name: 'devops-sync-repos', label: 'Sincronizar repositórios DevOps', payload: {} }]}>
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
@@ -339,7 +339,7 @@ export default function InfraestruturaDashboard() {
           </TabsContent>
 
           <TabsContent value="projetos-pipelines" className="mt-0">
-            <InfraProjetosPanel />
+            <DevopsCoberturaPanel />
           </TabsContent>
         </Tabs>
       )}

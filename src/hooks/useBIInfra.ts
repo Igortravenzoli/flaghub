@@ -195,67 +195,14 @@ export interface BIInfraSgsiResponse {
   acessos: SgAcessosBloco;
 }
 
-// ── Projetos & Pipelines ───────────────────────────────────────────────
-// Gestão dos projetos de infra sem esteira (pipeline) e métrica trimestral:
-// meta de 3 pipelines novas por trimestre.
-
-export interface InfraProjeto {
-  id: number;
-  nome: string;
-  ambiente: string;
-  responsavel: string;
-  status: 'Ativo' | 'Em implantação' | 'Pausado';
-  prioridade: 'Alta' | 'Média' | 'Baixa';
-  temPipeline: boolean;
-  pipelineNome: string | null;
-  pipelineCriadaEm: string | null;
-  proximoPasso: string | null;
-  previsaoPipeline: string | null; // trimestre alvo, ex.: "T3/2026"
-}
-
-export interface PipelineNova {
-  nome: string;
-  projeto: string;
-  responsavel: string;
-  criadaEm: string;
-}
-
-export interface TrimestrePipelines {
-  trimestre: string; // ex.: "T2/2026"
-  criadas: number;
-}
-
-export interface BIInfraProjetosResponse {
-  success: boolean;
-  message: string;
-  meta: { pipelinesPorTrimestre: number };
-  trimestreAtual: {
-    trimestre: string;
-    inicio: string;
-    fim: string;
-    criadas: number;
-  };
-  historico: TrimestrePipelines[];
-  resumo: { totalProjetos: number; comPipeline: number; semPipeline: number };
-  projetos: InfraProjeto[];
-  pipelinesNovas: PipelineNova[];
-}
-
 // ── Hooks ──────────────────────────────────────────────────────────────
+// Obs.: a visão "Projetos & Pipelines" migrou para dados reais do Azure
+// DevOps — ver useDevopsCobertura.ts (tabelas devops_projects/devops_repos).
 
 export function useBIInfraSgsi() {
   return useQuery<BIInfraSgsiResponse>({
     queryKey: ['bi-infra', 'sgsi'],
     queryFn: () => gatewayGet('/api/bi-infra/sgsi'),
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
-}
-
-export function useBIInfraProjetos() {
-  return useQuery<BIInfraProjetosResponse>({
-    queryKey: ['bi-infra', 'projetos'],
-    queryFn: () => gatewayGet('/api/bi-infra/projetos'),
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
