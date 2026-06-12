@@ -7,7 +7,6 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ImportModeDialog, ImportMode } from '@/components/setores/ImportModeDialog';
 import { useComercialMovimentacao, MovimentacaoCliente } from '@/hooks/useComercialMovimentacao';
 import { useMovimentacaoImport } from '@/hooks/useMovimentacaoImport';
@@ -67,7 +66,6 @@ interface Props {
 }
 
 export default function MovimentacaoTab({ dateFrom, dateTo, canViewValues = false, showValues = false, bandeiras = [], sistemas = [] }: Props) {
-  const [anoFilter, setAnoFilter] = useState<string>(String(new Date().getFullYear()));
   const [drawerItem, setDrawerItem] = useState<MovimentacaoCliente | null>(null);
   const [tipoFilter, setTipoFilter] = useState<string | null>(null);
   const [showManualDialog, setShowManualDialog] = useState(false);
@@ -75,27 +73,19 @@ export default function MovimentacaoTab({ dateFrom, dateTo, canViewValues = fals
   const { mutateAsync: createMovimentacao } = useComercialMovimentacaoManual();
   const { mutateAsync: updateMovimentacao } = useComercialMovimentacaoUpdate();
   const { mutateAsync: deleteMovimentacao } = useComercialMovimentacaoDelete();
-  const { items: rawItems, allItems, isLoading, isError, refetch } = useComercialMovimentacao('todos', dateFrom, dateTo);
+  const { items: rawItems, isLoading, isError, refetch } = useComercialMovimentacao('todos', dateFrom, dateTo);
 
-  // Filter by year + hide risco for non-privileged viewers
+  // Período herdado do filtro da página (via hook) + tipo + risco restrito
   const items = useMemo(() => {
     let filtered = rawItems;
     if (!canViewValues) {
       filtered = filtered.filter(i => i.tipo !== 'risco');
     }
-    if (anoFilter !== 'todos') {
-      const year = parseInt(anoFilter);
-      filtered = filtered.filter((i) => {
-        if (i.ano_referencia) return i.ano_referencia === year;
-        if (i.data_evento) return new Date(i.data_evento).getFullYear() === year;
-        return false;
-      });
-    }
     if (tipoFilter) {
       filtered = filtered.filter((i) => i.tipo === tipoFilter);
     }
     return filtered;
-  }, [rawItems, anoFilter, tipoFilter, canViewValues]);
+  }, [rawItems, tipoFilter, canViewValues]);
 
   // Recalculate stats for filtered items
   const stats = useMemo(() => {
@@ -115,25 +105,18 @@ export default function MovimentacaoTab({ dateFrom, dateTo, canViewValues = fals
     };
   }, [items]);
 
-  // Available years from data
-  const availableYears = useMemo(() => {
-    const years = new Set<number>();
-    for (const i of allItems) {
-      if (i.ano_referencia) years.add(i.ano_referencia);
-      else if (i.data_evento) years.add(new Date(i.data_evento).getFullYear());
-    }
-    return [...years].sort((a, b) => b - a);
-  }, [allItems]);
-
   // Bar chart data: perdas x ganhos grouped by month
+  // Agrupa pelo "YYYY-MM" da string — new Date('2026-04-01') vira 31/03 no fuso
+  // local e jogava registros do dia 1 para o mês anterior.
   const chartData = useMemo(() => {
+    const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
     const monthMap = new Map<string, { label: string; ganhos: number; perdas: number; sortKey: string }>();
     for (const item of items) {
       if (item.tipo === 'risco') continue; // Risco não é movimentação
-      const d = item.data_evento ? new Date(item.data_evento) : null;
-      if (!d) continue;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+      if (!item.data_evento) continue;
+      const key = item.data_evento.slice(0, 7);
+      const [y, m] = key.split('-');
+      const label = `${MESES[parseInt(m, 10) - 1] ?? m}. de ${y.slice(2)}`;
       if (!monthMap.has(key)) monthMap.set(key, { label, ganhos: 0, perdas: 0, sortKey: key });
       const entry = monthMap.get(key)!;
       if (item.tipo === 'ganho') entry.ganhos++;
@@ -420,23 +403,12 @@ export default function MovimentacaoTab({ dateFrom, dateTo, canViewValues = fals
         </Card>
       </div>
 
-      {/* Year filter only */}
-      <div className="flex items-center gap-2 mt-1 mb-1">
-        <span className="text-xs text-muted-foreground">Ano:</span>
-        <ToggleGroup type="single" value={anoFilter} onValueChange={(v) => setAnoFilter(v || 'todos')} size="sm">
-          <ToggleGroupItem value="todos" className="text-xs h-7 px-3">Todos</ToggleGroupItem>
-          {availableYears.map((y) => (
-            <ToggleGroupItem key={y} value={String(y)} className="text-xs h-7 px-3">{y}</ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </div>
-
       {!isLoading && items.length === 0 ? (
-        <DashboardEmptyState description="Nenhuma movimentação encontrada. Use o botão 'Importar XLSX' para carregar dados." />
+        <DashboardEmptyState description="Nenhuma movimentação no período selecionado. Ajuste o filtro de período ou importe dados." />
       ) : (
         <DashboardDataTable
           title="Movimentação de Clientes"
-          subtitle={`${items.length} registros${anoFilter !== 'todos' ? ` • ${anoFilter}` : ''}`}
+          subtitle={`${items.length} registros no período`}
           headerActions={
             <Button size="sm" variant="default" onClick={() => setShowManualDialog(true)}>
               + Nova Movimentação

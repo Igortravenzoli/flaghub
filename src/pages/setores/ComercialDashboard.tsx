@@ -928,6 +928,8 @@ export default function ComercialDashboard() {
               showValues={showValues}
               bandeiras={bandeiras}
               sistemas={sistemasUnicos}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
             />
           </TabsContent>
 
