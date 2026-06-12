@@ -162,7 +162,7 @@ export default function InfraestruturaDashboard() {
   ] : [];
 
   return (
-    <SectorLayout title="Infraestrutura" subtitle="Atividades, Melhorias e Monitoramento" lastUpdate="" integrations={integrations} areaKey="infraestrutura" syncFunctions={[{ name: 'devops-sync-query', label: 'Atualizar query 07-Infraestrutura', payload: { wiql_id: 'e6af59bf-64c5-4bf5-b926-d5039e9222f2', query_name: '07-Infraestrutura', sector: 'infraestrutura' } }, { name: 'devops-sync-all', label: 'Sincronizar base DevOps', payload: { sector: 'infraestrutura' } }, { name: 'devops-sync-repos', label: 'Sincronizar repositórios DevOps', payload: {} }, { name: 'sharepoint-sync-sgsi', label: 'Sincronizar SGSI (SharePoint)', payload: {} }]}>
+    <SectorLayout title="Infraestrutura" subtitle="Atividades, Melhorias e Monitoramento" lastUpdate="" integrations={integrations} areaKey="infraestrutura" syncFunctions={[{ name: 'devops-sync-query', label: 'Atualizar query 07-Infraestrutura', payload: { wiql_id: 'e6af59bf-64c5-4bf5-b926-d5039e9222f2', query_name: '07-Infraestrutura', sector: 'infraestrutura' } }, { name: 'devops-sync-all', label: 'Sincronizar base DevOps', payload: { sector: 'infraestrutura' } }, { name: 'devops-sync-repos', label: 'Sincronizar repositórios DevOps', payload: {} }, { name: 'sharepoint-sync-sgsi', label: 'Sincronizar SGSI (SharePoint)', payload: {} }, { name: 'devops-sync-timelog', label: 'Sincronizar TimeLog (Horas)', payload: {} }]}>
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
@@ -337,7 +337,12 @@ export default function InfraestruturaDashboard() {
           </TabsContent>
 
           <TabsContent value="gestao-sg" className="mt-0">
-            <BIInfraSgsiPanel />
+            {(() => {
+              // Sprint selecionada (ou range custom) limita o SGSI por data de
+              // criação/modificação; "Todas as Sprints" mostra tudo.
+              const sgsiRange = customActive && customRange ? customRange : sprintRange;
+              return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} />;
+            })()}
           </TabsContent>
 
           <TabsContent value="projetos-pipelines" className="mt-0">

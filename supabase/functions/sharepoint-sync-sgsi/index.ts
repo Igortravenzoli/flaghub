@@ -2,10 +2,13 @@
 // Fonte: https://flagcom.sharepoint.com/sites/PORTALSGSI (mesma do PBIX
 // "SG-LST Usecase 1.04"). Lê via Microsoft Graph com client credentials.
 //
-// Secrets necessários (Supabase):
-//   SHAREPOINT_TENANT_ID, SHAREPOINT_CLIENT_ID, SHAREPOINT_CLIENT_SECRET
-// App registration no Entra ID com permissão de APLICAÇÃO no Graph:
-//   Sites.Read.All (ou Sites.Selected com grant no site PORTALSGSI).
+// Credenciais (Supabase secrets): usa SHAREPOINT_TENANT_ID/CLIENT_ID/CLIENT_SECRET
+// quando existirem; senão reaproveita o app Entra do Teams
+// (TEAMS_GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET) — o mesmo app atende
+// Teams + SharePoint. [DÉBITO TÉCNICO] renomear o app no Entra ID para um
+// nome que represente a função híbrida (ver docs/DEBITOS_TECNICOS.md).
+// O app precisa da permissão de APLICAÇÃO no Graph: Sites.Read.All
+// (ou Sites.Selected com grant no site PORTALSGSI) + admin consent.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -14,15 +17,18 @@ const SP_HOST = 'flagcom.sharepoint.com'
 const SP_SITE_PATH = '/sites/PORTALSGSI'
 const GRAPH = 'https://graph.microsoft.com/v1.0'
 
-// Prefixo do displayName de cada lista SG espelhada → chave interna
-const LIST_PREFIXES: Record<string, string> = {
-  'SG-LST-010': '010',
-  'SG-LST-011': '011',
-  'SG-LST-012': '012',
-  'SG-LST-014': '014',
-  'SG-LST-017': '017',
-  'SG-LST-018': '018',
-}
+// Matching por regex do displayName → chave interna. (?![\d.]) evita
+// colisão com sub-listas como "SG-LST-014.3 Avaliação de Eficácia...".
+// A lista de incidentes existe no site numerada como 016 (o PBIX a renomeou
+// para 017 no modelo), por isso o padrão aceita ambas.
+const LIST_MATCHERS: { listKey: string; pattern: RegExp; extra?: RegExp }[] = [
+  { listKey: '010', pattern: /^SG-LST-010(?![\d.])/i },
+  { listKey: '011', pattern: /^SG-LST-011(?![\d.])/i },
+  { listKey: '012', pattern: /^SG-LST-012(?![\d.])/i },
+  { listKey: '014', pattern: /^SG-LST-014(?![\d.])/i, extra: /acesso/i },
+  { listKey: '017', pattern: /^SG-LST-01[67](?![\d.])/i, extra: /incidente/i },
+  { listKey: '018', pattern: /^SG-LST-018(?![\d.])/i },
+]
 
 // Campos de sistema do Graph que não interessam ao espelho
 const SKIP_FIELDS = new Set([
@@ -75,11 +81,11 @@ async function validateAuth(req: Request): Promise<string | null> {
 }
 
 async function acquireGraphToken(): Promise<string> {
-  const tenantId = Deno.env.get('SHAREPOINT_TENANT_ID')
-  const clientId = Deno.env.get('SHAREPOINT_CLIENT_ID')
-  const clientSecret = Deno.env.get('SHAREPOINT_CLIENT_SECRET')
+  const tenantId = Deno.env.get('SHAREPOINT_TENANT_ID') ?? Deno.env.get('TEAMS_GRAPH_TENANT_ID')
+  const clientId = Deno.env.get('SHAREPOINT_CLIENT_ID') ?? Deno.env.get('TEAMS_GRAPH_CLIENT_ID')
+  const clientSecret = Deno.env.get('SHAREPOINT_CLIENT_SECRET') ?? Deno.env.get('TEAMS_GRAPH_CLIENT_SECRET')
   if (!tenantId || !clientId || !clientSecret) {
-    throw new Error('Secrets SHAREPOINT_TENANT_ID / SHAREPOINT_CLIENT_ID / SHAREPOINT_CLIENT_SECRET não configurados')
+    throw new Error('Credenciais Graph ausentes: configure SHAREPOINT_* ou TEAMS_GRAPH_* (tenant/client/secret)')
   }
   const resp = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
     method: 'POST',
@@ -185,17 +191,29 @@ serve(async (req) => {
     )
 
     const matched: { listKey: string; graphListId: string; displayName: string }[] = []
+    const seenKeys = new Set<string>()
+    const naoMapeadas: string[] = []
     for (const list of listsData.value || []) {
-      for (const [prefix, listKey] of Object.entries(LIST_PREFIXES)) {
-        if (list.displayName?.startsWith(prefix)) {
-          matched.push({ listKey, graphListId: list.id, displayName: list.displayName })
-        }
+      const name = list.displayName ?? ''
+      const matcher = LIST_MATCHERS.find(m => m.pattern.test(name) && (!m.extra || m.extra.test(name)))
+      if (!matcher) {
+        if (/^SG-LST/i.test(name)) naoMapeadas.push(name)
+        continue
       }
+      if (seenKeys.has(matcher.listKey)) {
+        console.warn(`[SGSI] Lista duplicada para ${matcher.listKey} ignorada: ${name}`)
+        continue
+      }
+      seenKeys.add(matcher.listKey)
+      matched.push({ listKey: matcher.listKey, graphListId: list.id, displayName: name })
     }
     if (matched.length === 0) {
       throw new Error(`Nenhuma lista SG-LST encontrada no site ${SP_SITE_PATH}`)
     }
     console.log(`[SGSI] ${matched.length} listas encontradas: ${matched.map(m => m.displayName).join(' | ')}`)
+    if (naoMapeadas.length > 0) {
+      console.log(`[SGSI] Listas SG não mapeadas: ${naoMapeadas.join(' | ')}`)
+    }
 
     // 2. Por lista: colunas (mapa internal→display) + itens paginados
     const resumo: Record<string, number> = {}
@@ -257,17 +275,20 @@ serve(async (req) => {
       status: 'processed',
       processed_at: new Date().toISOString(),
     })
-    await admin.rpc('hub_audit_log', {
-      p_action: 'sharepoint_sync_sgsi',
-      p_entity_type: 'sgsi_lists',
-      p_entity_id: SP_SITE_PATH,
-      p_metadata: { listas: resumo, duration_ms: duration },
-    }).catch(() => {})
+    try {
+      await admin.rpc('hub_audit_log', {
+        p_action: 'sharepoint_sync_sgsi',
+        p_entity_type: 'sgsi_lists',
+        p_entity_id: SP_SITE_PATH,
+        p_metadata: { listas: resumo, duration_ms: duration },
+      })
+    } catch (_) { /* auditoria é best-effort */ }
 
     return new Response(JSON.stringify({
       success: true,
       site: SP_SITE_PATH,
       listas: resumo,
+      listas_nao_mapeadas: naoMapeadas,
       total_itens: Object.values(resumo).reduce((s, n) => s + n, 0),
       duration_ms: duration,
     }), { headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
