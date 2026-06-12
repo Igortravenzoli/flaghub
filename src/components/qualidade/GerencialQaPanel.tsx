@@ -7,7 +7,7 @@ import {
 import { extractProducts, normalizeProduct, extractClients } from '@/lib/products';
 import { QaKpiCard } from '@/components/qualidade/QaKpiCard';
 import { QaPillarCard } from '@/components/qualidade/QaPillarCard';
-import { QA_HEALTH, QA_CHART_SERIES, QA_TONES, thresholdColorHigh, thresholdColorLow } from '@/lib/qaTheme';
+import { QA_HEALTH, QA_TONES, thresholdColorHigh, thresholdColorLow } from '@/lib/qaTheme';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -27,9 +27,45 @@ import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/spri
 
 const HEALTH_COLORS = QA_HEALTH;
 
-const SERIES_COLORS = QA_CHART_SERIES;
-
 type QaDrillFilter = 'concluidos' | 'sem_retorno' | 'com_retorno' | null;
+
+// Rampa de intensidade do heatmap (verde QA): fundo + texto legível
+const HEAT_RAMP = [
+  { bg: '#E1F5EE', fg: '#085041' },
+  { bg: '#9FE1CB', fg: '#04342C' },
+  { bg: '#5DCAA5', fg: '#04342C' },
+  { bg: '#1D9E75', fg: '#ffffff' },
+  { bg: '#0F6E56', fg: '#ffffff' },
+];
+function heatStyle(v: number, max: number) {
+  if (v <= 0) return null;
+  const r = v / Math.max(1, max);
+  const idx = r > 0.66 ? 4 : r > 0.45 ? 3 : r > 0.25 ? 2 : r > 0.12 ? 1 : 0;
+  return HEAT_RAMP[idx];
+}
+
+function PeriodoTooltip({ active, payload }: { active?: boolean; payload?: any[] }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  const pct = d.total > 0 ? Math.round((d.propria / d.total) * 100) : 0;
+  return (
+    <div className="rounded-md border bg-background p-2.5 text-xs shadow-md max-w-[230px]">
+      <div className="font-medium mb-1">{d.sprint} — {d.total} encerradas</div>
+      <div>Da própria sprint: <b>{d.propria}</b> ({pct}%)</div>
+      <div>De sprints anteriores: <b>{d.anteriores}</b></div>
+      {d.sem_sprint > 0 && <div>Sem sprint: <b>{d.sem_sprint}</b></div>}
+      {d.detalhe?.length > 0 && (
+        <div className="mt-1.5 pt-1.5 border-t text-muted-foreground">
+          {d.detalhe.slice(0, 6).map((o: { origem: string; qtd: number }) => (
+            <div key={o.origem} className="flex justify-between gap-3"><span>{o.origem}</span><span>{o.qtd}</span></div>
+          ))}
+          {d.detalhe.length > 6 && <div className="text-muted-foreground/70">+{d.detalhe.length - 6} origens…</div>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Seção colapsável da visão executiva (Visão Sprint / Desempenho) */
 function CollapsibleSection({ title, subtitle, defaultOpen = true, children }: {
@@ -162,29 +198,27 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
     ].filter(d => d.value > 0);
   }, [agg]);
 
-  // Item 3 — histórico de encerramentos por usuário (pivot sprint × closer)
-  const closers = useMemo(
-    () => Array.from(new Set((encerramentos || []).map(e => e.closer_display))).sort(),
-    [encerramentos]
-  );
-  const encerramentosByCloser = useMemo(() => {
-    if (!encerramentos?.length) return [];
-    const bySprint = new Map<string, Record<string, number | string>>();
-    for (const e of encerramentos) {
-      const sprint = e.sprint_code?.split('\\').pop() || e.sprint_code || 'Sem Sprint';
-      const row = bySprint.get(sprint) || { sprint };
-      row[e.closer_display] = (Number(row[e.closer_display]) || 0) + e.encerramentos;
-      bySprint.set(sprint, row);
-    }
-    return Array.from(bySprint.values()).sort((a, b) =>
-      String(a.sprint).localeCompare(String(b.sprint), undefined, { numeric: true })
+  // Heatmap pessoa × sprint (apenas sprints do ano corrente — alinha com o gráfico de período)
+  const heatmap = useMemo(() => {
+    const rows = (encerramentos || []).filter(e => e.sprint_code?.endsWith(`-${historicalYear}`));
+    const sprintSet = new Set(rows.map(e => e.sprint_code));
+    const sprints = Array.from(sprintSet).sort((a, b) =>
+      Number(a.replace(/\D/g, '')) - Number(b.replace(/\D/g, ''))
     );
-  }, [encerramentos]);
-
-  const totalEncerramentosCloser = useMemo(() =>
-    (encerramentos || []).reduce((s, e) => s + e.encerramentos, 0),
-    [encerramentos]
-  );
+    const byCloser = new Map<string, { total: number; bySprint: Map<string, number> }>();
+    for (const e of rows) {
+      const entry = byCloser.get(e.closer_display) || { total: 0, bySprint: new Map<string, number>() };
+      entry.total += e.encerramentos;
+      entry.bySprint.set(e.sprint_code, (entry.bySprint.get(e.sprint_code) || 0) + e.encerramentos);
+      byCloser.set(e.closer_display, entry);
+    }
+    const people = Array.from(byCloser.entries())
+      .map(([closer, v]) => ({ closer, total: v.total, bySprint: v.bySprint }))
+      .sort((a, b) => b.total - a.total);
+    const max = Math.max(1, ...rows.map(e => e.encerramentos));
+    const total = rows.reduce((s, e) => s + e.encerramentos, 0);
+    return { sprints, people, max, total };
+  }, [encerramentos, historicalYear]);
 
   // Retornos por produto/sistema (itens com tag RETORNO QA, por produto)
   const retornosPorProduto = useMemo(() => {
@@ -233,28 +267,32 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
     return rows;
   }, [qaItems]);
 
-  // Histórico atemporal — encerradas DENTRO do período de cada sprint, empilhado por sprint de ORIGEM
-  const origens = useMemo(() => {
-    const set = new Set((closedPorPeriodo || []).map(r => r.sprint_origem));
-    return Array.from(set).sort((a, b) => {
-      if (a === 'Sem sprint') return 1;
-      if (b === 'Sem sprint') return -1;
-      return a.localeCompare(b, undefined, { numeric: true });
-    });
-  }, [closedPorPeriodo]);
-
-  const periodoData = useMemo(() => {
+  // Histórico atemporal — encerradas DENTRO do período de cada sprint.
+  // Origem resumida em 2 categorias (própria × anteriores); detalhe por origem no tooltip.
+  interface PeriodoRow {
+    sprint: string;
+    total: number;
+    propria: number;
+    anteriores: number;
+    sem_sprint: number;
+    detalhe: { origem: string; qtd: number }[];
+  }
+  const periodoData = useMemo<PeriodoRow[]>(() => {
     if (!closedPorPeriodo?.length) return [];
-    const bySprint = new Map<string, Record<string, number | string>>();
+    const bySprint = new Map<string, PeriodoRow>();
     for (const r of closedPorPeriodo) {
-      const row = bySprint.get(r.sprint_periodo) || { sprint: r.sprint_periodo, total: 0 };
-      row[r.sprint_origem] = (Number(row[r.sprint_origem]) || 0) + r.qtd;
-      row.total = (Number(row.total) || 0) + r.qtd;
+      const row = bySprint.get(r.sprint_periodo)
+        || { sprint: r.sprint_periodo, total: 0, propria: 0, anteriores: 0, sem_sprint: 0, detalhe: [] };
+      row.total += r.qtd;
+      if (r.sprint_origem === r.sprint_periodo) row.propria += r.qtd;
+      else if (r.sprint_origem === 'Sem sprint') row.sem_sprint += r.qtd;
+      else row.anteriores += r.qtd;
+      row.detalhe.push({ origem: r.sprint_origem, qtd: r.qtd });
       bySprint.set(r.sprint_periodo, row);
     }
-    return Array.from(bySprint.values()).sort((a, b) =>
-      String(a.sprint).localeCompare(String(b.sprint), undefined, { numeric: true })
-    );
+    return Array.from(bySprint.values())
+      .map(r => ({ ...r, detalhe: [...r.detalhe].sort((a, b) => b.qtd - a.qtd) }))
+      .sort((a, b) => Number(a.sprint.replace(/\D/g, '')) - Number(b.sprint.replace(/\D/g, '')));
   }, [closedPorPeriodo]);
 
   const totalPeriodo = useMemo(
@@ -456,24 +494,46 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Users className="h-4 w-4" /> Histórico de Encerramentos QA por Usuário
-                <Badge variant="outline" className="ml-2 text-xs">{totalEncerramentosCloser} encerramentos</Badge>
+                <Users className="h-4 w-4" /> Encerramentos QA por Usuário — {historicalYear}
+                <Badge variant="outline" className="ml-2 text-xs">{heatmap.total} encerramentos</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {encerramentosByCloser.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={encerramentosByCloser}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-                    <XAxis dataKey="sprint" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                    <RTooltip />
-                    <Legend />
-                    {closers.map((c, i) => (
-                      <Bar key={c} dataKey={c} stackId="enc" fill={SERIES_COLORS[i % SERIES_COLORS.length]} name={c} />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
+              {heatmap.people.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 3 }}>
+                    <thead>
+                      <tr>
+                        <th className="text-left font-medium text-muted-foreground pr-2">Usuário</th>
+                        {heatmap.sprints.map(sp => (
+                          <th key={sp} className="text-center font-medium text-muted-foreground min-w-[32px]">
+                            {sp.split('-')[0]}
+                          </th>
+                        ))}
+                        <th className="text-center font-semibold text-foreground pl-1">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {heatmap.people.map(p => (
+                        <tr key={p.closer}>
+                          <td className="text-muted-foreground whitespace-nowrap pr-2">{p.closer}</td>
+                          {heatmap.sprints.map(sp => {
+                            const v = p.bySprint.get(sp) || 0;
+                            const st = heatStyle(v, heatmap.max);
+                            return (
+                              <td key={sp}
+                                className="text-center rounded-md py-1.5 font-medium tabular-nums"
+                                style={st ? { background: st.bg, color: st.fg } : undefined}>
+                                {v > 0 ? v : <span className="text-muted-foreground/40">—</span>}
+                              </td>
+                            );
+                          })}
+                          <td className="text-center font-semibold tabular-nums">{p.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <p className="text-muted-foreground text-sm py-8 text-center">
                   Sem encerramentos atribuídos aos usuários do QA no recorte selecionado.
@@ -481,8 +541,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               )}
               <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
                 <Info className="h-3.5 w-3.5" />
-                Conta itens (qualquer tipo) encerrados por Closed By autorizado, agrupados pelo período
-                de sprint da data de fechamento.
+                Quanto mais escura a célula, maior o volume encerrado pela pessoa naquela sprint
+                (período da data de fechamento; qualquer tipo de item).
               </p>
             </CardContent>
           </Card>
@@ -500,21 +560,22 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                   <ResponsiveContainer width="100%" height={280}>
                     <BarChart data={periodoData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
-                      <XAxis dataKey="sprint" tick={{ fontSize: 10 }} />
+                      <XAxis dataKey="sprint" tick={{ fontSize: 10 }} tickFormatter={(v) => String(v).split('-')[0]} />
                       <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <RTooltip />
+                      <RTooltip content={<PeriodoTooltip />} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      {origens.map((o, i) => (
-                        <Bar key={o} dataKey={o} stackId="origem" name={o}
-                          fill={o === 'Sem sprint' ? '#94a3b8' : SERIES_COLORS[i % SERIES_COLORS.length]} />
-                      ))}
+                      <Bar dataKey="propria" stackId="origem" name="Da própria sprint" fill={QA_TONES.success.solid} />
+                      <Bar dataKey="anteriores" stackId="origem" name="De sprints anteriores" fill="#94a3b8" radius={[3, 3, 0, 0]} />
+                      {periodoData.some(r => r.sem_sprint > 0) && (
+                        <Bar dataKey="sem_sprint" stackId="origem" name="Sem sprint" fill="#cbd5e1" />
+                      )}
                     </BarChart>
                   </ResponsiveContainer>
                   <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
                     <Info className="h-3.5 w-3.5" />
-                    QA é atemporal: cada barra conta o que foi ENCERRADO dentro do período oficial da sprint
-                    (data de fechamento), empilhado pela sprint de ORIGEM da task. Ex.: tasks alocadas na S6
-                    e encerradas na S9 contam na barra da S9, na cor da S6.
+                    QA é atemporal: cada barra conta o que foi ENCERRADO dentro do período oficial da sprint.
+                    Verde = tasks da própria sprint ("em dia"); cinza = herdadas de sprints anteriores.
+                    Passe o mouse para ver de quais sprints vieram.
                   </p>
                 </>
               ) : (
