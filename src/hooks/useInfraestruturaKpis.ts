@@ -1,5 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 
 export interface InfraItem {
@@ -50,11 +51,10 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
   const query = useQuery({
     queryKey: ['infraestrutura', 'kpis'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vw_infraestrutura_kpis')
-        .select('*');
-      if (error) throw error;
-      return (data || []) as InfraItem[];
+      // Paginado: com os itens [INFRA] a view passa de 900 linhas (cap 1000/request)
+      return fetchAllRows<InfraItem>((from, to) =>
+        supabase.from('vw_infraestrutura_kpis').select('*').range(from, to)
+      );
     },
     staleTime: 5 * 60 * 1000,
     placeholderData: keepPreviousData,
