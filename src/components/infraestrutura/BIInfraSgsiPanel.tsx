@@ -243,6 +243,9 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
         ))}
       </div>
 
+      {d && d.totalItens === 0 && d.totalItensBase > 0 ? (
+        <DashboardEmptyState description={`Nenhuma atividade SG no período selecionado (${d.totalItensBase} itens no histórico). Selecione "Todas as Sprints" para ver o panorama completo.`} />
+      ) : (
       <Tabs defaultValue="mudancas">
         <TabsList className="bg-muted/50 p-1 flex-wrap h-auto">
           <TabsTrigger value="mudancas" className="gap-1.5 text-xs"><RefreshCw className="h-3.5 w-3.5" />Mudanças (010)</TabsTrigger>
@@ -440,6 +443,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
           />
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }
