@@ -502,7 +502,9 @@ export function buildSgsiResponse(
     (i) => i.modified_sp ?? i.created_sp,
   );
   const diasSem = {
-    incidentes: daysSince(maxDate(byAll('017'), (i) => str(i, 'Data e hora inicio Incidente') || i.created_sp), now),
+    // "Data e hora inicio Incidente" é texto livre na lista (ex.: "Dia:
+    // 09/10/2023 - Horário: 06h27") — impossível parsear; usa a criação do item.
+    incidentes: daysSince(maxDate(byAll('017'), (i) => i.created_sp), now),
     riscos: daysSince(maxDate(byAll('012'), (i) => i.created_sp), now),
     naoConformidades: daysSince(maxDate(byAll('018'), (i) => i.created_sp), now),
     attMalSucedidas: daysSince(ultimaAttMalSucedida, now),

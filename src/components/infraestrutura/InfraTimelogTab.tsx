@@ -160,9 +160,8 @@ export function InfraTimelogTab({ dateFrom, dateTo, items }: {
                   <Legend
                     formatter={(value: string) => {
                       if (value === 'tasks') return 'Tasks/dia';
-                      const [chip, parte] = value.split('_');
-                      const label = chip.charAt(0).toUpperCase() + chip.slice(1);
-                      return parte === 'extra' ? `${label} (extra)` : parte === 'rest' ? `${label} (capacidade)` : label;
+                      const chip = value.split('_')[0];
+                      return chip.charAt(0).toUpperCase() + chip.slice(1);
                     }}
                     wrapperStyle={{ fontSize: 11 }}
                   />
@@ -171,8 +170,8 @@ export function InfraTimelogTab({ dateFrom, dateTo, items }: {
                     const cor = COLLAB_COLORS[chip] ?? '#64748b';
                     return [
                       <Bar key={`${chip}_base`} yAxisId="horas" dataKey={`${chip}_base`} stackId={chip} fill={cor} maxBarSize={22} />,
-                      <Bar key={`${chip}_extra`} yAxisId="horas" dataKey={`${chip}_extra`} stackId={chip} fill="#ef4444" maxBarSize={22} />,
-                      <Bar key={`${chip}_rest`} yAxisId="horas" dataKey={`${chip}_rest`} stackId={chip} fill={cor} fillOpacity={0.12} stroke={cor} strokeOpacity={0.35} strokeDasharray="3 2" maxBarSize={22} />,
+                      <Bar key={`${chip}_extra`} yAxisId="horas" dataKey={`${chip}_extra`} stackId={chip} fill="#ef4444" maxBarSize={22} legendType="none" />,
+                      <Bar key={`${chip}_rest`} yAxisId="horas" dataKey={`${chip}_rest`} stackId={chip} fill={cor} fillOpacity={0.12} stroke={cor} strokeOpacity={0.35} strokeDasharray="3 2" maxBarSize={22} legendType="none" />,
                     ];
                   })}
                   <Line yAxisId="tasks" type="monotone" dataKey="tasks" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} />

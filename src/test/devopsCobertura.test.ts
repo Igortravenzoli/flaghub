@@ -2,6 +2,7 @@ import {
   computeCoberturaKpis,
   computeCoberturaPorProjeto,
   countPipelinesNovasTrimestre,
+  ciCdNivel,
   DevopsRepo,
 } from '@/hooks/useDevopsCobertura';
 
@@ -22,6 +23,7 @@ function repo(partial: Partial<DevopsRepo>): DevopsRepo {
     last_commit_date: null,
     pipeline_count: 0,
     active_pipeline_count: 0,
+    release_count: 0,
     pipelines: [],
     aplicavel: null,
     classificacao_obs: null,
@@ -77,6 +79,14 @@ describe('computeCoberturaPorProjeto', () => {
     expect(r[0].coberturaPct).toBe(0);
     expect(r[1].projeto).toBe('A');
     expect(r[1].coberturaPct).toBe(100);
+  });
+});
+
+describe('ciCdNivel', () => {
+  it('classifica completo (CI+CD), parcial (so CI) e descoberto', () => {
+    expect(ciCdNivel({ active_pipeline_count: 2, release_count: 1 })).toBe('completo');
+    expect(ciCdNivel({ active_pipeline_count: 1, release_count: 0 })).toBe('parcial');
+    expect(ciCdNivel({ active_pipeline_count: 0, release_count: 3 })).toBe('descoberto');
   });
 });
 

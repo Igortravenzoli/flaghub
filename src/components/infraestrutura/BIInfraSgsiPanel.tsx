@@ -5,11 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
   ShieldCheck, RefreshCw, Flame, AlertTriangle, FileWarning, KeyRound,
-  Lightbulb, CalendarCheck,
+  Lightbulb, CalendarCheck, ChevronDown,
 } from 'lucide-react';
+
+// Seções da Gestão SG (submenu dropdown)
+const SGSI_SECOES = [
+  { value: 'mudancas', label: 'Mudanças (010)', Icon: RefreshCw },
+  { value: 'incidentes', label: 'Incidentes (017)', Icon: Flame },
+  { value: 'riscos', label: 'Riscos (012)', Icon: AlertTriangle },
+  { value: 'conformidade', label: 'NC & Melhorias (018/011)', Icon: Lightbulb },
+  { value: 'acessos', label: 'Acessos (014)', Icon: KeyRound },
+] as const;
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
 // ── Constantes ────────────────────────────────────────────────────────
@@ -30,8 +40,9 @@ function colorFor(name: string, i: number) {
 
 function fmtDate(iso?: string | null) {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }); }
-  catch { return '—'; }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso; // texto livre (ex.: "Dia: 09/10/2023 - 06h27")
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
 function pct(parte: number, todo: number) {
@@ -203,6 +214,9 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
   // Drill-through: clique nos KPIs filtra a tabela analítica do bloco
   const [drill, setDrill] = useState<string | null>(null);
   const toggleDrill = (k: string) => setDrill((p) => (p === k ? null : k));
+  // Seção ativa do submenu (substitui as abas internas)
+  const [secao, setSecao] = useState<string>('mudancas');
+  const secaoAtual = SGSI_SECOES.find((s) => s.value === secao) ?? SGSI_SECOES[0];
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
@@ -289,14 +303,28 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo
       {d && d.totalItens === 0 && d.totalItensBase > 0 ? (
         <DashboardEmptyState description={`Nenhuma atividade SG no período selecionado (${d.totalItensBase} itens no histórico). Selecione "Todas as Sprints" para ver o panorama completo.`} />
       ) : (
-      <Tabs defaultValue="mudancas">
-        <TabsList className="bg-muted/50 p-1 flex-wrap h-auto">
-          <TabsTrigger value="mudancas" className="gap-1.5 text-xs"><RefreshCw className="h-3.5 w-3.5" />Mudanças (010)</TabsTrigger>
-          <TabsTrigger value="incidentes" className="gap-1.5 text-xs"><Flame className="h-3.5 w-3.5" />Incidentes (017)</TabsTrigger>
-          <TabsTrigger value="riscos" className="gap-1.5 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Riscos (012)</TabsTrigger>
-          <TabsTrigger value="conformidade" className="gap-1.5 text-xs"><Lightbulb className="h-3.5 w-3.5" />NC & Melhorias (018/011)</TabsTrigger>
-          <TabsTrigger value="acessos" className="gap-1.5 text-xs"><KeyRound className="h-3.5 w-3.5" />Acessos (014)</TabsTrigger>
-        </TabsList>
+      <Tabs value={secao} onValueChange={setSecao}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted/40">
+              <secaoAtual.Icon className="h-4 w-4 text-primary" />
+              {secaoAtual.label}
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[260px]">
+            {SGSI_SECOES.map(({ value, label, Icon }) => (
+              <DropdownMenuCheckboxItem
+                key={value}
+                checked={secao === value}
+                onCheckedChange={() => { setSecao(value); setDrill(null); }}
+                className="text-xs gap-1.5"
+              >
+                <Icon className="h-3.5 w-3.5" /> {label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* ── Mudanças (SG-LST-010) ── */}
         <TabsContent value="mudancas" className="space-y-3 mt-3">
