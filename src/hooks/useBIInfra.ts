@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 // ── BI Infra / SGSI ────────────────────────────────────────────────────
 // Espelho das listas SharePoint do site PORTALSGSI (mesma fonte do Power BI
@@ -531,12 +532,14 @@ export function useBIInfraSgsi(dateFrom?: Date, dateTo?: Date) {
   return useQuery<BIInfraSgsiResponse>({
     queryKey: ['bi-infra', 'sgsi', fromStr, toStr],
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: items, error } = await (supabase as any)
-        .from('sgsi_items')
-        .select('list_key, item_id, fields, created_sp, modified_sp')
-        .limit(10000);
-      if (error) throw error;
+      // Paginado: o espelho passa de 3,7k itens e o PostgREST limita 1000/request.
+      const items = await fetchAllRows<SgsiRawItem>((from, to) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any)
+          .from('sgsi_items')
+          .select('list_key, item_id, fields, created_sp, modified_sp')
+          .range(from, to)
+      );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: lists } = await (supabase as any)
@@ -546,7 +549,7 @@ export function useBIInfraSgsi(dateFrom?: Date, dateTo?: Date) {
         .limit(1);
 
       return buildSgsiResponse(
-        (items || []) as SgsiRawItem[],
+        items,
         lists?.[0]?.synced_at ?? null,
         new Date(),
         dateFrom && dateTo ? { from: dateFrom, to: dateTo } : undefined,
