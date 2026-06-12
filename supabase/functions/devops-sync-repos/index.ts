@@ -291,12 +291,14 @@ serve(async (req) => {
       status: 'processed',
       processed_at: new Date().toISOString(),
     })
-    await admin.rpc('hub_audit_log', {
-      p_action: 'devops_sync_repos',
-      p_entity_type: 'devops_repos',
-      p_entity_id: DEVOPS_ORG,
-      p_metadata: { projects: projects.length, repos: totalRepos, pipelines: totalPipelines, duration_ms: duration },
-    }).catch(() => {})
+    try {
+      await admin.rpc('hub_audit_log', {
+        p_action: 'devops_sync_repos',
+        p_entity_type: 'devops_repos',
+        p_entity_id: DEVOPS_ORG,
+        p_metadata: { projects: projects.length, repos: totalRepos, pipelines: totalPipelines, duration_ms: duration },
+      })
+    } catch (_) { /* auditoria é best-effort */ }
 
     return new Response(JSON.stringify({
       success: true,
