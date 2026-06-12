@@ -337,7 +337,12 @@ export default function InfraestruturaDashboard() {
           </TabsContent>
 
           <TabsContent value="gestao-sg" className="mt-0">
-            <BIInfraSgsiPanel />
+            {(() => {
+              // Sprint selecionada (ou range custom) limita o SGSI por data de
+              // criação/modificação; "Todas as Sprints" mostra tudo.
+              const sgsiRange = customActive && customRange ? customRange : sprintRange;
+              return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} />;
+            })()}
           </TabsContent>
 
           <TabsContent value="projetos-pipelines" className="mt-0">

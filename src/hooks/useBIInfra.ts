@@ -184,7 +184,10 @@ export interface BIInfraSgsiResponse {
   success: boolean;
   message: string;
   atualizadoEm: string | null;
+  /** Itens no período filtrado (blocos usam este escopo) */
   totalItens: number;
+  /** Itens totais espelhados, sem filtro (distingue "não sincronizado" de "período vazio") */
+  totalItensBase: number;
   diasSem: {
     incidentes: number | null;
     riscos: number | null;
@@ -304,13 +307,25 @@ function recentes(items: SgsiRawItem[], limit: number): SgsiRawItem[] {
 
 const DASH = '—';
 
-/** Monta a resposta SGSI completa a partir das linhas espelhadas do SharePoint. */
+/** Monta a resposta SGSI completa a partir das linhas espelhadas do SharePoint.
+ *  `range` (sprint/período do dashboard) filtra os blocos por data de criação
+ *  ou modificação; os contadores "dias sem" são sempre atemporais. */
 export function buildSgsiResponse(
   rows: SgsiRawItem[],
   syncedAt: string | null,
   now: Date = new Date(),
+  range?: { from: Date; to: Date },
 ): BIInfraSgsiResponse {
-  const by = (key: string) => rows.filter((r) => r.list_key === key);
+  const inRange = (iso: string | null): boolean => {
+    if (!range || !iso) return !range;
+    const d = new Date(iso);
+    return d >= range.from && d <= range.to;
+  };
+  const scoped = range
+    ? rows.filter((r) => inRange(r.created_sp) || inRange(r.modified_sp))
+    : rows;
+  const by = (key: string) => scoped.filter((r) => r.list_key === key);
+  const byAll = (key: string) => rows.filter((r) => r.list_key === key);
   const l010 = by('010');
   const l011 = by('011');
   const l012 = by('012');
@@ -479,15 +494,16 @@ export function buildSgsiResponse(
     })),
   };
 
-  // ── Gestão à vista: dias sem ocorrências ──
+  // ── Gestão à vista: dias sem ocorrências (atemporal — ignora o período) ──
+  const a010 = byAll('010');
   const ultimaAttMalSucedida = maxDate(
-    l010.filter((i) => isNao(i.fields['Atualizações bem sucedidas'])),
+    a010.filter((i) => isNao(i.fields['Atualizações bem sucedidas'])),
     (i) => i.modified_sp ?? i.created_sp,
   );
   const diasSem = {
-    incidentes: daysSince(maxDate(l017, (i) => str(i, 'Data e hora inicio Incidente') || i.created_sp), now),
-    riscos: daysSince(maxDate(l012, (i) => i.created_sp), now),
-    naoConformidades: daysSince(maxDate(l018, (i) => i.created_sp), now),
+    incidentes: daysSince(maxDate(byAll('017'), (i) => str(i, 'Data e hora inicio Incidente') || i.created_sp), now),
+    riscos: daysSince(maxDate(byAll('012'), (i) => i.created_sp), now),
+    naoConformidades: daysSince(maxDate(byAll('018'), (i) => i.created_sp), now),
     attMalSucedidas: daysSince(ultimaAttMalSucedida, now),
   };
 
@@ -495,7 +511,8 @@ export function buildSgsiResponse(
     success: true,
     message: 'sgsi-mirror',
     atualizadoEm: syncedAt,
-    totalItens: rows.length,
+    totalItens: scoped.length,
+    totalItensBase: rows.length,
     diasSem,
     mudancas,
     incidentes,
@@ -508,9 +525,11 @@ export function buildSgsiResponse(
 
 // ── Hook ───────────────────────────────────────────────────────────────
 
-export function useBIInfraSgsi() {
+export function useBIInfraSgsi(dateFrom?: Date, dateTo?: Date) {
+  const fromStr = dateFrom ? dateFrom.toISOString().split('T')[0] : null;
+  const toStr = dateTo ? dateTo.toISOString().split('T')[0] : null;
   return useQuery<BIInfraSgsiResponse>({
-    queryKey: ['bi-infra', 'sgsi'],
+    queryKey: ['bi-infra', 'sgsi', fromStr, toStr],
     queryFn: async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: items, error } = await (supabase as any)
@@ -529,6 +548,8 @@ export function useBIInfraSgsi() {
       return buildSgsiResponse(
         (items || []) as SgsiRawItem[],
         lists?.[0]?.synced_at ?? null,
+        new Date(),
+        dateFrom && dateTo ? { from: dateFrom, to: dateTo } : undefined,
       );
     },
     staleTime: 5 * 60 * 1000,

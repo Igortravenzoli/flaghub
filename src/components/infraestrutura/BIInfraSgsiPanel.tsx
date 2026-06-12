@@ -191,14 +191,14 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Painel principal ──────────────────────────────────────────────────
 
-export function BIInfraSgsiPanel() {
-  const { data, isLoading, isError, refetch } = useBIInfraSgsi();
+export function BIInfraSgsiPanel({ dateFrom, dateTo }: { dateFrom?: Date; dateTo?: Date }) {
+  const { data, isLoading, isError, refetch } = useBIInfraSgsi(dateFrom, dateTo);
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
   const d = data;
 
-  if (d && d.totalItens === 0) {
+  if (d && d.totalItensBase === 0) {
     return (
       <DashboardEmptyState description="Nenhum dado SGSI sincronizado ainda — use 'Sincronizar SGSI (SharePoint)' no menu de sincronização do setor para espelhar as listas do site PORTALSGSI." />
     );
@@ -219,6 +219,9 @@ export function BIInfraSgsiPanel() {
         {d && (
           <span className="text-[11px] text-muted-foreground ml-1 inline-flex items-center gap-1">
             <CalendarCheck className="h-3 w-3" /> atualizado em {fmtDate(d.atualizadoEm)}
+            {dateFrom && dateTo
+              ? <> · {d.totalItens} de {d.totalItensBase} itens no período</>
+              : <> · {d.totalItensBase} itens</>}
           </span>
         )}
       </div>

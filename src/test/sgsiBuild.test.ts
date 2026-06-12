@@ -115,7 +115,23 @@ describe('buildSgsiResponse', () => {
   it('sem dados sincronizados retorna tudo zerado com diasSem nulos', () => {
     const vazio = buildSgsiResponse([], null, NOW);
     expect(vazio.totalItens).toBe(0);
+    expect(vazio.totalItensBase).toBe(0);
     expect(vazio.mudancas.total).toBe(0);
     expect(vazio.diasSem.incidentes).toBeNull();
+  });
+
+  it('filtro de período (sprint) limita os blocos mas não os "dias sem"', () => {
+    const range = { from: new Date('2026-06-01T00:00:00Z'), to: new Date('2026-06-10T23:59:59Z') };
+    const f = buildSgsiResponse(rows, '2026-06-11T11:00:00Z', NOW, range);
+
+    // 010 no período: itens 12 (01/06) e 13 (05/06); fora: 11 (01/05) e 14 (10/04)
+    expect(f.mudancas.total).toBe(2);
+    expect(f.mudancas.concluidos).toBe(0);
+    expect(f.totalItensBase).toBe(14);
+    expect(f.totalItens).toBeLessThan(14);
+
+    // "dias sem" continua atemporal: último incidente 06/06 → 5 dias
+    expect(f.diasSem.incidentes).toBe(5);
+    expect(f.diasSem.naoConformidades).toBe(90); // NC de 13/03, fora do período
   });
 });
