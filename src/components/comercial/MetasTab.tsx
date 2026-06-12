@@ -918,7 +918,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
           <CardHeader className="pb-2">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <CardTitle className="text-sm font-semibold">Meta de Faturamento</CardTitle>
+                <CardTitle className="text-sm font-semibold">Faturamento realizado</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {faturamentoStats.hasCadastrado
                     ? "Target cadastrado · Meta Produtos + Venda Produtos"
