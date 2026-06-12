@@ -6,8 +6,9 @@ Este diretório contém todas as migrations do banco de dados e scripts de setup
 
 ```
 supabase/
+├── 00_SETUP_REFERENCE.sql         # Referência e validação (NÃO é migration —
+│                                  #  fora de migrations/ para o CLI não executá-lo)
 ├── migrations/                    # Migrations SQL
-│   ├── 00_SETUP_REFERENCE.sql    # Referência e validação
 │   ├── 20260127193248_...sql     # Migration 1: Backend completo
 │   ├── 20260127193308_...sql     # Migration 2: Fix RLS
 │   ├── ...                       # Migrations 3-29

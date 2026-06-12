@@ -65,4 +65,9 @@ migrations PROD ──► manual: Actions → "Migration — PROD" → confirm "
   não introduzir novos `any`; reduzir gradualmente.
 - Os testes pgTAP de RLS (Fase 3 do plano) entram depois no job `db-migrations`
   via `supabase test db`.
+- `00_SETUP_REFERENCE.sql` foi movido de `supabase/migrations/` para `supabase/` em 12/06/2026:
+  o CLI o tratava como migration de versão "00" e o executava antes de todas (quebrava o
+  Postgres efêmero do CI). Se o primeiro `supabase db push` em DEV/PROD reclamar de
+  *"Remote migration versions not found in local migrations directory"* para a versão `00`,
+  rodar: `supabase migration repair --status reverted 00`.
 - Plano completo: `docs/PLANO_DEVOPS_CICD_BACKUP.md`.
