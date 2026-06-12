@@ -20,6 +20,7 @@ import {
   useDeleteVenda,
   type VendaFormData,
 } from "@/hooks/useComercialVendas";
+import { useComercialMovimentacaoManual } from "@/hooks/useComercialMovimentacaoManual";
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine, AreaChart, Area,
@@ -274,6 +275,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
   const createVenda = useCreateVenda();
   const updateVenda = useUpdateVenda();
   const deleteVenda = useDeleteVenda();
+  const { mutateAsync: createMovimentacao } = useComercialMovimentacaoManual();
 
   const currentFormData = editingId ? metas.find((m) => m.id === editingId) : undefined;
   const periodLabel = getPeriodLabel(dateFrom, dateTo);
@@ -789,6 +791,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
   }
 
   async function handleVendaSubmit(data: VendaFormData) {
+    const isCreate = !editingVendaId;
     try {
       if (editingVendaId) {
         await updateVenda.mutateAsync({ id: editingVendaId, data });
@@ -799,6 +802,35 @@ const MetasTab: React.FC<MetasTabProps> = ({
       setEditingVendaId(null);
     } catch {
       window.alert("Falha ao salvar venda. Verifique a conexão.");
+      return;
+    }
+
+    // Consistência Metas ↔ Ganho/Perda: venda nova marcada como "Novo Cliente"
+    // oferece registrar o ganho correspondente na movimentação.
+    const isNovoCliente = (data.observation || "").toLowerCase().includes("novo cliente");
+    if (isCreate && isNovoCliente) {
+      const registrar = window.confirm(
+        'Venda marcada como "Novo Cliente".\nRegistrar também como GANHO na aba Ganho/Perda?'
+      );
+      if (registrar) {
+        const dt = data.closed_date || new Date().toISOString().slice(0, 10);
+        try {
+          await createMovimentacao({
+            cliente_codigo: 0,
+            cliente_nome: data.deal_title,
+            tipo: "ganho",
+            bandeira: data.organization || undefined,
+            motivo: "Recorrente",
+            status_encerramento: "Novo Cliente",
+            ano_referencia: parseInt(dt.slice(0, 4), 10),
+            data_evento: dt,
+          });
+        } catch {
+          window.alert(
+            "Venda salva, mas falhou ao registrar o ganho. Lance manualmente na aba Ganho/Perda."
+          );
+        }
+      }
     }
   }
 
