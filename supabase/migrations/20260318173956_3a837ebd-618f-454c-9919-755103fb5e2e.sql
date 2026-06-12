@@ -5,6 +5,12 @@ DECLARE
 BEGIN
   SELECT id INTO v_area_id FROM hub_areas WHERE key = 'customer_service' LIMIT 1;
 
+  -- Banco do zero (CI) não tem a área: pula o seed em vez de inserir area_id nulo
+  IF v_area_id IS NULL THEN
+    RAISE NOTICE 'Área customer_service não encontrada; seed de templates CS pulado.';
+    RETURN;
+  END IF;
+
   INSERT INTO manual_import_templates (key, name, area_id, is_active, version, allowed_file_types, required_columns, column_mapping)
   VALUES
     (

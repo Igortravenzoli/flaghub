@@ -15,7 +15,9 @@ BEGIN
   LIMIT 1;
 
   IF v_area_id IS NULL THEN
-    RAISE EXCEPTION 'Nao foi possivel localizar area Helpdesk/Tickets em public.hub_areas';
+    -- Banco do zero (CI) não tem as áreas: pula o seed em vez de abortar a cadeia
+    RAISE NOTICE 'Area Helpdesk/Tickets nao encontrada em public.hub_areas; seed pulado.';
+    RETURN;
   END IF;
 
   INSERT INTO public.manual_import_templates (

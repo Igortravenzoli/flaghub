@@ -1,8 +1,9 @@
+-- Guardado por existência do pai (banco do zero no CI não tem dados de ambiente)
 INSERT INTO manual_import_templates (key, name, area_id, required_columns, column_mapping, allowed_file_types, is_active, version)
-VALUES (
+SELECT
   'comercial_movimentacao_v1',
   'Movimentação Comercial (Ganhos/Perdas/Riscos)',
-  'ce73d4b3-973f-4347-8a35-2866b066b56e',
+  'ce73d4b3-973f-4347-8a35-2866b066b56e'::uuid,
   '["cliente_nome", "tipo"]'::jsonb,
   '{
     "cliente_nome": "Cliente",
@@ -19,4 +20,4 @@ VALUES (
   ARRAY['csv', 'xlsx'],
   true,
   1
-);
+WHERE EXISTS (SELECT 1 FROM public.hub_areas WHERE id = 'ce73d4b3-973f-4347-8a35-2866b066b56e');
