@@ -1,0 +1,12 @@
+# Config do gitleaks (usada pelo job secret-scan no workflow Security)
+# Estende as regras padrão e ignora falsos positivos conhecidos.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Falsos positivos conhecidos"
+regexes = [
+  # UUIDs puros (ids de áreas/integrações/usuários em migrations) não são segredos
+  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$''',
+]

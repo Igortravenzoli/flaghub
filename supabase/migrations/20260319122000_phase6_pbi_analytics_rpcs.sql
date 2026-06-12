@@ -1,5 +1,10 @@
 -- Phase 6: views and RPCs for PBI lifecycle analytics
 
+-- rpc_feature_pbi_summary tem bug de GROUP BY no ORDER BY (corrigido na
+-- migration 20260320194053). Em PROD foi aplicada via dashboard, que roda com
+-- check_function_bodies=off; replicamos aqui para a cadeia aplicar do zero.
+set local check_function_bodies = off;
+
 create or replace view public.vw_pbi_with_feature_epic
 with (security_invoker = true) as
 select
