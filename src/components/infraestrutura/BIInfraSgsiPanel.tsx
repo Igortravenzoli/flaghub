@@ -198,6 +198,12 @@ export function BIInfraSgsiPanel() {
 
   const d = data;
 
+  if (d && d.totalItens === 0) {
+    return (
+      <DashboardEmptyState description="Nenhum dado SGSI sincronizado ainda — use 'Sincronizar SGSI (SharePoint)' no menu de sincronização do setor para espelhar as listas do site PORTALSGSI." />
+    );
+  }
+
   const diasSemCards = [
     { label: 'Dias sem incidentes', value: d?.diasSem.incidentes, icon: Flame, color: '#10b981' },
     { label: 'Dias sem riscos novos', value: d?.diasSem.riscos, icon: AlertTriangle, color: '#3b82f6' },
@@ -228,7 +234,7 @@ export function BIInfraSgsiPanel() {
               <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
             </div>
             {isLoading ? <Skeleton className="h-8 w-16" /> : (
-              <span className="text-3xl font-bold font-mono" style={{ color }}>{value}</span>
+              <span className="text-3xl font-bold font-mono" style={{ color }}>{value ?? '—'}</span>
             )}
           </div>
         ))}
