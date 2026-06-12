@@ -74,12 +74,14 @@ CREATE POLICY "hub_sync_jobs_select" ON public.hub_sync_jobs
 
 -- hub_sync_runs
 DROP POLICY IF EXISTS "Authenticated users can read sync runs" ON public.hub_sync_runs;
+DROP POLICY IF EXISTS "hub_sync_runs_select" ON public.hub_sync_runs;
 CREATE POLICY "hub_sync_runs_select" ON public.hub_sync_runs
   FOR SELECT TO authenticated
   USING (public.hub_is_approved());
 
 -- hub_raw_ingestions
 DROP POLICY IF EXISTS "Authenticated users can read raw ingestions" ON public.hub_raw_ingestions;
+DROP POLICY IF EXISTS "hub_raw_ingestions_select" ON public.hub_raw_ingestions;
 CREATE POLICY "hub_raw_ingestions_select" ON public.hub_raw_ingestions
   FOR SELECT TO authenticated
   USING (public.hub_is_approved());
