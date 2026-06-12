@@ -23,6 +23,10 @@ export interface HubIntegracao {
   /** Posição no mapa (percentual do contêiner) */
   x: number;
   y: number;
+  /** Subsessões exibidas dentro do card (ex.: Postgres · Auth · Cron jobs) */
+  subs?: { label: string; ok: boolean }[];
+  /** Chaves de outros nós com link direto (além do hub) */
+  linksExtras?: string[];
 }
 
 function minutosDesde(iso: string | null | undefined): number | null {
@@ -70,22 +74,34 @@ export function useHubUptime() {
       const runOk = syncRun.data?.[0]?.status === 'ok' || syncRun.data?.[0]?.status === 'running';
 
       const agora = new Date().toISOString();
+      // pg_cron vivo = os syncs agendados estão batendo (são disparados por ele)
+      const cronOk =
+        statusPorIdade(minutosDesde(devopsBeat), 30, 120) === 'up' ||
+        statusPorIdade(minutosDesde(gatewayBeat), 30, 120) === 'up';
 
       return [
         // Crons de 5-10 min: up até 30min, warn até 2h
-        { key: 'devops', label: 'Azure DevOps', papel: 'Work items · repos · pipelines', x: 18, y: 18, lastBeat: devopsBeat, status: statusPorIdade(minutosDesde(devopsBeat), 30, 120) },
-        { key: 'vdesk', label: 'VDESK', papel: 'Tickets e OS (via Gateway)', x: 82, y: 18, lastBeat: gatewayBeat, status: statusPorIdade(minutosDesde(gatewayBeat), 30, 120) },
-        // Timelog: dado novo só quando há apontamento — janela generosa
-        { key: 'timelog', label: 'TimeLog TechsBCN', papel: 'Horas apontadas no DevOps', x: 8, y: 55, lastBeat: timelogBeat, status: statusPorIdade(minutosDesde(timelogBeat), 24 * 60, 72 * 60) },
-        // SGSI: sync manual/agendado — up até 48h
-        { key: 'sharepoint', label: 'SharePoint SGSI', papel: 'Listas SG (PORTALSGSI)', x: 20, y: 86, lastBeat: sgsiBeat, status: statusPorIdade(minutosDesde(sgsiBeat), 48 * 60, 7 * 24 * 60) },
-        // Postgres: se esta query respondeu, o banco está vivo
-        { key: 'postgres', label: 'Supabase Postgres', papel: 'Repositório de dados do Hub', x: 50, y: 8, lastBeat: agora, status: 'up' },
-        { key: 'edge', label: 'Edge Functions', papel: 'Backend de sincronização', x: 50, y: 92, lastBeat: runBeat, status: runOk ? statusPorIdade(minutosDesde(runBeat), 30, 120) : 'warn' },
+        { key: 'devops', label: 'Azure DevOps', papel: 'Work items · repos · pipelines', x: 25, y: 13, lastBeat: devopsBeat, status: statusPorIdade(minutosDesde(devopsBeat), 30, 120) },
+        // Supabase ao lado das Edge Functions, com link direto entre eles
+        {
+          key: 'postgres', label: 'Supabase', papel: 'Repositório de dados do Hub', x: 50, y: 9, lastBeat: agora, status: 'up',
+          linksExtras: ['edge'],
+          subs: [
+            { label: 'Postgres', ok: true },
+            { label: 'Auth', ok: true },
+            { label: 'Cron jobs', ok: cronOk },
+          ],
+        },
+        { key: 'edge', label: 'Edge Functions', papel: 'Backend de sincronização', x: 75, y: 13, lastBeat: runBeat, status: runOk ? statusPorIdade(minutosDesde(runBeat), 30, 120) : 'warn' },
+        { key: 'vdesk', label: 'VDESK', papel: 'Tickets e OS (via Gateway)', x: 93, y: 45, lastBeat: gatewayBeat, status: statusPorIdade(minutosDesde(gatewayBeat), 30, 120) },
         // Teams: app Entra configurado (alertas QA); sem heartbeat dedicado
-        { key: 'teams', label: 'Microsoft Teams', papel: 'Alertas e notificações', x: 92, y: 55, lastBeat: null, status: 'up' },
+        { key: 'teams', label: 'Microsoft Teams', papel: 'Alertas e notificações', x: 80, y: 88, lastBeat: null, status: 'up' },
         // Pipedrive: integração ainda não ativada
-        { key: 'pipedrive', label: 'Pipedrive', papel: 'CRM comercial (em breve)', x: 80, y: 86, lastBeat: null, status: 'off' },
+        { key: 'pipedrive', label: 'Pipedrive', papel: 'CRM comercial (em breve)', x: 50, y: 92, lastBeat: null, status: 'off' },
+        // SGSI: sync manual/agendado — up até 48h
+        { key: 'sharepoint', label: 'SharePoint SGSI', papel: 'Listas SG (PORTALSGSI)', x: 20, y: 88, lastBeat: sgsiBeat, status: statusPorIdade(minutosDesde(sgsiBeat), 48 * 60, 7 * 24 * 60) },
+        // Timelog: dado novo só quando há apontamento — janela generosa
+        { key: 'timelog', label: 'TimeLog TechsBCN', papel: 'Horas apontadas no DevOps', x: 7, y: 45, lastBeat: timelogBeat, status: statusPorIdade(minutosDesde(timelogBeat), 24 * 60, 72 * 60) },
       ];
     },
     staleTime: 60 * 1000,
