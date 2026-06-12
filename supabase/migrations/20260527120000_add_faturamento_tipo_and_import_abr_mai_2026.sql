@@ -22,7 +22,8 @@ VALUES
   ('FlexX Promo',                                                                'produto', 'ativo', 'abr-2026', 300, NULL,   62, NULL, NULL, NULL, NOW(), NOW()),
   ('FlexX Sales',                                                                'produto', 'ativo', 'abr-2026', 150, NULL,   40, NULL, NULL, NULL, NOW(), NOW()),
   ('GO',                                                                         'produto', 'ativo', 'abr-2026',  50, NULL,   25, NULL, NULL, NULL, NOW(), NOW()),
-  ('Agente de IA – Sugestão de pedidos / Reconhecimento de imagem',              'produto', 'ativo', 'abr-2026',   6, NULL, NULL, NULL, NULL, NULL, NOW(), NOW());
+  ('Agente de IA – Sugestão de pedidos / Reconhecimento de imagem',              'produto', 'ativo', 'abr-2026',   6, NULL, NULL, NULL, NULL, NULL, NOW(), NOW())
+ON CONFLICT (produto, tipo, mes_referencia) DO NOTHING;
 
 -- 4. Metas Produtos — Maio 2026
 INSERT INTO comercial_metas
@@ -33,7 +34,8 @@ VALUES
   ('FlexX Promo',                                                                'produto', 'ativo', 'mai-2026', 400, NULL,    62, NULL, NULL, NULL, NOW(), NOW()),
   ('FlexX Sales',                                                                'produto', 'ativo', 'mai-2026', 400, NULL,    40, NULL, NULL, NULL, NOW(), NOW()),
   ('GO',                                                                         'produto', 'ativo', 'mai-2026',  80, NULL,    25, NULL, NULL, NULL, NOW(), NOW()),
-  ('Agente de IA – Sugestão de pedidos / Reconhecimento de imagem',              'produto', 'ativo', 'mai-2026',   6, NULL,  NULL, NULL, NULL, NULL, NOW(), NOW());
+  ('Agente de IA – Sugestão de pedidos / Reconhecimento de imagem',              'produto', 'ativo', 'mai-2026',   6, NULL,  NULL, NULL, NULL, NULL, NOW(), NOW())
+ON CONFLICT (produto, tipo, mes_referencia) DO NOTHING;
 
 -- 5. Vendas Produtos — Abril e Maio 2026
 INSERT INTO comercial_vendas
