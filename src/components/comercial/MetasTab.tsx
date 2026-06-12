@@ -532,7 +532,24 @@ const MetasTab: React.FC<MetasTabProps> = ({
         if (editingId && list.length === 1) {
           await updateMeta.mutateAsync({ id: editingId, payload: meta });
         } else {
-          await createMeta.mutateAsync(meta);
+          // Upsert no cliente: se já existe meta com mesmo produto/tipo/mês,
+          // atualiza em vez de inserir (evita violar comercial_metas_unique
+          // no cadastro trimestral quando um dos meses já existe).
+          const mesNorm = meta.mes.trim().toLowerCase();
+          const existing = metas.find(
+            (m) =>
+              m.nome_indicador === meta.nome_indicador &&
+              m.tipo === meta.tipo &&
+              m.mes === mesNorm
+          );
+          if (existing) {
+            await updateMeta.mutateAsync({
+              id: existing.id,
+              payload: { ...meta, mes: mesNorm, realizado: meta.realizado || existing.realizado },
+            });
+          } else {
+            await createMeta.mutateAsync(meta);
+          }
         }
       }
       setEditingId(null);
@@ -1173,7 +1190,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                         <span title={meta.nome_indicador} className="block truncate">
                           {meta.nome_indicador}
                         </span>
-                        {meta.observacao && (
+                        {meta.observacao && !/^meta em (r\$|milhares)/i.test(meta.observacao.trim()) && (
                           <span className="text-xs text-muted-foreground block truncate">
                             {meta.observacao}
                           </span>

@@ -21,7 +21,22 @@ const BAR_COLORS = [
 ];
 
 const columns: DataTableColumn<ComercialVenda>[] = [
-  { key: 'deal_title', header: 'Negócio', className: 'max-w-[250px] truncate font-medium' },
+  {
+    key: 'deal_title', header: 'Negócio', className: 'max-w-[250px] font-medium',
+    render: (r) => (
+      <div className="max-w-[250px]">
+        <span title={r.deal_title ?? ''} className="block truncate">{r.deal_title || '—'}</span>
+        {(r.itens?.length ?? 0) > 0 && (
+          <span
+            className="block truncate text-[11px] text-muted-foreground font-normal"
+            title={r.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(', ')}
+          >
+            {r.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(', ')}
+          </span>
+        )}
+      </div>
+    ),
+  },
   {
     key: 'organization', header: 'Organização',
     render: (r) => r.organization ? <Badge variant="outline" className="text-xs">{r.organization}</Badge> : '—',
@@ -32,6 +47,14 @@ const columns: DataTableColumn<ComercialVenda>[] = [
     render: (r) => r.closed_date ? new Date(r.closed_date).toLocaleDateString('pt-BR') : '—',
   },
 ];
+
+const META_MENSAL = 110_000; // referência 100% — exibição apenas percentual
+
+function formatMonthYm(ym: string) {
+  const [y, m] = ym.split('-');
+  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  return `${months[parseInt(m, 10) - 1] ?? m} ${y}`;
+}
 
 function CustomTooltipVendas({ active, payload }: any) {
   if (!active || !payload?.length) return null;
@@ -72,12 +95,79 @@ function getDealValueSentiment(mesesComDados: { percentualMeta: number; atingiuM
 interface PipeDriveTabProps {
   canViewValues?: boolean;
   showValues?: boolean;
+  dateFrom?: Date;
+  dateTo?: Date;
+  periodLabel?: string;
 }
 
-export function PipeDriveTab({ canViewValues = false, showValues = false }: PipeDriveTabProps) {
-  const { items, stats, isLoading, isError, refetch } = useComercialVendas();
+export function PipeDriveTab({
+  canViewValues = false,
+  showValues = false,
+  dateFrom,
+  dateTo,
+  periodLabel,
+}: PipeDriveTabProps) {
+  const { items, isLoading, isError, refetch } = useComercialVendas();
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [drawerItem, setDrawerItem] = useState<ComercialVenda | null>(null);
+
+  // ── Filtro de período da página (calendário) aplicado aos negócios ──
+  const itemsFiltrados = useMemo(() => {
+    if (!dateFrom && !dateTo) return items;
+    return items.filter((item) => {
+      const dateStr = item.period_month || item.closed_date;
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      const itemMonthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+      if (dateFrom) {
+        const fromStart = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), 1);
+        if (itemMonthStart < fromStart) return false;
+      }
+      if (dateTo) {
+        const toEnd = new Date(dateTo.getFullYear(), dateTo.getMonth() + 1, 0);
+        if (d > toEnd) return false;
+      }
+      return true;
+    });
+  }, [items, dateFrom, dateTo]);
+
+  // ── Stats sobre o período filtrado (somente percentuais) ──
+  const stats = useMemo(() => {
+    const totalValue = itemsFiltrados.reduce((s, i) => s + (i.deal_value ?? 0), 0);
+
+    const orgMap = new Map<string, number>();
+    for (const item of itemsFiltrados) {
+      const org = item.organization || 'Outros';
+      orgMap.set(org, (orgMap.get(org) ?? 0) + (item.deal_value ?? 0));
+    }
+    const vendasPorOrg = [...orgMap.entries()]
+      .map(([bandeira, val]) => ({
+        bandeira,
+        percentual: totalValue > 0 ? Math.round((val / totalValue) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.percentual - a.percentual);
+
+    const mesMap = new Map<string, number>();
+    for (const item of itemsFiltrados) {
+      const pm = item.period_month?.slice(0, 7) || item.closed_date?.slice(0, 7);
+      if (!pm) continue;
+      mesMap.set(pm, (mesMap.get(pm) ?? 0) + (item.deal_value ?? 0));
+    }
+    const vendasPorMes = [...mesMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([ym, val]) => {
+        const pct = Math.round((val / META_MENSAL) * 1000) / 10;
+        return { mes: formatMonthYm(ym), percentualMeta: pct, atingiuMeta: pct >= 100 };
+      });
+
+    return {
+      totalDeals: itemsFiltrados.length,
+      vendasPorOrg,
+      vendasPorMes,
+      orgs: vendasPorOrg.map((v) => v.bandeira),
+    };
+  }, [itemsFiltrados]);
 
   const filteredVendas = useMemo(() => {
     if (!selectedBandeira) return stats.vendasPorOrg;
@@ -128,6 +218,12 @@ export function PipeDriveTab({ canViewValues = false, showValues = false }: Pipe
     { label: 'Observação', value: drawerItem.observation },
     { label: 'Fechamento', value: drawerItem.closed_date ? new Date(drawerItem.closed_date).toLocaleDateString('pt-BR') : '—' },
     { label: 'Período', value: drawerItem.period_month ? new Date(drawerItem.period_month).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) : '—' },
+    {
+      label: 'Produtos vendidos',
+      value: (drawerItem.itens?.length ?? 0) > 0
+        ? drawerItem.itens.map((i) => `${i.quantidade}× ${i.produto}`).join(', ')
+        : '—',
+    },
   ] : [];
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
@@ -139,7 +235,9 @@ export function PipeDriveTab({ canViewValues = false, showValues = false }: Pipe
           <Card className="border bg-card">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
-                <p className="text-sm font-semibold text-foreground">Resumo do Fechamento</p>
+                <p className="text-sm font-semibold text-foreground">
+                  Resumo do Fechamento{periodLabel ? ` — ${periodLabel}` : ''}
+                </p>
                 <p className="text-xs text-muted-foreground">Negócios, organizações e leitura da meta mensal</p>
               </div>
             </div>
@@ -263,14 +361,14 @@ export function PipeDriveTab({ canViewValues = false, showValues = false }: Pipe
         </Card>
 
       {/* Data table */}
-      {!isLoading && items.length === 0 ? (
-        <DashboardEmptyState description="Nenhum negócio encontrado. Importe dados na aba de Importações." />
+      {!isLoading && itemsFiltrados.length === 0 ? (
+        <DashboardEmptyState description="Nenhum negócio no período selecionado." />
       ) : (
         <DashboardDataTable
-          title="Negócios Fechados"
-          subtitle={`${items.length} registros`}
+          title={`Negócios Fechados${periodLabel ? ` — ${periodLabel}` : ''}`}
+          subtitle={`${itemsFiltrados.length} registros no período`}
           columns={columns}
-          data={items}
+          data={itemsFiltrados}
           isLoading={isLoading}
           getRowKey={(r) => r.id}
           onRowClick={(r) => setDrawerItem(r)}

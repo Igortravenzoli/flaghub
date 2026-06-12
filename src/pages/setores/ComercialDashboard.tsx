@@ -360,7 +360,7 @@ export default function ComercialDashboard() {
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
   const [calOpen, setCalOpen] = useState(false);
-  const filters = useDashboardFilters('1y');
+  const filters = useDashboardFilters('mes_atual');
   const { clients, allClients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
   const { exportCSV, exportPDF } = useDashboardExport();
@@ -939,7 +939,13 @@ export default function ComercialDashboard() {
           </TabsContent>
 
           <TabsContent value="fechamento-comercial" className="space-y-4 mt-0">
-            <PipeDriveTab canViewValues={canViewValues} showValues={showValues} />
+            <PipeDriveTab
+              canViewValues={canViewValues}
+              showValues={showValues}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              periodLabel={filters.presetLabel}
+            />
           </TabsContent>
 
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">
