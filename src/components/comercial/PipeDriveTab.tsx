@@ -112,22 +112,18 @@ export function PipeDriveTab({
   const [drawerItem, setDrawerItem] = useState<ComercialVenda | null>(null);
 
   // ── Filtro de período da página (calendário) aplicado aos negócios ──
+  // Comparação por ano-mês em string ("YYYY-MM") — evita o bug de fuso em que
+  // "2026-04-01" vira 31/03 local e o mês inteiro some do trimestre.
   const itemsFiltrados = useMemo(() => {
     if (!dateFrom && !dateTo) return items;
+    const ymOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const fromYm = dateFrom ? ymOf(dateFrom) : null;
+    const toYm = dateTo ? ymOf(dateTo) : null;
     return items.filter((item) => {
-      const dateStr = item.period_month || item.closed_date;
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return false;
-      const itemMonthStart = new Date(d.getFullYear(), d.getMonth(), 1);
-      if (dateFrom) {
-        const fromStart = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), 1);
-        if (itemMonthStart < fromStart) return false;
-      }
-      if (dateTo) {
-        const toEnd = new Date(dateTo.getFullYear(), dateTo.getMonth() + 1, 0);
-        if (d > toEnd) return false;
-      }
+      const itemYm = item.period_month?.slice(0, 7) || item.closed_date?.slice(0, 7);
+      if (!itemYm) return false;
+      if (fromYm && itemYm < fromYm) return false;
+      if (toYm && itemYm > toYm) return false;
       return true;
     });
   }, [items, dateFrom, dateTo]);
@@ -306,7 +302,7 @@ export function PipeDriveTab({
         <Card className="p-4 min-h-[352px]">
           <div className="mb-1">
             <h3 className="text-sm font-semibold text-foreground">Fechamentos por Mês — % da Meta Mensal</h3>
-            <p className="text-xs text-muted-foreground">Referência: meta mensal = R$ 110K (100%)</p>
+            <p className="text-xs text-muted-foreground">Linha pontilhada = meta do mês (100%)</p>
           </div>
           <div className="h-[280px] mt-2">
             <ResponsiveContainer width="100%" height="100%">

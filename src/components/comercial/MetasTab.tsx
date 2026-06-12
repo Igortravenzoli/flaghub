@@ -236,22 +236,18 @@ const MetasTab: React.FC<MetasTabProps> = ({
   );
 
   // ── Filter vendas by page-level period ───────────────────────
+  // Comparação por ano-mês em string ("YYYY-MM") — evita o bug de fuso em que
+  // "2026-04-01" é interpretado como 31/03 local e o mês some do período.
   const vendasFiltradas = useMemo(() => {
     if (!dateFrom && !dateTo) return vendasItems;
+    const ymOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const fromYm = dateFrom ? ymOf(dateFrom) : null;
+    const toYm = dateTo ? ymOf(dateTo) : null;
     return vendasItems.filter((item) => {
-      const dateStr = item.period_month || item.closed_date;
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return false;
-      const itemMonthStart = new Date(d.getFullYear(), d.getMonth(), 1);
-      if (dateFrom) {
-        const fromStart = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), 1);
-        if (itemMonthStart < fromStart) return false;
-      }
-      if (dateTo) {
-        const toEnd = new Date(dateTo.getFullYear(), dateTo.getMonth() + 1, 0);
-        if (d > toEnd) return false;
-      }
+      const itemYm = item.period_month?.slice(0, 7) || item.closed_date?.slice(0, 7);
+      if (!itemYm) return false;
+      if (fromYm && itemYm < fromYm) return false;
+      if (toYm && itemYm > toYm) return false;
       return true;
     });
   }, [vendasItems, dateFrom, dateTo]);
