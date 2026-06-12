@@ -26,7 +26,27 @@ function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
   return d >= from && d <= to;
 }
 
-export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
+// Estados alinhados ao board DevOps da infra (inclui estados customizados).
+const INFRA_PENDENTE_STATES = new Set(['new', 'to do']);
+const INFRA_ANDAMENTO_STATES = new Set([
+  'in progress', 'active', 'em desenvolvimento', 'em teste', 'aguardando teste', 'aguardando deploy',
+]);
+const INFRA_DONE_STATES = new Set(['done', 'closed', 'resolved']);
+
+const normState = (s: string | null | undefined) => (s || '').trim().toLowerCase();
+
+export const isInfraPendente = (s: string | null | undefined) => INFRA_PENDENTE_STATES.has(normState(s));
+export const isInfraAndamento = (s: string | null | undefined) => INFRA_ANDAMENTO_STATES.has(normState(s));
+export const isInfraDone = (s: string | null | undefined) => INFRA_DONE_STATES.has(normState(s));
+
+export interface DoneBySprint {
+  sprintPath: string;
+  sprintCode: string;
+  done: number;
+  total: number;
+}
+
+export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string | string[] = 'all') {
   const query = useQuery({
     queryKey: ['infraestrutura', 'kpis'],
     queryFn: async () => {
@@ -115,18 +135,48 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
     transbordo_count: item.id ? (transbordoMap.get(item.id)?.realOverflowCount || 0) : 0,
   }));
 
-  const sprintScopedItems = sprintFilter === 'all'
-    ? allItemsEnriched
-    : allItemsEnriched.filter(i => i.iteration_path === sprintFilter);
+  // Sprint é o filtro primário (single ou multi). Quando há sprint
+  // selecionada, NÃO recorta por data — itens planejados na sprint mas
+  // criados/alterados fora da janela contam normalmente (paridade com o board).
+  const sprintSet = Array.isArray(sprintFilter)
+    ? new Set(sprintFilter.filter(s => s && s !== 'all'))
+    : null;
+  const hasSprintScope = sprintSet ? sprintSet.size > 0 : sprintFilter !== 'all';
 
-  const items = (dateFrom && dateTo)
+  const sprintScopedItems = !hasSprintScope
+    ? allItemsEnriched
+    : allItemsEnriched.filter(i => !!i.iteration_path && (sprintSet ? sprintSet.has(i.iteration_path) : i.iteration_path === sprintFilter));
+
+  const items = (!hasSprintScope && dateFrom && dateTo)
     ? sprintScopedItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
     : sprintScopedItems;
 
   const total = items.length;
-  const pendentes = items.filter(i => i.state === 'New' || i.state === 'To Do').length;
-  const emAndamento = items.filter(i => i.state === 'In Progress' || i.state === 'Active').length;
-  const concluidos = items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved').length;
+  const pendentes = items.filter(i => isInfraPendente(i.state)).length;
+  const emAndamento = items.filter(i => isInfraAndamento(i.state)).length;
+  const concluidos = items.filter(i => isInfraDone(i.state)).length;
+
+  // Done por sprint (todas as sprints mapeadas, ordenadas) — para o histograma
+  // de evolução na Visão Geral.
+  const doneBySprint: DoneBySprint[] = (() => {
+    const bySprint = new Map<string, { done: number; total: number }>();
+    for (const item of allItemsEnriched) {
+      const code = item.iteration_path ? extractSprintCodeFromPath(item.iteration_path) : null;
+      if (!code || !item.iteration_path) continue;
+      const cur = bySprint.get(item.iteration_path) ?? { done: 0, total: 0 };
+      cur.total++;
+      if (isInfraDone(item.state)) cur.done++;
+      bySprint.set(item.iteration_path, cur);
+    }
+    return [...bySprint.entries()]
+      .map(([sprintPath, v]) => ({ sprintPath, sprintCode: extractSprintCodeFromPath(sprintPath) || sprintPath, ...v }))
+      .sort((a, b) => {
+        const pa = a.sprintCode.match(/S(\d+)-(\d{4})/);
+        const pb = b.sprintCode.match(/S(\d+)-(\d{4})/);
+        if (!pa || !pb) return a.sprintCode.localeCompare(b.sprintCode);
+        return (parseInt(pa[2]) - parseInt(pb[2])) || (parseInt(pa[1]) - parseInt(pb[1]));
+      });
+  })();
 
   const countByTag = (tag: string) => items.filter(i => i.tags?.toUpperCase().includes(tag.toUpperCase())).length;
   const melhorias = countByTag('MELHORIA');
@@ -150,6 +200,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
     transbordo,
     backlog,
     dev,
+    doneBySprint,
     lastSync: lastSyncQuery.data,
     isLoading: query.isLoading || transbordoMapQuery.isLoading,
     isError: query.isError,

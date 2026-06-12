@@ -1,8 +1,10 @@
 import {
   aggregateInfraTimelog,
+  buildDailySeries,
   collaboratorMatchesInclude,
   INFRA_TIMELOG_DEFAULT_COLLABS,
   InfraTimelogRow,
+  InfraTimelogDailyRow,
 } from '@/hooks/useInfraTimelog';
 
 // Regras do timelog da Infra: reuso do pipeline da fábrica com include-list
@@ -65,5 +67,47 @@ describe('aggregateInfraTimelog', () => {
     const agg = aggregateInfraTimelog(rows, soIgor, titles);
     expect(agg.totalMinutes).toBe(210);
     expect(agg.colaboradoresAtivos).toEqual(['Igor Cardoso']);
+  });
+});
+
+describe('buildDailySeries (capacidade 7h/dia)', () => {
+  const daily: InfraTimelogDailyRow[] = [
+    // Seg 08/06: Igor 9h (2h extra), Rodolfo 0h
+    { work_item_id: 1, user_name: 'Igor Cardoso', log_date: '2026-06-08', time_minutes: 540 },
+    // Ter 09/06: Igor 4h em 2 tasks
+    { work_item_id: 1, user_name: 'Igor Cardoso', log_date: '2026-06-09', time_minutes: 120 },
+    { work_item_id: 2, user_name: 'Igor Cardoso', log_date: '2026-06-09', time_minutes: 120 },
+    // Bruna não está na include-list
+    { work_item_id: 3, user_name: 'Bruna Lima', log_date: '2026-06-09', time_minutes: 480 },
+  ];
+  const include = new Set<string>(INFRA_TIMELOG_DEFAULT_COLLABS);
+
+  it('divide horas em base/extra/silhueta e conta tasks por dia útil', () => {
+    const serie = buildDailySeries(daily, include, new Date('2026-06-08T00:00:00'), new Date('2026-06-10T00:00:00'));
+
+    expect(serie.map(p => p.date)).toEqual(['2026-06-08', '2026-06-09', '2026-06-10']);
+
+    const seg = serie[0];
+    expect(seg.igor_base).toBe(7);     // capacidade cheia
+    expect(seg.igor_extra).toBe(2);    // trabalho extra
+    expect(seg.igor_rest).toBe(0);
+    expect(seg.rodolfo_base).toBe(0);
+    expect(seg.rodolfo_rest).toBe(7);  // silhueta vazia (sem horas)
+    expect(seg.tasks).toBe(1);
+
+    const ter = serie[1];
+    expect(ter.igor_base).toBe(4);
+    expect(ter.igor_rest).toBe(3);
+    expect(ter.tasks).toBe(2);
+
+    const qua = serie[2]; // dia sem apontamento: só silhuetas
+    expect(qua.igor_rest).toBe(7);
+    expect(qua.tasks).toBe(0);
+  });
+
+  it('fim de semana fica fora do eixo', () => {
+    const serie = buildDailySeries(daily, include, new Date('2026-06-06T00:00:00'), new Date('2026-06-08T00:00:00'));
+    // 06/06 = sábado, 07/06 = domingo → só segunda 08/06
+    expect(serie.map(p => p.date)).toEqual(['2026-06-08']);
   });
 });

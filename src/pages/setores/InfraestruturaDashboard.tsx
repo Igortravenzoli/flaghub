@@ -6,7 +6,7 @@ import { DashboardDataTable, DataTableColumn } from '@/components/dashboard/Dash
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
-import { useInfraestruturaKpis, InfraItem } from '@/hooks/useInfraestruturaKpis';
+import { useInfraestruturaKpis, InfraItem, isInfraPendente, isInfraAndamento, isInfraDone } from '@/hooks/useInfraestruturaKpis';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
@@ -14,14 +14,16 @@ import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
 import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { BIInfraSgsiPanel } from '@/components/infraestrutura/BIInfraSgsiPanel';
 import { DevopsCoberturaPanel } from '@/components/infraestrutura/DevopsCoberturaPanel';
 import { InfraTimelogTab } from '@/components/infraestrutura/InfraTimelogTab';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban, Timer } from 'lucide-react';
+import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban, Timer, ChevronDown } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
@@ -52,7 +54,7 @@ export default function InfraestruturaDashboard() {
   const [kpiFilter, setKpiFilter] = useState<InfraKpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<InfraHealthFilter>('all');
   const [activeTab, setActiveTab] = useState('overview');
-  const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
+  const [sprintSelection, setSprintSelection] = useState<string[]>(['__pending__']);
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
   const { items, allItems, total, pendentes, emAndamento, concluidos, melhorias, iso27001, sprintMigracoes, transbordo, backlog, dev, lastSync, isLoading, isError } = useInfraestruturaKpis(undefined, undefined, 'all');
@@ -77,27 +79,58 @@ export default function InfraestruturaDashboard() {
 
   useEffect(() => {
     if (sortedSprints.length === 0) return;
-    if (sprintFilter === '__pending__') {
+    if (sprintSelection.length === 1 && sprintSelection[0] === '__pending__') {
       const officialCurrentCode = getCurrentOfficialSprintCode();
       const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
-      setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+      setSprintSelection([currentSprintPath || sortedSprints[sortedSprints.length - 1]]);
       return;
     }
-    if (sprintFilter === 'all') return;
-    if (!sortedSprints.includes(sprintFilter)) {
-      const officialCurrentCode = getCurrentOfficialSprintCode();
-      const currentSprintPath = sortedSprints.find((sp) => extractSprintCodeFromPath(sp) === officialCurrentCode);
-      setSprintFilter(currentSprintPath || sortedSprints[sortedSprints.length - 1]);
+    // Remove sprints que deixaram de existir na base
+    const valid = sprintSelection.filter((sp) => sp === '__pending__' || sortedSprints.includes(sp));
+    if (valid.length !== sprintSelection.length) {
+      setSprintSelection(valid.length > 0 ? valid : ['__pending__']);
     }
-  }, [sortedSprints, sprintFilter]);
+  }, [sortedSprints, sprintSelection]);
 
-  const selectedSprintCode = sprintFilter !== 'all' ? extractSprintCodeFromPath(sprintFilter) : null;
-  const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
+  // [] = todas as sprints; 1..N caminhos = multi-seleção
+  const effectiveSprints = sprintSelection.filter((sp) => sp !== '__pending__');
+  const isAllSprints = effectiveSprints.length === 0;
+
+  // Range = união das sprints selecionadas (oficial); custom sobrepõe.
+  const sprintUnionRange = (() => {
+    const ranges = effectiveSprints
+      .map((sp) => extractSprintCodeFromPath(sp))
+      .filter((c): c is string => !!c)
+      .map((c) => getOfficialSprintRange(c))
+      .filter((r): r is { from: Date; to: Date } => !!r);
+    if (ranges.length === 0) return null;
+    return {
+      from: new Date(Math.min(...ranges.map((r) => r.from.getTime()))),
+      to: new Date(Math.max(...ranges.map((r) => r.to.getTime()))),
+    };
+  })();
+
+  const selectedSprintCode = effectiveSprints.length === 1 ? extractSprintCodeFromPath(effectiveSprints[0]) : null;
+  const sprintLabel = isAllSprints
+    ? 'Todas as Sprints'
+    : effectiveSprints.length === 1
+      ? (effectiveSprints[0].split('\\').pop() || effectiveSprints[0])
+      : `${effectiveSprints.length} sprints`;
+
   const effectiveRange = customActive && customRange
     ? customRange
-    : sprintRange || { from: minDate || new Date(), to: maxDate || new Date() };
+    : sprintUnionRange || { from: minDate || new Date(), to: maxDate || new Date() };
 
-  const scoped = useInfraestruturaKpis(effectiveRange.from, effectiveRange.to, sprintFilter === 'all' ? 'all' : sprintFilter);
+  const scoped = useInfraestruturaKpis(effectiveRange.from, effectiveRange.to, isAllSprints ? 'all' : effectiveSprints);
+
+  const toggleSprint = (sp: string) => {
+    setCustomActive(false);
+    setKpiFilter('all');
+    setSprintSelection((prev) => {
+      const cur = prev.filter((p) => p !== '__pending__');
+      return cur.includes(sp) ? cur.filter((p) => p !== sp) : [...cur, sp];
+    });
+  };
   const pbiHealthIds = useMemo(
     () => scoped.items.filter((i) => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || '')).map((i) => i.id as number),
     [scoped.items]
@@ -109,9 +142,9 @@ export default function InfraestruturaDashboard() {
 
   const filteredItems = useMemo(() => {
     switch (kpiFilter) {
-      case 'pendentes': return scoped.items.filter(i => i.state === 'New' || i.state === 'To Do');
-      case 'em_andamento': return scoped.items.filter(i => i.state === 'In Progress' || i.state === 'Active');
-      case 'concluidos': return scoped.items.filter(i => i.state === 'Done' || i.state === 'Closed' || i.state === 'Resolved');
+      case 'pendentes': return scoped.items.filter(i => isInfraPendente(i.state));
+      case 'em_andamento': return scoped.items.filter(i => isInfraAndamento(i.state));
+      case 'concluidos': return scoped.items.filter(i => isInfraDone(i.state));
       case 'melhorias': return scoped.items.filter(i => i.tags?.toUpperCase().includes('MELHORIA'));
       case 'iso27001': return scoped.items.filter(i => i.tags?.toUpperCase().includes('ISO27001') || i.tags?.toUpperCase().includes('ISO'));
       case 'transbordo': return scoped.items.filter(i => (i.transbordo_count || 0) > 0);
@@ -126,13 +159,13 @@ export default function InfraestruturaDashboard() {
   }, [healthFilter, pbiHealthBatch.healthById, scoped.items]);
 
   const handleExportCSV = () => exportCSV({
-    title: 'Infraestrutura', area: 'Infraestrutura', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
+    title: 'Infraestrutura', area: 'Infraestrutura', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : sprintLabel),
     columns: ['id', 'work_item_type', 'title', 'assigned_to_display', 'state', 'priority', 'transbordo_count', 'iteration_path'],
     rows: scoped.items as any[],
   });
 
   const handleExportPDF = () => exportPDF({
-    title: 'Dashboard Infraestrutura', area: 'Infraestrutura', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint'),
+    title: 'Dashboard Infraestrutura', area: 'Infraestrutura', periodLabel: customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : sprintLabel),
     kpis: [
       { label: 'Total', value: scoped.total },
       { label: 'Pendentes', value: scoped.pendentes },
@@ -169,17 +202,37 @@ export default function InfraestruturaDashboard() {
 
       <div className="flex flex-wrap items-center gap-3">
         {sortedSprints.length > 0 && (
-          <Select value={sprintFilter} onValueChange={(v) => { setSprintFilter(v); setCustomActive(false); setKpiFilter('all'); }}>
-            <SelectTrigger className="w-[220px] h-8 text-xs">
-              <SelectValue placeholder="Sprint" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as Sprints</SelectItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="w-[220px] h-8 text-xs justify-between font-normal">
+                {sprintLabel}
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-[240px] max-h-80 overflow-y-auto">
+              <DropdownMenuLabel className="text-xs">Sprints (multi-seleção)</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={isAllSprints}
+                onCheckedChange={() => { setSprintSelection([]); setCustomActive(false); setKpiFilter('all'); }}
+                onSelect={(e) => e.preventDefault()}
+                className="text-xs"
+              >
+                Todas as Sprints
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
               {[...sortedSprints].reverse().map(sp => (
-                <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
+                <DropdownMenuCheckboxItem
+                  key={sp}
+                  checked={effectiveSprints.includes(sp)}
+                  onCheckedChange={() => toggleSprint(sp)}
+                  onSelect={(e) => e.preventDefault()}
+                  className="text-xs"
+                >
+                  {sp.split('\\').pop()}
+                </DropdownMenuCheckboxItem>
               ))}
-            </SelectContent>
-          </Select>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         <DashboardFilterBar
           preset={customActive ? 'custom' : 'all'}
@@ -203,14 +256,14 @@ export default function InfraestruturaDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-muted/50 p-1">
             <TabsTrigger value="overview" className="gap-1.5 text-xs"><Server className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
-            <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
             <TabsTrigger value="gestao-sg" className="gap-1.5 text-xs"><ShieldCheck className="h-3.5 w-3.5" />Gestão SG</TabsTrigger>
             <TabsTrigger value="projetos-pipelines" className="gap-1.5 text-xs"><FolderKanban className="h-3.5 w-3.5" />Projetos & Pipelines</TabsTrigger>
             <TabsTrigger value="timelog" className="gap-1.5 text-xs"><Timer className="h-3.5 w-3.5" />Timelog</TabsTrigger>
+            <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4 mt-0">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {/* Bloco Status Sprint */}
             {scoped.isLoading ? (
               <Card className="p-6"><Skeleton className="h-3 w-28 mb-4" /><Skeleton className="h-9 w-20 mb-2" /><Skeleton className="h-2 w-full rounded-full mb-5" /><div className="grid grid-cols-3 gap-2 pt-4 border-t border-border">{Array.from({length:3}).map((_,i)=><Skeleton key={i} className="h-12 w-full rounded-lg"/>)}</div></Card>
@@ -256,6 +309,39 @@ export default function InfraestruturaDashboard() {
                     </button>
                   ))}
                 </div>
+              </Card>
+            )}
+
+            {/* Bloco Done por Sprint (evolução das 3 últimas sprints mapeadas) */}
+            {scoped.isLoading ? (
+              <Card className="p-6"><Skeleton className="h-3 w-32 mb-4" /><Skeleton className="h-40 w-full rounded-lg" /></Card>
+            ) : (
+              <Card className="p-6">
+                <p className="text-xs font-medium text-muted-foreground mb-1">DONE POR SPRINT</p>
+                <p className="text-[11px] text-muted-foreground mb-3">Tasks concluídas ao fim de cada sprint — últimas 3 mapeadas</p>
+                {(() => {
+                  const ultimas = scoped.doneBySprint.slice(-3);
+                  if (ultimas.length === 0) {
+                    return <p className="text-xs text-muted-foreground py-10 text-center">Sem sprints mapeadas na base.</p>;
+                  }
+                  return (
+                    <div className="h-44">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={ultimas} margin={{ top: 18, right: 8, left: -28, bottom: 0 }}>
+                          <XAxis dataKey="sprintCode" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                          <RechartsTooltip
+                            contentStyle={{ fontSize: 12 }}
+                            formatter={(v: number, _n: string, p: { payload?: { total?: number } }) => [`${v} done de ${p.payload?.total ?? '—'} itens`, 'Concluídas']}
+                          />
+                          <Bar dataKey="done" fill="hsl(142, 71%, 45%)" radius={[4, 4, 0, 0]} maxBarSize={56}>
+                            <LabelList dataKey="done" position="top" style={{ fontSize: 12, fontWeight: 700 }} />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  );
+                })()}
               </Card>
             )}
 
@@ -340,7 +426,7 @@ export default function InfraestruturaDashboard() {
             {(() => {
               // Sprint selecionada (ou range custom) limita o SGSI por data de
               // criação/modificação; "Todas as Sprints" mostra tudo.
-              const sgsiRange = customActive && customRange ? customRange : sprintRange;
+              const sgsiRange = customActive && customRange ? customRange : sprintUnionRange;
               return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} />;
             })()}
           </TabsContent>

@@ -64,7 +64,14 @@ export interface CoberturaProjeto {
   repos: number;
   aplicaveis: number;
   cobertos: number;
+  /** Cobertura da meta: cobertos/aplicáveis (null sem classificação) */
   coberturaPct: number | null;
+  /** Repos com ao menos 1 pipeline ativa (independe de classificação) */
+  comPipeline: number;
+  /** Total de pipelines ativas do projeto */
+  pipelinesAtivas: number;
+  /** % repos com pipeline ativa — fallback informativo sem classificação */
+  pipelinePct: number;
 }
 
 // ── Pure helpers (testáveis) ───────────────────────────────────────────
@@ -98,15 +105,31 @@ export function computeCoberturaPorProjeto(repos: DevopsRepo[]): CoberturaProjet
     .map(([projeto, list]) => {
       const aplicaveis = list.filter(r => r.aplicavel === true);
       const cobertos = aplicaveis.filter(r => r.active_pipeline_count > 0).length;
+      const comPipeline = list.filter(r => r.active_pipeline_count > 0).length;
       return {
         projeto,
         repos: list.length,
         aplicaveis: aplicaveis.length,
         cobertos,
         coberturaPct: aplicaveis.length > 0 ? Math.round((cobertos / aplicaveis.length) * 100) : null,
+        comPipeline,
+        pipelinesAtivas: list.reduce((s, r) => s + r.active_pipeline_count, 0),
+        pipelinePct: list.length > 0 ? Math.round((comPipeline / list.length) * 100) : 0,
       };
     })
     .sort((a, b) => b.repos - a.repos);
+}
+
+/** Repos elegíveis à categorização automática de legado: não classificados e
+ *  sem interação (desabilitados ou sem commit há mais de `dias`). */
+export function reposLegadoAutomatico(repos: DevopsRepo[], dias = 180, ref: Date = new Date()): DevopsRepo[] {
+  const limite = ref.getTime() - dias * 86400000;
+  return repos.filter((r) => {
+    if (r.aplicavel !== null && r.aplicavel !== undefined) return false;
+    if (r.is_disabled) return true;
+    if (!r.last_commit_date) return false;
+    return new Date(r.last_commit_date).getTime() < limite;
+  });
 }
 
 /** Pipelines criadas dentro do trimestre civil de `ref` (meta: 3 novas/trimestre). */
