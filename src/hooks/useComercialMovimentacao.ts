@@ -51,13 +51,18 @@ export function useComercialMovimentacao(tipoFilter?: 'perda' | 'ganho' | 'todos
 
   const allItems = query.data ?? [];
 
+  // Comparação por ano-mês em string ("YYYY-MM") — evita o bug de fuso em que
+  // "2026-04-01" é interpretado como 31/03 local e sai do período filtrado.
   const items = useMemo(() => {
     if (!dateFrom || !dateTo) return allItems;
+    const ymOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const fromYm = ymOf(dateFrom);
+    const toYm = ymOf(dateTo);
     return allItems.filter((item) => {
       // Items without data_evento (e.g. Risco) are always shown when a date filter is active
       if (!item.data_evento) return true;
-      const d = new Date(item.data_evento);
-      return d >= dateFrom && d <= dateTo;
+      const itemYm = item.data_evento.slice(0, 7);
+      return itemYm >= fromYm && itemYm <= toYm;
     });
   }, [allItems, dateFrom, dateTo]);
 

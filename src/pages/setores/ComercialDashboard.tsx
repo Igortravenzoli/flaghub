@@ -9,7 +9,7 @@ import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { useComercialKpis, ComercialClient, ClientStatusFilter } from '@/hooks/useComercialKpis';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
-import { useDashboardFilters } from '@/hooks/useDashboardFilters';
+import { useDashboardFilters, type FilterPreset } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers, MoreHorizontal, Eye, EyeOff, Users, CalendarDays, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -360,7 +360,9 @@ export default function ComercialDashboard() {
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
   const currentYear = new Date().getFullYear();
   const [calOpen, setCalOpen] = useState(false);
-  const filters = useDashboardFilters('1y');
+  // Padrão: trimestre corrente (ex.: junho → Q2 = abr–jun)
+  const currentQuarter = `q${Math.floor(new Date().getMonth() / 3) + 1}` as FilterPreset;
+  const filters = useDashboardFilters(currentQuarter);
   const { clients, allClients, totalClientes, bandeiras, stats, lastSync, isLoading, isError, refetch } = useComercialKpis(statusFilter, filters.dateFrom, filters.dateTo);
   const operational = useDevopsOperationalQueue(['04-Em Fila Comercial']);
   const { exportCSV, exportPDF } = useDashboardExport();
@@ -926,6 +928,8 @@ export default function ComercialDashboard() {
               showValues={showValues}
               bandeiras={bandeiras}
               sistemas={sistemasUnicos}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
             />
           </TabsContent>
 
@@ -939,7 +943,13 @@ export default function ComercialDashboard() {
           </TabsContent>
 
           <TabsContent value="fechamento-comercial" className="space-y-4 mt-0">
-            <PipeDriveTab canViewValues={canViewValues} showValues={showValues} />
+            <PipeDriveTab
+              canViewValues={canViewValues}
+              showValues={showValues}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              periodLabel={filters.presetLabel}
+            />
           </TabsContent>
 
           <TabsContent value="esteira-saude" className="space-y-4 mt-0">

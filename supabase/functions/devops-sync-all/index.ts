@@ -776,12 +776,18 @@ function countQaReturns(stateChanges: StateChange[]): number {
   return Math.max(0, emTesteEntries - 1)
 }
 
+// Bugs/Tasks entram no histórico (histograma de handoff + ciclos de retorno),
+// com cap por execução para caber no tempo da edge function — o cron a cada
+// 10 min completa a cobertura gradualmente (mais recentes primeiro).
+const ITER_HISTORY_MAX_PER_RUN = 400
+
 async function processIterationHistory(admin: any): Promise<{ processed: number; withChanges: number }> {
   const { data: pbiItems, error } = await admin
     .from('devops_work_items')
     .select('id, changed_date, iteration_history_synced_at')
-    .in('work_item_type', ['Product Backlog Item', 'User Story'])
-    .limit(3000)
+    .in('work_item_type', ['Product Backlog Item', 'User Story', 'Bug', 'Task'])
+    .order('changed_date', { ascending: false })
+    .limit(6000)
 
   if (error) {
     console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
@@ -792,10 +798,16 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
     shouldRefreshByChange(item.changed_date, item.iteration_history_synced_at)
   )
 
-  const workItemIds = candidates.map((i: any) => i.id).filter(Boolean) as number[]
+  const workItemIds = candidates
+    .slice(0, ITER_HISTORY_MAX_PER_RUN)
+    .map((i: any) => i.id)
+    .filter(Boolean) as number[]
   if (workItemIds.length === 0) {
     console.log('[IterHistory] No PBIs with changes since last iteration sync')
     return { processed: 0, withChanges: 0 }
+  }
+  if (candidates.length > workItemIds.length) {
+    console.log(`[IterHistory] ${candidates.length} candidates, capped at ${workItemIds.length} this run`)
   }
 
   console.log(`[IterHistory] Processing ${workItemIds.length} PBIs for iteration + state changes`)

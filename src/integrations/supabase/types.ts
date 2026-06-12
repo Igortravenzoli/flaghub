@@ -545,6 +545,7 @@ export type Database = {
           is_active: boolean
           lead_email: string
           pipeline_role: string
+          receives_qa_alert: boolean
           squad_label: string | null
           updated_at: string
           visual_priority: number
@@ -560,6 +561,7 @@ export type Database = {
           is_active?: boolean
           lead_email: string
           pipeline_role: string
+          receives_qa_alert?: boolean
           squad_label?: string | null
           updated_at?: string
           visual_priority?: number
@@ -575,6 +577,7 @@ export type Database = {
           is_active?: boolean
           lead_email?: string
           pipeline_role?: string
+          receives_qa_alert?: boolean
           squad_label?: string | null
           updated_at?: string
           visual_priority?: number
@@ -625,6 +628,7 @@ export type Database = {
           alert_channel_id: string | null
           alert_channel_type: string | null
           alert_error: string | null
+          alert_recipients: Json | null
           alert_sent_at: string | null
           alert_status: string
           area_path: string | null
@@ -655,6 +659,7 @@ export type Database = {
           alert_channel_id?: string | null
           alert_channel_type?: string | null
           alert_error?: string | null
+          alert_recipients?: Json | null
           alert_sent_at?: string | null
           alert_status?: string
           area_path?: string | null
@@ -685,6 +690,7 @@ export type Database = {
           alert_channel_id?: string | null
           alert_channel_type?: string | null
           alert_error?: string | null
+          alert_recipients?: Json | null
           alert_sent_at?: string | null
           alert_status?: string
           area_path?: string | null
@@ -2518,6 +2524,7 @@ export type Database = {
           as_of_datetime: string | null
           avg_lead_time_days: number | null
           captured_by: string | null
+          category_breakdown: Json | null
           created_at: string
           delivered_demands: number | null
           delivered_in_dev_count: number | null
@@ -2562,6 +2569,7 @@ export type Database = {
           as_of_datetime?: string | null
           avg_lead_time_days?: number | null
           captured_by?: string | null
+          category_breakdown?: Json | null
           created_at?: string
           delivered_demands?: number | null
           delivered_in_dev_count?: number | null
@@ -2606,6 +2614,7 @@ export type Database = {
           as_of_datetime?: string | null
           avg_lead_time_days?: number | null
           captured_by?: string | null
+          category_breakdown?: Json | null
           created_at?: string
           delivered_demands?: number | null
           delivered_in_dev_count?: number | null
@@ -3615,6 +3624,15 @@ export type Database = {
         Args: { p_network_id: number }
         Returns: number
       }
+      fn_classifica_demanda: {
+        Args: { p_tags: string; p_type: string }
+        Returns: string
+      }
+      fn_demanda_nao_planejada: {
+        Args: { p_tags: string; p_type: string }
+        Returns: boolean
+      }
+      fn_sprint_code_for_date: { Args: { p_date: string }; Returns: string }
       fn_sprint_official_range: {
         Args: { p_sprint_code: string }
         Returns: {
@@ -4199,6 +4217,28 @@ export type Database = {
           vermelho_count: number
         }[]
       }
+      rpc_qa_atemporal_summary: {
+        Args: { p_date_end?: string; p_date_start?: string }
+        Returns: {
+          com_retorno: number
+          concluidos: number
+          pct_sem_retorno: number
+          qtd_bugs: number
+          qtd_outros: number
+          qtd_pbis: number
+          qtd_tasks: number
+          sem_retorno: number
+        }[]
+      }
+      rpc_qa_closed_por_sprint_periodo: {
+        Args: { p_year?: number }
+        Returns: {
+          com_retorno: number
+          qtd: number
+          sprint_origem: string
+          sprint_periodo: string
+        }[]
+      }
       rpc_qa_desempenho_responsavel: {
         Args: {
           p_date_end?: string
@@ -4216,11 +4256,7 @@ export type Database = {
         }[]
       }
       rpc_qa_encerramentos_por_usuario: {
-        Args: {
-          p_date_end?: string
-          p_date_start?: string
-          p_sprint_code?: string
-        }
+        Args: { p_date_end?: string; p_date_start?: string }
         Returns: {
           closer_display: string
           closer_email: string
@@ -4228,6 +4264,13 @@ export type Database = {
           encerramentos: number
           sem_retorno: number
           sprint_code: string
+        }[]
+      }
+      rpc_qa_handoff_histogram: {
+        Args: { p_date_end?: string; p_date_start?: string }
+        Returns: {
+          dia: string
+          entradas: number
         }[]
       }
       rpc_qa_historical_series: {
@@ -4242,6 +4285,21 @@ export type Database = {
           snapshot_source: string
           sprint_code: string
           sprint_number: number
+        }[]
+      }
+      rpc_qa_items_atemporal: {
+        Args: { p_date_end?: string; p_date_start?: string }
+        Returns: {
+          closed_by: string
+          closed_date: string
+          sprint_origem: string
+          sprint_periodo: string
+          tags: string
+          tem_retorno: boolean
+          title: string
+          web_url: string
+          work_item_id: number
+          work_item_type: string
         }[]
       }
       rpc_qa_return_by_assignee: {
