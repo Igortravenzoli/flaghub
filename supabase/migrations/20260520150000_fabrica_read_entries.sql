@@ -4,14 +4,14 @@
 -- Global state: not per-user, shared across all browsers
 -- ============================================================================
 
+-- Nota: a versão original declarava FK para vw_fabrica_kpis, que é uma VIEW —
+-- inválido em Postgres (42809). Em PROD a tabela existe sem essa FK (criada
+-- via dashboard); o arquivo foi corrigido para refletir o estado real.
 CREATE TABLE IF NOT EXISTS public.fabrica_read_entries (
   work_item_id INTEGER PRIMARY KEY,
   is_read BOOLEAN NOT NULL DEFAULT false,
   marked_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  
-  CONSTRAINT fk_work_item_id FOREIGN KEY (work_item_id)
-    REFERENCES public.vw_fabrica_kpis(id) ON DELETE CASCADE
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
 -- Create index for faster lookups
