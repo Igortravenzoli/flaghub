@@ -1,0 +1,52 @@
+name: Security
+
+# Gate de segurança + validação de migrations. Roda em push para dev e em PRs para main.
+# Não toca em DEV/PROD reais — o job de banco usa um Postgres local efêmero (Supabase CLI).
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    name: Audit de dependências
+    runs-on: ubuntu-latest
+    # Informativo por enquanto (não bloqueia merge). Tornar bloqueante
+    # (remover continue-on-error) após zerar o passivo de vulnerabilidades.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: bun audit
+        run: bun audit
+
+  secret-scan:
+    name: Secret scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  db-migrations:
+    name: Migrations do zero (Postgres efêmero)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      # Sobe só o Postgres local e aplica TODAS as migrations do zero.
+      # Pega migration quebrada/fora de ordem antes do merge.
+      # TODO: adicionar `supabase test db` (pgTAP) quando criarmos os testes de RLS.
+      - name: Start local database (aplica migrations)
+        run: supabase db start

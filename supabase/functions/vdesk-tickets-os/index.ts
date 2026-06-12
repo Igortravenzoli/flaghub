@@ -205,45 +205,41 @@ async function getVdeskToken(endpoint: { url: string; name: string }): Promise<s
 
   console.log(`[VdeskProxy] Obtendo novo service-token via ${endpoint.name}`)
   
-  try {
-    const response = await fetchWithTimeout(
-      `${endpoint.url}/api/client-auth/service-token`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          serviceName: 'FlagHub-Tickets',
-          serviceSecret,
-        }),
-      },
-      TOKEN_TIMEOUT_MS,
-      'token',
-    )
+  const response = await fetchWithTimeout(
+    `${endpoint.url}/api/client-auth/service-token`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        serviceName: 'FlagHub-Tickets',
+        serviceSecret,
+      }),
+    },
+    TOKEN_TIMEOUT_MS,
+    'token',
+  )
 
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => '')
-      console.warn(`[VdeskProxy] Falha na autenticação service-token via ${endpoint.name}: ${response.status} ${errorBody}`)
-      resetActiveEndpoint()
-      throw new Error(`Falha na autenticação VDESK (service-token): ${response.status}`)
-    }
-
-    const data = await response.json()
-    
-    // Cachear token com margem de 60s
-    const expiresAt = new Date(data.expiresAt)
-    expiresAt.setSeconds(expiresAt.getSeconds() - 60)
-    
-    cachedToken = {
-      token: data.sessionToken,
-      expiresAt,
-      endpointUrl: endpoint.url,
-    }
-
-    console.log(`[VdeskProxy] Service-token obtido com sucesso via ${endpoint.name}`)
-    return data.sessionToken
-  } catch (err: unknown) {
-    throw err
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '')
+    console.warn(`[VdeskProxy] Falha na autenticação service-token via ${endpoint.name}: ${response.status} ${errorBody}`)
+    resetActiveEndpoint()
+    throw new Error(`Falha na autenticação VDESK (service-token): ${response.status}`)
   }
+
+  const data = await response.json()
+
+  // Cachear token com margem de 60s
+  const expiresAt = new Date(data.expiresAt)
+  expiresAt.setSeconds(expiresAt.getSeconds() - 60)
+
+  cachedToken = {
+    token: data.sessionToken,
+    expiresAt,
+    endpointUrl: endpoint.url,
+  }
+
+  console.log(`[VdeskProxy] Service-token obtido com sucesso via ${endpoint.name}`)
+  return data.sessionToken
 }
 
 async function proxyToVdesk(endpoint: { url: string; name: string }, path: string, token: string, req: Request): Promise<Response> {
@@ -251,39 +247,35 @@ async function proxyToVdesk(endpoint: { url: string; name: string }, path: strin
   
   console.log(`[VdeskProxy] Chamando ${endpoint.name}: ${path}`)
   
-  try {
-    const response = await fetchWithTimeout(
-      fullUrl,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+  const response = await fetchWithTimeout(
+    fullUrl,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
-      REQUEST_TIMEOUT_MS,
-      'request',
-    )
+    },
+    REQUEST_TIMEOUT_MS,
+    'request',
+  )
 
-    const data = await response.json()
-    
-    // Adicionar informação do endpoint usado na resposta
-    const enrichedData = {
-      ...data,
-      _meta: {
-        endpoint: endpoint.name,
-        endpointUrl: endpoint.url,
-        timestamp: new Date().toISOString(),
-      }
+  const data = await response.json()
+
+  // Adicionar informação do endpoint usado na resposta
+  const enrichedData = {
+    ...data,
+    _meta: {
+      endpoint: endpoint.name,
+      endpointUrl: endpoint.url,
+      timestamp: new Date().toISOString(),
     }
-    
-    return new Response(JSON.stringify(enrichedData), {
-      status: response.status,
-      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
-    })
-  } catch (err: unknown) {
-    throw err
   }
+
+  return new Response(JSON.stringify(enrichedData), {
+    status: response.status,
+    headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
+  })
 }
 
 async function executeProxyWithRetry(path: string, req: Request): Promise<Response> {

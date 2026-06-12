@@ -105,9 +105,8 @@ serve(async (req) => {
       .maybeSingle()
 
     let dataInicio: string
-    let dataFim: string
     const now = new Date()
-    dataFim = body.data_fim || formatDate(now)
+    const dataFim: string = body.data_fim || formatDate(now)
 
     if (body.data_inicio) {
       // Explicit date from request body takes priority

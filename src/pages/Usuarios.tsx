@@ -177,7 +177,7 @@ function PermissionsTab() {
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [selectedRole, setSelectedRole] = useState('leitura');
 
-  const toggleUser = (uid: string) => setExpandedUsers(p => { const n = new Set(p); n.has(uid) ? n.delete(uid) : n.add(uid); return n; });
+  const toggleUser = (uid: string) => setExpandedUsers(p => { const n = new Set(p); if (n.has(uid)) { n.delete(uid); } else { n.add(uid); } return n; });
 
   const { data: members = [] } = useQuery({ queryKey: ['admin_area_members'], queryFn: async () => { const { data, error } = await supabase.from('hub_area_members').select('*').eq('is_active', true).order('created_at'); if (error) throw error; return data as AreaMember[]; } });
   const { data: areas = [] } = useQuery({ queryKey: ['hub_areas'], queryFn: async () => { const { data, error } = await supabase.from('hub_areas').select('*').eq('is_active', true); if (error) throw error; return data as HubArea[]; } });

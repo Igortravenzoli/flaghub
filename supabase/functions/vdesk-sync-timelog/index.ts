@@ -371,7 +371,7 @@ serve(async (req) => {
       throw new Error(`Falha ao criar run: ${runErr?.message ?? 'unknown'}`)
     }
 
-    // @ts-ignore EdgeRuntime disponível em Supabase Edge Functions
+    // @ts-expect-error EdgeRuntime disponível em Supabase Edge Functions
     EdgeRuntime.waitUntil(
       runSync({ fromDate, toDate, triggeredBy }, run.id).catch(err => {
         console.error('[vdesk-sync-timelog] background error:', err)

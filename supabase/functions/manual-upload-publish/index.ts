@@ -139,7 +139,7 @@ function extractOsNumber(row: Record<string, any>): string | null {
     .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
 
   for (const source of searchSources) {
-    const match = source.match(/\bOS\s*[:#\-]?\s*(\d{4,})\b/i)
+    const match = source.match(/\bOS\s*[:#-]?\s*(\d{4,})\b/i)
     if (match?.[1]) return match[1]
   }
 

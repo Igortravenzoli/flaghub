@@ -379,7 +379,7 @@ serve(async (req) => {
     }
 
     // Start background processing (non-blocking)
-    // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
+    // @ts-expect-error EdgeRuntime is available in Supabase Edge Functions
     EdgeRuntime.waitUntil(
       processTimeLogs(pat).catch(err => {
         console.error('[timelog] Background processing error:', err)

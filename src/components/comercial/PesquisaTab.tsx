@@ -181,7 +181,7 @@ export function PesquisaTab() {
       };
     }
 
-    let ratedScores: number[] = [];
+    const ratedScores: number[] = [];
     let totalWithProduct = 0;
 
     for (const r of responses) {

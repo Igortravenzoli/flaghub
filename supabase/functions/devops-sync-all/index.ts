@@ -223,7 +223,7 @@ async function fetchChildrenOfItems(parentIds: number[], admin: any): Promise<{ 
   console.log(`[ChildrenSync] Total unique children: ${allChildIds.length} (Task/Bug)`)
 
   // Check existing revs for dedup
-  let existingRevs = new Map<number, number>()
+  const existingRevs = new Map<number, number>()
   for (let i = 0; i < allChildIds.length; i += 1000) {
     const chunk = allChildIds.slice(i, i + 1000)
     const { data: existingItems } = await admin
@@ -486,7 +486,7 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
   ])
 
   const queryIds = [...new Set((queryRows || []).map((row: any) => row.query_id).filter(Boolean))]
-  let queriesById = new Map<string, string>()
+  const queriesById = new Map<string, string>()
   if (queryIds.length > 0) {
     const { data: queryDefs } = await admin
       .from('devops_queries')
@@ -992,7 +992,7 @@ serve(async (req: Request) => {
       let childrenResult = { fetched: 0, upserted: 0 }
       let iterHistory = { processed: 0, withChanges: 0 }
       let lifecycleHealth = { processed: 0, skippedTimeout: 0 }
-      let qaResult = {
+      const qaResult = {
         attempted: false,
         ok: false,
         auth_mode: 'none',
@@ -1129,7 +1129,7 @@ serve(async (req: Request) => {
       }
     }
 
-    // @ts-ignore - EdgeRuntime.waitUntil available in Supabase Edge Functions
+    // @ts-expect-error - EdgeRuntime.waitUntil available in Supabase Edge Functions
     EdgeRuntime.waitUntil(backgroundWork().catch(err => console.error('[DevOpsSyncAll:BG] Fatal:', err)))
 
     return new Response(JSON.stringify({

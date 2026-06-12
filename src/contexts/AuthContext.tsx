@@ -196,13 +196,15 @@ async function fetchUserData(userId: string): Promise<{
   networkId: number | null;
 }> {
   try {
-    let { data: profile, error: profileError } = await supabase
+    const { data: initialProfile, error: profileError } = await supabase
       .from("profiles")
       .select("user_id, full_name, network_id, created_at")
       .eq("user_id", userId)
       .maybeSingle();
 
     if (profileError) throw profileError;
+
+    let profile = initialProfile;
 
     if (!profile) {
       console.log("[Auth] Profile not found, provisioning user...");

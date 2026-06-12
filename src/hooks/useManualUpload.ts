@@ -263,6 +263,7 @@ function rowsToCsv(rows: Record<string, any>[]): string {
  * that would cause issues when stored as JSONB.
  */
 function sanitizeText(text: string): string {
+  // eslint-disable-next-line no-control-regex -- remoção intencional de caracteres de controle
   return text.replace(/\0/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
 }
 

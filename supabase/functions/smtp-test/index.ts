@@ -150,7 +150,7 @@ serve(async (req) => {
       // QUIT
       await sendCommand(conn, 'QUIT').catch(() => {})
     } finally {
-      try { conn.close() } catch {}
+      try { conn.close() } catch { /* conexão já fechada */ }
     }
 
     return new Response(JSON.stringify({

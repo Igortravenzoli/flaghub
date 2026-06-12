@@ -91,6 +91,7 @@ async function hasAreaUploadRole(userId: string, areaId: string | null): Promise
 /** Remove null bytes and problematic Unicode escape sequences from strings */
 function sanitizeValue(val: unknown): unknown {
   if (typeof val === 'string') {
+    // eslint-disable-next-line no-control-regex -- remoção intencional de caracteres de controle
     return val.replace(/\0/g, '').replace(/\\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
   }
   if (val && typeof val === 'object' && !Array.isArray(val)) {

@@ -1,0 +1,53 @@
+name: Migration — PROD
+
+# NUNCA roda automaticamente
+# Só via Actions → Run workflow com confirmação manual
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "PROD: confirma aplicar migrations no FlagHubDB PROD? (yes-prod)"
+        required: true
+        default: "no"
+
+jobs:
+  migrate-prod:
+    name: Apply migrations → FlagHubDB PROD
+    runs-on: ubuntu-latest
+    environment: prod # Usa o environment "prod" do GitHub — requer aprovação de reviewer
+
+    steps:
+      - name: Checkpoint de segurança
+        if: github.event.inputs.confirm != 'yes-prod'
+        run: |
+          echo "❌ Confirmação incorreta. Para PROD, o campo deve conter exatamente: yes-prod"
+          exit 1
+
+      - name: Verificar branch de origem
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "❌ Migrations de PROD só podem ser aplicadas a partir da branch main."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link ao FlagHubDB PROD
+        run: supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Aplicar migrations
+        run: supabase db push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+
+      - name: Resumo
+        run: echo "✅ Migrations aplicadas no FlagHubDB PROD com sucesso."
