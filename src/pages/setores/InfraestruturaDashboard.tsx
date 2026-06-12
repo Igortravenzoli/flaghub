@@ -19,8 +19,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { BIInfraSgsiPanel } from '@/components/infraestrutura/BIInfraSgsiPanel';
 import { DevopsCoberturaPanel } from '@/components/infraestrutura/DevopsCoberturaPanel';
+import { InfraTimelogTab } from '@/components/infraestrutura/InfraTimelogTab';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban } from 'lucide-react';
+import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban, Timer } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
@@ -205,6 +206,7 @@ export default function InfraestruturaDashboard() {
             <TabsTrigger value="esteira-saude" className="gap-1.5 text-xs"><HeartPulse className="h-3.5 w-3.5" />Esteira / Saúde</TabsTrigger>
             <TabsTrigger value="gestao-sg" className="gap-1.5 text-xs"><ShieldCheck className="h-3.5 w-3.5" />Gestão SG</TabsTrigger>
             <TabsTrigger value="projetos-pipelines" className="gap-1.5 text-xs"><FolderKanban className="h-3.5 w-3.5" />Projetos & Pipelines</TabsTrigger>
+            <TabsTrigger value="timelog" className="gap-1.5 text-xs"><Timer className="h-3.5 w-3.5" />Timelog</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4 mt-0">
@@ -340,6 +342,10 @@ export default function InfraestruturaDashboard() {
 
           <TabsContent value="projetos-pipelines" className="mt-0">
             <DevopsCoberturaPanel />
+          </TabsContent>
+
+          <TabsContent value="timelog" className="mt-0">
+            <InfraTimelogTab dateFrom={effectiveRange.from} dateTo={effectiveRange.to} items={scoped.items} />
           </TabsContent>
         </Tabs>
       )}
