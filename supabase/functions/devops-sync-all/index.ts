@@ -331,12 +331,24 @@ function extractSprintCodeFromPath(path: string | null | undefined): string | nu
   return match ? match[0].toUpperCase() : null
 }
 
+// O Azure DevOps marca a revisão corrente com revisedDate=9999-01-01 (sentinela).
+// Datas nesse formato não podem entrar em históricos nem em cálculos de duração.
+function sanitizeHistoryDate(value: string | null | undefined): string | null {
+  const d = toDateOrNull(value ?? null)
+  if (!d) return null
+  if (d.getUTCFullYear() >= 9000) return null
+  return value as string
+}
+
 function getDurationDays(fromIso: string | null | undefined, toIso: string | null | undefined): number {
   const from = toDateOrNull(fromIso)
   const to = toDateOrNull(toIso)
   if (!from || !to) return 0
-  const diffMs = to.getTime() - from.getTime()
-  return Math.max(0, diffMs / 86400000)
+  // Clamp em now(): datas futuras (ex.: sentinela 9999) não geram durações absurdas
+  const nowMs = Date.now()
+  const fromMs = Math.min(from.getTime(), nowMs)
+  const toMs = Math.min(to.getTime(), nowMs)
+  return Math.max(0, (toMs - fromMs) / 86400000)
 }
 
 function isDoneState(state: string | null | undefined): boolean {
@@ -548,7 +560,9 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
       checkpoints.push({ at: createdDate, path: firstPath })
     }
     for (const ch of orderedHistory) {
-      checkpoints.push({ at: ch.revisedDate, path: ch.newValue || null })
+      const at = sanitizeHistoryDate(ch.revisedDate)
+      if (!at) continue
+      checkpoints.push({ at, path: ch.newValue || null })
     }
 
     if (checkpoints.length === 0 && changedDate) {
@@ -732,10 +746,13 @@ function extractIterationChanges(updates: any[]): IterationChange[] {
     const iterField = update.fields?.['System.IterationPath']
     if (!iterField || !iterField.newValue) continue
     if (iterField.oldValue && iterField.oldValue !== iterField.newValue) {
+      const revisedDate = sanitizeHistoryDate(update.fields?.['System.ChangedDate']?.newValue)
+        ?? sanitizeHistoryDate(update.revisedDate)
+      if (!revisedDate) continue
       changes.push({
         oldValue: iterField.oldValue,
         newValue: iterField.newValue,
-        revisedDate: update.revisedDate,
+        revisedDate,
       })
     }
   }
@@ -748,11 +765,11 @@ function extractStateChanges(updates: any[]): StateChange[] {
     const stateField = update.fields?.['System.State']
     if (!stateField) continue
     // First revision has only newValue (creation)
-    const revisedDate = update.fields?.['System.ChangedDate']?.newValue
-      || update.fields?.['System.ChangedDate']?.oldValue
-      || update.revisedDate
+    const revisedDate = sanitizeHistoryDate(update.fields?.['System.ChangedDate']?.newValue)
+      || sanitizeHistoryDate(update.fields?.['System.ChangedDate']?.oldValue)
+      || sanitizeHistoryDate(update.revisedDate)
     const changedBy = update.revisedBy?.displayName || null
-    if (stateField.newValue) {
+    if (stateField.newValue && revisedDate) {
       changes.push({
         oldValue: stateField.oldValue || null,
         newValue: stateField.newValue,

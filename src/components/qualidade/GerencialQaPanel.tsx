@@ -21,7 +21,7 @@ import {
 } from 'recharts';
 import {
   CheckCircle2, XCircle, ShieldCheck,
-  Users, TrendingUp, Info, AlertTriangle, ExternalLink,
+  Users, TrendingUp, Info, AlertTriangle, ExternalLink, ChevronDown,
 } from 'lucide-react';
 import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 
@@ -31,15 +31,30 @@ const SERIES_COLORS = QA_CHART_SERIES;
 
 type QaDrillFilter = 'concluidos' | 'sem_retorno' | 'com_retorno' | null;
 
-/** Divisor de seção da visão executiva (Visão Sprint / Desempenho) */
-function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+/** Seção colapsável da visão executiva (Visão Sprint / Desempenho) */
+function CollapsibleSection({ title, subtitle, defaultOpen = true, children }: {
+  title: string; subtitle?: string; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="flex items-center gap-3 pt-4">
-      <div className="flex items-baseline gap-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{title}</h3>
-        {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
-      </div>
-      <div className="h-px flex-1 bg-border" />
+    <div className="space-y-4">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 pt-4 text-left group"
+      >
+        <span className="flex items-baseline gap-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{title}</h3>
+          {subtitle && <span className="text-xs text-muted-foreground hidden sm:inline">{subtitle}</span>}
+        </span>
+        <span className="h-px flex-1 bg-border" />
+        <span className="flex items-center gap-1 text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+          {open ? 'Recolher' : 'Expandir'}
+          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${open ? '' : '-rotate-90'}`} />
+        </span>
+      </button>
+      {open && <div className="space-y-4 animate-fade-in">{children}</div>}
     </div>
   );
 }
@@ -320,7 +335,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
           <QaKpiCard label="Itens concluídos" value={atemporal.concluidos} icon={ShieldCheck} tone="primary" delay={0}
             onClick={() => setKpiDrill(kpiDrill === 'concluidos' ? null : 'concluidos')} active={kpiDrill === 'concluidos'}
             sublabel={`${atemporal.qtd_tasks} tasks · ${atemporal.qtd_pbis} PBIs · ${atemporal.qtd_bugs} bugs`}
-            tooltip="Qualquer tipo de item em Done com Closed By do QA (mesma régua da query oficial do DevOps). Clique para listar." />
+            tooltip="Qualquer tipo de item em Done com Closed By do QA — Thales, Marco, Rodrigues, Thiago, Alessandro, Mauricio (mesma régua da query oficial do DevOps). Clique para listar." />
           <QaKpiCard label="Encerradas sem Retorno" value={atemporal.sem_retorno} icon={CheckCircle2} tone="success" delay={60}
             onClick={() => setKpiDrill(kpiDrill === 'sem_retorno' ? null : 'sem_retorno')} active={kpiDrill === 'sem_retorno'}
             tooltip="Concluídos QA sem a tag RETORNO QA. Clique para listar." />
@@ -391,7 +406,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
         </Card>
       )}
 
-      <SectionHeader title="Visão Sprint" subtitle="evolução, encerramentos e distribuição" />
+      <CollapsibleSection title="Visão Sprint" subtitle="evolução, encerramentos e distribuição">
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
@@ -552,7 +567,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Retornos por Produto/Sistema</CardTitle>
@@ -594,7 +609,6 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                 </p>
               </CardContent>
             </Card>
-          </div>
 
           <Card>
             <CardHeader className="pb-2">
@@ -607,7 +621,7 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
                     <BarChart data={tasksPorCliente} layout="vertical" margin={{ left: 30 }}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                       <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <YAxis type="category" dataKey="cliente" tick={{ fontSize: 10 }} width={130} />
+                      <YAxis type="category" dataKey="cliente" tick={{ fontSize: 10 }} width={105} />
                       <RTooltip />
                       <Bar dataKey="itens" name="Tasks" radius={[0,4,4,0]}>
                         {tasksPorCliente.map((c, i) => (
@@ -625,8 +639,11 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               ) : <p className="text-muted-foreground text-sm py-8 text-center">Sem dados</p>}
             </CardContent>
           </Card>
+          </div>
 
-      <SectionHeader title="Desempenho" subtitle="retrabalho e desempenho por responsável" />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Desempenho" subtitle="retrabalho e desempenho por responsável">
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {agg && (
@@ -745,6 +762,8 @@ export function GerencialQaPanel({ lockedSprintCode = null, dateStart, dateEnd }
               )}
             </CardContent>
           </Card>
+
+      </CollapsibleSection>
     </div>
   );
 }

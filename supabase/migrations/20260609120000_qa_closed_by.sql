@@ -42,7 +42,7 @@ COMMENT ON TABLE public.qa_authorized_closers IS
 
 INSERT INTO public.qa_authorized_closers (email, display_name, canonical) VALUES
   ('thales@flag.com.br',            'Thales Jose Saraiva Pereira', 'Thales'),
-  ('marco@flag.com.br',             'Marco Aurélio Pimenta',       'Marquin'),
+  ('marco@flag.com.br',             'Marco Aurélio Pimenta',       'Marco'),
   ('rodrigues@flag.com.br',         'Carlos R. Alves',             'Rodrigues'),
   ('thiago.araujo@flag.com.br',     'Thiago S. Araujo',            'Thiago'),
   ('alessandro@flag.com.br',        'Alessandro Sales da Silva',   'Alessandro'),
