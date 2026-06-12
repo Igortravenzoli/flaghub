@@ -2,8 +2,12 @@
 -- Fix cron jobs pointing to old project URL (onpdhywrzjtwxaxuvijw -> nxmgppfyltwsqryfxkbm)
 -- Also clean up duplicate devops_queries
 
+-- Unschedules guardados por existência: esses jobs foram criados via dashboard
+-- em PROD e não existem num banco do zero (CI).
+
 -- 1. Fix cron job: sync-devops-all
-SELECT cron.unschedule('sync-devops-all');
+SELECT cron.unschedule('sync-devops-all')
+WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'sync-devops-all');
 SELECT cron.schedule(
   'sync-devops-all',
   '0 0 * * *',
@@ -18,7 +22,8 @@ SELECT cron.schedule(
 );
 
 -- 2. Fix cron job: sync-devops-timelog
-SELECT cron.unschedule('sync-devops-timelog');
+SELECT cron.unschedule('sync-devops-timelog')
+WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'sync-devops-timelog');
 SELECT cron.schedule(
   'sync-devops-timelog',
   '0 0 * * *',
@@ -33,7 +38,8 @@ SELECT cron.schedule(
 );
 
 -- 3. Fix cron job: sync-vdesk-clientes
-SELECT cron.unschedule('sync-vdesk-clientes');
+SELECT cron.unschedule('sync-vdesk-clientes')
+WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'sync-vdesk-clientes');
 SELECT cron.schedule(
   'sync-vdesk-clientes',
   '*/15 * * * *',
@@ -48,7 +54,8 @@ SELECT cron.schedule(
 );
 
 -- 4. Fix cron job: sync-vdesk-helpdesk
-SELECT cron.unschedule('sync-vdesk-helpdesk');
+SELECT cron.unschedule('sync-vdesk-helpdesk')
+WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'sync-vdesk-helpdesk');
 SELECT cron.schedule(
   'sync-vdesk-helpdesk',
   '*/15 * * * *',
