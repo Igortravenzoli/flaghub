@@ -22,6 +22,7 @@ import type { Integration } from '@/components/setores/SectorIntegrations';
 import MovimentacaoTab from '@/components/comercial/MovimentacaoTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
 import { PipeDriveTab } from '@/components/comercial/PipeDriveTab';
+import { ExecutivoTab } from '@/components/comercial/ExecutivoTab';
 import MetasTab from '@/components/comercial/MetasTab';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { useHubAreas } from '@/hooks/useHubAreas';
@@ -556,6 +557,7 @@ export default function ComercialDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1 w-full overflow-x-auto">
             <TabsList className="bg-transparent p-0 h-auto gap-0.5 flex-shrink-0">
+              <TabsTrigger value="visao-executiva" className="text-xs h-8">Visão Executiva</TabsTrigger>
               <TabsTrigger value="visao-clientes" className="text-xs h-8">Visão Clientes</TabsTrigger>
               <TabsTrigger value="ganho-perda" className="text-xs h-8">Ganho/Perda</TabsTrigger>
               <TabsTrigger value="fechamento-comercial" className="text-xs h-8">Fechamento Comercial</TabsTrigger>
@@ -589,6 +591,19 @@ export default function ComercialDashboard() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          <TabsContent value="visao-executiva" className="space-y-4 mt-0">
+            <ExecutivoTab
+              canViewValues={canViewValues}
+              showValues={showValues}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              periodLabel={filters.presetLabel}
+              clientesAtivos={Math.max(0, stats.ativos - hiddenInternalActiveCount)}
+              clientesBloqueados={stats.bloqueados}
+              isLoadingClientes={isLoading}
+            />
+          </TabsContent>
 
           <TabsContent value="visao-clientes" className="space-y-4 mt-0">
             {(() => {
