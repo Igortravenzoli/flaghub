@@ -19,7 +19,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
-import { BIInfraSgsiPanel } from '@/components/infraestrutura/BIInfraSgsiPanel';
+import { BIInfraSgsiPanel, SGSI_SECOES } from '@/components/infraestrutura/BIInfraSgsiPanel';
 import { DevopsCoberturaPanel } from '@/components/infraestrutura/DevopsCoberturaPanel';
 import { InfraTimelogTab } from '@/components/infraestrutura/InfraTimelogTab';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -54,6 +54,7 @@ export default function InfraestruturaDashboard() {
   const [kpiFilter, setKpiFilter] = useState<InfraKpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<InfraHealthFilter>('all');
   const [activeTab, setActiveTab] = useState('overview');
+  const [sgsiSecao, setSgsiSecao] = useState<string>('mudancas');
   const [sprintSelection, setSprintSelection] = useState<string[]>(['__pending__']);
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [customActive, setCustomActive] = useState(false);
@@ -256,7 +257,31 @@ export default function InfraestruturaDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-muted/50 p-1 flex w-full justify-start">
             <TabsTrigger value="overview" className="gap-1.5 text-xs"><Server className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
-            <TabsTrigger value="gestao-sg" className="gap-1.5 text-xs"><ShieldCheck className="h-3.5 w-3.5" />Gestão SG</TabsTrigger>
+            <div className="flex items-center">
+              <TabsTrigger value="gestao-sg" className="gap-1.5 text-xs rounded-r-none pr-1.5"><ShieldCheck className="h-3.5 w-3.5" />Gestão SG</TabsTrigger>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label="Seções da Gestão SG"
+                    className={`inline-flex items-center rounded-r-md px-1 py-1.5 transition-colors ${activeTab === 'gestao-sg' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[240px]">
+                  {SGSI_SECOES.map(({ value, label, Icon }) => (
+                    <DropdownMenuCheckboxItem
+                      key={value}
+                      checked={activeTab === 'gestao-sg' && sgsiSecao === value}
+                      onCheckedChange={() => { setSgsiSecao(value); setActiveTab('gestao-sg'); }}
+                      className="text-xs gap-1.5"
+                    >
+                      <Icon className="h-3.5 w-3.5" /> {label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <TabsTrigger value="projetos-pipelines" className="gap-1.5 text-xs"><FolderKanban className="h-3.5 w-3.5" />Projetos & Pipelines</TabsTrigger>
             <TabsTrigger value="timelog" className="gap-1.5 text-xs"><Timer className="h-3.5 w-3.5" />Timelog</TabsTrigger>
             <div className="ml-auto">
@@ -446,7 +471,7 @@ export default function InfraestruturaDashboard() {
               // Sprint selecionada (ou range custom) limita o SGSI por data de
               // criação/modificação; "Todas as Sprints" mostra tudo.
               const sgsiRange = customActive && customRange ? customRange : sprintUnionRange;
-              return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} />;
+              return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} secao={sgsiSecao} />;
             })()}
           </TabsContent>
 
