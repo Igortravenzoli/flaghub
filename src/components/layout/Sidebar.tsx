@@ -241,6 +241,7 @@ export function Sidebar() {
             {/* Admin — only visible to admins; minimizado por padrão */}
             {isAdmin && (
               <>
+                {/* Sem rótulo "Admin" — apenas "⋯" + seta, para não sinalizar visualmente quem é admin */}
                 {!collapsed ? (
                   <button
                     type="button"
@@ -248,25 +249,20 @@ export function Sidebar() {
                     className="w-full flex items-center justify-between pt-3 pb-1 px-3 group"
                     aria-expanded={adminOpen}
                   >
-                    <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 font-semibold group-hover:text-sidebar-foreground/70 transition-colors">Admin</span>
+                    <span className="text-[10px] tracking-wider text-sidebar-foreground/40 font-semibold group-hover:text-sidebar-foreground/70 transition-colors">⋯</span>
                     <ChevronRight className={cn('h-3 w-3 text-sidebar-foreground/40 group-hover:text-sidebar-foreground/70 transition-transform', adminOpen && 'rotate-90')} />
                   </button>
                 ) : (
                   <>
                     <div className="border-t border-sidebar-border my-2" />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={() => setAdminOpen(o => !o)}
-                          className="w-full flex items-center justify-center py-2 rounded-md text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent transition-colors"
-                          aria-expanded={adminOpen}
-                        >
-                          <Lock className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">{adminOpen ? 'Recolher Admin' : 'Expandir Admin'}</TooltipContent>
-                    </Tooltip>
+                    <button
+                      type="button"
+                      onClick={() => setAdminOpen(o => !o)}
+                      className="w-full flex items-center justify-center py-2 rounded-md text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent transition-colors"
+                      aria-expanded={adminOpen}
+                    >
+                      <span className="text-xs font-semibold leading-none">⋯</span>
+                    </button>
                   </>
                 )}
                 {adminOpen && adminItems.map(item => renderNavItem(item))}

@@ -22,8 +22,9 @@ import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
 import { BIInfraSgsiPanel, SGSI_SECOES } from '@/components/infraestrutura/BIInfraSgsiPanel';
 import { DevopsCoberturaPanel } from '@/components/infraestrutura/DevopsCoberturaPanel';
 import { InfraTimelogTab } from '@/components/infraestrutura/InfraTimelogTab';
+import { HubUptimePanel } from '@/components/infraestrutura/HubUptimePanel';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban, Timer, ChevronDown } from 'lucide-react';
+import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban, Timer, ChevronDown, Activity } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
@@ -284,6 +285,7 @@ export default function InfraestruturaDashboard() {
             </div>
             <TabsTrigger value="projetos-pipelines" className="gap-1.5 text-xs"><FolderKanban className="h-3.5 w-3.5" />Projetos & Pipelines</TabsTrigger>
             <TabsTrigger value="timelog" className="gap-1.5 text-xs"><Timer className="h-3.5 w-3.5" />Timelog</TabsTrigger>
+            <TabsTrigger value="hub-uptime" className="gap-1.5 text-xs"><Activity className="h-3.5 w-3.5" />HubUpTime</TabsTrigger>
             <div className="ml-auto">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -481,6 +483,10 @@ export default function InfraestruturaDashboard() {
 
           <TabsContent value="timelog" className="mt-0">
             <InfraTimelogTab dateFrom={effectiveRange.from} dateTo={effectiveRange.to} items={scoped.items} />
+          </TabsContent>
+
+          <TabsContent value="hub-uptime" className="mt-0">
+            <HubUptimePanel />
           </TabsContent>
         </Tabs>
       )}
