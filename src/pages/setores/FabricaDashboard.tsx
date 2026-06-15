@@ -2663,7 +2663,7 @@ export default function FabricaDashboard() {
                       { key: 'only_vdesk',  label: 'Só Vdesk',        color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' },
                       { key: 'divergent',   label: 'Divergentes',     color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800' },
                       { key: 'no_log',      label: 'Sem apontamento', color: 'text-slate-600 bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-700' },
-                      { key: 'bo_sem_apontamento', label: 'BO sem apont.', color: 'text-red-700 bg-red-50 border-red-200 dark:bg-red-950/40 dark:border-red-800' },
+                      { key: 'bo_sem_apontamento', label: 'BO sem apont. na Sprint', color: 'text-red-700 bg-red-50 border-red-200 dark:bg-red-950/40 dark:border-red-800' },
                     ].map(({ key, label, color }) => {
                       const isActive = reconFilter === key;
                       const count = key === 'all'
@@ -2686,7 +2686,7 @@ export default function FabricaDashboard() {
                     })}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Regra BO: task fora de To Do/New sem apontamento de horas.
+                    Regra BO: task fora de To Do/New sem apontamento de horas na sprint selecionada (apontamentos em outras sprints não contam).
                   </p>
 
                   {filteredReconEntries.length > 0 && (
@@ -2749,7 +2749,7 @@ export default function FabricaDashboard() {
                                     variant="outline"
                                     className={`text-[10px] ${isBoSemApontamento ? 'bg-red-500/10 text-red-700 border-red-500/30' : (statusColors[entry.status] ?? '')}`}
                                   >
-                                    {isBoSemApontamento ? 'BO sem apont.' : (statusLabels[entry.status] ?? entry.status)}
+                                    {isBoSemApontamento ? 'BO sem apont. na Sprint' : (statusLabels[entry.status] ?? entry.status)}
                                   </Badge>
                                 </td>
                               </tr>
