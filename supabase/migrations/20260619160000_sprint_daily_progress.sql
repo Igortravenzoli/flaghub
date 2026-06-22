@@ -59,15 +59,17 @@ ALTER TABLE public.sprint_daily_progress ENABLE ROW LEVEL SECURITY;
 -- Leitura é feita via RPC SECURITY DEFINER; nenhuma policy de acesso direto.
 
 -- ── 2. Captura diária da sprint ABERTA (as-of NOW) ───────────────────────────
+DROP FUNCTION IF EXISTS public.rpc_capture_sprint_daily_progress(text);
+
 CREATE OR REPLACE FUNCTION public.rpc_capture_sprint_daily_progress(
   p_sprint_code text DEFAULT NULL
 )
 RETURNS TABLE(
-  sprint_code text,
-  captured_date date,
-  total bigint,
-  finalized bigint,
-  qa_concluidos bigint
+  out_sprint_code text,
+  out_captured_date date,
+  out_total bigint,
+  out_finalized bigint,
+  out_qa_concluidos bigint
 )
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public'
 AS $function$
