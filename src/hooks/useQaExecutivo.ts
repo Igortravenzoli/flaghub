@@ -40,20 +40,20 @@ export interface QaRetornoTop {
   work_item_type: string | null;
   sprint_code: string | null;
   ciclos: number;
-  tem_aberto: boolean;
 }
 
 export interface QaRetornosDistribuicao {
-  eventos_total: number;
   itens_com_retorno: number;
   itens_1x: number;
   itens_2x: number;
   itens_3x_mais: number;
+  ciclos_total: number;
   top_3x_mais: QaRetornoTop[];
+  /** Ponte com a aba de encerramentos (mesmos números). */
   reconc: {
-    itens_qualquer_estagio: number;
-    itens_concluidos: number;
-    ciclos_concluidos: number;
+    total_encerrados: number;
+    sem_retorno: number;
+    com_retorno: number;
   };
 }
 
