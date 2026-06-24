@@ -17,6 +17,7 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import { useCrossSectorSearch } from '@/hooks/useCrossSectorSearch';
 import { CrossSectorSearchBanner } from '@/components/dashboard/CrossSectorSearchBanner';
 import { GerencialQaPanel } from '@/components/qualidade/GerencialQaPanel';
+import { ExecutivoTab } from '@/components/qualidade/ExecutivoTab';
 import { QaKpiCard } from '@/components/qualidade/QaKpiCard';
 import { QA_TONES, QA_CHART_SERIES, QA_HEALTH, thresholdColorLow } from '@/lib/qaTheme';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileCheck, Clock, TrendingUp, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo, Users, Filter, MoreHorizontal } from 'lucide-react';
+import { FileCheck, Clock, TrendingUp, RotateCcw, Plane, HeartPulse, Workflow, AlertTriangle, ListTodo, Users, Filter, MoreHorizontal, Gauge } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
@@ -187,7 +188,7 @@ export default function QualidadeDashboard() {
   );
   const { exportCSV, exportPDF } = useDashboardExport();
   const [drawerItem, setDrawerItem] = useState<QualidadeItem | null>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('executivo');
   const [tableSearch, setTableSearch] = useState('');
 
   const localItemIds = useMemo(() => allItems.map(i => i.id).filter(Boolean) as number[], [allItems]);
@@ -563,6 +564,7 @@ export default function QualidadeDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="flex items-center gap-2">
             <TabsList className="bg-muted/50 p-1">
+              <TabsTrigger value="executivo" className="gap-1.5 text-xs"><Gauge className="h-3.5 w-3.5" />Visão Executiva</TabsTrigger>
               <TabsTrigger value="overview" className="gap-1.5 text-xs"><FileCheck className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
               <TabsTrigger value="gerencial" className="gap-1.5 text-xs"><TrendingUp className="h-3.5 w-3.5" />Gerencial</TabsTrigger>
             </TabsList>
@@ -598,6 +600,15 @@ export default function QualidadeDashboard() {
           </div>
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
+          <TabsContent value="executivo" className="space-y-4 mt-0">
+            <ExecutivoTab
+              lockedSprintCode={selectedSprintCode}
+              dateStart={effectiveRange.from}
+              dateEnd={effectiveRange.to}
+              periodLabel={customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Todas as sprints')}
+            />
+          </TabsContent>
+
           <TabsContent value="overview" className="space-y-4 mt-0">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Bloco Fila QA */}
