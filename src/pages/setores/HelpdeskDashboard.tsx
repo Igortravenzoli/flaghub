@@ -9,8 +9,9 @@ import { useDashboardExport } from '@/hooks/useDashboardExport';
 import {
   Clock, Users, FileText, Monitor, Flag, UserCheck,
   BarChart3, Filter, X, Check, ChevronsUpDown, TrendingUp, Phone,
-  Ticket, Search, Settings2,
+  Ticket, Search, Settings2, Gauge,
 } from 'lucide-react';
+import { HelpdeskExecutivoTab } from '@/components/helpdesk/HelpdeskExecutivoTab';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -272,6 +273,25 @@ export default function HelpdeskDashboard() {
 
   const ticketExtraTabs = [
     {
+      id: 'executivo',
+      label: 'Visão Executiva',
+      icon: <Gauge className="h-3.5 w-3.5" />,
+      content: (
+        <HelpdeskExecutivoTab
+          totalRegistros={filteredTotalRegistros}
+          totalHoras={filteredTotalHoras}
+          consultoresAtivos={selectedConsultants.length || totalConsultores}
+          registrosPorConsultor={registrosPorConsultor}
+          tipoChamadoTempoMedio={tipoChamadoTempoMedio}
+          registrosPorSistema={registrosPorSistema}
+          registrosPorBandeira={registrosPorBandeira}
+          registrosPorCliente={registrosPorCliente}
+          horasTotaisPorDia={horasTotaisPorDia}
+          periodLabel={filters.presetLabel}
+        />
+      ),
+    },
+    {
       id: 'tickets-painel',
       label: 'Painel Tickets',
       icon: <Ticket className="h-3.5 w-3.5" />,
@@ -312,6 +332,7 @@ export default function HelpdeskDashboard() {
       templateKey="helpdesk_v1"
       areaKey="tickets_os"
       extraTabs={ticketExtraTabs}
+      defaultTab="executivo"
       syncFunctions={[
         { name: 'vdesk-sync-helpdesk', label: 'Sincronizar Helpdesk (VDesk)' },
       ]}
