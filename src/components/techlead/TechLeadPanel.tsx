@@ -23,7 +23,7 @@ import {
   BarChart3, Calendar, Search, ArrowUpDown, ChevronUp, ChevronDown, Ticket,
 } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
 } from 'recharts';
 import { CHART_COLORS } from '@/lib/chartColors';
 
@@ -498,8 +498,9 @@ export function TechLeadPanel() {
                               name === 'Produtividade' ? [`${v.toFixed(1)}%`, name] : [v, name]
                             }
                           />
-                          <Bar yAxisId="reg" dataKey="totalRegistros" name="Registros" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={26} />
-                          <Bar yAxisId="prod" dataKey="produtividade" name="Produtividade" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} barSize={26} />
+                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                          <Bar yAxisId="reg" dataKey="totalRegistros" name="Registros" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={20} />
+                          <Bar yAxisId="prod" dataKey="produtividade" name="Produtividade" fill="hsl(43, 85%, 46%)" radius={[4, 4, 0, 0]} barSize={20} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
