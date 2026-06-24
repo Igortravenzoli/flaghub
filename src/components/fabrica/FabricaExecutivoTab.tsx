@@ -67,9 +67,12 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
   const transbordoPct = fab.transbordoPct ?? 0;
   const num = (v: number | null) => (v == null ? '—' : v);
 
+  // Apenas sprints do ANO VIGENTE — o RPC retorna também 2024/2025 (ex.: S33-2025).
+  const anoVigente = new Date().getFullYear();
   const evolucao = useMemo(() => {
+    const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
     return [...historicoRaw]
-      .filter(r => /^S\d+-\d{4}$/.test(r.sprint_code))
+      .filter(r => reAno.test(r.sprint_code))
       .sort((a, b) => sprintNum(a.sprint_code) - sprintNum(b.sprint_code))
       .slice(-8)
       .map(r => ({
@@ -77,7 +80,7 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
         conclusao: r.total_itens > 0 ? Math.round((r.done_count / r.total_itens) * 100) : 0,
         lead: r.avg_lead_time_days != null ? Math.round(r.avg_lead_time_days * 10) / 10 : null,
       }));
-  }, [historicoRaw]);
+  }, [historicoRaw, anoVigente]);
 
   return (
     <div className="space-y-5">
