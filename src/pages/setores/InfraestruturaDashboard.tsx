@@ -23,8 +23,9 @@ import { BIInfraSgsiPanel, SGSI_SECOES } from '@/components/infraestrutura/BIInf
 import { DevopsCoberturaPanel } from '@/components/infraestrutura/DevopsCoberturaPanel';
 import { InfraTimelogTab } from '@/components/infraestrutura/InfraTimelogTab';
 import { HubUptimePanel } from '@/components/infraestrutura/HubUptimePanel';
+import { InfraExecutivoTab } from '@/components/infraestrutura/InfraExecutivoTab';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban, Timer, ChevronDown, Activity } from 'lucide-react';
+import { Server, Clock, Wrench, Shield, AlertTriangle, CheckCircle, HeartPulse, Workflow, ShieldCheck, FolderKanban, Timer, ChevronDown, Activity, Gauge } from 'lucide-react';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
@@ -54,7 +55,7 @@ const columns: DataTableColumn<InfraItem>[] = [
 export default function InfraestruturaDashboard() {
   const [kpiFilter, setKpiFilter] = useState<InfraKpiFilter>('all');
   const [healthFilter, setHealthFilter] = useState<InfraHealthFilter>('all');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('executivo');
   const [sgsiSecao, setSgsiSecao] = useState<string>('mudancas');
   const [sprintSelection, setSprintSelection] = useState<string[]>(['__pending__']);
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
@@ -257,6 +258,7 @@ export default function InfraestruturaDashboard() {
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="bg-muted/50 p-1 flex w-full justify-start">
+            <TabsTrigger value="executivo" className="gap-1.5 text-xs"><Gauge className="h-3.5 w-3.5" />Visão Executiva</TabsTrigger>
             <TabsTrigger value="overview" className="gap-1.5 text-xs"><Server className="h-3.5 w-3.5" />Visão Geral</TabsTrigger>
             <div className="flex items-center">
               <TabsTrigger value="gestao-sg" className="gap-1.5 text-xs rounded-r-none pr-1.5"><ShieldCheck className="h-3.5 w-3.5" />Gestão SG</TabsTrigger>
@@ -307,6 +309,15 @@ export default function InfraestruturaDashboard() {
               </DropdownMenu>
             </div>
           </TabsList>
+
+          <TabsContent value="executivo" className="space-y-4 mt-0">
+            <InfraExecutivoTab
+              kpis={scoped}
+              dateFrom={effectiveRange.from}
+              dateTo={effectiveRange.to}
+              periodLabel={customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : sprintLabel)}
+            />
+          </TabsContent>
 
           <TabsContent value="overview" className="space-y-4 mt-0">
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
