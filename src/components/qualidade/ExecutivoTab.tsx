@@ -189,7 +189,8 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground border-t pt-2">
-            Meta: nada em teste há mais de 2 sprints. PBI com &gt; 2 sprints sem DONE = atraso (represamento).
+            Meta: nada há mais de 2 sprints sem DONE = atraso (represamento).
+            {(fila?.sem_sprint ?? 0) > 0 && ` ${fila!.sem_sprint} sem sprint de origem (fora do cálculo de atraso).`}
           </p>
         </BlocoCard>
 
@@ -210,7 +211,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground border-t pt-2">
-            {retornos?.itens_com_retorno ?? 0} itens com retorno em {year}. ≥3 retornos = sinal de problema no processo (não só no dev).
+            {retornos?.itens_com_retorno ?? 0} itens encerrados com retorno (tag RETORNO QA) em {year} — soma dos 3 grupos. ≥3 = sinal de problema no processo.
           </p>
         </BlocoCard>
       </div>
@@ -304,24 +305,24 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
       {/* ── Linha 4: reconciliação (bug 76-vs-26) + controle de versão ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-        {/* Reconciliação retorno QA */}
+        {/* Reconciliação retorno QA × encerramentos */}
         <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação">
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <p className="text-2xl font-bold font-mono">{retornos?.eventos_total ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">eventos de retorno</p>
+              <p className="text-2xl font-bold font-mono">{retornos?.reconc.total_encerrados ?? 0}</p>
+              <p className="text-[11px] text-muted-foreground">encerrados em {year}</p>
             </div>
             <div>
-              <p className="text-2xl font-bold font-mono">{retornos?.itens_com_retorno ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">itens (qualquer estágio)</p>
+              <p className="text-2xl font-bold font-mono text-[hsl(142,71%,40%)]">{retornos?.reconc.sem_retorno ?? 0}</p>
+              <p className="text-[11px] text-muted-foreground">sem retorno</p>
             </div>
             <div>
-              <p className="text-2xl font-bold font-mono text-primary">{retornos?.reconc.itens_concluidos ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">concluídos · {retornos?.reconc.ciclos_concluidos ?? 0} ciclos</p>
+              <p className="text-2xl font-bold font-mono text-destructive">{retornos?.reconc.com_retorno ?? 0}</p>
+              <p className="text-[11px] text-muted-foreground">com retorno</p>
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground border-t pt-2">
-            O grid mostra <b>eventos</b> (cada retorno conta), os KPIs contam <b>itens concluídos</b> com retorno. São escopos diferentes — não divergência de dado.
+            Mesma base da aba <b>Encerramentos por usuário</b>: {retornos?.reconc.com_retorno ?? 0} com retorno = {retornos?.itens_1x ?? 0} (1x) + {retornos?.itens_2x ?? 0} (2x) + {retornos?.itens_3x_mais ?? 0} (≥3x).
           </p>
           {!!retornos?.top_3x_mais?.length && (
             <div className="space-y-1 overflow-y-auto max-h-[150px] pr-1 border-t pt-2">

@@ -290,9 +290,12 @@ export default function QualidadeDashboard() {
     [allDoneItems, selectedSprintCode]
   );
   const sprintRange = selectedSprintCode ? getOfficialSprintRange(selectedSprintCode) : null;
+  // Default "Todas as sprints" = ano vigente (não contabiliza dados de anos anteriores).
+  const anoVigente = new Date().getFullYear();
+  const anoVigenteRange = { from: new Date(anoVigente, 0, 1), to: maxDate || new Date() };
   const effectiveRange = customActive && customRange
     ? customRange
-    : sprintRange || { from: minDate || new Date(), to: maxDate || new Date() };
+    : sprintRange || anoVigenteRange;
 
   const scoped = useQualidadeKpis(effectiveRange.from, effectiveRange.to, sprintFilter === 'all' ? 'all' : sprintFilter);
 
@@ -492,7 +495,7 @@ export default function QualidadeDashboard() {
               <SelectValue placeholder="Sprint" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas as sprints</SelectItem>
+              <SelectItem value="all">Todas as sprints (ano vigente)</SelectItem>
               {sprintOptionsDesc.map(sp => (
                 <SelectItem key={sp} value={sp}>{sp.split('\\').pop()}</SelectItem>
               ))}
