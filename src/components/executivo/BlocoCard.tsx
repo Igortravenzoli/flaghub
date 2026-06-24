@@ -49,3 +49,60 @@ export function corMetaHigh(pct: number): string {
   if (pct >= 60) return '#f59e0b';
   return '#ef4444';
 }
+
+/**
+ * Divisor de seção das Visões Executivas (framework Thales):
+ * "Onde estamos · AS IS" / "O que queremos · TO BE" / "De onde viemos · Histórico".
+ */
+export function SecHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-1">
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{title}</h3>
+        {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
+      </div>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+/**
+ * Card de META (TO BE) com barra de atingimento (realizado × meta).
+ * - menorMelhor=false (padrão): "quanto maior melhor" — atingimento = realizado/meta.
+ * - menorMelhor=true: meta vira teto — atingimento = 100% se realizado ≤ meta, senão meta/realizado.
+ */
+export function MetaCard({
+  icon, titulo, realizado, meta, unidade = '%', menorMelhor = false, detalhe,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  titulo: string;
+  realizado: number;
+  meta: number;
+  unidade?: string;
+  menorMelhor?: boolean;
+  detalhe?: React.ReactNode;
+}) {
+  const atingimento = menorMelhor
+    ? (realizado <= meta ? 100 : Math.round((meta / Math.max(realizado, 0.0001)) * 100))
+    : (meta > 0 ? Math.round((realizado / meta) * 100) : 0);
+  const cor = atingimento >= 100 ? '#16a34a' : atingimento >= 80 ? '#f59e0b' : '#ef4444';
+  const fmt = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)}${unidade}`;
+  return (
+    <BlocoCard icon={icon} titulo={titulo}>
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-3xl font-bold font-mono" style={{ color: cor }}>{fmt(realizado)}</p>
+          <p className="text-[11px] text-muted-foreground">{menorMelhor ? 'teto' : 'meta'} {menorMelhor ? '≤' : '≥'} {fmt(meta)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-bold font-mono" style={{ color: cor }}>{atingimento}%</p>
+          <p className="text-[11px] text-muted-foreground">atingimento</p>
+        </div>
+      </div>
+      <div className="h-2 rounded-full bg-muted overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(atingimento, 100)}%`, backgroundColor: cor }} />
+      </div>
+      {detalhe && <p className="text-[11px] text-muted-foreground border-t pt-2">{detalhe}</p>}
+    </BlocoCard>
+  );
+}
