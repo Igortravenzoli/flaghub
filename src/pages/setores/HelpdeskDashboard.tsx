@@ -271,7 +271,7 @@ export default function HelpdeskDashboard() {
     </div>
   );
 
-  const ticketExtraTabs = [
+  const helpdeskLeadingTabs = [
     {
       id: 'executivo',
       label: 'Visão Executiva',
@@ -291,6 +291,9 @@ export default function HelpdeskDashboard() {
         />
       ),
     },
+  ];
+
+  const ticketExtraTabs = [
     {
       id: 'tickets-painel',
       label: 'Painel Tickets',
@@ -331,6 +334,7 @@ export default function HelpdeskDashboard() {
       integrations={integrations}
       templateKey="helpdesk_v1"
       areaKey="tickets_os"
+      leadingTabs={helpdeskLeadingTabs}
       extraTabs={ticketExtraTabs}
       defaultTab="executivo"
       syncFunctions={[

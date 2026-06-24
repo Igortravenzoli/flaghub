@@ -45,7 +45,7 @@ export function HelpdeskExecutivoTab({
   const tendencia = useMemo(
     () => horasTotaisPorDia.map(h => ({
       label: new Date(h.data + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      registros: h.totalRegistros,
+      horas: h.totalHoras,
     })),
     [horasTotaisPorDia]
   );
@@ -132,12 +132,12 @@ export function HelpdeskExecutivoTab({
                 <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
                 <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v} registros`, '']} />
-                <Bar dataKey="registros" fill="hsl(199,89%,48%)" radius={[3, 3, 0, 0]} />
+                <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v}h`, 'horas']} />
+                <Bar dataKey="horas" fill="hsl(199,89%,48%)" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Registros de atendimento por dia.</p>
+          <p className="text-[11px] text-muted-foreground border-t pt-2">Horas de atendimento por dia.</p>
         </BlocoCard>
 
         {/* Carga por consultor (ranking) */}

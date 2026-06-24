@@ -32,13 +32,15 @@ interface SectorLayoutProps {
   areaKey?: string;
   syncFunctions?: SyncFunction[];
   extraTabs?: { id: string; label: string; icon: ReactNode; content: ReactNode }[];
-  /** Aba inicial selecionada (default: 'dashboard'). Ex.: 'executivo' (id de um extraTab). */
+  /** Abas renderizadas ANTES do "Dashboard" (ex.: Visão Executiva como 1ª aba). */
+  leadingTabs?: { id: string; label: string; icon: ReactNode; content: ReactNode }[];
+  /** Aba inicial selecionada (default: 'dashboard'). Ex.: 'executivo' (id de um leadingTab/extraTab). */
   defaultTab?: string;
   /** When true, only shows dashboard content (no tabs for settings/imports/integrations) */
   kioskMode?: boolean;
 }
 
-export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, defaultTab, kioskMode }: SectorLayoutProps) {
+export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, leadingTabs, defaultTab, kioskMode }: SectorLayoutProps) {
   // Detect kiosk mode from parent or prop
   const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
   const isHubAdmin = useHubIsAdmin();
@@ -158,6 +160,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
 
         <Tabs defaultValue={defaultTab ?? 'dashboard'} className="w-full">
         <TabsList>
+          {canViewExtraTabs && leadingTabs?.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id} className="gap-1">
+              {tab.icon}
+              {tab.label}
+            </TabsTrigger>
+          ))}
           <TabsTrigger value="dashboard" className="gap-1">
             <LayoutDashboard className="h-3.5 w-3.5" />
             Dashboard
@@ -181,6 +189,12 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
             </TabsTrigger>
           )}
         </TabsList>
+
+        {canViewExtraTabs && leadingTabs?.map((tab) => (
+          <TabsContent key={tab.id} value={tab.id} className="mt-4">
+            {tab.content}
+          </TabsContent>
+        ))}
 
         <TabsContent value="dashboard" className="mt-4 space-y-4">
           {children}

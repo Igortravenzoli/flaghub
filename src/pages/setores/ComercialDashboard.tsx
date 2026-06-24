@@ -11,7 +11,7 @@ import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useDashboardFilters, type FilterPreset } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers, MoreHorizontal, Eye, EyeOff, Users, CalendarDays, ChevronDown } from 'lucide-react';
+import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers, MoreHorizontal, Eye, EyeOff, Users, CalendarDays, ChevronDown, Gauge, TrendingUp, Wallet, Smile, Target } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -354,7 +354,7 @@ const operationalColumns = [
 
 export default function ComercialDashboard() {
   const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('ativo');
-  const [activeTab, setActiveTab] = useState('visao-clientes');
+  const [activeTab, setActiveTab] = useState('visao-executiva');
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [selectedSistema, setSelectedSistema] = useState<string | null>(null);
   const [multiOnly, setMultiOnly] = useState(false);
@@ -557,12 +557,12 @@ export default function ComercialDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1 w-full overflow-x-auto">
             <TabsList className="bg-transparent p-0 h-auto gap-0.5 flex-shrink-0">
-              <TabsTrigger value="visao-executiva" className="text-xs h-8">Visão Executiva</TabsTrigger>
-              <TabsTrigger value="visao-clientes" className="text-xs h-8">Visão Clientes</TabsTrigger>
-              <TabsTrigger value="ganho-perda" className="text-xs h-8">Ganho/Perda</TabsTrigger>
-              <TabsTrigger value="fechamento-comercial" className="text-xs h-8">Fechamento Comercial</TabsTrigger>
-              <TabsTrigger value="pesquisa" className="text-xs h-8">Pesquisa Satisfação</TabsTrigger>
-              <TabsTrigger value="metas" className="text-xs h-8">Metas</TabsTrigger>
+              <TabsTrigger value="visao-executiva" className="gap-1.5 text-xs h-8"><Gauge className="h-3.5 w-3.5" />Visão Executiva</TabsTrigger>
+              <TabsTrigger value="visao-clientes" className="gap-1.5 text-xs h-8"><Users className="h-3.5 w-3.5" />Visão Clientes</TabsTrigger>
+              <TabsTrigger value="ganho-perda" className="gap-1.5 text-xs h-8"><TrendingUp className="h-3.5 w-3.5" />Ganho/Perda</TabsTrigger>
+              <TabsTrigger value="fechamento-comercial" className="gap-1.5 text-xs h-8"><Wallet className="h-3.5 w-3.5" />Fechamento Comercial</TabsTrigger>
+              <TabsTrigger value="pesquisa" className="gap-1.5 text-xs h-8"><Smile className="h-3.5 w-3.5" />Pesquisa Satisfação</TabsTrigger>
+              <TabsTrigger value="metas" className="gap-1.5 text-xs h-8"><Target className="h-3.5 w-3.5" />Metas</TabsTrigger>
             </TabsList>
 
             <DropdownMenu>
