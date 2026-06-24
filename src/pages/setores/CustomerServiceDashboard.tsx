@@ -23,7 +23,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, AlertTriangle, Timer, ArrowRight, Target } from 'lucide-react';
+import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, AlertTriangle, Timer, ArrowRight, Target, Gauge } from 'lucide-react';
+import { CSExecutivoTab } from '@/components/customerservice/CSExecutivoTab';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
@@ -125,7 +126,7 @@ export default function CustomerServiceDashboard() {
   const [implFilter, setImplFilter] = useState<ImplFilter>('all');
   const [implFilterValue, setImplFilterValue] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
-  const [activeTab, setActiveTab] = useState<'fila' | 'implantacoes' | 'saude' | 'monitoramento'>('fila');
+  const [activeTab, setActiveTab] = useState<'executivo' | 'fila' | 'implantacoes' | 'saude' | 'monitoramento'>('executivo');
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>('all');
   const [tableSearch, setTableSearch] = useState('');
   const { minDate, maxDate } = useMemo(
@@ -423,6 +424,10 @@ export default function CustomerServiceDashboard() {
       ) : (
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
           <TabsList className="mb-4 bg-muted/50 p-1">
+            <TabsTrigger value="executivo" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => { setKpiFilter('all'); setKpiFilterValue(null); }}>
+              <Gauge className="h-3.5 w-3.5" />
+              Visão Executiva
+            </TabsTrigger>
             <TabsTrigger value="fila" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm" onClick={() => { setKpiFilter('all'); setKpiFilterValue(null); }}>
               <Eye className="h-3.5 w-3.5" />
               Fila CS
@@ -440,6 +445,18 @@ export default function CustomerServiceDashboard() {
               Monitoramento
             </TabsTrigger>
           </TabsList>
+
+          {/* ═══ TAB: VISÃO EXECUTIVA ═══ */}
+          <TabsContent value="executivo" className="space-y-4 animate-fade-in">
+            <CSExecutivoTab
+              kpis={{ totalFilaCS, implAndamento, implFinalizadas, implTotal, isLoading }}
+              aprovacaoCSCount={aprovacaoCSCount}
+              customerServiceCount={customerServiceCount}
+              inBacklogCount={inBacklogCount}
+              alertCounts={alertCounts}
+              devopsItems={devopsItems}
+            />
+          </TabsContent>
 
           {/* ═══ TAB: FILA CS ═══ */}
           <TabsContent value="fila" className="space-y-4 animate-fade-in">

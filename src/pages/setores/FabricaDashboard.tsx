@@ -33,6 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FabricaExecutivoTab } from '@/components/fabrica/FabricaExecutivoTab';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
@@ -420,7 +421,7 @@ export default function FabricaDashboard() {
   const [search, setSearch] = useState('');
   const [searchAutoSwitched, setSearchAutoSwitched] = useState<string | null>(null);
   const [page, setPage] = useState(0);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('executivo');
   const [collaboratorViewMode, setCollaboratorViewMode] = useState<CollaboratorViewMode>('gestor');
   const [previstoFilter, setPrevistoFilter] = useState<PrevistoFilter | null>(null);
   const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
@@ -2096,6 +2097,9 @@ export default function FabricaDashboard() {
           {/* Tabs primárias visíveis + dropdown para secundárias */}
           <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1 w-full overflow-x-auto">
             <TabsList className="bg-transparent p-0 h-auto gap-0.5 flex-shrink-0">
+              <TabsTrigger value="executivo" className="gap-1.5 text-xs h-8">
+                <Gauge className="h-3.5 w-3.5" />Visão Executiva
+              </TabsTrigger>
               <TabsTrigger value="overview" className="gap-1.5 text-xs h-8">
                 <Zap className="h-3.5 w-3.5" />Visão Geral
               </TabsTrigger>
@@ -2134,6 +2138,17 @@ export default function FabricaDashboard() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          {/* ═══════ TAB: Visão Executiva ═══════ */}
+          <TabsContent value="executivo" className="space-y-4 mt-0">
+            <FabricaExecutivoTab
+              fab={fab}
+              selectedSprintCode={selectedSprintCode}
+              dateFrom={effectiveRange?.from || null}
+              dateTo={effectiveRange?.to || null}
+              periodLabel={customActive ? 'Custom' : (selectedSprintCode ? formatSprintIntervalLabel(selectedSprintCode) : 'Sprint')}
+            />
+          </TabsContent>
 
           {/* ═══════ TAB: Visão Geral ═══════ */}
           <TabsContent value="overview" className="space-y-4 mt-0">
