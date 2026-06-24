@@ -32,11 +32,13 @@ interface SectorLayoutProps {
   areaKey?: string;
   syncFunctions?: SyncFunction[];
   extraTabs?: { id: string; label: string; icon: ReactNode; content: ReactNode }[];
+  /** Aba inicial selecionada (default: 'dashboard'). Ex.: 'executivo' (id de um extraTab). */
+  defaultTab?: string;
   /** When true, only shows dashboard content (no tabs for settings/imports/integrations) */
   kioskMode?: boolean;
 }
 
-export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, kioskMode }: SectorLayoutProps) {
+export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, defaultTab, kioskMode }: SectorLayoutProps) {
   // Detect kiosk mode from parent or prop
   const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
   const isHubAdmin = useHubIsAdmin();
@@ -154,7 +156,7 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
           )}
         </div>
 
-        <Tabs defaultValue="dashboard" className="w-full">
+        <Tabs defaultValue={defaultTab ?? 'dashboard'} className="w-full">
         <TabsList>
           <TabsTrigger value="dashboard" className="gap-1">
             <LayoutDashboard className="h-3.5 w-3.5" />
