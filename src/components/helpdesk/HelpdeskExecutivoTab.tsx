@@ -2,9 +2,40 @@ import { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, LabelList,
 } from 'recharts';
-import { Headphones, Network, Users, Clock, CalendarClock, Monitor } from 'lucide-react';
+import { Headphones, Network, Users, Clock, CalendarClock, Monitor, ShieldCheck } from 'lucide-react';
 import { BlocoCard } from '@/components/executivo/BlocoCard';
 import type { ConsultorKpi, TipoChamadoKpi, RegistroPorGrupo, HorasDia } from '@/hooks/useHelpdeskKpis';
+import { useBICustomerKpis, type BICustomerSegmento } from '@/hooks/useBICustomer';
+
+// Metas de SLA (mesmas do gateway Gestão / BICustomerPanel)
+const META_TTR_DIAS = 3.9;
+const META_24H_PCT = 48;
+
+/** Bloco de meta SLA por segmento (Nestlé / FLAG-Outras). */
+function SlaMeta({ titulo, seg }: { titulo: string; seg?: BICustomerSegmento }) {
+  const ttr = seg?.metricas.ttrMedioDias;
+  const p24 = seg?.metricas.pctEncerrados24h;
+  const total = seg?.mesAtual.total;
+  const ttrCor = ttr == null ? undefined : ttr <= META_TTR_DIAS ? '#16a34a' : '#ef4444';
+  const p24Cor = p24 == null ? undefined : p24 >= META_24H_PCT ? '#16a34a' : '#ef4444';
+  return (
+    <BlocoCard icon={ShieldCheck} titulo={titulo}>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <p className="text-2xl font-bold font-mono" style={{ color: ttrCor }}>{ttr != null ? `${ttr.toFixed(2)}d` : '—'}</p>
+          <p className="text-[11px] text-muted-foreground">TTR médio · meta ≤ {META_TTR_DIAS}d</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold font-mono" style={{ color: p24Cor }}>{p24 != null ? `${p24.toFixed(0)}%` : '—'}</p>
+          <p className="text-[11px] text-muted-foreground">≤24h · meta ≥ {META_24H_PCT}%</p>
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground border-t pt-2">
+        {total != null ? `${total} ${seg?.unidade === 'ticket' ? 'tickets' : 'OS'} no mês` : 'sem dados do gateway'}
+      </p>
+    </BlocoCard>
+  );
+}
 
 interface HelpdeskExecutivoTabProps {
   totalRegistros: number;
@@ -25,6 +56,8 @@ export function HelpdeskExecutivoTab({
   registrosPorSistema, registrosPorBandeira, registrosPorCliente,
   horasTotaisPorDia, periodLabel,
 }: HelpdeskExecutivoTabProps) {
+  const { data: sla } = useBICustomerKpis();
+
   const topConsultores = useMemo(
     () => [...registrosPorConsultor].sort((a, b) => b.totalRegistros - a.totalRegistros).slice(0, 8)
       .map(c => ({ nome: c.nome, registros: c.totalRegistros })),
@@ -55,12 +88,14 @@ export function HelpdeskExecutivoTab({
       <div>
         <h2 className="text-xl font-bold">Visão Executiva</h2>
         <p className="text-sm text-muted-foreground">
-          Customer Service · onde estamos · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
+          Customer Service · onde estamos · o que queremos (SLA) · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
         </p>
       </div>
 
-      {/* ── Linha 1: volume · cobertura · tempo médio ── */}
+      {/* ── Linha 0: META — SLA (FLAG × Nestlé) ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <SlaMeta titulo="Meta · SLA Nestlé" seg={sla?.nestle} />
+        <SlaMeta titulo="Meta · SLA FLAG (Outras)" seg={sla?.outras} />
 
         {/* Onde estamos — Volume de atendimento */}
         <BlocoCard icon={Headphones} titulo="Onde estamos · Atendimento">
