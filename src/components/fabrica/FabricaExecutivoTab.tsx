@@ -24,6 +24,7 @@ interface FabKpisLite {
   transbordoCount: number;
   realOverflowCount: number;
   isLoading: boolean;
+  items?: Array<{ work_item_type?: string | null; tags?: string | null }>;
 }
 
 interface FabricaExecutivoTabProps {
@@ -61,6 +62,19 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
       gargaloDias: gargaloRow?.gargalo_avg_days ?? null,
     };
   }, [gerencial]);
+
+  // Classificação das demandas no escopo (mesmas regras de fn_classifica_demanda)
+  const categoria = useMemo(() => {
+    let bug = 0, retorno = 0, aviao = 0;
+    for (const i of fab.items ?? []) {
+      if (!['Product Backlog Item', 'Bug', 'User Story'].includes(i.work_item_type || '')) continue;
+      const t = (i.tags || '').toLowerCase();
+      if (/retorno\s*(de\s*)?qa/.test(t)) retorno++;
+      else if (/avi[aã]o/.test(t)) aviao++;
+      else if (i.work_item_type === 'Bug' || /(^|;)\s*bug\s*(;|$)/.test(t)) bug++;
+    }
+    return { bug, retorno, aviao };
+  }, [fab.items]);
 
   const conclPct = fab.total > 0 ? Math.round((fab.done / fab.total) * 100) : 0;
   const saudavelPct = agg.totalHealth > 0 ? Math.round((agg.saudaveis / agg.totalHealth) * 100) : 0;
@@ -118,18 +132,22 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
           </div>
         </BlocoCard>
 
-        <BlocoCard icon={RotateCcw} titulo="Retorno QA & gargalo">
-          <div className="grid grid-cols-2 gap-2">
+        <BlocoCard icon={RotateCcw} titulo="Demandas por tipo">
+          <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <p className="text-3xl font-bold font-mono text-destructive">{agg.qaReturn}</p>
-              <p className="text-[11px] text-muted-foreground">retornos de QA</p>
+              <p className="text-3xl font-bold font-mono text-destructive">{categoria.bug}</p>
+              <p className="text-[11px] text-muted-foreground">Bugs</p>
             </div>
             <div>
-              <p className="text-base font-bold text-foreground truncate" title={agg.gargalo ?? ''}>{agg.gargalo ?? '—'}</p>
-              <p className="text-[11px] text-muted-foreground">gargalo{agg.gargaloDias != null ? ` · ${agg.gargaloDias}d` : ''}</p>
+              <p className="text-3xl font-bold font-mono text-amber-500">{categoria.retorno}</p>
+              <p className="text-[11px] text-muted-foreground">Retorno QA</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold font-mono text-[hsl(199,89%,48%)]">{categoria.aviao}</p>
+              <p className="text-[11px] text-muted-foreground">Aviões</p>
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Estágio com maior tempo médio de permanência.</p>
+          <p className="text-[11px] text-muted-foreground border-t pt-2">Classificação das demandas no escopo por tag.</p>
         </BlocoCard>
 
         <BlocoCard icon={HeartPulse} titulo="Saúde dos itens">
