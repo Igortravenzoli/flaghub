@@ -196,7 +196,11 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
 
         {/* Qualidade do processo — retornos quantificados */}
         <BlocoCard icon={RotateCcw} titulo="Qualidade · retornos por nº de ciclos">
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div>
+              <p className="text-2xl font-bold font-mono">{retLoading ? '—' : retornos?.itens_com_retorno ?? 0}</p>
+              <p className="text-[11px] text-muted-foreground">total</p>
+            </div>
             <div>
               <p className="text-2xl font-bold font-mono text-muted-foreground">{retLoading ? '—' : retornos?.itens_1x ?? 0}</p>
               <p className="text-[11px] text-muted-foreground">voltaram 1x</p>
