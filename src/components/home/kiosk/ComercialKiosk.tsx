@@ -8,8 +8,9 @@ export default function ComercialKiosk() {
   const { stats } = useComercialKpis('todos', anoStart, now);
   return (
     <ExecutivoTab
-      canViewValues
-      showValues
+      // Modo TV (telão): não exibe valores monetários — somente percentuais.
+      canViewValues={false}
+      showValues={false}
       dateFrom={anoStart}
       dateTo={now}
       periodLabel="Ano vigente"
