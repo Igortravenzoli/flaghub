@@ -16,36 +16,68 @@ const CONSULTORES_CS = ['ailton', 'italo', 'leandro', 'vagner', 'guimaraes', 'ri
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const isConsultorCS = (nome: string) => { const n = norm(nome); return CONSULTORES_CS.some((t) => n.includes(t)); };
 
-const corMeta = (ok: boolean) => (ok ? '#16a34a' : '#ef4444');
+const META_NESTLE_TICKETS_ANO = 5716;
 
-/** Card SLA (Mês) por segmento — TTR (≤3,9d) · ≤24h (≥48%) · Tickets/OS (meta < mês anterior). */
-function SlaMesCard({ titulo, seg }: { titulo: string; seg?: BICustomerSegmento }) {
-  const ttr = seg?.metricas.ttrMedioDias;
-  const p24 = seg?.metricas.pctEncerrados24h;
-  const total = seg?.mesAtual.total;
-  const prev = seg?.mesAnterior.total;
-  const unidade = seg?.unidade === 'ticket' ? 'tickets' : 'OS';
-  const totalOk = total != null && prev != null ? total <= prev : true;
+const corOk = (ok: boolean | null) => (ok == null ? undefined : ok ? '#16a34a' : '#ef4444');
+const okLow = (v?: number | null, m?: number | null) => (v == null || m == null ? null : v <= m);
+const okHigh = (v?: number | null, m?: number | null) => (v == null || m == null ? null : v >= m);
+const fmtMeta = (m?: number | null, suf = '') => (m == null ? '—' : suf === 'd' ? `${m.toFixed(2)}d` : suf === '%' ? `${Math.round(m)}%` : `${m}`);
+
+function MetricaSla({ label, valor, sufixo, ok, meta }: {
+  label: string; valor?: number | null; sufixo: 'd' | '%' | ''; ok: boolean | null; meta: string;
+}) {
+  const fmt = valor == null ? '—' : sufixo === 'd' ? `${valor.toFixed(2)}d` : sufixo === '%' ? `${Math.round(valor)}%` : `${valor}`;
   return (
-    <BlocoCard icon={ShieldCheck} titulo={titulo}>
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div>
-          <p className="text-2xl font-bold font-mono" style={{ color: ttr == null ? undefined : corMeta(ttr <= META_TTR_DIAS) }}>{ttr != null ? `${ttr.toFixed(2)}d` : '—'}</p>
-          <p className="text-[11px] text-muted-foreground">TTR médio</p>
-          <p className="text-[10px] text-muted-foreground">meta ≤ {META_TTR_DIAS}d</p>
-        </div>
-        <div>
-          <p className="text-2xl font-bold font-mono" style={{ color: p24 == null ? undefined : corMeta(p24 >= META_24H_PCT) }}>{p24 != null ? `${p24.toFixed(0)}%` : '—'}</p>
-          <p className="text-[11px] text-muted-foreground">≤ 24h</p>
-          <p className="text-[10px] text-muted-foreground">meta ≥ {META_24H_PCT}%</p>
-        </div>
-        <div>
-          <p className="text-2xl font-bold font-mono" style={{ color: total == null ? undefined : corMeta(totalOk) }}>{total ?? '—'}</p>
-          <p className="text-[11px] text-muted-foreground">{unidade}</p>
-          <p className="text-[10px] text-muted-foreground">meta &lt; {prev ?? '—'}</p>
+    <div>
+      <p className="text-lg font-bold font-mono leading-tight" style={{ color: corOk(ok) }}>{fmt}</p>
+      <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
+      <p className="text-[9px] text-muted-foreground/80 leading-tight">{meta}</p>
+    </div>
+  );
+}
+
+/** Card SLA por segmento (Nestlé/Flag) — seções Ano (acumulado) e Mês (atual). */
+function SlaSegmentoCard({ titulo, seg, isNestle }: { titulo: string; seg?: BICustomerSegmento; isNestle: boolean }) {
+  const ano = new Date().getFullYear();
+  const unid = seg?.unidade === 'ticket' ? 'tickets' : 'OS';
+
+  // Ano (acumulado): Nestlé = metas fixas; Outros = vs ano anterior
+  const ttrAno = seg?.metricasAno?.ttrMedioDias;
+  const p24Ano = seg?.metricasAno?.pctEncerrados24h;
+  const totAno = seg?.ano?.total;
+  const ttrAnoMeta = isNestle ? META_TTR_DIAS : seg?.metricasAnoAnterior?.ttrMedioDias;
+  const p24AnoMeta = isNestle ? META_24H_PCT : seg?.metricasAnoAnterior?.pctEncerrados24h;
+  const totAnoMeta = isNestle ? META_NESTLE_TICKETS_ANO : seg?.anoAnterior?.total;
+
+  // Mês atual: metas vs mês anterior
+  const ttrMes = seg?.metricas.ttrMedioDias;
+  const p24Mes = seg?.metricas.pctEncerrados24h;
+  const totMes = seg?.mesAtual.total;
+  const ttrMesMeta = seg?.metricasMesAnterior?.ttrMedioDias;
+  const p24MesMeta = seg?.metricasMesAnterior?.pctEncerrados24h;
+  const totMesMeta = seg?.mesAnterior.total;
+
+  return (
+    <BlocoCard icon={ShieldCheck} titulo={`SLA ${titulo}`}>
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Ano {ano}</p>
+        <div className="grid grid-cols-3 gap-2 text-center mt-1">
+          <MetricaSla label="TTR" valor={ttrAno} sufixo="d" ok={okLow(ttrAno, ttrAnoMeta)} meta={`≤ ${fmtMeta(ttrAnoMeta, 'd')}`} />
+          <MetricaSla label="≤24h" valor={p24Ano} sufixo="%" ok={okHigh(p24Ano, p24AnoMeta)} meta={`≥ ${fmtMeta(p24AnoMeta, '%')}`} />
+          <MetricaSla label={unid} valor={totAno} sufixo="" ok={okLow(totAno, totAnoMeta)} meta={`≤ ${fmtMeta(totAnoMeta)}`} />
         </div>
       </div>
-      <p className="text-[11px] text-muted-foreground border-t pt-2">Mês atual vs. mês anterior. (Anual e meta TTR vs. mês anterior: pendente gateway.)</p>
+      <div className="border-t pt-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Mês atual</p>
+        <div className="grid grid-cols-3 gap-2 text-center mt-1">
+          <MetricaSla label="TTR" valor={ttrMes} sufixo="d" ok={okLow(ttrMes, ttrMesMeta)} meta={`vs ${fmtMeta(ttrMesMeta, 'd')}`} />
+          <MetricaSla label="≤24h" valor={p24Mes} sufixo="%" ok={okHigh(p24Mes, p24MesMeta)} meta={`vs ${fmtMeta(p24MesMeta, '%')}`} />
+          <MetricaSla label={unid} valor={totMes} sufixo="" ok={okLow(totMes, totMesMeta)} meta={`vs ${fmtMeta(totMesMeta)}`} />
+        </div>
+      </div>
+      {!seg?.metricasAno && (
+        <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">Anual e metas vs. período anterior: aguardando gateway.</p>
+      )}
     </BlocoCard>
   );
 }
@@ -114,8 +146,8 @@ export function HelpdeskExecutivoTab({
       {/* ═══════ 1ª LINHA — RESULTADO ═══════ */}
       <SecHeader title="Resultado" subtitle="SLA e panorama do mês" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <SlaMesCard titulo="SLA Nestlé (Mês)" seg={sla?.nestle} />
-        <SlaMesCard titulo="SLA Flag (Mês)" seg={sla?.outras} />
+        <SlaSegmentoCard titulo="Nestlé" seg={sla?.nestle} isNestle />
+        <SlaSegmentoCard titulo="Flag" seg={sla?.outras} isNestle={false} />
 
         {/* Panorama do Atendimento */}
         <BlocoCard icon={Headphones} titulo="Panorama do Atendimento">

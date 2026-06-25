@@ -34,6 +34,17 @@ export interface BICustomerSegmento {
   mesAnterior: BICustomerPeriodo;
   abertos: BICustomerAbertos;
   metricas: BICustomerMetricas;
+  // ── Extensões (opcionais — gateway pode ainda não retornar) ──────────────
+  /** Totais do ano vigente acumulado. */
+  ano?: BICustomerPeriodo;
+  /** Totais do ano anterior acumulado. */
+  anoAnterior?: BICustomerPeriodo;
+  /** TTR/24h acumulados do ano vigente. */
+  metricasAno?: BICustomerMetricas;
+  /** TTR/24h do mês anterior. */
+  metricasMesAnterior?: BICustomerMetricas;
+  /** TTR/24h acumulados do ano anterior. */
+  metricasAnoAnterior?: BICustomerMetricas;
 }
 
 export interface BICustomerKpisResponse {

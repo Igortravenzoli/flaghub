@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Minimize2, Clock, Monitor } from 'lucide-react';
+import { Minimize2, Maximize2, Clock, Monitor } from 'lucide-react';
 import type { SectorInfo } from '@/data/mockSectorData';
 import KioskSectorView from './KioskSectorView';
 import Dashboard from '@/pages/Dashboard';
@@ -90,6 +90,18 @@ export default function KioskOverlay({ activeSectors, currentIndex, rotateEnable
             <Clock className="h-3 w-3" />
             {now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
           </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+              else document.documentElement.requestFullscreen?.().catch(() => {});
+            }}
+            className="text-slate-400 hover:text-white h-7 px-2"
+            title="Tela cheia"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={onExit} className="text-slate-400 hover:text-white h-7 px-2">
             <Minimize2 className="h-3.5 w-3.5 mr-1" /> Sair
           </Button>
