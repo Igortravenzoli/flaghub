@@ -165,7 +165,7 @@ function ChartTooltip({ active, payload, label }: any) {
 }
 
 export default function HelpdeskDashboard() {
-  const filters = useDashboardFilters('hoje');
+  const filters = useDashboardFilters('mes_atual');
   const kpis = useHelpdeskKpis(filters.dateFrom, filters.dateTo);
   const { exportCSV, exportPDF } = useDashboardExport();
   const [selectedConsultants, setSelectedConsultants] = useState<string[]>(loadConsultantFilter);
@@ -286,7 +286,7 @@ export default function HelpdeskDashboard() {
           registrosPorSistema={registrosPorSistema}
           registrosPorBandeira={registrosPorBandeira}
           registrosPorCliente={registrosPorCliente}
-          horasTotaisPorDia={horasTotaisPorDia}
+          historico={historico}
           periodLabel={filters.presetLabel}
         />
       ),
