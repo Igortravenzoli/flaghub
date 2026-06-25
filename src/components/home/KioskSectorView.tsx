@@ -31,10 +31,7 @@ export default function KioskSectorView({ sectorSlug, sectorName }: KioskSectorV
     );
   }
 
-  return (
-    <div className="space-y-2">
-      <h2 className="text-2xl font-bold text-white tracking-tight">{sectorName}</h2>
-      <Component />
-    </div>
-  );
+  // O modo TV (KioskOverlay) já exibe o nome do setor na barra superior;
+  // o conteúdo é a respectiva Visão Executiva do setor.
+  return <Component />;
 }
