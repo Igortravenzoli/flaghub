@@ -150,23 +150,41 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel }: Infra
           <p className="text-[11px] text-muted-foreground border-t pt-2">Tasks concluídas ao fim de cada sprint — últimas 3 mapeadas.</p>
         </BlocoCard>
 
-        {/* Disponibilidade — Gestão SG */}
+        {/* Disponibilidade — Gestão SG (metas SLA) */}
         <BlocoCard icon={ShieldCheck} titulo="Disponibilidade · Gestão SG">
-          <div className="grid grid-cols-3 gap-2 text-center">
+          {(() => {
+            const incPct = sgsi?.incidentes.pctDentroSla ?? null;
+            const risco30 = sgsi?.riscos.pctResolvido30d ?? null;
+            const corSla = (p: number | null) => (p == null ? undefined : p > 90 ? '#16a34a' : p >= 80 ? '#f59e0b' : '#ef4444');
+            return (
+              <div className="grid grid-cols-2 gap-2 text-center">
+                <div>
+                  <p className="text-3xl font-bold font-mono" style={{ color: corSla(incPct) }}>{incPct != null ? `${incPct}%` : '—'}</p>
+                  <p className="text-[11px] text-muted-foreground">incidentes dentro do SLA</p>
+                  <p className="text-[10px] text-muted-foreground">meta &gt; 90%</p>
+                </div>
+                <div>
+                  <p className="text-3xl font-bold font-mono" style={{ color: corSla(risco30) }}>{risco30 != null ? `${risco30}%` : '—'}</p>
+                  <p className="text-[11px] text-muted-foreground">riscos resolvidos ≤ 30 dias</p>
+                  <p className="text-[10px] text-muted-foreground">meta &gt; 90%</p>
+                </div>
+              </div>
+            );
+          })()}
+          <div className="grid grid-cols-3 gap-2 text-center border-t pt-2">
             <div>
-              <p className="text-3xl font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.incidentes ?? '—'}</p>
-              <p className="text-[11px] text-muted-foreground">dias s/ incidente</p>
+              <p className="text-lg font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.incidentes ?? '—'}</p>
+              <p className="text-[10px] text-muted-foreground">dias s/ incidente</p>
             </div>
             <div>
-              <p className="text-3xl font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.riscos ?? '—'}</p>
-              <p className="text-[11px] text-muted-foreground">dias s/ risco</p>
+              <p className="text-lg font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.riscos ?? '—'}</p>
+              <p className="text-[10px] text-muted-foreground">dias s/ risco</p>
             </div>
             <div>
-              <p className="text-3xl font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.naoConformidades ?? '—'}</p>
-              <p className="text-[11px] text-muted-foreground">dias s/ NC</p>
+              <p className="text-lg font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.naoConformidades ?? '—'}</p>
+              <p className="text-[10px] text-muted-foreground">dias s/ NC</p>
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Gestão à vista do SGSI (listas SharePoint 017/012/018).</p>
         </BlocoCard>
 
         {/* Iniciativas & Riscos */}

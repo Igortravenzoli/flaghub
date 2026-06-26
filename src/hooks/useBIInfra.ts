@@ -77,6 +77,8 @@ export interface SgIncidentesBloco {
   contornados: number;
   resolvidos: number;
   porSLA: NameValue[];
+  /** % de incidentes resolvidos dentro do SLA (campo SLA = Sim / (Sim+Não)). */
+  pctDentroSla: number | null;
   porCategoria: NameValue[];
   itens: SgIncidenteItem[];
 }
@@ -99,6 +101,8 @@ export interface SgRiscoItem {
 export interface SgRiscosBloco {
   total: number;
   abertos: number;
+  /** % de riscos resolvidos (encerrados) dentro de 30 dias da abertura. */
+  pctResolvido30d: number | null;
   porStatus: NameValue[];
   porAmbiente: NameValue[];
   porCID: NameValue[];
@@ -380,6 +384,11 @@ export function buildSgsiResponse(
     contornados: l017.filter((i) => statusMatches(i, STATUS_017, /contorn/i)).length,
     resolvidos: l017.filter((i) => statusMatches(i, STATUS_017, /resolv|encerr|conclu/i)).length,
     porSLA: countBy(l017, 'SLA'),
+    pctDentroSla: (() => {
+      const sim = l017.filter((i) => str(i, 'SLA').trim().toLowerCase() === 'sim').length;
+      const nao = l017.filter((i) => { const v = str(i, 'SLA').trim().toLowerCase(); return v === 'não' || v === 'nao'; }).length;
+      return sim + nao > 0 ? Math.round((sim / (sim + nao)) * 100) : null;
+    })(),
     porCategoria: countBy(l017, 'Categoria'),
     itens: recentes(l017, 150).map((i) => ({
       id: i.item_id,
@@ -405,6 +414,15 @@ export function buildSgsiResponse(
   const riscos: SgRiscosBloco = {
     total: l012.length,
     abertos: l012.filter((i) => !statusMatches(i, STATUS_012, /tratad|encerr|conclu|finaliz|rejeitad/i)).length,
+    pctResolvido30d: (() => {
+      const resolv = l012.filter((i) => statusMatches(i, STATUS_012, /encerr|conclu|finaliz|tratad/i));
+      const within = resolv.filter((i) => {
+        if (!i.created_sp || !i.modified_sp) return false;
+        const dias = (new Date(i.modified_sp).getTime() - new Date(i.created_sp).getTime()) / 86400000;
+        return dias >= 0 && dias <= 30;
+      }).length;
+      return resolv.length > 0 ? Math.round((within / resolv.length) * 100) : null;
+    })(),
     porStatus: countBy(l012, ...STATUS_012),
     porAmbiente: countBy(l012, 'Ambiente Afetado', 'Ambiente afetado'),
     porCID: countBy(l012, 'CID afetado'),
