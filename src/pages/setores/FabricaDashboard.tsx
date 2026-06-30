@@ -610,21 +610,38 @@ export default function FabricaDashboard() {
     return map;
   }, [fab.collaboratorTaskIdsDevops, fab.collaboratorTaskIdsVdesk, showDevops, showVdesk]);
 
+  // Modo do card "Horas por Fábrica": alocação completa (padrão) ou só fila ativa.
+  const [fabricaScopeMode, setFabricaScopeMode] = useState<'full' | 'fila'>('full');
+  const fabricaRows = useMemo(
+    () => (fabricaScopeMode === 'full' ? fab.horasPorFabricaFull : fab.horasPorFabricaScope) || [],
+    [fabricaScopeMode, fab.horasPorFabricaFull, fab.horasPorFabricaScope]
+  );
+
   const fabricaTaskScopeMap = useMemo(() => {
     const map = new Map<string, number[]>();
-    for (const row of fab.horasPorFabricaScope || []) {
-      map.set(row.displayName, row.taskIds);
-    }
+    for (const row of fabricaRows) map.set(row.displayName, row.taskIds);
     return map;
-  }, [fab.horasPorFabricaScope]);
+  }, [fabricaRows]);
 
   const horasPorFabricaData = useMemo(
-    () => (fab.horasPorFabricaScope || []).map((row) => ({
+    () => fabricaRows.map((row) => ({
       name: row.displayName,
       hours: row.hours,
       minutes: row.minutes,
     })),
-    [fab.horasPorFabricaScope]
+    [fabricaRows]
+  );
+
+  // Colaboradores por fábrica (drill-down inline no card "Horas por Fábrica")
+  const fabricaColaboradoresMap = useMemo(() => {
+    const map: Record<string, { name: string; hours: number; minutes: number }[]> = {};
+    for (const row of fabricaRows) map[row.displayName] = row.collaborators || [];
+    return map;
+  }, [fabricaRows]);
+
+  const fabricaTotalHoras = useMemo(
+    () => fabricaRows.reduce((s, r) => s + r.minutes, 0) / 60,
+    [fabricaRows]
   );
 
   const timelogScopeTaskIds = useMemo(
@@ -2537,10 +2554,36 @@ export default function FabricaDashboard() {
                 title="Horas por Fábrica (DevOps)"
                 icon={Building2}
                 data={horasPorFabricaData}
+                subItemsByName={fabricaColaboradoresMap}
                 isLoading={fab.isLoading}
                 emptyMessage="Nenhuma fábrica identificada"
                 delay={500}
-                summaryBadge={fab.hasTimeLogs ? `${Math.round(fab.totalHoursLogged)}h registradas` : undefined}
+                summaryBadge={horasPorFabricaData.length > 0
+                  ? `${Math.round(fabricaTotalHoras)}h ${fabricaScopeMode === 'full' ? 'no período' : 'na fila'}`
+                  : undefined}
+                headerRight={(
+                  <div className="flex items-center rounded-md border border-border/60 p-0.5 text-[10px]">
+                    {([
+                      { id: 'full' as const, label: 'Alocação completa', short: 'Completa' },
+                      { id: 'fila' as const, label: 'Só fila ativa', short: 'Fila ativa' },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        title={opt.id === 'full'
+                          ? 'Todas as horas apontadas no período, por fábrica (não some quando o item avança).'
+                          : 'Só horas de itens ainda na fila ativa do board (exclui Em Teste/Done).'}
+                        className={`px-2 py-0.5 rounded-[3px] transition-colors ${fabricaScopeMode === opt.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        onClick={() => {
+                          setFabricaScopeMode(opt.id);
+                          setTimelogDrilldown({ type: 'none', key: null, taskIds: [], userCanonical: null });
+                        }}
+                      >
+                        {opt.short}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 activeItemName={timelogDrilldown.type === 'fabrica' ? timelogDrilldown.key : null}
                 onItemClick={(item) => {
                   const taskIds = fabricaTaskScopeMap.get(item.name) || [];
