@@ -115,6 +115,8 @@ export interface TimelogFabricaScope {
   taskIds: number[];
   hours: number;
   minutes: number;
+  /** Horas por colaborador dentro da fábrica (soma reconcilia com `minutes`) */
+  collaborators: TimelogAggregation[];
 }
 
 interface UseFabricaKpisOptions {
@@ -458,6 +460,11 @@ export function useFabricaKpis(
   const totalHoursLogged = scopedTimeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
   const hasTimeLogs = scopedTimeLogs.length > 0;
 
+  // Alocação completa: TODO apontamento do período (sem o filtro de fila/estado),
+  // para a visão "horas trabalhadas no período" que não some quando o item avança.
+  const completeTimeLogs = timeLogs.filter((tl) => tl.work_item_id != null && !isExcluded(tl.user_name));
+  const hasTimeLogsFull = completeTimeLogs.length > 0;
+
   // Build work item lookup
   const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>();
   const tagsByWorkItemId: Record<number, string> = {};
@@ -606,29 +613,73 @@ export function useFabricaKpis(
       .sort((a, b) => b.hours - a.hours);
   })();
 
-  const horasPorFabricaScope: TimelogFabricaScope[] = (() => {
-    if (!hasTimeLogs) return [];
+  // Agrega timelog por fábrica (Epic raiz) + colaboradores. `keyOf` devolve o
+  // rótulo da fábrica ou null para descartar o lançamento (ex.: Infra/Sem Épico).
+  const collabNameMap = collabMapQuery.data || new Map<string, string>();
+  const aggregateFabrica = (
+    logs: typeof scopedTimeLogs,
+    keyOf: (epic: { title: string; id: number } | null) => string | null,
+  ): TimelogFabricaScope[] => {
     const minutesByKey = new Map<string, number>();
     const taskIdsByKey = new Map<string, Set<number>>();
-    for (const tl of scopedTimeLogs) {
+    const collabByKey = new Map<string, Map<string, number>>();
+    const collabLabelByKey = new Map<string, Map<string, string>>();
+    for (const tl of logs) {
       if (!tl.work_item_id) continue;
       const epic = findEpic(tl.work_item_id);
-      const key = epic?.title || 'Sem Epic';
-      minutesByKey.set(key, (minutesByKey.get(key) || 0) + (tl.time_minutes || 0));
+      const key = keyOf(epic);
+      if (key == null) continue;
+      const mins = tl.time_minutes || 0;
+      minutesByKey.set(key, (minutesByKey.get(key) || 0) + mins);
       const ids = taskIdsByKey.get(key) ?? new Set<number>();
       ids.add(tl.work_item_id);
       taskIdsByKey.set(key, ids);
+
+      const rawName = tl.user_name || 'Desconhecido';
+      const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
+      const canonical = collabNameMap.get(rawName.toLowerCase()) ?? collabNameMap.get(normalized) ?? rawName;
+      const cMap = collabByKey.get(key) ?? new Map<string, number>();
+      cMap.set(normalized, (cMap.get(normalized) || 0) + mins);
+      collabByKey.set(key, cMap);
+      const lMap = collabLabelByKey.get(key) ?? new Map<string, string>();
+      if (!lMap.has(normalized)) lMap.set(normalized, canonical);
+      collabLabelByKey.set(key, lMap);
     }
     return Array.from(minutesByKey.entries())
-      .map(([key, minutes]) => ({
-        key,
-        displayName: `${key} ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
-        taskIds: Array.from(taskIdsByKey.get(key) || []),
-        hours: Math.round(minutes / 60 * 10) / 10,
-        minutes,
-      }))
+      .map(([key, minutes]) => {
+        const cMap = collabByKey.get(key) || new Map<string, number>();
+        const lMap = collabLabelByKey.get(key) || new Map<string, string>();
+        const collaborators: TimelogAggregation[] = Array.from(cMap.entries())
+          .map(([norm, mins]) => ({
+            name: lMap.get(norm) || norm,
+            hours: Math.round(mins / 60 * 10) / 10,
+            minutes: mins,
+          }))
+          .sort((a, b) => b.minutes - a.minutes);
+        return {
+          key,
+          displayName: `${key} ${(minutes / 60 / 8).toFixed(1)}d (${Math.round(minutes / 60 * 10) / 10}h)`,
+          taskIds: Array.from(taskIdsByKey.get(key) || []),
+          hours: Math.round(minutes / 60 * 10) / 10,
+          minutes,
+          collaborators,
+        };
+      })
       .sort((a, b) => b.hours - a.hours);
-  })();
+  };
+
+  // Visão "fila ativa" — preserva o comportamento atual (escopo do board).
+  const horasPorFabricaScope: TimelogFabricaScope[] = hasTimeLogs
+    ? aggregateFabrica(scopedTimeLogs, (epic) => epic?.title || 'Sem Epic')
+    : [];
+
+  // Visão "alocação completa" — todo apontamento do período, só épicos de squad
+  // (descarta Infra e itens sem Épico, que não pertencem a nenhuma fábrica).
+  const horasPorFabricaFull: TimelogFabricaScope[] = hasTimeLogsFull
+    ? aggregateFabrica(completeTimeLogs, (epic) =>
+        epic && !/infra/i.test(epic.title) ? epic.title : null)
+    : [];
+  const totalHoursLoggedFull = horasPorFabricaFull.reduce((sum, r) => sum + r.minutes, 0) / 60;
 
   // ── VDESK aggregations (automatic, more reliable source) ──
   const vdeskLogs = vdeskLogsQuery.data || [];
@@ -920,11 +971,14 @@ export function useFabricaKpis(
     sprintCount,
     hasTimeLogs,
     totalHoursLogged,
+    hasTimeLogsFull,
+    totalHoursLoggedFull,
     // Timelog aggregations (DevOps — manual entries)
     horasPorColaborador,
     horasPorProduto,
     horasPorFabrica,
     horasPorFabricaScope,
+    horasPorFabricaFull,
     collaboratorTaskIdsDevops,
     collaboratorTaskIdsVdesk,
     // VDESK aggregations (automatic — more reliable)
