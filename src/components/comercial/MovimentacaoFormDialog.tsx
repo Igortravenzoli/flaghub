@@ -107,12 +107,12 @@ export const MovimentacaoFormDialog: React.FC<MovimentacaoFormDialogProps> = ({
             <div>
               <label htmlFor="cliente_codigo" className="block text-xs font-semibold mb-1">Código do Cliente</label>
               <Input id="cliente_codigo" name="cliente_codigo" placeholder="Ex: 12345"
-                value={form.cliente_codigo} onChange={handleChange} required disabled={mode === "edit"} />
+                value={form.cliente_codigo} onChange={handleChange} required />
             </div>
             <div>
               <label htmlFor="cliente_nome" className="block text-xs font-semibold mb-1">Nome do Cliente</label>
               <Input id="cliente_nome" name="cliente_nome" placeholder="Ex: ACME Ltda"
-                value={form.cliente_nome} onChange={handleChange} required disabled={mode === "edit"} />
+                value={form.cliente_nome} onChange={handleChange} required />
             </div>
 
             {/* Tipo */}

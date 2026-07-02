@@ -14,7 +14,7 @@ export default function ComercialKiosk() {
       dateFrom={anoStart}
       dateTo={now}
       periodLabel="Ano vigente"
-      clientesAtivos={stats.ativos}
+      clientesAtivos={Math.max(0, stats.ativos - stats.ativosInternos)}
       clientesBloqueados={stats.bloqueados}
     />
   );

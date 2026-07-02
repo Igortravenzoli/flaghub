@@ -1,4 +1,4 @@
-// gateway-sync-clients v1.0 — Sincroniza clientes ativos do Gateway/VDesk
+// gateway-sync-clients v1.1 — Sincroniza clientes do Gateway/VDesk (upsert + inativação de ausentes)
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -165,6 +165,7 @@ serve(async (req) => {
       })
 
       // Normalize and upsert to vdesk_clients
+      const syncTimestamp = new Date().toISOString()
       const normalized = allClients.map((c: any) => ({
         nome: c.nome || c.name || c.razaoSocial || 'Desconhecido',
         apelido: c.apelido || c.nomeFantasia || null,
@@ -173,12 +174,13 @@ serve(async (req) => {
         sistemas: c.sistemas || c.products || [],
         sistemas_label: Array.isArray(c.sistemas) ? c.sistemas.join(', ') : (c.sistemasLabel || null),
         source_hash: hashPayload(c),
-        synced_at: new Date().toISOString(),
+        synced_at: syncTimestamp,
         raw: c,
       }))
 
       // Upsert in chunks using nome as natural key (unique index)
       let upsertedCount = 0
+      let upsertErrors = 0
       for (let i = 0; i < normalized.length; i += 100) {
         const chunk = normalized.slice(i, i + 100)
         const { error } = await admin.from('vdesk_clients').upsert(chunk, {
@@ -187,8 +189,28 @@ serve(async (req) => {
         })
         if (error) {
           console.error(`[GatewaySyncClients] Upsert chunk error:`, error.message)
+          upsertErrors++
         }
         upsertedCount += chunk.length
+      }
+
+      // Reconciliação: quem não veio na carga saiu da base VDesk — marcar Inativo.
+      // Só roda com carga não-vazia e sem nenhum chunk com erro, para nunca
+      // inativar em massa por falha parcial de upsert.
+      let deactivatedCount = 0
+      if (normalized.length > 0 && upsertErrors === 0) {
+        const { data: deactivated, error: deactError } = await admin
+          .from('vdesk_clients')
+          .update({ status: 'Inativo' })
+          .lt('synced_at', syncTimestamp)
+          .neq('status', 'Inativo')
+          .select('id, nome')
+        if (deactError) {
+          console.error('[GatewaySyncClients] Deactivation error:', deactError.message)
+        } else if (deactivated && deactivated.length > 0) {
+          deactivatedCount = deactivated.length
+          console.log(`[GatewaySyncClients] Deactivated ${deactivatedCount} stale clients:`, deactivated.map(d => d.nome).join(', '))
+        }
       }
 
       const duration = Date.now() - startTime
@@ -207,11 +229,11 @@ serve(async (req) => {
         p_action: 'gateway_sync_clients',
         p_entity_type: 'vdesk_clients',
         p_entity_id: null,
-        p_metadata: { total: allClients.length, upserted: upsertedCount, duration_ms: duration },
+        p_metadata: { total: allClients.length, upserted: upsertedCount, deactivated: deactivatedCount, duration_ms: duration },
       })
 
       return new Response(JSON.stringify({
-        success: true, total: allClients.length, upserted: upsertedCount, duration_ms: duration,
+        success: true, total: allClients.length, upserted: upsertedCount, deactivated: deactivatedCount, duration_ms: duration,
       }), { headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
 
     } catch (innerErr) {

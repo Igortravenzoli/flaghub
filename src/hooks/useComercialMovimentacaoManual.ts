@@ -65,6 +65,8 @@ export function useComercialMovimentacaoUpdate() {
           p_valor_mensal: updateData.valor_mensal || null,
           p_ano_referencia: updateData.ano_referencia || null,
           p_data_evento: updateData.data_evento || null,
+          p_cliente_codigo: updateData.cliente_codigo || null,
+          p_cliente_nome: updateData.cliente_nome || null,
         }
       );
 
