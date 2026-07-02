@@ -25,7 +25,8 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine, AreaChart, Area,
 } from "recharts";
-import { AlertTriangle, CheckCircle2, ChevronDown, Filter } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Filter } from "lucide-react";
+import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface MetasTabProps {
@@ -149,6 +150,37 @@ function PctBar({ value }: { value: number }) {
   );
 }
 
+// ── Célula editável inline (metas dinâmicas por mês) ─────────────
+function InlineNumberInput({
+  value,
+  onCommit,
+  step = "1",
+  className = "",
+}: {
+  value: string;
+  onCommit: (v: string) => void;
+  step?: string;
+  className?: string;
+}) {
+  return (
+    <Input
+      type="number"
+      min={0}
+      step={step}
+      defaultValue={value}
+      key={value}
+      className={`h-7 text-xs font-mono ${className}`}
+      onBlur={(ev) => {
+        const v = ev.target.value.trim();
+        if (v !== value && !(v === "" && value === "")) onCommit(v);
+      }}
+      onKeyDown={(ev) => {
+        if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
+      }}
+    />
+  );
+}
+
 // ── Filtro de coluna (ícone + popover multi-seleção) ─────────────
 function ColumnFilterButton({
   options,
@@ -263,6 +295,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
 
   // ── Tabela Meta Produtos: visão + filtros de coluna ──────────
   const [metaView, setMetaView] = useState<"consolidado" | "mensal">("consolidado");
+  const [expandedProduto, setExpandedProduto] = useState<string | null>(null);
   const [filtroProdutos, setFiltroProdutos] = useState<Set<string>>(new Set());
   const [filtroMeses, setFiltroMeses] = useState<Set<string>>(new Set());
   const [filtroStatus, setFiltroStatus] = useState<Set<string>>(new Set());
@@ -740,6 +773,18 @@ const MetasTab: React.FC<MetasTabProps> = ({
       await updateMeta.mutateAsync({ id, payload: { ...base, status } });
     } catch {
       window.alert("Falha ao atualizar status da meta.");
+    }
+  }
+
+  /** Edição inline (metas dinâmicas): atualiza um campo da meta do mês direto na tabela. */
+  async function handleInlineUpdate(id: string, patch: Partial<MetaFormData>, label: string) {
+    const base = metas.find((m) => m.id === id);
+    if (!base) return;
+    try {
+      await updateMeta.mutateAsync({ id, payload: { ...base, ...patch } });
+      toast.success(`${label} atualizado (${base.nome_indicador} · ${base.mes}).`);
+    } catch (err) {
+      toast.error(`Falha ao atualizar ${label.toLowerCase()}: ${(err as Error).message}`);
     }
   }
 
@@ -1440,10 +1485,29 @@ const MetasTab: React.FC<MetasTabProps> = ({
                 )}
                 {metaView === "consolidado" && metasConsolidadas.map((c) => {
                   const p = pct(c.realizadoQty, c.metaQty);
+                  const isExpanded = expandedProduto === c.produto;
+                  const metasDoProduto = isExpanded
+                    ? metasTabela
+                        .filter((m) => m.nome_indicador === c.produto)
+                        .sort((a, b) => (getMesDate(a.mes)?.getTime() ?? 0) - (getMesDate(b.mes)?.getTime() ?? 0))
+                    : [];
                   return (
-                    <tr key={c.produto} className="border-b hover:bg-muted/30 transition-colors">
+                    <React.Fragment key={c.produto}>
+                    <tr className="border-b hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2 font-medium max-w-[220px]">
-                        <span title={c.produto} className="block truncate">{c.produto}</span>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 w-full text-left hover:text-primary transition-colors"
+                          onClick={() => setExpandedProduto(isExpanded ? null : c.produto)}
+                          title={canViewValues ? "Expandir para editar as metas de cada mês" : c.produto}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                          )}
+                          <span className="block truncate">{c.produto}</span>
+                        </button>
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground font-mono whitespace-nowrap">
                         <span title={c.meses.join(", ")}>
@@ -1497,6 +1561,84 @@ const MetasTab: React.FC<MetasTabProps> = ({
                         )}
                       </td>
                     </tr>
+                    {isExpanded && (
+                      <tr className="border-b bg-muted/20">
+                        <td colSpan={canViewValues ? 8 : 5} className="px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                            Metas dinâmicas por mês · {c.produto}
+                          </p>
+                          {metasDoProduto.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Nenhuma meta mensal no período filtrado.</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <div className="grid grid-cols-[90px_110px_110px_120px_1fr] gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                <span>Mês</span>
+                                <span className="text-center">Qtd Meta</span>
+                                <span className="text-center">Qtd Realizada</span>
+                                {canViewValues ? <span className="text-right">Vr. Unit. (R$)</span> : <span />}
+                                <span />
+                              </div>
+                              {metasDoProduto.map((m) => {
+                                const mQty = parseFloat(m.valor) || 0;
+                                const mManual = parseInt(m.realizado) || 0;
+                                const mVenda = qtyVendidaPara(m.nome_indicador, m.mes);
+                                const mPct = pct(mManual + mVenda, mQty);
+                                return (
+                                  <div key={m.id} className="grid grid-cols-[90px_110px_110px_120px_1fr] gap-2 items-center">
+                                    <span className="text-xs font-mono text-muted-foreground">{m.mes}</span>
+                                    {canViewValues ? (
+                                      <InlineNumberInput
+                                        value={m.valor || ""}
+                                        className="w-24 mx-auto text-center"
+                                        onCommit={(v) => handleInlineUpdate(m.id, { valor: v }, "Qtd Meta")}
+                                      />
+                                    ) : (
+                                      <span className="text-xs font-mono text-center">{mQty > 0 ? mQty.toLocaleString("pt-BR") : "—"}</span>
+                                    )}
+                                    {canViewValues ? (
+                                      <div className="text-center">
+                                        <InlineNumberInput
+                                          value={m.realizado || ""}
+                                          className="w-24 mx-auto text-center"
+                                          onCommit={(v) => handleInlineUpdate(m.id, { realizado: v }, "Qtd Realizada")}
+                                        />
+                                        {mVenda > 0 && (
+                                          <span className="block text-[10px] text-muted-foreground mt-0.5">+ {mVenda} via vendas</span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs font-mono text-center">{mManual + mVenda > 0 ? (mManual + mVenda).toLocaleString("pt-BR") : "—"}</span>
+                                    )}
+                                    {canViewValues ? (
+                                      showValues ? (
+                                        <InlineNumberInput
+                                          value={m.valor_unitario || ""}
+                                          step="0.01"
+                                          className="w-28 ml-auto text-right"
+                                          onCommit={(v) => handleInlineUpdate(m.id, { valor_unitario: v }, "Vr. Unitário")}
+                                        />
+                                      ) : (
+                                        <span className="text-xs text-right">{brl(parseFloat(m.valor_unitario) || 0, showValues)}</span>
+                                      )
+                                    ) : (
+                                      <span />
+                                    )}
+                                    <div className="min-w-[120px]">
+                                      {mQty > 0 && mManual + mVenda > 0 ? (
+                                        <PctBar value={mPct} />
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">—</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
                 {metaView === "mensal" && metasTabela.map((meta) => {
@@ -1527,11 +1669,30 @@ const MetasTab: React.FC<MetasTabProps> = ({
                       </td>
 
                       <td className="px-3 py-2 text-center font-mono">
-                        {metaQty > 0 ? metaQty.toLocaleString("pt-BR") : "—"}
+                        {canViewValues ? (
+                          <InlineNumberInput
+                            value={meta.valor || ""}
+                            className="w-20 mx-auto text-center"
+                            onCommit={(v) => handleInlineUpdate(meta.id, { valor: v }, "Qtd Meta")}
+                          />
+                        ) : metaQty > 0 ? metaQty.toLocaleString("pt-BR") : "—"}
                       </td>
 
                       <td className="px-3 py-2 text-center font-mono">
-                        {realizadoQty > 0 ? (
+                        {canViewValues ? (
+                          <div>
+                            <InlineNumberInput
+                              value={meta.realizado || ""}
+                              className="w-20 mx-auto text-center"
+                              onCommit={(v) => handleInlineUpdate(meta.id, { realizado: v }, "Qtd Realizada")}
+                            />
+                            {vendaQty > 0 && (
+                              <span className="block text-[10px] text-muted-foreground font-sans mt-0.5">
+                                + {vendaQty} via vendas
+                              </span>
+                            )}
+                          </div>
+                        ) : realizadoQty > 0 ? (
                           <div>
                             <span
                               style={{ color: p >= 100 ? "#16a34a" : p >= 70 ? "#f59e0b" : "#ef4444" }}
@@ -1555,7 +1716,14 @@ const MetasTab: React.FC<MetasTabProps> = ({
                       {canViewValues && (
                         <>
                           <td className="px-3 py-2 text-right text-xs">
-                            {vu > 0 ? brl(vu, showValues) : "—"}
+                            {showValues ? (
+                              <InlineNumberInput
+                                value={meta.valor_unitario || ""}
+                                step="0.01"
+                                className="w-24 ml-auto text-right"
+                                onCommit={(v) => handleInlineUpdate(meta.id, { valor_unitario: v }, "Vr. Unitário")}
+                              />
+                            ) : vu > 0 ? brl(vu, showValues) : "—"}
                           </td>
                           <td className="px-3 py-2 text-right text-xs">
                             {metaValor > 0 ? brl(metaValor, showValues) : "—"}
