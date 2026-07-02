@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import {
-  Users, TrendingUp, TrendingDown, Wallet, Package, Smile, AlertTriangle, CheckCircle2,
+  TrendingDown, Wallet, Package, Smile, AlertTriangle, CheckCircle2, Briefcase,
   Filter as FilterIcon,
 } from 'lucide-react';
 import { useComercialMovimentacao } from '@/hooks/useComercialMovimentacao';
@@ -67,6 +67,8 @@ interface ExecutivoTabProps {
   clientesAtivos: number;
   clientesBloqueados: number;
   isLoadingClientes?: boolean;
+  /** Modo TV (kiosk): oculta Receita realizada e ancora os funis na coluna direita. */
+  tvMode?: boolean;
 }
 
 export function ExecutivoTab({
@@ -78,6 +80,7 @@ export function ExecutivoTab({
   clientesAtivos,
   clientesBloqueados,
   isLoadingClientes = false,
+  tvMode = false,
 }: ExecutivoTabProps) {
   const { items: movItems, isLoading: movLoading } = useComercialMovimentacao('todos', dateFrom, dateTo);
   const { sdr: funilSdr, comercial: funilComercial, isLoading: funilLoading } = useComercialFunil();
@@ -198,6 +201,168 @@ export function ExecutivoTab({
 
   const loading = movLoading || metasLoading || vendasLoading;
 
+  // ── Cards (compostos por modo: padrão × TV) ───────────────────
+  const carteiraMovimentoCard = (
+    <BlocoCard icon={Briefcase} titulo="Carteira e Movimento">
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-3xl font-bold font-mono">{isLoadingClientes ? '—' : clientesAtivos}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">clientes ativos</p>
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-semibold font-mono text-destructive">{isLoadingClientes ? '—' : clientesBloqueados}</p>
+          <p className="text-[11px] text-muted-foreground">bloqueados</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 border-t pt-2">
+        <div>
+          <p className="text-2xl font-bold font-mono text-emerald-600">{loading ? '—' : movimento.ganhos}</p>
+          <p className="text-[11px] text-muted-foreground">ganhos</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold font-mono text-destructive">{loading ? '—' : movimento.perdas}</p>
+          <p className="text-[11px] text-muted-foreground">perdas</p>
+        </div>
+        <div>
+          <p
+            className="text-2xl font-bold font-mono"
+            style={{ color: movimento.saldo > 0 ? '#16a34a' : movimento.saldo < 0 ? '#ef4444' : undefined }}
+          >
+            {loading ? '—' : `${movimento.saldo > 0 ? '+' : ''}${movimento.saldo}`}
+          </p>
+          <p className="text-[11px] text-muted-foreground">saldo</p>
+        </div>
+      </div>
+      {canViewValues && movimento.valorPerdido > 0 && (
+        <p className="text-[11px] text-muted-foreground border-t pt-2">
+          Mensalidade perdida: {brl(movimento.valorPerdido, showValues)}/mês
+        </p>
+      )}
+    </BlocoCard>
+  );
+
+  const receitaCard = (
+    <BlocoCard icon={Wallet} titulo="Receita realizada">
+      <div>
+        <p className="text-3xl font-bold">
+          {loading ? '—' : canViewValues ? brl(receita.total, showValues) : '—'}
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {loading ? '' : `${receita.negocios} negócio${receita.negocios !== 1 ? 's' : ''} · ${receita.orgs} organizaç${receita.orgs !== 1 ? 'ões' : 'ão'}`}
+        </p>
+      </div>
+      <p className="text-[11px] text-muted-foreground border-t pt-2">
+        Somente realizado — acompanhamento de metas é por produto (qtd e valor).
+      </p>
+    </BlocoCard>
+  );
+
+  const produtosCard = (
+    <BlocoCard icon={Package} titulo="Produtos · meta × realizado">
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Carregando…</p>
+      ) : produtos.filter((p) => p.metaQty > 0).length === 0 ? (
+        <p className="text-sm text-muted-foreground">Sem metas de produto no período.</p>
+      ) : (
+        <div className="space-y-2">
+          {produtos.filter((p) => p.metaQty > 0).slice(0, 6).map((p) => (
+            <div key={p.nome}>
+              <div className="flex items-center justify-between gap-2 text-xs mb-0.5">
+                <span className="truncate text-foreground" title={p.nome}>{p.nome}</span>
+                <span className="font-mono flex-shrink-0" style={{ color: corPct(p.pct) }}>
+                  {p.realQty}/{p.metaQty} · {p.pct.toFixed(0)}%
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${Math.min(p.pct, 100)}%`, backgroundColor: corPct(p.pct) }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </BlocoCard>
+  );
+
+  const satisfacaoCard = (
+    <BlocoCard icon={Smile} titulo="Satisfação">
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <p className="text-2xl font-bold font-mono">
+            {satisfacao.csat != null ? `${Number(satisfacao.csat).toFixed(0)}%` : '—'}
+          </p>
+          <p className="text-[11px] text-muted-foreground">CSAT</p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold font-mono">
+            {satisfacao.nota != null ? Number(satisfacao.nota).toFixed(1) : '—'}
+          </p>
+          <p className="text-[11px] text-muted-foreground">nota média</p>
+        </div>
+        <div>
+          <p
+            className="text-2xl font-bold font-mono"
+            style={{ color: satisfacao.detratores > 0 ? '#ef4444' : '#16a34a' }}
+          >
+            {satisfacao.detratores}
+          </p>
+          <p className="text-[11px] text-muted-foreground">detratores</p>
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground border-t pt-2">
+        Última pesquisa · {satisfacao.respostas} resposta{satisfacao.respostas !== 1 ? 's' : ''}
+      </p>
+    </BlocoCard>
+  );
+
+  const funilSdrCard = (
+    <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)">
+      {funilLoading ? (
+        <p className="text-sm text-muted-foreground">Carregando…</p>
+      ) : (
+        <FunnelViz etapas={funilSdr} compact />
+      )}
+    </BlocoCard>
+  );
+
+  const funilComercialCard = (
+    <BlocoCard icon={FilterIcon} titulo="Funil Comercial (Geral)">
+      {funilLoading ? (
+        <p className="text-sm text-muted-foreground">Carregando…</p>
+      ) : (
+        <FunnelViz etapas={funilComercial} compact />
+      )}
+    </BlocoCard>
+  );
+
+  const alertasCard = (
+    <BlocoCard icon={AlertTriangle} titulo="Alertas">
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Carregando…</p>
+      ) : alertas.length === 0 ? (
+        <div className="flex items-center gap-2 text-sm text-emerald-600">
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+          Nenhum ponto de atenção no período.
+        </div>
+      ) : (
+        <div className="space-y-1.5 overflow-y-auto max-h-[180px] pr-1">
+          {alertas.map((a, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs">
+              {a.nivel === 'alto' ? (
+                <AlertTriangle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
+              ) : (
+                <TrendingDown className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+              )}
+              <span className="text-foreground leading-snug">{a.texto}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </BlocoCard>
+  );
+
   return (
     <div className="space-y-4">
       <div>
@@ -205,166 +370,33 @@ export function ExecutivoTab({
         <p className="text-sm text-muted-foreground">Resumo do comercial · {periodLabel ?? 'período selecionado'}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-
-        {/* 1 — Carteira */}
-        <BlocoCard icon={Users} titulo="Carteira">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-3xl font-bold font-mono">{isLoadingClientes ? '—' : clientesAtivos}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">clientes ativos</p>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-semibold font-mono text-destructive">{isLoadingClientes ? '—' : clientesBloqueados}</p>
-              <p className="text-[11px] text-muted-foreground">bloqueados</p>
-            </div>
+      {tvMode ? (
+        // Modo TV: sem Receita realizada · funis fixos na coluna direita
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_1.05fr] gap-4 items-start">
+          <div className="space-y-4">
+            {carteiraMovimentoCard}
+            {produtosCard}
           </div>
-        </BlocoCard>
-
-        {/* 2 — Movimento */}
-        <BlocoCard icon={TrendingUp} titulo="Movimento">
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <p className="text-2xl font-bold font-mono text-emerald-600">{loading ? '—' : movimento.ganhos}</p>
-              <p className="text-[11px] text-muted-foreground">ganhos</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold font-mono text-destructive">{loading ? '—' : movimento.perdas}</p>
-              <p className="text-[11px] text-muted-foreground">perdas</p>
-            </div>
-            <div>
-              <p
-                className="text-2xl font-bold font-mono"
-                style={{ color: movimento.saldo > 0 ? '#16a34a' : movimento.saldo < 0 ? '#ef4444' : undefined }}
-              >
-                {loading ? '—' : `${movimento.saldo > 0 ? '+' : ''}${movimento.saldo}`}
-              </p>
-              <p className="text-[11px] text-muted-foreground">saldo</p>
-            </div>
+          <div className="space-y-4">
+            {satisfacaoCard}
+            {alertasCard}
           </div>
-          {canViewValues && movimento.valorPerdido > 0 && (
-            <p className="text-[11px] text-muted-foreground border-t pt-2">
-              Mensalidade perdida: {brl(movimento.valorPerdido, showValues)}/mês
-            </p>
-          )}
-        </BlocoCard>
-
-        {/* 3 — Receita (somente realizado; metas são por produto) */}
-        <BlocoCard icon={Wallet} titulo="Receita realizada">
-          <div>
-            <p className="text-3xl font-bold">
-              {loading ? '—' : canViewValues ? brl(receita.total, showValues) : '—'}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {loading ? '' : `${receita.negocios} negócio${receita.negocios !== 1 ? 's' : ''} · ${receita.orgs} organizaç${receita.orgs !== 1 ? 'ões' : 'ão'}`}
-            </p>
+          <div className="space-y-4">
+            {funilSdrCard}
+            {funilComercialCard}
           </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
-            Somente realizado — acompanhamento de metas é por produto (qtd e valor).
-          </p>
-        </BlocoCard>
-
-        {/* 4 — Produtos: meta × realizado */}
-        <BlocoCard icon={Package} titulo="Produtos · meta × realizado">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
-          ) : produtos.filter((p) => p.metaQty > 0).length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem metas de produto no período.</p>
-          ) : (
-            <div className="space-y-2">
-              {produtos.filter((p) => p.metaQty > 0).slice(0, 6).map((p) => (
-                <div key={p.nome}>
-                  <div className="flex items-center justify-between gap-2 text-xs mb-0.5">
-                    <span className="truncate text-foreground" title={p.nome}>{p.nome}</span>
-                    <span className="font-mono flex-shrink-0" style={{ color: corPct(p.pct) }}>
-                      {p.realQty}/{p.metaQty} · {p.pct.toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${Math.min(p.pct, 100)}%`, backgroundColor: corPct(p.pct) }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </BlocoCard>
-
-        {/* 5 — Satisfação */}
-        <BlocoCard icon={Smile} titulo="Satisfação">
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <p className="text-2xl font-bold font-mono">
-                {satisfacao.csat != null ? `${Number(satisfacao.csat).toFixed(0)}%` : '—'}
-              </p>
-              <p className="text-[11px] text-muted-foreground">CSAT</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold font-mono">
-                {satisfacao.nota != null ? Number(satisfacao.nota).toFixed(1) : '—'}
-              </p>
-              <p className="text-[11px] text-muted-foreground">nota média</p>
-            </div>
-            <div>
-              <p
-                className="text-2xl font-bold font-mono"
-                style={{ color: satisfacao.detratores > 0 ? '#ef4444' : '#16a34a' }}
-              >
-                {satisfacao.detratores}
-              </p>
-              <p className="text-[11px] text-muted-foreground">detratores</p>
-            </div>
-          </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
-            Última pesquisa · {satisfacao.respostas} resposta{satisfacao.respostas !== 1 ? 's' : ''}
-          </p>
-        </BlocoCard>
-
-        {/* 6 — Funil SDR */}
-        <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)">
-          {funilLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
-          ) : (
-            <FunnelViz etapas={funilSdr} compact />
-          )}
-        </BlocoCard>
-
-        {/* 7 — Funil Comercial */}
-        <BlocoCard icon={FilterIcon} titulo="Funil Comercial (Geral)">
-          {funilLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
-          ) : (
-            <FunnelViz etapas={funilComercial} compact />
-          )}
-        </BlocoCard>
-
-        {/* 8 — Alertas */}
-        <BlocoCard icon={AlertTriangle} titulo="Alertas">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando…</p>
-          ) : alertas.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-emerald-600">
-              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-              Nenhum ponto de atenção no período.
-            </div>
-          ) : (
-            <div className="space-y-1.5 overflow-y-auto max-h-[180px] pr-1">
-              {alertas.map((a, i) => (
-                <div key={i} className="flex items-start gap-2 text-xs">
-                  {a.nivel === 'alto' ? (
-                    <AlertTriangle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
-                  ) : (
-                    <TrendingDown className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                  )}
-                  <span className="text-foreground leading-snug">{a.texto}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </BlocoCard>
-      </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {carteiraMovimentoCard}
+          {receitaCard}
+          {produtosCard}
+          {funilSdrCard}
+          {funilComercialCard}
+          {satisfacaoCard}
+          {alertasCard}
+        </div>
+      )}
     </div>
   );
 }

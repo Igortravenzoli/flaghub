@@ -4,70 +4,133 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
-import { Filter, Pencil, Trash2, Plus, Loader2 } from 'lucide-react';
+import {
+  Filter, Pencil, Trash2, Plus, Loader2,
+  Target, Search, UserCheck, PhoneCall, MessageSquare, BadgeCheck, ArrowRightLeft,
+  Inbox, ClipboardList, MonitorPlay, FileText, Handshake, Trophy, CircleDot,
+} from 'lucide-react';
 import { useComercialFunil, FunilEtapa, FunilKey } from '@/hooks/useComercialFunil';
 
+/** Registro de ícones profissionais por chave (persistida em comercial_funil.icone). */
+export const FUNIL_ICONS: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string }> = {
+  'target': { icon: Target, label: 'Alvo' },
+  'search': { icon: Search, label: 'Busca' },
+  'user-check': { icon: UserCheck, label: 'Decisor' },
+  'phone-call': { icon: PhoneCall, label: 'Ligação' },
+  'message-square': { icon: MessageSquare, label: 'Conversa' },
+  'badge-check': { icon: BadgeCheck, label: 'Validado' },
+  'arrow-right-left': { icon: ArrowRightLeft, label: 'Transferência' },
+  'inbox': { icon: Inbox, label: 'Entrada' },
+  'clipboard-list': { icon: ClipboardList, label: 'Diagnóstico' },
+  'monitor-play': { icon: MonitorPlay, label: 'Demonstração' },
+  'file-text': { icon: FileText, label: 'Proposta' },
+  'handshake': { icon: Handshake, label: 'Negociação' },
+  'trophy': { icon: Trophy, label: 'Fechamento' },
+};
+
+export function EtapaIcon({ icone, className }: { icone: string | null; className?: string }) {
+  const entry = icone ? FUNIL_ICONS[icone] : undefined;
+  const Icon = entry?.icon ?? CircleDot;
+  return <Icon className={className} />;
+}
+
 /** Paleta inspirada no modelo: topo quente → base fria (7 posições). */
-const FUNNEL_COLORS = ['#dc2626', '#ea580c', '#84cc16', '#14b8a6', '#0284c7', '#4f46e5', '#9333ea'];
+const FUNNEL_COLORS = ['#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0284c7', '#4f46e5', '#9333ea'];
 
 export function funnelColor(index: number, total: number): string {
   if (total <= 1) return FUNNEL_COLORS[0];
-  // Distribui a paleta ao longo das etapas (sempre termina no roxo)
   const pos = Math.round((index / (total - 1)) * (FUNNEL_COLORS.length - 1));
   return FUNNEL_COLORS[pos];
+}
+
+function shade(hex: string, factor: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.round(((n >> 16) & 255) * factor));
+  const g = Math.min(255, Math.round(((n >> 8) & 255) * factor));
+  const b = Math.min(255, Math.round((n & 255) * factor));
+  return `rgb(${r},${g},${b})`;
 }
 
 interface FunnelVizProps {
   etapas: FunilEtapa[];
   compact?: boolean;
-  showConversao?: boolean;
 }
 
-/** Funil visual em trapézios centralizados (CSS clip-path). */
-export function FunnelViz({ etapas, compact = false, showConversao = true }: FunnelVizProps) {
+/** Funil 3D estilizado em perspectiva (SVG com sombreamento e aros elípticos). */
+export function FunnelViz({ etapas, compact = false }: FunnelVizProps) {
   const total = etapas.length;
+  const uid = useMemo(() => Math.random().toString(36).slice(2, 8), []);
   if (total === 0) {
     return <p className="text-xs text-muted-foreground py-4 text-center">Nenhuma etapa cadastrada.</p>;
   }
 
+  const W = 400;
+  const cx = W / 2;
+  const bandH = compact ? 30 : 48;
+  const gap = compact ? 4 : 7;
+  const maxRx = 186;
+  const minRx = 36;
+  const ryF = 0.16;
+  const fontSize = compact ? 10.5 : 13;
   const topQty = etapas[0]?.quantidade ?? 0;
-  const MIN_W = 34; // largura % da base
-  const widthAt = (i: number) => 100 - ((100 - MIN_W) * i) / total;
-  const rowH = compact ? 'h-9' : 'h-14';
+  const H = 14 + total * (bandH + gap) + (compact ? 14 : 24);
+  const rxAt = (i: number) => maxRx - ((maxRx - minRx) * i) / total;
+
+  let y = 12;
+  const bands = etapas.map((e, i) => {
+    const color = funnelColor(i, total);
+    const rxT = rxAt(i);
+    const rxB = rxAt(i + 1);
+    const ryT = Math.max(compact ? 4 : 6, rxT * ryF);
+    const ryB = Math.max(compact ? 3 : 5, rxB * ryF);
+    const yT = y;
+    const yB = y + bandH;
+    y = yB + gap;
+    const pct = topQty > 0 ? Math.round((e.quantidade / topQty) * 100) : null;
+    const gid = `fnl-${uid}-${i}`;
+    return { e, i, color, rxT, rxB, ryT, ryB, yT, yB, pct, gid };
+  });
 
   return (
-    <div className="w-full select-none">
-      {etapas.map((e, i) => {
-        const wTop = widthAt(i);
-        const wBottom = widthAt(i + 1);
-        const xTop = (100 - wTop) / 2;
-        const xBottom = (100 - wBottom) / 2;
-        const pct = topQty > 0 ? Math.round((e.quantidade / topQty) * 100) : null;
-        return (
-          <div key={e.id} className={`relative ${rowH} ${compact ? 'mb-0.5' : 'mb-1'}`}>
-            <div
-              className="absolute inset-0 transition-all"
-              style={{
-                backgroundColor: funnelColor(i, total),
-                clipPath: `polygon(${xTop}% 0, ${100 - xTop}% 0, ${100 - xBottom}% 100%, ${xBottom}% 100%)`,
-              }}
-            />
-            <div className="absolute inset-0 flex items-center justify-center gap-2 px-2">
-              <span className={`font-semibold text-white drop-shadow-sm truncate ${compact ? 'text-[11px]' : 'text-sm'}`}>
-                {e.icone ? `${e.icone} ` : ''}{e.etapa}
-              </span>
-              <span className={`font-mono font-bold text-white drop-shadow-sm ${compact ? 'text-[11px]' : 'text-sm'}`}>
-                {e.quantidade}
-              </span>
-              {showConversao && !compact && pct !== null && i > 0 && (
-                <span className="text-[10px] font-mono text-white/85 drop-shadow-sm">({pct}%)</span>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img" aria-label="Funil de vendas">
+      <defs>
+        {bands.map(({ color, gid }) => (
+          <linearGradient key={gid} id={gid} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor={shade(color, 0.55)} />
+            <stop offset="0.28" stopColor={shade(color, 1.22)} />
+            <stop offset="0.55" stopColor={color} />
+            <stop offset="1" stopColor={shade(color, 0.5)} />
+          </linearGradient>
+        ))}
+      </defs>
+      <ellipse cx={cx} cy={y + (compact ? 2 : 6)} rx={minRx * 2.1} ry={compact ? 6 : 10} fill="#000" opacity="0.14" />
+      {bands.map(({ e, i, color, rxT, rxB, ryT, ryB, yT, yB, pct, gid }) => (
+        <g key={e.id}>
+          <path
+            d={`M ${cx - rxT} ${yT} A ${rxT} ${ryT} 0 0 0 ${cx + rxT} ${yT} L ${cx + rxB} ${yB} A ${rxB} ${ryB} 0 0 1 ${cx - rxB} ${yB} Z`}
+            fill={`url(#${gid})`}
+          />
+          <ellipse
+            cx={cx} cy={yT} rx={rxT} ry={ryT}
+            fill={i === 0 ? shade(color, 0.72) : shade(color, 1.12)}
+            opacity={i === 0 ? 1 : 0.35}
+          />
+          <text
+            x={cx}
+            y={yT + bandH / 2 + ryT / 2 + fontSize / 3}
+            textAnchor="middle"
+            fill="#fff"
+            fontSize={fontSize}
+            fontWeight={600}
+            style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.25)', strokeWidth: 2 }}
+          >
+            {e.etapa} · {e.quantidade}{pct !== null && i > 0 ? ` (${pct}%)` : ''}
+          </text>
+        </g>
+      ))}
+    </svg>
   );
 }
 
@@ -115,7 +178,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
         await updateEtapa.mutateAsync({
           id: form.id,
           etapa: form.etapa.trim(),
-          icone: form.icone.trim() || null,
+          icone: form.icone || null,
           ordem: form.ordem,
           quantidade: form.quantidade,
         });
@@ -123,7 +186,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
         await createEtapa.mutateAsync({
           funil: form.funil,
           etapa: form.etapa.trim(),
-          icone: form.icone.trim() || null,
+          icone: form.icone || null,
           ordem: form.ordem,
           quantidade: form.quantidade,
         });
@@ -203,7 +266,9 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                   <Loader2 className="h-5 w-5 animate-spin" />
                 </div>
               ) : (
-                <FunnelViz etapas={etapas} />
+                <div className="px-2">
+                  <FunnelViz etapas={etapas} />
+                </div>
               )}
 
               {canEdit && isManaging && (
@@ -221,12 +286,12 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                     {etapas.map((e, i) => (
                       <div key={e.id} className="flex items-center gap-2 text-sm">
                         <span
-                          className="h-2.5 w-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: funnelColor(i, etapas.length) }}
-                        />
-                        <span className="flex-1 truncate text-xs">
-                          {e.icone ? `${e.icone} ` : ''}{e.etapa}
+                          className="flex h-6 w-6 items-center justify-center rounded-md flex-shrink-0"
+                          style={{ backgroundColor: `${funnelColor(i, etapas.length)}1f`, color: funnelColor(i, etapas.length) }}
+                        >
+                          <EtapaIcon icone={e.icone} className="h-3.5 w-3.5" />
                         </span>
+                        <span className="flex-1 truncate text-xs">{e.etapa}</span>
                         <Input
                           type="number"
                           min={0}
@@ -272,12 +337,26 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold mb-1">Ícone (emoji)</label>
-                  <Input
-                    value={form?.icone ?? ''}
-                    onChange={(e) => setForm(f => f ? { ...f, icone: e.target.value } : f)}
-                    placeholder="💬"
-                  />
+                  <label className="block text-xs font-semibold mb-1">Ícone</label>
+                  <Select
+                    value={form?.icone || '__none__'}
+                    onValueChange={(v) => setForm(f => f ? { ...f, icone: v === '__none__' ? '' : v } : f)}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sem ícone</SelectItem>
+                      {Object.entries(FUNIL_ICONS).map(([key, { icon: Icon, label }]) => (
+                        <SelectItem key={key} value={key}>
+                          <span className="flex items-center gap-2">
+                            <Icon className="h-3.5 w-3.5" />
+                            {label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold mb-1">Ordem</label>
