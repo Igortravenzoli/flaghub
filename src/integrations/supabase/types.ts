@@ -172,6 +172,41 @@ export type Database = {
         }
         Relationships: []
       }
+      comercial_funil_lancamentos: {
+        Row: {
+          created_at: string
+          etapa_id: string
+          id: string
+          mes: string
+          quantidade: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          etapa_id: string
+          id?: string
+          mes: string
+          quantidade?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          etapa_id?: string
+          id?: string
+          mes?: string
+          quantidade?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comercial_funil_lancamentos_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "comercial_funil"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comercial_funil: {
         Row: {
           created_at: string

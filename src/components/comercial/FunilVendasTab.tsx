@@ -11,7 +11,8 @@ import {
   Target, Search, UserCheck, PhoneCall, MessageSquare, BadgeCheck, ArrowRightLeft,
   Inbox, ClipboardList, MonitorPlay, FileText, Handshake, Trophy, CircleDot,
 } from 'lucide-react';
-import { useComercialFunil, FunilEtapa, FunilKey } from '@/hooks/useComercialFunil';
+import { toast } from 'sonner';
+import { useComercialFunil, FunilEtapa, FunilKey, ymNow, ymLabel } from '@/hooks/useComercialFunil';
 
 /** Registro de ícones profissionais por chave (persistida em comercial_funil.icone). */
 export const FUNIL_ICONS: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string }> = {
@@ -155,7 +156,8 @@ interface Props {
 }
 
 export default function FunilVendasTab({ canEdit = false }: Props) {
-  const { sdr, comercial, isLoading, isError, refetch, createEtapa, updateEtapa, deleteEtapa } = useComercialFunil();
+  const [mesSel, setMesSel] = useState<string>(ymNow());
+  const { sdr, comercial, isLoading, isError, refetch, createEtapa, updateEtapa, deleteEtapa, upsertLancamento } = useComercialFunil(mesSel);
   const [managing, setManaging] = useState<FunilKey | null>(null);
   const [form, setForm] = useState<EtapaFormState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -176,24 +178,29 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
     if (!form || !form.etapa.trim()) return;
     setSaving(true);
     try {
+      let etapaId = form.id;
       if (form.id) {
         await updateEtapa.mutateAsync({
           id: form.id,
           etapa: form.etapa.trim(),
           icone: form.icone || null,
           ordem: form.ordem,
-          quantidade: form.quantidade,
         });
       } else {
-        await createEtapa.mutateAsync({
+        etapaId = await createEtapa.mutateAsync({
           funil: form.funil,
           etapa: form.etapa.trim(),
           icone: form.icone || null,
           ordem: form.ordem,
-          quantidade: form.quantidade,
         });
       }
+      if (etapaId) {
+        await upsertLancamento.mutateAsync({ etapa_id: etapaId, mes: mesSel, quantidade: form.quantidade });
+      }
+      toast.success(`Categoria "${form.etapa.trim()}" salva (${ymLabel(mesSel)}).`);
       setForm(null);
+    } catch (err) {
+      toast.error(`Falha ao salvar categoria: ${(err as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -201,25 +208,47 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
 
   const handleDelete = async (e: FunilEtapa) => {
     if (!window.confirm(`Remover a etapa "${e.etapa}" do funil?`)) return;
-    await deleteEtapa.mutateAsync(e.id);
+    try {
+      await deleteEtapa.mutateAsync(e.id);
+      toast.success(`Etapa "${e.etapa}" removida.`);
+    } catch (err) {
+      toast.error(`Falha ao remover etapa: ${(err as Error).message}`);
+    }
   };
 
   const handleQtyBlur = async (e: FunilEtapa, value: string) => {
     const qty = Math.max(0, parseInt(value, 10) || 0);
     if (qty === e.quantidade) return;
-    await updateEtapa.mutateAsync({ id: e.id, quantidade: qty });
+    try {
+      await upsertLancamento.mutateAsync({ etapa_id: e.id, mes: mesSel, quantidade: qty });
+      toast.success(`${e.etapa}: ${qty} lançado em ${ymLabel(mesSel)}.`);
+    } catch (err) {
+      toast.error(`Falha ao lançar quantidade de "${e.etapa}": ${(err as Error).message}`);
+    }
   };
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-xl font-bold">Funil de Vendas</h2>
           <p className="text-sm text-muted-foreground">
-            Etapas e quantitativos dos funis SDR e Comercial — atualização manual pelo gestor.
+            Lançamento mensal por etapa — selecione o mês para visualizar ou lançar quantitativos.
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="funil-mes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Mês
+          </label>
+          <Input
+            id="funil-mes"
+            type="month"
+            value={mesSel}
+            onChange={(e) => e.target.value && setMesSel(e.target.value)}
+            className="h-8 w-40 text-xs"
+          />
         </div>
       </div>
 
@@ -244,6 +273,9 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-[10px] whitespace-nowrap font-mono">
+                    {ymLabel(mesSel)}
+                  </Badge>
                   {conversao !== null && (
                     <Badge variant="outline" className="text-[10px] whitespace-nowrap">
                       conversão {conversao}%
@@ -277,7 +309,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                 <div className="border-t pt-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Etapas · quantidade
+                      Etapas · lançamento de {ymLabel(mesSel)}
                     </p>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => openCreate(key)}>
                       <Plus className="h-3 w-3 mr-1" />
@@ -369,7 +401,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1">Quantidade</label>
+                  <label className="block text-xs font-semibold mb-1">Qtd ({ymLabel(mesSel)})</label>
                   <Input
                     type="number"
                     min={0}
