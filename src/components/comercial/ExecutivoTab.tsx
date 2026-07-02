@@ -416,30 +416,27 @@ export function ExecutivoTab({
             {satisfacaoCard}
             {alertasCard}
           </div>
-          <div className="grid grid-rows-[auto_1fr] gap-4">
-            <BlocoCard icon={FilterIcon} titulo={`Funil SDR (Geral) · ${funilMesLabel}`}>
-              {funilLoading ? (
-                <p className="text-sm text-muted-foreground">Carregando…</p>
-              ) : (
-                <>
-                  <div className="px-1">
-                    <FunnelViz etapas={funilSdr} compact />
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <span className="h-px flex-1 bg-border" />
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Funil Comercial (Geral)
-                    </span>
-                    <span className="h-px flex-1 bg-border" />
-                  </div>
-                  <div className="px-1">
-                    <FunnelViz etapas={funilComercial} compact />
-                  </div>
-                </>
-              )}
-            </BlocoCard>
-            {funilHistogramaCard}
-          </div>
+          <BlocoCard icon={FilterIcon} titulo={`Funil SDR (Geral) · ${funilMesLabel}`}>
+            {funilLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando…</p>
+            ) : (
+              <>
+                <div className="px-1">
+                  <FunnelViz etapas={funilSdr} compact />
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Funil Comercial (Geral)
+                  </span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <div className="px-1">
+                  <FunnelViz etapas={funilComercial} compact />
+                </div>
+              </>
+            )}
+          </BlocoCard>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
