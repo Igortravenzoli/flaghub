@@ -5,9 +5,11 @@ import {
 import { Headphones, Network, Users, Clock, CalendarClock, Monitor, ShieldCheck, Gauge } from 'lucide-react';
 import { BlocoCard, SecHeader } from '@/components/executivo/BlocoCard';
 import type { ConsultorKpi, TipoChamadoKpi, RegistroPorGrupo, HistoricoEntry } from '@/hooks/useHelpdeskKpis';
-import { useBICustomerKpis, type BICustomerSegmento } from '@/hooks/useBICustomer';
+import {
+  useGestaoSlaNestle, useGestaoSlaHeineken, useGestaoSlaFlag, type GestaoSlaResponse,
+} from '@/hooks/useGestaoKpis';
 
-// Metas fixas de SLA (gateway Gestão / BICustomerPanel)
+// Metas fixas de SLA (fallback; o gateway Gestão retorna as metas por segmento)
 const META_TTR_DIAS = 3.9;
 const META_24H_PCT = 48;
 
@@ -15,8 +17,6 @@ const META_24H_PCT = 48;
 const CONSULTORES_CS = ['ailton', 'italo', 'leandro', 'vagner', 'guimaraes', 'ricardo', 'wilker', 'bruna', 'ronaldo'];
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const isConsultorCS = (nome: string) => { const n = norm(nome); return CONSULTORES_CS.some((t) => n.includes(t)); };
-
-const META_NESTLE_TICKETS_ANO = 5716;
 
 const corOk = (ok: boolean | null) => (ok == null ? undefined : ok ? '#16a34a' : '#ef4444');
 const okLow = (v?: number | null, m?: number | null) => (v == null || m == null ? null : v <= m);
@@ -36,48 +36,24 @@ function MetricaSla({ label, valor, sufixo, ok, meta }: {
   );
 }
 
-/** Card SLA por segmento (Nestlé/Flag) — seções Ano (acumulado) e Mês (atual). */
-function SlaSegmentoCard({ titulo, seg, isNestle }: { titulo: string; seg?: BICustomerSegmento; isNestle: boolean }) {
-  const ano = new Date().getFullYear();
-  const unid = seg?.unidade === 'ticket' ? 'tickets' : 'OS';
-
-  // Ano (acumulado): Nestlé = metas fixas; Outros = vs ano anterior
-  const ttrAno = seg?.metricasAno?.ttrMedioDias;
-  const p24Ano = seg?.metricasAno?.pctEncerrados24h;
-  const totAno = seg?.ano?.total;
-  const ttrAnoMeta = isNestle ? META_TTR_DIAS : seg?.metricasAnoAnterior?.ttrMedioDias;
-  const p24AnoMeta = isNestle ? META_24H_PCT : seg?.metricasAnoAnterior?.pctEncerrados24h;
-  const totAnoMeta = isNestle ? META_NESTLE_TICKETS_ANO : seg?.anoAnterior?.total;
-
-  // Mês atual: metas vs mês anterior
-  const ttrMes = seg?.metricas.ttrMedioDias;
-  const p24Mes = seg?.metricas.pctEncerrados24h;
-  const totMes = seg?.mesAtual.total;
-  const ttrMesMeta = seg?.metricasMesAnterior?.ttrMedioDias;
-  const p24MesMeta = seg?.metricasMesAnterior?.pctEncerrados24h;
-  const totMesMeta = seg?.mesAnterior.total;
+/** Card SLA executivo por segmento (Nestlé/Heineken/Flag) — fonte: gateway Gestão. */
+function SlaExecCard({ titulo, data }: { titulo: string; data?: GestaoSlaResponse }) {
+  const k = data?.kpis;
+  const metaTtr = data?.metas?.metaTTRDias ?? META_TTR_DIAS;
+  const metaPct = data?.metas?.metaTTR24hPct ?? META_24H_PCT;
+  const okTtr = data?.status?.ttr ? data.status.ttr === 'OK' : okLow(k?.ttrMedioFechadoDias, metaTtr);
+  const okPct = data?.status?.pct24h ? data.status.pct24h === 'OK' : okHigh(k?.pctEncerrados24h, metaPct);
 
   return (
     <BlocoCard icon={ShieldCheck} titulo={`SLA ${titulo}`}>
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Ano {ano}</p>
-        <div className="grid grid-cols-3 gap-2 text-center mt-1">
-          <MetricaSla label="TTR" valor={ttrAno} sufixo="d" ok={okLow(ttrAno, ttrAnoMeta)} meta={`≤ ${fmtMeta(ttrAnoMeta, 'd')}`} />
-          <MetricaSla label="≤24h" valor={p24Ano} sufixo="%" ok={okHigh(p24Ano, p24AnoMeta)} meta={`≥ ${fmtMeta(p24AnoMeta, '%')}`} />
-          <MetricaSla label={unid} valor={totAno} sufixo="" ok={okLow(totAno, totAnoMeta)} meta={`≤ ${fmtMeta(totAnoMeta)}`} />
-        </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <MetricaSla label="TTR (fechadas)" valor={k?.ttrMedioFechadoDias} sufixo="d" ok={okTtr} meta={`≤ ${fmtMeta(metaTtr, 'd')}`} />
+        <MetricaSla label="≤24h" valor={k?.pctEncerrados24h} sufixo="%" ok={okPct} meta={`≥ ${fmtMeta(metaPct, '%')}`} />
+        <MetricaSla label="OS abertas" valor={k?.totalAbertos} sufixo="" ok={null} meta={`> 30d: ${k?.abertos30Dias ?? '—'}`} />
       </div>
-      <div className="border-t pt-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Mês atual</p>
-        <div className="grid grid-cols-3 gap-2 text-center mt-1">
-          <MetricaSla label="TTR" valor={ttrMes} sufixo="d" ok={okLow(ttrMes, ttrMesMeta)} meta={`vs ${fmtMeta(ttrMesMeta, 'd')}`} />
-          <MetricaSla label="≤24h" valor={p24Mes} sufixo="%" ok={okHigh(p24Mes, p24MesMeta)} meta={`vs ${fmtMeta(p24MesMeta, '%')}`} />
-          <MetricaSla label={unid} valor={totMes} sufixo="" ok={okLow(totMes, totMesMeta)} meta={`vs ${fmtMeta(totMesMeta)}`} />
-        </div>
-      </div>
-      {!seg?.metricasAno && (
-        <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">Anual e metas vs. período anterior: aguardando gateway.</p>
-      )}
+      <p className="text-[10px] text-muted-foreground/80 border-t pt-1.5">
+        TTR médio das fechadas (60d) · {k?.totalFechados60Dias ?? '—'} fechadas no período.
+      </p>
     </BlocoCard>
   );
 }
@@ -101,7 +77,9 @@ export function HelpdeskExecutivoTab({
   registrosPorSistema, registrosPorBandeira, registrosPorCliente,
   historico, periodLabel,
 }: HelpdeskExecutivoTabProps) {
-  const { data: sla } = useBICustomerKpis();
+  const { data: slaNestle } = useGestaoSlaNestle();
+  const { data: slaHeineken } = useGestaoSlaHeineken();
+  const { data: slaFlag } = useGestaoSlaFlag();
 
   // Volume por consultor — filtra os 9 do CS e DEDUPLICA por nome (corrige "duas barrinhas")
   const consultoresData = useMemo(() => {
@@ -146,8 +124,9 @@ export function HelpdeskExecutivoTab({
       {/* ═══════ 1ª LINHA — RESULTADO ═══════ */}
       <SecHeader title="Resultado" subtitle="SLA e panorama do mês" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <SlaSegmentoCard titulo="Nestlé" seg={sla?.nestle} isNestle />
-        <SlaSegmentoCard titulo="Flag" seg={sla?.outras} isNestle={false} />
+        <SlaExecCard titulo="Nestlé" data={slaNestle} />
+        <SlaExecCard titulo="Heineken" data={slaHeineken} />
+        <SlaExecCard titulo="Flag" data={slaFlag} />
 
         {/* Panorama do Atendimento */}
         <BlocoCard icon={Headphones} titulo="Panorama do Atendimento">
