@@ -127,31 +127,10 @@ export function HelpdeskExecutivoTab({
         <SlaExecCard titulo="Nestlé" data={slaNestle} />
         <SlaExecCard titulo="Heineken" data={slaHeineken} />
         <SlaExecCard titulo="Flag" data={slaFlag} />
-
-        {/* Panorama do Atendimento (volume + horas + cobertura unificados) */}
-        <BlocoCard icon={Headphones} titulo="Panorama do Atendimento">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-4xl font-bold font-mono">{totalRegistros}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">registros no período</p>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold font-mono">{totalHoras}h</p>
-              <p className="text-[11px] text-muted-foreground">horas</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-4 gap-2 text-center border-t pt-2">
-            <div><p className="text-xl font-bold font-mono">{consultoresAtivos}</p><p className="text-[10px] text-muted-foreground">consultores</p></div>
-            <div><p className="text-xl font-bold font-mono">{registrosPorSistema.length}</p><p className="text-[10px] text-muted-foreground">sistemas</p></div>
-            <div><p className="text-xl font-bold font-mono">{registrosPorBandeira.length}</p><p className="text-[10px] text-muted-foreground">bandeiras</p></div>
-            <div><p className="text-xl font-bold font-mono">{registrosPorCliente.length}</p><p className="text-[10px] text-muted-foreground">clientes</p></div>
-          </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Volume, horas e abrangência do atendimento no período.</p>
-        </BlocoCard>
       </div>
 
       {/* ═══════ 2ª LINHA — INDICADORES ═══════ */}
-      <SecHeader title="Indicadores" subtitle="tipos e produtividade" />
+      <SecHeader title="Indicadores" subtitle="tipos, produtividade e panorama" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Tempo Médio por Tipo de Chamado */}
         <BlocoCard icon={Clock} titulo="Tempo Médio por Tipo de Chamado">
@@ -182,6 +161,27 @@ export function HelpdeskExecutivoTab({
               Em integração com a aba <b>TechLead</b> (consultor × produtividade %).<br />Próxima entrega.
             </p>
           </div>
+        </BlocoCard>
+
+        {/* Panorama do Atendimento (volume + horas + cobertura unificados) */}
+        <BlocoCard icon={Headphones} titulo="Panorama do Atendimento">
+          <div className="flex items-end justify-between">
+            <div>
+              <p className="text-4xl font-bold font-mono">{totalRegistros}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">registros no período</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold font-mono">{totalHoras}h</p>
+              <p className="text-[11px] text-muted-foreground">horas</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-2 text-center border-t pt-2">
+            <div><p className="text-xl font-bold font-mono">{consultoresAtivos}</p><p className="text-[10px] text-muted-foreground">consultores</p></div>
+            <div><p className="text-xl font-bold font-mono">{registrosPorSistema.length}</p><p className="text-[10px] text-muted-foreground">sistemas</p></div>
+            <div><p className="text-xl font-bold font-mono">{registrosPorBandeira.length}</p><p className="text-[10px] text-muted-foreground">bandeiras</p></div>
+            <div><p className="text-xl font-bold font-mono">{registrosPorCliente.length}</p><p className="text-[10px] text-muted-foreground">clientes</p></div>
+          </div>
+          <p className="text-[11px] text-muted-foreground border-t pt-2">Volume, horas e abrangência do atendimento no período.</p>
         </BlocoCard>
       </div>
 
