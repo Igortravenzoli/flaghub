@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, LabelList,
 } from 'recharts';
-import { Headphones, Network, Users, Clock, CalendarClock, Monitor, ShieldCheck, Gauge } from 'lucide-react';
+import { Headphones, Users, Clock, CalendarClock, Monitor, ShieldCheck, Gauge } from 'lucide-react';
 import { BlocoCard, SecHeader } from '@/components/executivo/BlocoCard';
 import type { ConsultorKpi, TipoChamadoKpi, RegistroPorGrupo, HistoricoEntry } from '@/hooks/useHelpdeskKpis';
 import {
@@ -128,7 +128,7 @@ export function HelpdeskExecutivoTab({
         <SlaExecCard titulo="Heineken" data={slaHeineken} />
         <SlaExecCard titulo="Flag" data={slaFlag} />
 
-        {/* Panorama do Atendimento */}
+        {/* Panorama do Atendimento (volume + horas + cobertura unificados) */}
         <BlocoCard icon={Headphones} titulo="Panorama do Atendimento">
           <div className="flex items-end justify-between">
             <div>
@@ -140,25 +140,19 @@ export function HelpdeskExecutivoTab({
               <p className="text-[11px] text-muted-foreground">horas</p>
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
-            {consultoresAtivos} consultor{consultoresAtivos !== 1 ? 'es' : ''} ativo{consultoresAtivos !== 1 ? 's' : ''}. (Comparativo vs. mês anterior: pendente 2ª consulta ao gateway.)
-          </p>
+          <div className="grid grid-cols-4 gap-2 text-center border-t pt-2">
+            <div><p className="text-xl font-bold font-mono">{consultoresAtivos}</p><p className="text-[10px] text-muted-foreground">consultores</p></div>
+            <div><p className="text-xl font-bold font-mono">{registrosPorSistema.length}</p><p className="text-[10px] text-muted-foreground">sistemas</p></div>
+            <div><p className="text-xl font-bold font-mono">{registrosPorBandeira.length}</p><p className="text-[10px] text-muted-foreground">bandeiras</p></div>
+            <div><p className="text-xl font-bold font-mono">{registrosPorCliente.length}</p><p className="text-[10px] text-muted-foreground">clientes</p></div>
+          </div>
+          <p className="text-[11px] text-muted-foreground border-t pt-2">Volume, horas e abrangência do atendimento no período.</p>
         </BlocoCard>
       </div>
 
       {/* ═══════ 2ª LINHA — INDICADORES ═══════ */}
-      <SecHeader title="Indicadores" subtitle="cobertura, tipos e produtividade" />
+      <SecHeader title="Indicadores" subtitle="tipos e produtividade" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Cobertura do Atendimento */}
-        <BlocoCard icon={Network} titulo="Cobertura do Atendimento">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div><p className="text-3xl font-bold font-mono">{registrosPorSistema.length}</p><p className="text-[11px] text-muted-foreground">sistemas</p></div>
-            <div><p className="text-3xl font-bold font-mono">{registrosPorBandeira.length}</p><p className="text-[11px] text-muted-foreground">bandeiras</p></div>
-            <div><p className="text-3xl font-bold font-mono">{registrosPorCliente.length}</p><p className="text-[11px] text-muted-foreground">clientes</p></div>
-          </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Abrangência do atendimento. (Saneamento de base do Lantim em andamento.)</p>
-        </BlocoCard>
-
         {/* Tempo Médio por Tipo de Chamado */}
         <BlocoCard icon={Clock} titulo="Tempo Médio por Tipo de Chamado">
           {tipos.length === 0 ? (
