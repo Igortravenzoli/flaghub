@@ -11,6 +11,7 @@ import {
   Target, Search, UserCheck, PhoneCall, MessageSquare, BadgeCheck, ArrowRightLeft,
   Inbox, ClipboardList, MonitorPlay, FileText, Handshake, Trophy, CircleDot,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useComercialFunil, FunilEtapa, FunilKey } from '@/hooks/useComercialFunil';
 
 /** Registro de ícones profissionais por chave (persistida em comercial_funil.icone). */
@@ -193,7 +194,10 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
           quantidade: form.quantidade,
         });
       }
+      toast.success(`Categoria "${form.etapa.trim()}" salva.`);
       setForm(null);
+    } catch (err) {
+      toast.error(`Falha ao salvar categoria: ${(err as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -201,13 +205,23 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
 
   const handleDelete = async (e: FunilEtapa) => {
     if (!window.confirm(`Remover a etapa "${e.etapa}" do funil?`)) return;
-    await deleteEtapa.mutateAsync(e.id);
+    try {
+      await deleteEtapa.mutateAsync(e.id);
+      toast.success(`Etapa "${e.etapa}" removida.`);
+    } catch (err) {
+      toast.error(`Falha ao remover etapa: ${(err as Error).message}`);
+    }
   };
 
   const handleQtyBlur = async (e: FunilEtapa, value: string) => {
     const qty = Math.max(0, parseInt(value, 10) || 0);
     if (qty === e.quantidade) return;
-    await updateEtapa.mutateAsync({ id: e.id, quantidade: qty });
+    try {
+      await updateEtapa.mutateAsync({ id: e.id, quantidade: qty });
+      toast.success(`${e.etapa}: quantidade salva (${qty}).`);
+    } catch (err) {
+      toast.error(`Falha ao salvar quantidade de "${e.etapa}": ${(err as Error).message}`);
+    }
   };
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
