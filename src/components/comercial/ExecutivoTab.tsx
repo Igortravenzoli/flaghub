@@ -46,14 +46,16 @@ function BlocoCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="p-4 flex flex-col gap-3">
+    <Card className="p-4 flex flex-col gap-3 h-full">
       <div className="flex items-center gap-2">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg border bg-muted/40">
           <Icon className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{titulo}</p>
       </div>
-      {children}
+      <div className="flex-1 flex flex-col justify-evenly gap-3">
+        {children}
+      </div>
     </Card>
   );
 }
@@ -371,20 +373,39 @@ export function ExecutivoTab({
       </div>
 
       {tvMode ? (
-        // Modo TV: sem Receita realizada · funis fixos na coluna direita
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_1.05fr] gap-4 items-start">
-          <div className="space-y-4">
+        // Modo TV: sem Receita realizada · grade nivelada 3 colunas — o card
+        // único de funis (direita) dita a altura; as 2 linhas de cada coluna
+        // esquerda/central esticam para alinhar sem desnível.
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_1.05fr] gap-4 items-stretch">
+          <div className="grid grid-rows-2 gap-4">
             {carteiraMovimentoCard}
             {produtosCard}
           </div>
-          <div className="space-y-4">
+          <div className="grid grid-rows-2 gap-4">
             {satisfacaoCard}
             {alertasCard}
           </div>
-          <div className="space-y-4">
-            {funilSdrCard}
-            {funilComercialCard}
-          </div>
+          <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)">
+            {funilLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando…</p>
+            ) : (
+              <>
+                <div className="px-1">
+                  <FunnelViz etapas={funilSdr} compact />
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Funil Comercial (Geral)
+                  </span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <div className="px-1">
+                  <FunnelViz etapas={funilComercial} compact />
+                </div>
+              </>
+            )}
+          </BlocoCard>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
