@@ -106,9 +106,18 @@ export function FunnelViz({ etapas, compact = false }: FunnelVizProps) {
           </linearGradient>
         ))}
       </defs>
+      <style>{`
+        @keyframes fnl-band-in {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
       <ellipse cx={cx} cy={y + (compact ? 2 : 6)} rx={minRx * 1.15} ry={compact ? 6 : 10} fill="#000" opacity="0.14" />
       {bands.map(({ e, i, color, rxT, rxB, ryT, ryB, yT, yB, gid }) => (
-        <g key={`body-${e.id}`}>
+        <g
+          key={`body-${e.id}`}
+          style={{ animation: `fnl-band-in 0.45s ease-out ${i * 0.18}s both` }}
+        >
           <path
             d={`M ${cx - rxT} ${yT} A ${rxT} ${ryT} 0 0 0 ${cx + rxT} ${yT} L ${cx + rxB} ${yB} A ${rxB} ${ryB} 0 0 1 ${cx - rxB} ${yB} Z`}
             fill={`url(#${gid})`}
@@ -118,17 +127,24 @@ export function FunnelViz({ etapas, compact = false }: FunnelVizProps) {
           )}
         </g>
       ))}
-      {/* Rótulos por último, acima de qualquer forma — sem aros sobre o texto */}
-      {bands.map(({ e, i, yT, ryT, pct }) => (
+      {/* Rótulos por último, acima de qualquer forma — cada um centralizado
+          na face frontal da própria faixa (entre os arcos superior e inferior) */}
+      {bands.map(({ e, i, yT, yB, ryT, ryB, pct }) => (
         <text
           key={`label-${e.id}`}
           x={cx}
-          y={yT + (i === 0 ? ryT : 0) + (bandH - (i === 0 ? ryT : 0)) / 2 + fontSize * 0.36}
+          y={(yT + ryT + yB + ryB) / 2 + fontSize * 0.36}
           textAnchor="middle"
           fill="#fff"
           fontSize={fontSize}
           fontWeight={700}
-          style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.55)', strokeWidth: 3.5, strokeLinejoin: 'round' }}
+          style={{
+            paintOrder: 'stroke',
+            stroke: 'rgba(0,0,0,0.55)',
+            strokeWidth: 3.5,
+            strokeLinejoin: 'round',
+            animation: `fnl-band-in 0.45s ease-out ${i * 0.18 + 0.1}s both`,
+          }}
         >
           {e.etapa} · {e.quantidade}{pct !== null && i > 0 ? ` (${pct}%)` : ''}
         </text>
