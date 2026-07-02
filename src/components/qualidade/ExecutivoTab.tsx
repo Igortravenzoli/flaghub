@@ -189,7 +189,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground border-t pt-2">
-            Meta: nada há mais de 2 sprints sem DONE = atraso (represamento).
+            Base: itens Em Teste (PBI + Bug) — fecha com o contador "em teste". Nada há mais de 2 sprints sem DONE = atraso (represamento).
             {(fila?.sem_sprint ?? 0) > 0 && ` ${fila!.sem_sprint} sem sprint de origem (fora do cálculo de atraso).`}
           </p>
         </BlocoCard>
@@ -224,7 +224,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Idade da fila por sprint de origem */}
-        <BlocoCard icon={CalendarClock} titulo="Idade da fila · por sprint de origem">
+        <BlocoCard icon={CalendarClock} titulo="Idade da fila Em Teste · por sprint de origem">
           {filaLoading ? (
             <p className="text-sm text-muted-foreground">Carregando…</p>
           ) : agingData.length === 0 ? (
@@ -250,6 +250,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
           <p className="text-[11px] text-muted-foreground border-t pt-2 flex items-center gap-2">
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: QA_TONES.success.solid }} /> no prazo</span>
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: QA_TONES.danger.solid }} /> atraso (&gt; 2 sprints)</span>
+            · itens Em Teste (PBI + Bug)
           </p>
         </BlocoCard>
 
