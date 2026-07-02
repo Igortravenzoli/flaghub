@@ -69,11 +69,11 @@ export function FunnelViz({ etapas, compact = false }: FunnelVizProps) {
   const W = 400;
   const cx = W / 2;
   const bandH = compact ? 30 : 48;
-  const gap = compact ? 4 : 7;
+  const gap = compact ? 5 : 8;
   const maxRx = 186;
-  const minRx = 36;
-  const ryF = 0.16;
-  const fontSize = compact ? 10.5 : 13;
+  const minRx = 78;
+  const ryF = 0.13;
+  const fontSize = compact ? 12 : 14;
   const topQty = etapas[0]?.quantidade ?? 0;
   const H = 14 + total * (bandH + gap) + (compact ? 14 : 24);
   const rxAt = (i: number) => maxRx - ((maxRx - minRx) * i) / total;
@@ -105,30 +105,32 @@ export function FunnelViz({ etapas, compact = false }: FunnelVizProps) {
           </linearGradient>
         ))}
       </defs>
-      <ellipse cx={cx} cy={y + (compact ? 2 : 6)} rx={minRx * 2.1} ry={compact ? 6 : 10} fill="#000" opacity="0.14" />
-      {bands.map(({ e, i, color, rxT, rxB, ryT, ryB, yT, yB, pct, gid }) => (
-        <g key={e.id}>
+      <ellipse cx={cx} cy={y + (compact ? 2 : 6)} rx={minRx * 1.15} ry={compact ? 6 : 10} fill="#000" opacity="0.14" />
+      {bands.map(({ e, i, color, rxT, rxB, ryT, ryB, yT, yB, gid }) => (
+        <g key={`body-${e.id}`}>
           <path
             d={`M ${cx - rxT} ${yT} A ${rxT} ${ryT} 0 0 0 ${cx + rxT} ${yT} L ${cx + rxB} ${yB} A ${rxB} ${ryB} 0 0 1 ${cx - rxB} ${yB} Z`}
             fill={`url(#${gid})`}
           />
-          <ellipse
-            cx={cx} cy={yT} rx={rxT} ry={ryT}
-            fill={i === 0 ? shade(color, 0.72) : shade(color, 1.12)}
-            opacity={i === 0 ? 1 : 0.35}
-          />
-          <text
-            x={cx}
-            y={yT + bandH / 2 + ryT / 2 + fontSize / 3}
-            textAnchor="middle"
-            fill="#fff"
-            fontSize={fontSize}
-            fontWeight={600}
-            style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.25)', strokeWidth: 2 }}
-          >
-            {e.etapa} · {e.quantidade}{pct !== null && i > 0 ? ` (${pct}%)` : ''}
-          </text>
+          {i === 0 && (
+            <ellipse cx={cx} cy={yT} rx={rxT} ry={ryT} fill={shade(color, 0.72)} />
+          )}
         </g>
+      ))}
+      {/* Rótulos por último, acima de qualquer forma — sem aros sobre o texto */}
+      {bands.map(({ e, i, yT, ryT, pct }) => (
+        <text
+          key={`label-${e.id}`}
+          x={cx}
+          y={yT + (i === 0 ? ryT : 0) + (bandH - (i === 0 ? ryT : 0)) / 2 + fontSize * 0.36}
+          textAnchor="middle"
+          fill="#fff"
+          fontSize={fontSize}
+          fontWeight={700}
+          style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.55)', strokeWidth: 3.5, strokeLinejoin: 'round' }}
+        >
+          {e.etapa} · {e.quantidade}{pct !== null && i > 0 ? ` (${pct}%)` : ''}
+        </text>
       ))}
     </svg>
   );
