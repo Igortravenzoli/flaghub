@@ -15,6 +15,15 @@ export interface ComercialClient {
 
 export type ClientStatusFilter = 'todos' | 'ativo' | 'inativo' | 'bloqueado';
 
+/** Clientes internos da Flag — descontados dos KPIs de clientes ativos. */
+export const INTERNAL_CLIENT_LIST = [
+  { id: 924, label: 'Flag (Outros)' },
+  { id: 1528, label: 'Padrao Froneri' },
+  { id: 1636, label: 'Qa Flag' },
+  { id: 1853, label: 'Suporte Flag' },
+] as const;
+export const INTERNAL_IDS = new Set<number>(INTERNAL_CLIENT_LIST.map(c => c.id));
+
 /** Fetch all rows from a view, bypassing the 1000-row default limit */
 async function fetchAllClients(select: string, filter?: { column: string; value: string }) {
   const PAGE = 1000;
@@ -65,11 +74,12 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos', dat
   const statsQuery = useQuery({
     queryKey: ['comercial', 'stats'],
     queryFn: async () => {
-      const all = await fetchAllClients('status');
+      const all = await fetchAllClients('id,status');
       const ativos = all.filter(c => c.status?.toLowerCase() === 'ativo').length;
       const inativos = all.filter(c => c.status?.toLowerCase() === 'inativo').length;
       const bloqueados = all.filter(c => c.status?.toLowerCase() === 'bloqueado').length;
-      return { total: all.length, ativos, inativos, bloqueados };
+      const ativosInternos = all.filter(c => c.status?.toLowerCase() === 'ativo' && INTERNAL_IDS.has(Number(c.id))).length;
+      return { total: all.length, ativos, inativos, bloqueados, ativosInternos };
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -87,7 +97,7 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos', dat
 
   const totalClientes = clients.length;
   const bandeiras = [...new Set(clients.map(c => c.bandeira).filter(Boolean))];
-  const stats = statsQuery.data || { total: 0, ativos: 0, inativos: 0, bloqueados: 0 };
+  const stats = statsQuery.data || { total: 0, ativos: 0, inativos: 0, bloqueados: 0, ativosInternos: 0 };
 
   return {
     clients,

@@ -6,7 +6,7 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { PbiHealthBadge } from '@/components/pbi/PbiHealthBadge';
-import { useComercialKpis, ComercialClient, ClientStatusFilter } from '@/hooks/useComercialKpis';
+import { useComercialKpis, ComercialClient, ClientStatusFilter, INTERNAL_CLIENT_LIST, INTERNAL_IDS } from '@/hooks/useComercialKpis';
 import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useDashboardFilters, type FilterPreset } from '@/hooks/useDashboardFilters';
@@ -291,13 +291,6 @@ function ComercialCalendarPicker({
   );
 }
 
-const INTERNAL_CLIENT_LIST = [
-  { id: 924, label: 'Flag (Outros)' },
-  { id: 1528, label: 'Padrao Froneri' },
-  { id: 1636, label: 'Qa Flag' },
-  { id: 1853, label: 'Suporte Flag' },
-] as const;
-const INTERNAL_IDS = new Set(INTERNAL_CLIENT_LIST.map(c => c.id));
 
 type HealthFilter = 'all' | 'verde' | 'amarelo' | 'vermelho';
 
