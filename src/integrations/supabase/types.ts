@@ -172,6 +172,39 @@ export type Database = {
         }
         Relationships: []
       }
+      comercial_funil: {
+        Row: {
+          created_at: string
+          etapa: string
+          funil: string
+          icone: string | null
+          id: string
+          ordem: number
+          quantidade: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          etapa: string
+          funil: string
+          icone?: string | null
+          id?: string
+          ordem?: number
+          quantidade?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          etapa?: string
+          funil?: string
+          icone?: string | null
+          id?: string
+          ordem?: number
+          quantidade?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       comercial_metas: {
         Row: {
           created_at: string

@@ -11,7 +11,7 @@ import { useDevopsOperationalQueue } from '@/hooks/useDevopsOperationalQueue';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { useDashboardFilters, type FilterPreset } from '@/hooks/useDashboardFilters';
 import { useDashboardExport } from '@/hooks/useDashboardExport';
-import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers, MoreHorizontal, Eye, EyeOff, Users, CalendarDays, ChevronDown, Gauge, TrendingUp, Wallet, Smile, Target } from 'lucide-react';
+import { UserCheck, ShieldBan, HeartPulse, AlertTriangle, Layers, MoreHorizontal, Eye, EyeOff, Users, CalendarDays, ChevronDown, Gauge, TrendingUp, Wallet, Smile, Target, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,6 +20,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import MovimentacaoTab from '@/components/comercial/MovimentacaoTab';
+import FunilVendasTab from '@/components/comercial/FunilVendasTab';
 import { PesquisaTab } from '@/components/comercial/PesquisaTab';
 import { PipeDriveTab } from '@/components/comercial/PipeDriveTab';
 import { ExecutivoTab } from '@/components/comercial/ExecutivoTab';
@@ -552,6 +553,7 @@ export default function ComercialDashboard() {
             <TabsList className="bg-transparent p-0 h-auto gap-0.5 flex-shrink-0">
               <TabsTrigger value="visao-executiva" className="gap-1.5 text-xs h-8"><Gauge className="h-3.5 w-3.5" />Visão Executiva</TabsTrigger>
               <TabsTrigger value="visao-clientes" className="gap-1.5 text-xs h-8"><Users className="h-3.5 w-3.5" />Visão Clientes</TabsTrigger>
+              <TabsTrigger value="funil-vendas" className="gap-1.5 text-xs h-8"><Filter className="h-3.5 w-3.5" />Funil de Vendas</TabsTrigger>
               <TabsTrigger value="ganho-perda" className="gap-1.5 text-xs h-8"><TrendingUp className="h-3.5 w-3.5" />Ganho/Perda</TabsTrigger>
               <TabsTrigger value="fechamento-comercial" className="gap-1.5 text-xs h-8"><Wallet className="h-3.5 w-3.5" />Fechamento Comercial</TabsTrigger>
               <TabsTrigger value="pesquisa" className="gap-1.5 text-xs h-8"><Smile className="h-3.5 w-3.5" />Pesquisa Satisfação</TabsTrigger>
@@ -596,6 +598,10 @@ export default function ComercialDashboard() {
               clientesBloqueados={stats.bloqueados}
               isLoadingClientes={isLoading}
             />
+          </TabsContent>
+
+          <TabsContent value="funil-vendas" className="space-y-4 mt-0">
+            <FunilVendasTab canEdit={canViewValues} />
           </TabsContent>
 
           <TabsContent value="visao-clientes" className="space-y-4 mt-0">

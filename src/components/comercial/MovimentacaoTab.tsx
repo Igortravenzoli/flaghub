@@ -158,6 +158,8 @@ export default function MovimentacaoTab({ dateFrom, dateTo, canViewValues = fals
     if (editingItem) {
       await updateMovimentacao({
         id: editingItem.id,
+        cliente_codigo: Number(data.cliente_codigo) || undefined,
+        cliente_nome: data.cliente_nome || undefined,
         tipo: data.tipo,
         bandeira: data.bandeira,
         sistema: data.sistema,

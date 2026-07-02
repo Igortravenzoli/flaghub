@@ -2,11 +2,14 @@ import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import {
   Users, TrendingUp, TrendingDown, Wallet, Package, Smile, AlertTriangle, CheckCircle2,
+  Filter as FilterIcon,
 } from 'lucide-react';
 import { useComercialMovimentacao } from '@/hooks/useComercialMovimentacao';
 import { useComercialMetas } from '@/hooks/useComercialMetas';
 import { useComercialVendas } from '@/hooks/useComercialVendas';
 import { useSurveyResponses, useSurveyAggregates } from '@/hooks/useSurveyImport';
+import { useComercialFunil } from '@/hooks/useComercialFunil';
+import { FunnelViz } from '@/components/comercial/FunilVendasTab';
 
 const PT_MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -77,6 +80,7 @@ export function ExecutivoTab({
   isLoadingClientes = false,
 }: ExecutivoTabProps) {
   const { items: movItems, isLoading: movLoading } = useComercialMovimentacao('todos', dateFrom, dateTo);
+  const { sdr: funilSdr, comercial: funilComercial, isLoading: funilLoading } = useComercialFunil();
   const { data: metas = [], isLoading: metasLoading } = useComercialMetas();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
   const { data: responses = [] } = useSurveyResponses();
@@ -318,7 +322,25 @@ export function ExecutivoTab({
           </p>
         </BlocoCard>
 
-        {/* 6 — Alertas */}
+        {/* 6 — Funil SDR */}
+        <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)">
+          {funilLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando…</p>
+          ) : (
+            <FunnelViz etapas={funilSdr} compact />
+          )}
+        </BlocoCard>
+
+        {/* 7 — Funil Comercial */}
+        <BlocoCard icon={FilterIcon} titulo="Funil Comercial (Geral)">
+          {funilLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando…</p>
+          ) : (
+            <FunnelViz etapas={funilComercial} compact />
+          )}
+        </BlocoCard>
+
+        {/* 8 — Alertas */}
         <BlocoCard icon={AlertTriangle} titulo="Alertas">
           {loading ? (
             <p className="text-sm text-muted-foreground">Carregando…</p>
