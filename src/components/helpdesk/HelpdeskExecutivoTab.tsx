@@ -1,13 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, LabelList,
 } from 'recharts';
 import { Headphones, Users, Clock, CalendarClock, Monitor, ShieldCheck, Gauge } from 'lucide-react';
 import { BlocoCard, SecHeader } from '@/components/executivo/BlocoCard';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { ConsultorKpi, TipoChamadoKpi, RegistroPorGrupo, HistoricoEntry } from '@/hooks/useHelpdeskKpis';
 import {
   useGestaoSlaNestle, useGestaoSlaHeineken, useGestaoSlaFlag, type GestaoSlaResponse,
 } from '@/hooks/useGestaoKpis';
+import { useTechLeadPorDia, type PorDiaItem } from '@/hooks/useTechLeadKpis';
 
 // Metas fixas de SLA (fallback; o gateway Gestão retorna as metas por segmento)
 const META_TTR_DIAS = 3.9;
@@ -58,6 +60,84 @@ function SlaExecCard({ titulo, data }: { titulo: string; data?: GestaoSlaRespons
   );
 }
 
+// Faixa de produtividade: verde ≥ 80% · âmbar ≥ 50% · vermelho < 50%
+const faixaCor = (p: number) => (p >= 80 ? 'hsl(142,71%,45%)' : p >= 50 ? 'hsl(43,85%,46%)' : 'hsl(0,84%,60%)');
+
+/** Heatmap consultor × dia (produtividade diária, campo produtividadeDia do TechLead). */
+function ProdutividadeHeatmap({ registros, isLoading }: { registros: PorDiaItem[]; isLoading: boolean }) {
+  const { dias, linhas } = useMemo(() => {
+    const diasSet = new Set<string>();
+    const porConsultor = new Map<string, Map<string, number>>();
+    for (const r of registros) {
+      const dia = r.dataRegistro?.slice(0, 10);
+      if (!dia) continue;
+      diasSet.add(dia);
+      if (!porConsultor.has(r.consultor)) porConsultor.set(r.consultor, new Map());
+      porConsultor.get(r.consultor)!.set(dia, r.produtividadeDia);
+    }
+    const dias = [...diasSet].sort();
+    const linhas = [...porConsultor.entries()]
+      .map(([consultor, mapa]) => {
+        const vals = [...mapa.values()];
+        const media = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+        return { consultor, mapa, media };
+      })
+      .sort((a, b) => (b.media ?? 0) - (a.media ?? 0));
+    return { dias, linhas };
+  }, [registros]);
+
+  if (isLoading) return <Skeleton className="h-48 w-full" />;
+  if (!linhas.length) return <p className="text-sm text-muted-foreground py-8 text-center">Sem dados de produtividade no período.</p>;
+
+  const fmtDia = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit' });
+
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="border-separate" style={{ borderSpacing: 2 }}>
+          <thead>
+            <tr>
+              <th className="sticky left-0 bg-background z-10" />
+              {dias.map((d) => (
+                <th key={d} className="text-[9px] text-muted-foreground font-medium px-0.5" title={d}>{fmtDia(d)}</th>
+              ))}
+              <th className="text-[9px] text-muted-foreground font-medium pl-2">Média</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map(({ consultor, mapa, media }) => (
+              <tr key={consultor}>
+                <td className="sticky left-0 bg-background z-10 pr-2 text-[11px] font-medium whitespace-nowrap">{consultor}</td>
+                {dias.map((d) => {
+                  const v = mapa.get(d);
+                  return (
+                    <td key={d} className="p-0">
+                      <div
+                        className="w-5 h-5 rounded-sm mx-auto"
+                        style={{ backgroundColor: v == null ? 'hsl(var(--muted))' : faixaCor(v) }}
+                        title={v == null ? `${consultor} · ${d}: sem registro` : `${consultor} · ${d}: ${Math.round(v)}%`}
+                      />
+                    </td>
+                  );
+                })}
+                <td className="pl-2 text-[11px] font-bold font-mono" style={{ color: media == null ? undefined : faixaCor(media) }}>
+                  {media == null ? '—' : `${Math.round(media)}%`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center gap-3 border-t pt-2 mt-2 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: 'hsl(142,71%,45%)' }} /> ≥ 80%</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: 'hsl(43,85%,46%)' }} /> ≥ 50%</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: 'hsl(0,84%,60%)' }} /> &lt; 50%</span>
+        <span className="ml-auto">Produtividade por consultor × dia (TechLead)</span>
+      </div>
+    </div>
+  );
+}
+
 interface HelpdeskExecutivoTabProps {
   totalRegistros: number;
   totalHoras: number;
@@ -69,17 +149,27 @@ interface HelpdeskExecutivoTabProps {
   registrosPorCliente: RegistroPorGrupo[];
   historico: HistoricoEntry[];
   periodLabel?: string;
+  /** Range para o heatmap de produtividade (TechLead por-dia). Default: mês atual. */
+  dataInicio?: Date;
+  dataFim?: Date;
+  /** Filtro de período (renderizado no topo). Omitido no kiosk/TV. */
+  filterBar?: ReactNode;
 }
 
 export function HelpdeskExecutivoTab({
   totalRegistros, totalHoras, consultoresAtivos,
   registrosPorConsultor, tipoChamadoTempoMedio,
   registrosPorSistema, registrosPorBandeira, registrosPorCliente,
-  historico, periodLabel,
+  historico, periodLabel, dataInicio, dataFim, filterBar,
 }: HelpdeskExecutivoTabProps) {
   const { data: slaNestle } = useGestaoSlaNestle();
   const { data: slaHeineken } = useGestaoSlaHeineken();
   const { data: slaFlag } = useGestaoSlaFlag();
+
+  const now = new Date();
+  const heatIni = dataInicio ?? new Date(now.getFullYear(), now.getMonth(), 1);
+  const heatFim = dataFim ?? now;
+  const porDia = useTechLeadPorDia(heatIni, heatFim);
 
   // Volume por consultor — filtra os 9 do CS e DEDUPLICA por nome (corrige "duas barrinhas")
   const consultoresData = useMemo(() => {
@@ -121,6 +211,8 @@ export function HelpdeskExecutivoTab({
         </p>
       </div>
 
+      {filterBar}
+
       {/* ═══════ 1ª LINHA — RESULTADO ═══════ */}
       <SecHeader title="Resultado" subtitle="SLA e panorama do mês" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -130,8 +222,8 @@ export function HelpdeskExecutivoTab({
       </div>
 
       {/* ═══════ 2ª LINHA — INDICADORES ═══════ */}
-      <SecHeader title="Indicadores" subtitle="tipos, produtividade e panorama" />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <SecHeader title="Indicadores" subtitle="tipos, panorama e produtividade" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Tempo Médio por Tipo de Chamado */}
         <BlocoCard icon={Clock} titulo="Tempo Médio por Tipo de Chamado">
           {tipos.length === 0 ? (
@@ -152,15 +244,6 @@ export function HelpdeskExecutivoTab({
             </div>
           )}
           <p className="text-[11px] text-muted-foreground border-t pt-2">Todos os tipos (role para ver mais).</p>
-        </BlocoCard>
-
-        {/* Produtividade dos Consultores — próxima entrega (dados do TechLead) */}
-        <BlocoCard icon={Gauge} titulo="Produtividade dos Consultores">
-          <div className="flex items-center justify-center py-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              Em integração com a aba <b>TechLead</b> (consultor × produtividade %).<br />Próxima entrega.
-            </p>
-          </div>
         </BlocoCard>
 
         {/* Panorama do Atendimento (volume + horas + cobertura unificados) */}
@@ -184,6 +267,11 @@ export function HelpdeskExecutivoTab({
           <p className="text-[11px] text-muted-foreground border-t pt-2">Volume, horas e abrangência do atendimento no período.</p>
         </BlocoCard>
       </div>
+
+      {/* Produtividade dos Consultores — heatmap consultor × dia (TechLead) */}
+      <BlocoCard icon={Gauge} titulo="Produtividade dos Consultores">
+        <ProdutividadeHeatmap registros={porDia.data?.registros ?? []} isLoading={porDia.isLoading} />
+      </BlocoCard>
 
       {/* ═══════ 3ª LINHA — ANÁLISE ═══════ */}
       <SecHeader title="Análise" subtitle="volumes por dia, consultor e sistema" />

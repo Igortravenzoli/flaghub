@@ -18,6 +18,8 @@ export default function HelpdeskKiosk() {
       registrosPorCliente={k.registrosPorCliente}
       historico={k.historico}
       periodLabel="Mês atual"
+      dataInicio={mesStart}
+      dataFim={now}
     />
   );
 }

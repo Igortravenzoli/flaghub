@@ -288,6 +288,30 @@ export default function HelpdeskDashboard() {
           registrosPorCliente={registrosPorCliente}
           historico={historico}
           periodLabel={filters.presetLabel}
+          dataInicio={filters.dateFrom}
+          dataFim={filters.dateTo}
+          filterBar={
+            <DashboardFilterBar
+              preset={filters.preset}
+              onPresetChange={filters.setPreset}
+              presetLabel={filters.presetLabel}
+              presetControl="dropdown"
+              presetsLabel="Período"
+              presets={[
+                { value: 'hoje', label: 'Hoje' },
+                { value: 'mes_atual', label: 'Mês Atual' },
+                { value: 'mes_anterior', label: 'Mês Anterior' },
+                { value: '1y', label: 'Ano' },
+              ]}
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              minDate={minDate}
+              maxDate={maxDate}
+              onCustomRange={filters.setCustomRange}
+              onExportCSV={handleExportCSV}
+              onExportPDF={handleExportPDF}
+            />
+          }
         />
       ),
     },
