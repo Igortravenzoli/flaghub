@@ -113,7 +113,7 @@ function ProdutividadeHeatmap({ registros, isLoading }: { registros: PorDiaItem[
                   return (
                     <td key={d} className="p-0">
                       <div
-                        className="w-5 h-5 rounded-sm mx-auto"
+                        className="w-4 h-4 rounded-sm mx-auto"
                         style={{ backgroundColor: v == null ? 'hsl(var(--muted))' : faixaCor(v) }}
                         title={v == null ? `${consultor} · ${d}: sem registro` : `${consultor} · ${d}: ${Math.round(v)}%`}
                       />
@@ -223,7 +223,7 @@ export function HelpdeskExecutivoTab({
 
       {/* ═══════ 2ª LINHA — INDICADORES ═══════ */}
       <SecHeader title="Indicadores" subtitle="tipos, panorama e produtividade" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Tempo Médio por Tipo de Chamado */}
         <BlocoCard icon={Clock} titulo="Tempo Médio por Tipo de Chamado">
           {tipos.length === 0 ? (
@@ -266,12 +266,12 @@ export function HelpdeskExecutivoTab({
           </div>
           <p className="text-[11px] text-muted-foreground border-t pt-2">Volume, horas e abrangência do atendimento no período.</p>
         </BlocoCard>
-      </div>
 
-      {/* Produtividade dos Consultores — heatmap consultor × dia (TechLead) */}
-      <BlocoCard icon={Gauge} titulo="Produtividade dos Consultores">
-        <ProdutividadeHeatmap registros={porDia.data?.registros ?? []} isLoading={porDia.isLoading} />
-      </BlocoCard>
+        {/* Produtividade dos Consultores — heatmap consultor × dia (TechLead) */}
+        <BlocoCard icon={Gauge} titulo="Produtividade dos Consultores">
+          <ProdutividadeHeatmap registros={porDia.data?.registros ?? []} isLoading={porDia.isLoading} />
+        </BlocoCard>
+      </div>
 
       {/* ═══════ 3ª LINHA — ANÁLISE ═══════ */}
       <SecHeader title="Análise" subtitle="volumes por dia, consultor e sistema" />
