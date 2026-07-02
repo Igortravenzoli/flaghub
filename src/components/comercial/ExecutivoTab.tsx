@@ -37,6 +37,12 @@ function classifyNps(avg: number | null): 'promoter' | 'neutral' | 'detractor' |
 
 const corPct = (p: number) => (p >= 100 ? '#16a34a' : p >= 70 ? '#f59e0b' : '#ef4444');
 
+// MOCK temporário (02/07/2026): o gestor definiu 215 como a contagem oficial de
+// clientes ativos do card "Carteira e Movimento" enquanto a regra de leitura no
+// banco não é fechada. Ao implementar a leitura, voltar a usar a prop
+// `clientesAtivos` no lugar desta constante.
+const CLIENTES_ATIVOS_MOCK = 215;
+
 function BlocoCard({
   icon: Icon,
   titulo,
@@ -212,7 +218,7 @@ export function ExecutivoTab({
     <BlocoCard icon={Briefcase} titulo="Carteira e Movimento">
       <div className="flex items-end justify-between">
         <div>
-          <p className="text-3xl font-bold font-mono">{isLoadingClientes ? '—' : clientesAtivos}</p>
+          <p className="text-3xl font-bold font-mono">{isLoadingClientes ? '—' : CLIENTES_ATIVOS_MOCK}</p>
           <p className="text-xs text-muted-foreground mt-0.5">clientes ativos</p>
         </div>
         <div className="text-right">
