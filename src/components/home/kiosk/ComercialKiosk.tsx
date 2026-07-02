@@ -9,6 +9,7 @@ export default function ComercialKiosk() {
   return (
     <ExecutivoTab
       // Modo TV (telão): não exibe valores monetários — somente percentuais.
+      tvMode
       canViewValues={false}
       showValues={false}
       dateFrom={anoStart}
