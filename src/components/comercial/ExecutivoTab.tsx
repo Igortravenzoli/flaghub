@@ -1,14 +1,15 @@
 import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import {
-  TrendingDown, Wallet, Package, Smile, AlertTriangle, CheckCircle2, Briefcase,
+  TrendingDown, Wallet, Package, Smile, AlertTriangle, CheckCircle2, Briefcase, BarChart3,
   Filter as FilterIcon,
 } from 'lucide-react';
 import { useComercialMovimentacao } from '@/hooks/useComercialMovimentacao';
 import { useComercialMetas } from '@/hooks/useComercialMetas';
 import { useComercialVendas } from '@/hooks/useComercialVendas';
 import { useSurveyResponses, useSurveyAggregates } from '@/hooks/useSurveyImport';
-import { useComercialFunil } from '@/hooks/useComercialFunil';
+import { useComercialFunil, ymLabel } from '@/hooks/useComercialFunil';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { FunnelViz } from '@/components/comercial/FunilVendasTab';
 
 const PT_MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -85,7 +86,10 @@ export function ExecutivoTab({
   tvMode = false,
 }: ExecutivoTabProps) {
   const { items: movItems, isLoading: movLoading } = useComercialMovimentacao('todos', dateFrom, dateTo);
-  const { sdr: funilSdr, comercial: funilComercial, isLoading: funilLoading } = useComercialFunil();
+  // Executiva mostra o último mês com lançamentos (fallback: mês corrente)
+  const { ultimoMesComDados } = useComercialFunil();
+  const { sdr: funilSdr, comercial: funilComercial, historico: funilHistorico, isLoading: funilLoading } = useComercialFunil(ultimoMesComDados);
+  const funilMesLabel = ymLabel(ultimoMesComDados);
   const { data: metas = [], isLoading: metasLoading } = useComercialMetas();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
   const { data: responses = [] } = useSurveyResponses();
@@ -320,7 +324,7 @@ export function ExecutivoTab({
   );
 
   const funilSdrCard = (
-    <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)">
+    <BlocoCard icon={FilterIcon} titulo={`Funil SDR (Geral) · ${funilMesLabel}`}>
       {funilLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : (
@@ -330,11 +334,38 @@ export function ExecutivoTab({
   );
 
   const funilComercialCard = (
-    <BlocoCard icon={FilterIcon} titulo="Funil Comercial (Geral)">
+    <BlocoCard icon={FilterIcon} titulo={`Funil Comercial (Geral) · ${funilMesLabel}`}>
       {funilLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : (
         <FunnelViz etapas={funilComercial} compact />
+      )}
+    </BlocoCard>
+  );
+
+  const funilHistogramaCard = (
+    <BlocoCard icon={BarChart3} titulo="Funis · histórico mensal">
+      {funilLoading ? (
+        <p className="text-sm text-muted-foreground">Carregando…</p>
+      ) : funilHistorico.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Sem lançamentos mensais ainda — lance na aba Funil de Vendas.</p>
+      ) : (
+        <div className="h-[190px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={funilHistorico} margin={{ top: 4, right: 8, bottom: 0, left: -18 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{ fontSize: 12, borderRadius: 8, background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}
+                labelStyle={{ fontWeight: 600 }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="sdr" name="SDR" fill="#0284c7" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="comercial" name="Comercial" fill="#9333ea" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       )}
     </BlocoCard>
   );
@@ -385,27 +416,30 @@ export function ExecutivoTab({
             {satisfacaoCard}
             {alertasCard}
           </div>
-          <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)">
-            {funilLoading ? (
-              <p className="text-sm text-muted-foreground">Carregando…</p>
-            ) : (
-              <>
-                <div className="px-1">
-                  <FunnelViz etapas={funilSdr} compact />
-                </div>
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="h-px flex-1 bg-border" />
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Funil Comercial (Geral)
-                  </span>
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-                <div className="px-1">
-                  <FunnelViz etapas={funilComercial} compact />
-                </div>
-              </>
-            )}
-          </BlocoCard>
+          <div className="grid grid-rows-[auto_1fr] gap-4">
+            <BlocoCard icon={FilterIcon} titulo={`Funil SDR (Geral) · ${funilMesLabel}`}>
+              {funilLoading ? (
+                <p className="text-sm text-muted-foreground">Carregando…</p>
+              ) : (
+                <>
+                  <div className="px-1">
+                    <FunnelViz etapas={funilSdr} compact />
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="h-px flex-1 bg-border" />
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Funil Comercial (Geral)
+                    </span>
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                  <div className="px-1">
+                    <FunnelViz etapas={funilComercial} compact />
+                  </div>
+                </>
+              )}
+            </BlocoCard>
+            {funilHistogramaCard}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -415,6 +449,7 @@ export function ExecutivoTab({
           {funilSdrCard}
           {funilComercialCard}
           {satisfacaoCard}
+          {funilHistogramaCard}
           {alertasCard}
         </div>
       )}
