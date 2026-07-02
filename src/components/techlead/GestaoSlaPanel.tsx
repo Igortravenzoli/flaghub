@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  useGestaoSlaFlag, useGestaoSlaNestle, useGestaoSlaNestleHistorico,
-  useGestaoSlaFlagDetalhe, useGestaoSlaNestleDetalhe,
+  useGestaoSlaFlag, useGestaoSlaNestle, useGestaoSlaHeineken, useGestaoSlaNestleHistorico,
+  useGestaoSlaFlagDetalhe, useGestaoSlaNestleDetalhe, useGestaoSlaHeinekenDetalhe,
   GestaoSlaResponse, GestaoSlaDetalheItem,
 } from '@/hooks/useGestaoKpis';
 import { isMockMode } from '@/services/gatewayService';
@@ -36,7 +36,7 @@ function StatusBadge({ tier }: { tier: SlaTier | undefined }) {
 }
 
 type DrawerState = {
-  tipo: 'flag' | 'nestle';
+  tipo: 'flag' | 'nestle' | 'heineken';
   filtro: 'aberto' | 'aberto5' | 'aberto30' | 'aberto180';
   label: string;
 } | null;
@@ -49,6 +49,10 @@ function OsDetalheDrawer({ state, onClose }: { state: DrawerState; onClose: () =
   const isNestleAberto = state?.tipo === 'nestle' && state.filtro === 'aberto';
   const isNestleAberto5 = state?.tipo === 'nestle' && state.filtro === 'aberto5';
   const isNestleAberto30 = state?.tipo === 'nestle' && state.filtro === 'aberto30';
+  const isHeinAberto = state?.tipo === 'heineken' && state.filtro === 'aberto';
+  const isHeinAberto5 = state?.tipo === 'heineken' && state.filtro === 'aberto5';
+  const isHeinAberto30 = state?.tipo === 'heineken' && state.filtro === 'aberto30';
+  const isHeinAberto180 = state?.tipo === 'heineken' && state.filtro === 'aberto180';
 
   const flagAberto = useGestaoSlaFlagDetalhe('aberto', isFlagAberto);
   const flagAberto5 = useGestaoSlaFlagDetalhe('aberto5', isFlagAberto5);
@@ -57,6 +61,10 @@ function OsDetalheDrawer({ state, onClose }: { state: DrawerState; onClose: () =
   const nestleAberto = useGestaoSlaNestleDetalhe('aberto', isNestleAberto);
   const nestleAberto5 = useGestaoSlaNestleDetalhe('aberto5', isNestleAberto5);
   const nestleAberto30 = useGestaoSlaNestleDetalhe('aberto30', isNestleAberto30);
+  const heinAberto = useGestaoSlaHeinekenDetalhe('aberto', isHeinAberto);
+  const heinAberto5 = useGestaoSlaHeinekenDetalhe('aberto5', isHeinAberto5);
+  const heinAberto30 = useGestaoSlaHeinekenDetalhe('aberto30', isHeinAberto30);
+  const heinAberto180 = useGestaoSlaHeinekenDetalhe('aberto180', isHeinAberto180);
 
   const active = state
     ? (state.tipo === 'flag'
@@ -64,6 +72,11 @@ function OsDetalheDrawer({ state, onClose }: { state: DrawerState; onClose: () =
         : state.filtro === 'aberto5' ? flagAberto5
         : state.filtro === 'aberto30' ? flagAberto30
         : flagAberto180)
+      : state.tipo === 'heineken'
+      ? (state.filtro === 'aberto' ? heinAberto
+        : state.filtro === 'aberto5' ? heinAberto5
+        : state.filtro === 'aberto30' ? heinAberto30
+        : heinAberto180)
       : (state.filtro === 'aberto' ? nestleAberto
         : state.filtro === 'aberto5' ? nestleAberto5
         : nestleAberto30))
@@ -148,7 +161,7 @@ function KpiCell({
 function SlaCard({ data, title, tipo, isLoading, isError, refetch, onKpiClick }: {
   data: GestaoSlaResponse | undefined;
   title: string;
-  tipo: 'flag' | 'nestle';
+  tipo: 'flag' | 'nestle' | 'heineken';
   isLoading: boolean;
   isError: boolean;
   refetch: () => void;
@@ -162,7 +175,9 @@ function SlaCard({ data, title, tipo, isLoading, isError, refetch, onKpiClick }:
     ? 'border-l-amber-500'
     : 'border-l-emerald-500';
 
-  const maxFiltro = tipo === 'flag' ? 'aberto180' as const : 'aberto30' as const;
+  // Flag e Heineken medem TTR desde a criação da OS → têm o bucket de desvio (>180d).
+  // Nestlé mede desde o ticket ServiceNow → não usa esse bucket.
+  const hasDesvio = tipo !== 'nestle';
 
   return (
     <Card className={`p-5 border-l-4 ${borderColor} space-y-4`}>
@@ -194,7 +209,7 @@ function SlaCard({ data, title, tipo, isLoading, isError, refetch, onKpiClick }:
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {isLoading ? (
-          Array.from({ length: tipo === 'flag' ? 9 : 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)
+          Array.from({ length: hasDesvio ? 9 : 8 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)
         ) : data ? (
           <>
             <KpiCell
@@ -226,13 +241,13 @@ function SlaCard({ data, title, tipo, isLoading, isError, refetch, onKpiClick }:
               onClick={() => onKpiClick({ tipo, filtro: 'aberto30', label: `${title} — Abertas > 30 dias` })}
             />
 
-            {tipo === 'flag' && (
+            {hasDesvio && (
               <KpiCell
                 label="Desvio Lançamento (>180d)"
                 value={data.kpis.abertos180Dias}
                 colorClass="text-destructive font-bold"
                 isClickable
-                onClick={() => onKpiClick({ tipo: 'flag', filtro: 'aberto180', label: 'SLA Flag — Desvio de Lançamento (>180 dias)' })}
+                onClick={() => onKpiClick({ tipo, filtro: 'aberto180', label: `${title} — Desvio de Lançamento (>180 dias)` })}
               />
             )}
 
@@ -247,7 +262,7 @@ function SlaCard({ data, title, tipo, isLoading, isError, refetch, onKpiClick }:
               colorClass={statusColor(data.status?.ttr)}
             />
 
-            <div className={`p-3 rounded-lg bg-muted/40 space-y-1 ${tipo === 'flag' ? '' : 'col-span-2'}`}>
+            <div className={`p-3 rounded-lg bg-muted/40 space-y-1 ${hasDesvio ? '' : 'col-span-2'}`}>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">% Encerradas em 24h</p>
               <div className="flex items-end gap-2">
                 <p className={`text-2xl font-bold font-mono ${statusColor(data.status?.pct24h)}`}>
@@ -360,6 +375,7 @@ function NestleHistoricoChart() {
 export function GestaoSlaPanel() {
   const flag = useGestaoSlaFlag();
   const nestle = useGestaoSlaNestle();
+  const heineken = useGestaoSlaHeineken();
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
   return (
@@ -376,21 +392,30 @@ export function GestaoSlaPanel() {
       </p>
       <div className="grid grid-cols-1 gap-4">
         <SlaCard
-          title="SLA Flag — OS Pendentes"
-          tipo="flag"
-          data={flag.data}
-          isLoading={flag.isLoading}
-          isError={flag.isError}
-          refetch={() => flag.refetch()}
-          onKpiClick={setDrawer}
-        />
-        <SlaCard
           title="SLA Nestlé — INC / RITM"
           tipo="nestle"
           data={nestle.data}
           isLoading={nestle.isLoading}
           isError={nestle.isError}
           refetch={() => nestle.refetch()}
+          onKpiClick={setDrawer}
+        />
+        <SlaCard
+          title="SLA Heineken — Bandeira HNK"
+          tipo="heineken"
+          data={heineken.data}
+          isLoading={heineken.isLoading}
+          isError={heineken.isError}
+          refetch={() => heineken.refetch()}
+          onKpiClick={setDrawer}
+        />
+        <SlaCard
+          title="SLA Flag — OS Pendentes"
+          tipo="flag"
+          data={flag.data}
+          isLoading={flag.isLoading}
+          isError={flag.isError}
+          refetch={() => flag.refetch()}
           onKpiClick={setDrawer}
         />
       </div>

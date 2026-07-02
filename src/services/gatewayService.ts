@@ -239,6 +239,41 @@ function buildMocks(): Record<string, unknown> {
     status: { ttr: 'OK', pct24h: 'ALERT' },
   };
 
+  /* Detalhe OS Heineken (bandeira 'H', sem ticket ServiceNow) */
+  const mockHeinekenOs = Array.from({ length: 34 }, (_, i) => ({
+    os: 40000 + i,
+    apelido: ['Heineken SP','Heineken RJ','Heineken Jacareí','Heineken Ponta Grossa'][i % 4],
+    codigoPuxada: null,
+    erroPadrao: ['Erro de acesso','Lentidão','Crash sistema',null][i % 4],
+    dtOs: new Date(Date.now() - (i * 1.4 + Math.random() * 2) * 86400000).toISOString(),
+    dtBaixaOs: null,
+    diasAberto: Math.round(i * 1.4 + Math.random() * 2),
+    ticket: null,
+    sistema: ['FlexxSales','Datacenter','AvanteSales','QuickOne'][i % 4],
+    criticidade: ['Alta','Média','Baixa'][i % 3],
+    desvioLancamento: i * 1.4 > 180,
+  }));
+
+  /* SLA Heineken (bandeira 'H'; HNK não usa ServiceNow → TTR desde Data_At) */
+  const slaHeineken = {
+    success: true,
+    message: '[MOCK] Dados simulados',
+    dataReferencia: new Date().toISOString(),
+    tipo: 'Heineken',
+    metas: { metaTTRDias: 3.9, metaTTR24hPct: 48.0 },
+    kpis: {
+      totalAbertos: 34,
+      ttrMedioAbertoDias: 3.9,
+      abertos5Dias: 9,
+      abertos30Dias: 4,
+      abertos180Dias: 2,
+      totalFechados60Dias: 96,
+      ttrMedioFechadoDias: 3.4,
+      pctEncerrados24h: 46.8,
+    },
+    status: { ttr: 'OK', pct24h: 'ALERT' },
+  };
+
   /* HelpDesk Dashboard mock */
   const hdConsultores = ALL.map(c => {
     const prod = baseProd[c];
@@ -274,7 +309,7 @@ function buildMocks(): Record<string, unknown> {
       { bandeira: 'BRF',      totalRegistros: Math.round(hdTotalRegistros * 0.15) },
       { bandeira: 'Ambev',    totalRegistros: Math.round(hdTotalRegistros * 0.12) },
     ],
-    registrosPorCliente: clientes.map(c => ({ cliente: c.apelido, totalRegistros: c.totalRegistros })),
+    registrosPorCliente: clientes.map(c => ({ cliente: c.cliente, totalRegistros: c.totalRegistros })),
     horasTotaisPorDia: hdPorDia,
     acumulado: { totalRegistros: hdTotalRegistros, totalMinutos: hdTotalMinutos },
     ocorrenciasPorTipo: [
@@ -342,9 +377,11 @@ function buildMocks(): Record<string, unknown> {
     '/api/bi-customer/detalhe': biCustomerDetalhe,
     '/api/gestao/sla-flag': slaFlag,
     '/api/gestao/sla-nestle': slaNestle,
+    '/api/gestao/sla-heineken': slaHeineken,
     '/api/gestao/sla-nestle-historico': slaNestleHistorico,
     '/api/gestao/sla-flag-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockFlagOs.length, items: mockFlagOs },
     '/api/gestao/sla-nestle-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockNestleOs.length, items: mockNestleOs },
+    '/api/gestao/sla-heineken-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockHeinekenOs.length, items: mockHeinekenOs },
   };
 }
 

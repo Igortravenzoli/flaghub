@@ -86,6 +86,15 @@ export function useGestaoSlaNestle() {
   });
 }
 
+export function useGestaoSlaHeineken() {
+  return useQuery<GestaoSlaResponse>({
+    queryKey: ['gestao', 'sla-heineken'],
+    queryFn: () => gatewayGet('/api/gestao/sla-heineken'),
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
+  });
+}
+
 export function useGestaoSlaNestleHistorico() {
   return useQuery<GestaoSlaHistoricoResponse>({
     queryKey: ['gestao', 'sla-nestle-historico'],
@@ -109,6 +118,16 @@ export function useGestaoSlaNestleDetalhe(filtro: string, enabled = false) {
   return useQuery<GestaoSlaDetalheResponse>({
     queryKey: ['gestao', 'sla-nestle-detalhe', filtro],
     queryFn: () => gatewayGet(`/api/gestao/sla-nestle-detalhe?filtro=${filtro}`),
+    enabled,
+    staleTime: 30 * 1000,
+    retry: 1,
+  });
+}
+
+export function useGestaoSlaHeinekenDetalhe(filtro: string, enabled = false) {
+  return useQuery<GestaoSlaDetalheResponse>({
+    queryKey: ['gestao', 'sla-heineken-detalhe', filtro],
+    queryFn: () => gatewayGet(`/api/gestao/sla-heineken-detalhe?filtro=${filtro}`),
     enabled,
     staleTime: 30 * 1000,
     retry: 1,
