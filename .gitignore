@@ -45,7 +45,8 @@ supabase/.temp/
 *.sln
 *.sw?
 
-# Local parallel worktrees/agent state
-.claude/
+# Local parallel worktrees/agent state (skills do projeto são versionadas)
+.claude/*
+!.claude/skills/
 .vercel
 .env*.local
