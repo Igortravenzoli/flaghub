@@ -4,5 +4,5 @@ import { ExecutivoTab } from '@/components/qualidade/ExecutivoTab';
 export default function QualidadeKiosk() {
   const now = new Date();
   const anoStart = new Date(now.getFullYear(), 0, 1);
-  return <ExecutivoTab dateStart={anoStart} dateEnd={now} periodLabel="Ano vigente" />;
+  return <ExecutivoTab tvMode dateStart={anoStart} dateEnd={now} periodLabel="Ano vigente" />;
 }

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Minimize2, Maximize2, Clock, Monitor } from 'lucide-react';
-import type { SectorInfo } from '@/data/mockSectorData';
 import KioskSectorView from './KioskSectorView';
 import Dashboard from '@/pages/Dashboard';
 
@@ -15,8 +14,13 @@ const fallbackComponents: Record<string, React.ComponentType> = {
 /** Refresh interval: 3 minutes */
 const REFRESH_INTERVAL_MS = 180_000;
 
+interface KioskSector {
+  slug: string;
+  name: string;
+}
+
 interface KioskOverlayProps {
-  activeSectors: SectorInfo[];
+  activeSectors: KioskSector[];
   currentIndex: number;
   rotateEnabled: boolean;
   onExit: () => void;

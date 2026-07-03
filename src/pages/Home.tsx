@@ -15,11 +15,16 @@ import { useCustomerServiceKpis } from '@/hooks/useCustomerServiceKpis';
 import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { getCurrentOfficialSprintCode, extractSprintCodeFromPath } from '@/lib/sprintCalendar';
-import { sectors as mockSectors, SectorInfo } from '@/data/mockSectorData';
 import { useAuth } from '@/hooks/useAuth';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Server,
+};
+
+// Rótulos exclusivos do modo TV (kiosk). No hub os nomes permanecem os originais.
+const KIOSK_LABELS: Record<string, string> = {
+  helpdesk: 'Customer Service',
+  'customer-service': 'Produtos',
 };
 
 interface SectorCardData {
@@ -122,7 +127,14 @@ export default function Home() {
     },
   ];
 
-  const activeSectors = mockSectors.filter((s) => kioskSelectedSlugs.includes(s.slug));
+  // Rótulos exclusivos do modo TV: a visão de atendimento (helpdesk/VDesk) é a
+  // "Customer Service" real; a visão DevOps de implantações é "Produtos".
+  const kioskName = (s: { slug: string; name: string }) => KIOSK_LABELS[s.slug] ?? s.name;
+
+  // Mesma fonte do dialog de seleção — mockSectors não tem infraestrutura/helpdesk
+  const activeSectors = sectorCards
+    .filter((s) => kioskSelectedSlugs.includes(s.slug))
+    .map((s) => ({ slug: s.slug, name: kioskName(s) }));
 
   // Show kiosk picker dialog for monitor user on first load
   useEffect(() => {
@@ -232,7 +244,7 @@ export default function Home() {
 
         {/* Kiosk Mode Card */}
         <KioskConfigDialog
-          sectors={sectorCards.map((s) => ({ slug: s.slug, name: s.name }))}
+          sectors={sectorCards.map((s) => ({ slug: s.slug, name: kioskName(s) }))}
           onStart={startKiosk}
         />
       </div>
@@ -240,7 +252,7 @@ export default function Home() {
       {/* Monitor user: externally-controlled kiosk picker */}
       {isMonitor && (
         <KioskConfigDialog
-          sectors={sectorCards.map((s) => ({ slug: s.slug, name: s.name }))}
+          sectors={sectorCards.map((s) => ({ slug: s.slug, name: kioskName(s) }))}
           onStart={startKiosk}
           externalOpen={showMonitorKioskPicker}
           onExternalOpenChange={setShowMonitorKioskPicker}

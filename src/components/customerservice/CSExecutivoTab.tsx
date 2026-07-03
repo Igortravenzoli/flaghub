@@ -15,12 +15,15 @@ interface CSExecutivoTabProps {
   alertCounts: { total: number; critical: number; warning: number };
   devopsItems: CSKpiItem[];
   periodLabel?: string;
+  /** Rótulo do domínio no cabeçalho (default "Customer Service"; no TV = "Produtos"). */
+  title?: string;
 }
 
 const PBI_TYPES = new Set(['Product Backlog Item', 'User Story', 'Bug']);
 
 export function CSExecutivoTab({
   kpis, aprovacaoCSCount, customerServiceCount, inBacklogCount, alertCounts, devopsItems, periodLabel,
+  title = 'Customer Service',
 }: CSExecutivoTabProps) {
   const healthIds = useMemo(
     () => devopsItems.filter(i => i.work_item_id && PBI_TYPES.has(i.work_item_type || '')).map(i => i.work_item_id as number),
@@ -49,7 +52,7 @@ export function CSExecutivoTab({
       <div>
         <h2 className="text-xl font-bold">Visão Executiva</h2>
         <p className="text-sm text-muted-foreground">
-          Customer Service · onde estamos · o que queremos · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
+          {title} · onde estamos · o que queremos · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
         </p>
       </div>
 

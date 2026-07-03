@@ -9,6 +9,7 @@ export default function InfraestruturaKiosk() {
   const kpis = useInfraestruturaKpis(range?.from, range?.to, 'all');
   return (
     <InfraExecutivoTab
+      tvMode
       kpis={kpis}
       dateFrom={range?.from}
       dateTo={range?.to}
