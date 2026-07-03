@@ -50,9 +50,11 @@ interface ExecutivoTabProps {
   dateStart?: Date;
   dateEnd?: Date;
   periodLabel?: string;
+  /** Modo TV (kiosk): só fila/meta/retornos + reconciliação/versões + distribuição, sem CRUD. */
+  tvMode?: boolean;
 }
 
-export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabProps) {
+export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: ExecutivoTabProps) {
   const dateStartIso = toIsoDate(dateStart);
   const dateEndIso = toIsoDate(dateEnd);
   const year = new Date().getFullYear();
@@ -220,7 +222,8 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
         </BlocoCard>
       </div>
 
-      {/* ── Linha 2: de onde viemos — idade da fila + encerramentos por usuário ── */}
+      {/* ── Linha 2: de onde viemos — idade da fila + encerramentos por usuário (oculto em TV) ── */}
+      {!tvMode && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Idade da fila por sprint de origem */}
@@ -276,9 +279,11 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
           </p>
         </BlocoCard>
       </div>
+      )}
 
-      {/* ── Linha 3: entradas em Em Teste (handoff) com marcadores de sprint ── */}
-      <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'">
+      {/* ── Linha 3 + 4: em TV a reconciliação/versões vem antes da distribuição ── */}
+      <div className="flex flex-col gap-4">
+      <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'order-2' : undefined}>
         {handoffData.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sem entradas registradas no período.</p>
         ) : (
@@ -307,7 +312,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
       </BlocoCard>
 
       {/* ── Linha 4: reconciliação (bug 76-vs-26) + controle de versão ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 ${tvMode ? 'order-1' : ''}`}>
 
         {/* Reconciliação retorno QA × encerramentos */}
         <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação">
@@ -346,8 +351,9 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel }: ExecutivoTabPr
           )}
         </BlocoCard>
 
-        {/* Controle de versão de sistemas */}
-        <SistemaVersoesCard canManage={canManage} />
+        {/* Controle de versão de sistemas (somente leitura em TV) */}
+        <SistemaVersoesCard canManage={tvMode ? false : canManage} />
+      </div>
       </div>
     </div>
   );

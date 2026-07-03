@@ -16,7 +16,7 @@ function isAprovacaoCS(item: CSKpiItem): boolean {
   return display.includes('aprovacaocs') || display.includes('aprovação cs') || display.includes('aprovacao cs');
 }
 
-/** Modo TV de Produtos (Customer Service) = Visão Executiva. Fila é estado atual. */
+/** Modo TV de Produtos = Visão Executiva (implantações/fila). Fila é estado atual. */
 export default function CustomerServiceKiosk() {
   const { devopsItems, totalFilaCS, implAndamento, implFinalizadas, implTotal, isLoading } = useCustomerServiceKpis();
 
@@ -38,6 +38,7 @@ export default function CustomerServiceKiosk() {
       alertCounts={alertCounts}
       devopsItems={devopsItems}
       periodLabel="Estado atual"
+      title="Produtos"
     />
   );
 }
