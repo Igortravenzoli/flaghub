@@ -1,10 +1,8 @@
 import { useMemo } from 'react';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip,
-} from 'recharts';
 import { Zap, Gauge, Timer, Shuffle, RotateCcw, HeartPulse, Target, CalendarClock, Activity } from 'lucide-react';
 import { BlocoCard, MetaCard, SecHeader } from '@/components/executivo/BlocoCard';
 import { useGerencialFabrica } from '@/hooks/useGerencialFabrica';
+import { DesempenhoTrendChart } from '@/components/fabrica/DesempenhoTrendChart';
 
 // Metas desejadas (TO BE) — placeholders configuráveis; alinhar com a gestão (Henrique).
 const META_CONCLUSAO_PCT = 90;   // % do escopo concluído ao fim da sprint
@@ -39,15 +37,9 @@ function toIso(d?: Date | null): string | undefined {
   return d ? d.toISOString().slice(0, 10) : undefined;
 }
 
-function sprintNum(code: string): number {
-  return Number(code.replace(/[^0-9]/g, '').match(/^\d+/)?.[0] ?? code.replace(/^S/i, '').split('-')[0]) || 0;
-}
-
 export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo, periodLabel }: FabricaExecutivoTabProps) {
   // Escopo selecionado (AS IS / TO BE)
   const { data: gerencial = [] } = useGerencialFabrica(selectedSprintCode || undefined, toIso(dateFrom), toIso(dateTo));
-  // Série histórica completa (De onde viemos) — independe do filtro de sprint
-  const { data: historicoRaw = [] } = useGerencialFabrica();
 
   const agg = useMemo(() => {
     const qaReturn = gerencial.reduce((s, r) => s + (r.qa_return_total || 0), 0);
@@ -80,21 +72,6 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
   const saudavelPct = agg.totalHealth > 0 ? Math.round((agg.saudaveis / agg.totalHealth) * 100) : 0;
   const transbordoPct = fab.transbordoPct ?? 0;
   const num = (v: number | null) => (v == null ? '—' : v);
-
-  // Apenas sprints do ANO VIGENTE — o RPC retorna também 2024/2025 (ex.: S33-2025).
-  const anoVigente = new Date().getFullYear();
-  const evolucao = useMemo(() => {
-    const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
-    return [...historicoRaw]
-      .filter(r => reAno.test(r.sprint_code))
-      .sort((a, b) => sprintNum(a.sprint_code) - sprintNum(b.sprint_code))
-      .slice(-8)
-      .map(r => ({
-        sprint: r.sprint_code.split('-')[0],
-        conclusao: r.total_itens > 0 ? Math.round((r.done_count / r.total_itens) * 100) : 0,
-        lead: r.avg_lead_time_days != null ? Math.round(r.avg_lead_time_days * 10) / 10 : null,
-      }));
-  }, [historicoRaw, anoVigente]);
 
   return (
     <div className="space-y-5">
@@ -196,21 +173,11 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
       {/* ═══════ DE ONDE VIEMOS — HISTÓRICO ═══════ */}
       <SecHeader title="De onde viemos" subtitle="histórico · linha de base · evolução" />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <BlocoCard icon={CalendarClock} titulo="Evolução · conclusão por sprint" className="lg:col-span-2">
-          {evolucao.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-10 text-center">Sem histórico de sprints na base.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={evolucao} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="sprint" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
-                <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v}%`, 'conclusão']} />
-                <Line type="monotone" dataKey="conclusao" stroke="hsl(142,71%,45%)" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-          <p className="text-[11px] text-muted-foreground border-t pt-2">% do escopo concluído ao fim de cada sprint (últimas 8).</p>
+        <BlocoCard icon={CalendarClock} titulo="Desempenho · evolução por sprint" className="lg:col-span-2">
+          <DesempenhoTrendChart height={200} />
+          <p className="text-[11px] text-muted-foreground border-t pt-2">
+            % Entrega (concluído ÷ escopo, ↑ melhor) · % Retorno QA · % Bug (↓ melhor) — últimas 8 sprints.
+          </p>
         </BlocoCard>
 
         <BlocoCard icon={Activity} titulo="Linha de base">

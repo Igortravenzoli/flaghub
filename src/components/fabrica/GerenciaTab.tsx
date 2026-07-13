@@ -1,7 +1,10 @@
 ﻿import React, { useMemo, useState, useCallback } from 'react';
 import type { FabricaItem } from '@/hooks/useFabricaKpis';
 import type { SprintSnapshotRow, SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
-import { getOfficialSprintRange } from '@/lib/sprintCalendar';
+import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
+import { cleanFabricaName } from '@/lib/fabricaNames';
+import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
+import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabricaCharts';
 import type { FeaturePbiSummaryRow, PbiBottleneckRow } from '@/types/pbi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -162,13 +165,6 @@ function classifyItem(item: FabricaItem): Bucket {
 
 function isPriorizadoBucket(bucket: Bucket): boolean {
   return bucket === 'priorizacao' || bucket === 'priorizacao_transbordo';
-}
-
-/** "[K8] - Squad" → "K8"; "FLEXX Squad" → "FLEXX" — rótulo curto de fábrica */
-function cleanFabricaName(name: string): string {
-  const bracket = name.match(/\[([^\]]+)\]/);
-  if (bracket) return bracket[1].trim().toUpperCase();
-  return name.replace(/\s*-?\s*squad\s*$/i, '').trim();
 }
 
 /** Sprint já encerrou? (fim oficial — sexta 23:59 — anterior a hoje) */
@@ -1067,6 +1063,23 @@ export function GerenciaTab({
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Qualidade das Fábricas — Entregas, Bug e Retorno QA por sprint × fábrica (slides 1 e 3) */}
+      {renderSectionHeader('qualidade_fabricas', 'Qualidade das Fábricas — por sprint', <BarChart3 className="h-4 w-4" />)}
+      {!isCollapsed('qualidade_fabricas') && <QualidadePorFabricaCharts />}
+
+      {/* Evolução diária (Entregue & Done) da sprint aberta — série de snapshots diários */}
+      {renderSectionHeader(
+        'evolucao_diaria',
+        `Evolução diária da sprint${selectedFabrica ? ` — Fábrica ${selectedFabrica}` : ''}`,
+        <TrendingUp className="h-4 w-4" />,
+      )}
+      {!isCollapsed('evolucao_diaria') && (
+        <DailyProgressCard
+          sprintCode={selectedSprintCodes.length === 1 ? selectedSprintCodes[0] : getCurrentOfficialSprintCode()}
+          fabricaFilter={selectedFabrica}
+        />
       )}
 
       {/* Retorno QA e Bug por fábrica — retrabalho/correção e impacto dentro de cada fábrica */}
