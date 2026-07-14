@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useSprintDailyProgress, type SprintDailyProgressRow } from '@/hooks/useSprintDailyProgress';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
 import { cleanFabricaName } from '@/lib/fabricaNames';
+import { SQUADS } from '@/lib/fabricaRoster';
 
 type DailyProgressCardProps = {
   /** Código da sprint a exibir; se ausente, usa a sprint oficial vigente (a série é forward-only da sprint aberta). */
@@ -51,15 +52,17 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
 
   const dailyRows = useMemo(() => dedupeByDay(rows), [rows]);
 
-  // Fábricas presentes na série — para o seletor de escopo.
+  // Squads reais presentes na série — para o seletor de escopo.
+  // Filtra "Sem fábrica"/"DESIGN"/"FLG", que não são squads.
   const fabricas = useMemo(() => {
     const set = new Set<string>();
     for (const r of dailyRows) {
       for (const raw of Object.keys(r.category_breakdown?.fabricas ?? {})) {
-        set.add(cleanFabricaName(raw));
+        const name = cleanFabricaName(raw);
+        if (SQUADS.includes(name)) set.add(name);
       }
     }
-    return [...set].sort();
+    return SQUADS.filter((s) => set.has(s));
   }, [dailyRows]);
 
   const chartData = useMemo(() => {
@@ -96,7 +99,8 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
             Evolução diária — Entregue &amp; Done
             <span className="text-xs font-normal text-muted-foreground">{code}</span>
           </CardTitle>
-          {!fabricaFilter && fabricas.length > 0 && (
+          {/* No TV (fill) ninguém clica — os botões só roubariam altura do gráfico. */}
+          {!fill && !fabricaFilter && fabricas.length > 0 && (
             <div className="flex gap-1 flex-wrap">
               <Button
                 variant={scope === null ? 'default' : 'outline'}

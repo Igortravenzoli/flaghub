@@ -3,6 +3,7 @@ import { Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSprintSnapshots, type SnapshotScopeBreakdown, type SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 import { cleanFabricaName } from '@/lib/fabricaNames';
+import { SQUADS } from '@/lib/fabricaRoster';
 import { fabricaColor, medalColor } from '@/lib/chartColors';
 
 type RankingFabricasCardProps = {
@@ -63,6 +64,10 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
     for (const s of rows) {
       const sprintLabel = s.sprint_code.split('-')[0];
       for (const [name, scope] of Object.entries(normalizedFabricas(s))) {
+        // Só as squads reais. Sem esse filtro entram "Sem fábrica", "DESIGN", "FLG" —
+        // que, por não terem dado, ficam com score 0 e passam NA FRENTE das squads
+        // reais (score negativo), invertendo o pódio.
+        if (!SQUADS.includes(name)) continue;
         const agg = byFabrica.get(name) ?? { cells: [], done: 0, scope: 0, bug: 0, retorno: 0 };
         agg.cells.push({
           sprint: sprintLabel,
@@ -79,6 +84,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
     }
 
     return [...byFabrica.entries()]
+      .filter(([, a]) => a.scope > 0) // sem escopo não há o que ranquear
       .map(([name, a]) => {
         const desempenho = pct(a.done, a.scope);
         return {

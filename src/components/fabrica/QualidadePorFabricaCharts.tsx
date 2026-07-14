@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useSprintSnapshots, type SnapshotScopeBreakdown, type SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 import { cleanFabricaName } from '@/lib/fabricaNames';
+import { SQUADS } from '@/lib/fabricaRoster';
 import { fabricaColor } from '@/lib/chartColors';
 import { quarterLabel } from '@/lib/sprintCalendar';
 
@@ -77,6 +78,9 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
       if (!raw.has(colKey)) { raw.set(colKey, new Map()); colOrder.push(colKey); }
       const colMap = raw.get(colKey)!;
       for (const [name, scope] of Object.entries(normalizedFabricas(s))) {
+        // Só as squads reais — "Sem fábrica"/"DESIGN"/"FLG" viravam séries extras
+        // e deixavam as barras ilegíveis (7 séries em vez de 4).
+        if (!SQUADS.includes(name)) continue;
         const c = colMap.get(name) ?? emptySums();
         addScope(c, scope);
         colMap.set(name, c);
@@ -96,6 +100,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
 
     // Score = Desempenho − (½·Bug + ½·RetornoQA); maior primeiro (melhor → pior).
     const ordered = Object.entries(agg)
+      .filter(([, a]) => a.scope > 0)
       .map(([name, a]) => ({ name, score: pct(a.done, a.scope) - 0.5 * pct(a.bug, a.scope) - 0.5 * pct(a.retorno, a.scope) }))
       .sort((x, y) => y.score - x.score)
       .map((x) => x.name);
@@ -137,10 +142,13 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
                 ))}
               </div>
             )}
-            <div className="flex gap-1">
-              <Button variant={groupBy === 'sprint' ? 'default' : 'outline'} size="sm" className="h-7 text-xs" onClick={() => setGroupBy('sprint')}>Sprint</Button>
-              <Button variant={groupBy === 'quarter' ? 'default' : 'outline'} size="sm" className="h-7 text-xs" onClick={() => setGroupBy('quarter')}>Quarter</Button>
-            </div>
+            {/* No TV (fill) ninguém clica — esconde o toggle e mantém a visão por sprint. */}
+            {!fill && (
+              <div className="flex gap-1">
+                <Button variant={groupBy === 'sprint' ? 'default' : 'outline'} size="sm" className="h-7 text-xs" onClick={() => setGroupBy('sprint')}>Sprint</Button>
+                <Button variant={groupBy === 'quarter' ? 'default' : 'outline'} size="sm" className="h-7 text-xs" onClick={() => setGroupBy('quarter')}>Quarter</Button>
+              </div>
+            )}
           </div>
         </div>
       </CardHeader>
