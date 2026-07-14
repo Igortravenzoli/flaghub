@@ -57,18 +57,30 @@ function KioskFit({ children, fill }: { children: ReactNode; fill: boolean }) {
       const ch = o.clientHeight;
       if (!cw || !ch) return;
 
+      const scaleW = cw / DESIGN_WIDTH;
+      if (!Number.isFinite(scaleW) || scaleW <= 0) return;
+
       if (fill) {
-        const scale = cw / DESIGN_WIDTH;
-        if (!Number.isFinite(scale) || scale <= 0) return;
-        setFit({ scale, designHeight: ch / scale });
+        // Altura disponível, em unidades de design.
+        const availH = ch / scaleW;
+        const natural = i?.scrollHeight ?? 0;
+
+        // Rede de segurança: se o conteúdo NÃO consegue encolher até a altura
+        // disponível (setor ainda não adaptado, gráfico de altura fixa, etc.),
+        // reduz a escala até caber em vez de CORTAR. Pior caso = sobra folga,
+        // que é exatamente o comportamento antigo. Nunca perde informação.
+        if (natural > availH + 1) {
+          setFit({ scale: ch / natural, designHeight: natural });
+          return;
+        }
+        setFit({ scale: scaleW, designHeight: availH });
         return;
       }
 
-      // Legado: setor ainda não adaptado para esticar — encolhe até caber,
-      // aceitando sobra num dos eixos (melhor sobrar do que cortar conteúdo).
+      // Legado: encolhe até caber, aceitando sobra num dos eixos.
       const ih = i?.offsetHeight ?? 0;
       if (!ih) return;
-      const scale = Math.min(cw / DESIGN_WIDTH, ch / ih);
+      const scale = Math.min(scaleW, ch / ih);
       if (!Number.isFinite(scale) || scale <= 0) return;
       setFit({ scale, designHeight: 0 });
     };
