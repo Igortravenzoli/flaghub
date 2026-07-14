@@ -14,6 +14,8 @@ type FabricaScopeRow = {
 type UsoCruzadoCardProps = {
   /** Linhas de horas por fábrica (Epic) com colaboradores — ex.: fab.horasPorFabricaFull. */
   fabricaRows: FabricaScopeRow[];
+  /** Modo TV: só as barras de alocação, sem a matriz detalhada. */
+  compact?: boolean;
 };
 
 const SEM_SQUAD = 'Sem squad';
@@ -28,7 +30,7 @@ function fmtH(minutes: number): string {
  * cruzado contra a fábrica do trabalho (Épico), mostra quanto da capacity de cada
  * squad foi para OUTRAS fábricas. Diagonal = trabalho na própria fábrica.
  */
-export function UsoCruzadoCard({ fabricaRows }: UsoCruzadoCardProps) {
+export function UsoCruzadoCard({ fabricaRows, compact = false }: UsoCruzadoCardProps) {
   const { data: rosterRows = [], isLoading: rosterLoading } = useFabricaRoster();
   const homeMap = useMemo(() => buildHomeSquadMap(rosterRows), [rosterRows]);
 
@@ -138,7 +140,7 @@ export function UsoCruzadoCard({ fabricaRows }: UsoCruzadoCardProps) {
             </div>
 
             {/* Matriz origem → destino */}
-            <div className="mt-4 overflow-x-auto">
+            <div className={`mt-4 overflow-x-auto ${compact ? 'hidden' : ''}`}>
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="text-muted-foreground">

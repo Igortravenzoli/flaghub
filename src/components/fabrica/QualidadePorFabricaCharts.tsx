@@ -14,6 +14,8 @@ type GroupBy = 'sprint' | 'quarter';
 
 type QualidadePorFabricaChartsProps = {
   maxSprints?: number;
+  /** Altura de cada mini-gráfico (px). Menor no modo TV. */
+  chartHeight?: number;
 };
 
 function sprintNum(code: string): number {
@@ -48,7 +50,7 @@ function addScope(acc: RawSums, scope: SnapshotScopeBreakdown): void {
  * Fábricas ordenadas da melhor para a pior cruzando Desempenho × Qualidade.
  * Fonte = fotografias de fim de sprint.
  */
-export function QualidadePorFabricaCharts({ maxSprints = 6 }: QualidadePorFabricaChartsProps) {
+export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190 }: QualidadePorFabricaChartsProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const [groupBy, setGroupBy] = useState<GroupBy>('sprint');
   const anoVigente = new Date().getFullYear();
@@ -152,7 +154,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6 }: QualidadePorFabric
                 <p className="text-xs font-medium mb-1">
                   {c.title} <span className="text-muted-foreground font-normal">· {c.hint}</span>
                 </p>
-                <div className="h-[190px]">
+                <div style={{ height: chartHeight }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dataFor(c.key)} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />

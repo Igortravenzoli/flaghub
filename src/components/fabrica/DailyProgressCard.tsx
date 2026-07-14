@@ -15,6 +15,8 @@ type DailyProgressCardProps = {
   sprintCode?: string | null;
   /** Filtra a série por uma fábrica (rótulo já normalizado, ex.: "K8"). null = geral. */
   fabricaFilter?: string | null;
+  /** Altura do gráfico (px). Menor no modo TV. */
+  chartHeight?: number;
 };
 
 /**
@@ -38,7 +40,7 @@ function dedupeByDay(rows: SprintDailyProgressRow[]): SprintDailyProgressRow[] {
   return [...byDay.values()].sort((a, b) => a.captured_date.localeCompare(b.captured_date));
 }
 
-export function DailyProgressCard({ sprintCode, fabricaFilter }: DailyProgressCardProps) {
+export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260 }: DailyProgressCardProps) {
   const code = sprintCode || getCurrentOfficialSprintCode();
   const { data: rows = [], isLoading } = useSprintDailyProgress(code);
 
@@ -132,7 +134,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter }: DailyProgressCa
                 <span className="text-muted-foreground">de {last.Escopo} no escopo</span>
               </div>
             )}
-            <div className="h-[260px]">
+            <div style={{ height: chartHeight }}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />

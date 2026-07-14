@@ -8,6 +8,10 @@ import { fabricaColor, medalColor } from '@/lib/chartColors';
 type RankingFabricasCardProps = {
   /** Quantas sprints mais recentes considerar (barras aninhadas + agregado do score). */
   maxSprints?: number;
+  /** Colunas do grid de fábricas (4 no modo TV = tudo numa linha). */
+  columns?: number;
+  /** Altura renderizada do gráfico aninhado (px). Menor no modo TV. */
+  svgHeight?: number;
 };
 
 const RANKING_FORMULA = 'Ranking = Desempenho − (½·Bug + ½·Retorno QA), somando todas as sprints do período. Maior valor = melhor cruzamento de desempenho e qualidade.';
@@ -42,7 +46,7 @@ function y(value: number): number {
   return CHART_BOTTOM - (Math.max(0, Math.min(100, value)) / 100) * CHART_H;
 }
 
-export function RankingFabricasCard({ maxSprints = 6 }: RankingFabricasCardProps) {
+export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 126 }: RankingFabricasCardProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const anoVigente = new Date().getFullYear();
 
@@ -107,7 +111,7 @@ export function RankingFabricasCard({ maxSprints = 6 }: RankingFabricasCardProps
         ) : ranking.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-8">Sem fotografias de sprint para o ranking por fábrica.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
             {ranking.map((f, idx) => {
               const color = fabricaColor(f.name, idx);
               const vbW = Math.max(GROUP_W * f.cells.length, GROUP_W);
@@ -125,7 +129,7 @@ export function RankingFabricasCard({ maxSprints = 6 }: RankingFabricasCardProps
                       score <span className="font-mono font-semibold text-foreground">{f.score}</span>
                     </span>
                   </div>
-                  <svg viewBox={`0 0 ${vbW} 126`} width="100%" height="126" role="img" aria-label={`Desempenho aninhado de ${f.name}`}>
+                  <svg viewBox={`0 0 ${vbW} 126`} width="100%" height={svgHeight} role="img" aria-label={`Desempenho aninhado de ${f.name}`}>
                     <line x1="0" y1={CHART_BOTTOM} x2={vbW} y2={CHART_BOTTOM} stroke="hsl(var(--border))" />
                     {f.cells.map((c, i) => {
                       const cx = i * GROUP_W + GROUP_W / 2;

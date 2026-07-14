@@ -55,9 +55,11 @@ function KioskFit({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Centraliza nos dois eixos: se sobrar folga (aspecto da tela ≠ do conteúdo),
+  // ela fica dividida em vez de acumular embaixo.
   return (
-    <div ref={outerRef} className="w-full h-full flex items-start justify-center overflow-hidden">
-      <div ref={innerRef} style={{ width: DESIGN_WIDTH, transform: `scale(${scale})`, transformOrigin: 'top center' }}>
+    <div ref={outerRef} className="w-full h-full flex items-center justify-center overflow-hidden">
+      <div ref={innerRef} style={{ width: DESIGN_WIDTH, transform: `scale(${scale})`, transformOrigin: 'center center' }}>
         {children}
       </div>
     </div>
