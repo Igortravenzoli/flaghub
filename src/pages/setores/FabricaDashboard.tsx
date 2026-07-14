@@ -14,6 +14,7 @@ import { useHubAreas } from '@/hooks/useHubAreas';
 import { PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
 import { HoursRankingCard } from '@/components/timelog/HoursRankingCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
+import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
@@ -2583,7 +2584,12 @@ export default function FabricaDashboard() {
                 </button>
               ))}
             </div>
-            {timelogLens === 'squad' && <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} />}
+            {timelogLens === 'squad' && (
+              <div className="space-y-4">
+                <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} />
+                <AlocacaoLeadDevCard fabricaRows={fab.horasPorFabricaFull || []} />
+              </div>
+            )}
             {timelogLens === 'atual' && (
             <div className="grid grid-cols-1 gap-4">
               <HoursRankingCard
