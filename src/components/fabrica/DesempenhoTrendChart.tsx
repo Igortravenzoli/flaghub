@@ -10,7 +10,8 @@ type DesempenhoTrendChartProps = {
   fabrica?: string | null;
   /** Quantas sprints mais recentes exibir. */
   maxSprints?: number;
-  height?: number;
+  /** Altura do gráfico; use "100%" para preencher o card (o pai precisa ter altura). */
+  height?: number | string;
   /** Mostra o número dentro da bolinha de cada ponto. */
   showValues?: boolean;
 };
@@ -125,7 +126,7 @@ export function DesempenhoTrendChart({
   }
 
   // Bolinha maior quando o gráfico é alto (TV), menor no painel.
-  const radius = height >= 240 ? 13 : 11;
+  const radius = typeof height === 'number' && height >= 240 ? 13 : 11;
   const dotFor = (serie: 'Entrega' | 'Retorno QA' | 'Bug', color: string) =>
     (showValues ? valueDot(serie, color, radius) : { r: 3 });
 

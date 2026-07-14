@@ -58,7 +58,7 @@ export function FabricaTvView({ fab, sprintCode, periodLabel }: FabricaTvViewPro
   const corConcl = conclPct >= 80 ? 'hsl(142,71%,42%)' : conclPct >= 50 ? 'hsl(38,92%,50%)' : 'hsl(0,72%,52%)';
 
   return (
-    <div className="w-full flex flex-col gap-2.5" style={{ minHeight: TV_CANVAS_H }}>
+    <div className="w-full flex flex-col gap-2.5 overflow-hidden" style={{ height: TV_CANVAS_H }}>
       {/* Faixa de KPIs — compacta, sem Saúde dos itens */}
       <Card className="flex-none">
         <CardContent className="py-2.5 flex items-center gap-2">
@@ -87,27 +87,27 @@ export function FabricaTvView({ fab, sprintCode, periodLabel }: FabricaTvViewPro
               Desempenho · evolução por sprint
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 pb-3">
-            <DesempenhoTrendChart height={150} maxSprints={8} showValues />
+          <CardContent className="flex-1 min-h-0 pb-3">
+            <DesempenhoTrendChart height="100%" maxSprints={8} showValues />
           </CardContent>
         </Card>
-        <div className="col-span-5 h-full">
-          <DailyProgressCard sprintCode={sprintCode} chartHeight={118} />
+        <div className="col-span-5 h-full min-h-0">
+          <DailyProgressCard sprintCode={sprintCode} fill />
         </div>
       </div>
 
       {/* Linha 2 — ranking por fábrica (4 numa linha) */}
       <div className="flex-1 min-h-0">
-        <RankingFabricasCard maxSprints={4} columns={4} svgHeight={100} />
+        <RankingFabricasCard maxSprints={4} columns={4} fill />
       </div>
 
       {/* Linha 3 — qualidade por sprint + capacity por squad */}
       <div className="grid grid-cols-12 gap-2.5 flex-1 min-h-0">
-        <div className="col-span-7 h-full">
-          <QualidadePorFabricaCharts maxSprints={6} chartHeight={100} />
+        <div className="col-span-7 h-full min-h-0">
+          <QualidadePorFabricaCharts maxSprints={6} fill />
         </div>
-        <div className="col-span-5 h-full">
-          <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} compact />
+        <div className="col-span-5 h-full min-h-0">
+          <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} compact fill />
         </div>
       </div>
     </div>

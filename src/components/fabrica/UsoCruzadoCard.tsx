@@ -16,6 +16,8 @@ type UsoCruzadoCardProps = {
   fabricaRows: FabricaScopeRow[];
   /** Modo TV: só as barras de alocação, sem a matriz detalhada. */
   compact?: boolean;
+  /** Preenche a altura do card (modo TV). */
+  fill?: boolean;
 };
 
 const SEM_SQUAD = 'Sem squad';
@@ -30,7 +32,7 @@ function fmtH(minutes: number): string {
  * cruzado contra a fábrica do trabalho (Épico), mostra quanto da capacity de cada
  * squad foi para OUTRAS fábricas. Diagonal = trabalho na própria fábrica.
  */
-export function UsoCruzadoCard({ fabricaRows, compact = false }: UsoCruzadoCardProps) {
+export function UsoCruzadoCard({ fabricaRows, compact = false, fill = false }: UsoCruzadoCardProps) {
   const { data: rosterRows = [], isLoading: rosterLoading } = useFabricaRoster();
   const homeMap = useMemo(() => buildHomeSquadMap(rosterRows), [rosterRows]);
 
@@ -74,14 +76,14 @@ export function UsoCruzadoCard({ fabricaRows, compact = false }: UsoCruzadoCardP
   const destColor = (dest: string, idx: number) => (dest === OUTRAS ? 'hsl(var(--muted-foreground))' : fabricaColor(dest, idx));
 
   return (
-    <Card>
+    <Card className={fill ? 'h-full flex flex-col' : undefined}>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <ArrowLeftRight className="h-4 w-4 text-primary" />
           Capacity por Squad — uso cruzado
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className={fill ? 'flex-1 min-h-0 flex flex-col justify-center' : undefined}>
         {rosterLoading ? (
           <p className="text-xs text-muted-foreground text-center py-8">Carregando roster das squads…</p>
         ) : rosterRows.length === 0 ? (

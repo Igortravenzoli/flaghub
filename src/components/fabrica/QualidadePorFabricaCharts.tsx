@@ -16,6 +16,8 @@ type QualidadePorFabricaChartsProps = {
   maxSprints?: number;
   /** Altura de cada mini-gráfico (px). Menor no modo TV. */
   chartHeight?: number;
+  /** Preenche a altura do card (modo TV) em vez de usar altura fixa. */
+  fill?: boolean;
 };
 
 function sprintNum(code: string): number {
@@ -50,7 +52,7 @@ function addScope(acc: RawSums, scope: SnapshotScopeBreakdown): void {
  * Fábricas ordenadas da melhor para a pior cruzando Desempenho × Qualidade.
  * Fonte = fotografias de fim de sprint.
  */
-export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190 }: QualidadePorFabricaChartsProps) {
+export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, fill = false }: QualidadePorFabricaChartsProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const [groupBy, setGroupBy] = useState<GroupBy>('sprint');
   const anoVigente = new Date().getFullYear();
@@ -117,7 +119,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190 }:
   ];
 
   return (
-    <Card>
+    <Card className={fill ? 'h-full flex flex-col' : undefined}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -142,19 +144,19 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190 }:
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className={fill ? 'flex-1 min-h-0 flex flex-col' : undefined}>
         {isLoading ? (
           <p className="text-xs text-muted-foreground text-center py-8">Carregando fotografias de sprint…</p>
         ) : columns.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-8">Sem fotografias de sprint para comparação por fábrica.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 ${fill ? 'flex-1 min-h-0' : ''}`}>
             {charts.map((c) => (
-              <div key={c.key}>
+              <div key={c.key} className={fill ? 'flex flex-col min-h-0' : undefined}>
                 <p className="text-xs font-medium mb-1">
                   {c.title} <span className="text-muted-foreground font-normal">· {c.hint}</span>
                 </p>
-                <div style={{ height: chartHeight }}>
+                <div className={fill ? 'flex-1 min-h-0' : undefined} style={fill ? undefined : { height: chartHeight }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={dataFor(c.key)} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />

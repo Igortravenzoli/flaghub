@@ -17,6 +17,8 @@ type DailyProgressCardProps = {
   fabricaFilter?: string | null;
   /** Altura do gráfico (px). Menor no modo TV. */
   chartHeight?: number;
+  /** Preenche a altura do card (modo TV) em vez de usar altura fixa. */
+  fill?: boolean;
 };
 
 /**
@@ -40,7 +42,7 @@ function dedupeByDay(rows: SprintDailyProgressRow[]): SprintDailyProgressRow[] {
   return [...byDay.values()].sort((a, b) => a.captured_date.localeCompare(b.captured_date));
 }
 
-export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260 }: DailyProgressCardProps) {
+export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260, fill = false }: DailyProgressCardProps) {
   const code = sprintCode || getCurrentOfficialSprintCode();
   const { data: rows = [], isLoading } = useSprintDailyProgress(code);
 
@@ -86,7 +88,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
   const last = chartData[chartData.length - 1];
 
   return (
-    <Card>
+    <Card className={fill ? 'h-full flex flex-col' : undefined}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -117,7 +119,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className={fill ? 'flex-1 min-h-0 flex flex-col' : undefined}>
         {isLoading ? (
           <p className="text-xs text-muted-foreground text-center py-8">Carregando série diária…</p>
         ) : chartData.length === 0 ? (
@@ -134,7 +136,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
                 <span className="text-muted-foreground">de {last.Escopo} no escopo</span>
               </div>
             )}
-            <div style={{ height: chartHeight }}>
+            <div className={fill ? 'flex-1 min-h-0' : undefined} style={fill ? undefined : { height: chartHeight }}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />

@@ -12,6 +12,8 @@ type RankingFabricasCardProps = {
   columns?: number;
   /** Altura renderizada do gráfico aninhado (px). Menor no modo TV. */
   svgHeight?: number;
+  /** Preenche a altura do card (modo TV) em vez de usar altura fixa. */
+  fill?: boolean;
 };
 
 const RANKING_FORMULA = 'Ranking = Desempenho − (½·Bug + ½·Retorno QA), somando todas as sprints do período. Maior valor = melhor cruzamento de desempenho e qualidade.';
@@ -46,7 +48,7 @@ function y(value: number): number {
   return CHART_BOTTOM - (Math.max(0, Math.min(100, value)) / 100) * CHART_H;
 }
 
-export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 126 }: RankingFabricasCardProps) {
+export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 126, fill = false }: RankingFabricasCardProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const anoVigente = new Date().getFullYear();
 
@@ -90,7 +92,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
   }, [snapshots, anoVigente, maxSprints]);
 
   return (
-    <Card>
+    <Card className={fill ? 'h-full flex flex-col' : undefined}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-sm font-medium flex items-center gap-1.5">
@@ -105,18 +107,18 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className={fill ? 'flex-1 min-h-0 flex flex-col' : undefined}>
         {isLoading ? (
           <p className="text-xs text-muted-foreground text-center py-8">Carregando fotografias de sprint…</p>
         ) : ranking.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-8">Sem fotografias de sprint para o ranking por fábrica.</p>
         ) : (
-          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+          <div className={`grid gap-3 ${fill ? 'flex-1 min-h-0' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
             {ranking.map((f, idx) => {
               const color = fabricaColor(f.name, idx);
               const vbW = Math.max(GROUP_W * f.cells.length, GROUP_W);
               return (
-                <div key={f.name} className="border rounded-lg p-3">
+                <div key={f.name} className={`border rounded-lg p-3 ${fill ? 'flex flex-col min-h-0' : ''}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <span
                       className="inline-grid place-items-center w-6 h-6 rounded-full text-white font-mono font-bold text-xs shrink-0"
@@ -129,7 +131,15 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
                       score <span className="font-mono font-semibold text-foreground">{f.score}</span>
                     </span>
                   </div>
-                  <svg viewBox={`0 0 ${vbW} 126`} width="100%" height={svgHeight} role="img" aria-label={`Desempenho aninhado de ${f.name}`}>
+                  <svg
+                    viewBox={`0 0 ${vbW} 126`}
+                    width="100%"
+                    height={fill ? '100%' : svgHeight}
+                    className={fill ? 'flex-1 min-h-0' : undefined}
+                    preserveAspectRatio="xMidYMid meet"
+                    role="img"
+                    aria-label={`Desempenho aninhado de ${f.name}`}
+                  >
                     <line x1="0" y1={CHART_BOTTOM} x2={vbW} y2={CHART_BOTTOM} stroke="hsl(var(--border))" />
                     {f.cells.map((c, i) => {
                       const cx = i * GROUP_W + GROUP_W / 2;
