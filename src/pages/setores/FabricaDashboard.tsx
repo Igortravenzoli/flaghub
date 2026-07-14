@@ -13,6 +13,7 @@ import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { useHubAreas } from '@/hooks/useHubAreas';
 import { PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
 import { HoursRankingCard } from '@/components/timelog/HoursRankingCard';
+import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
@@ -611,6 +612,9 @@ export default function FabricaDashboard() {
     return map;
   }, [fab.collaboratorTaskIdsDevops, fab.collaboratorTaskIdsVdesk, showDevops, showVdesk]);
 
+  // Lente do timelog por fábrica: "squad" (roster fixo + uso cruzado, padrão) ou
+  // "atual" (visão por colaborador, independente da squad — a chave seletora).
+  const [timelogLens, setTimelogLens] = useState<'squad' | 'atual'>('squad');
   // Modo do card "Horas por Fábrica": alocação completa (padrão) ou só fila ativa.
   const [fabricaScopeMode, setFabricaScopeMode] = useState<'full' | 'fila'>('full');
   const fabricaRows = useMemo(
@@ -2564,6 +2568,23 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Horas (TimeLog) ═══════ */}
           <TabsContent value="timelog" className="space-y-5 mt-0">
+            <div className="flex items-center gap-1 rounded-md border border-border/60 p-0.5 text-xs w-fit">
+              {([
+                { id: 'squad' as const, label: 'Por Squad (fixa)' },
+                { id: 'atual' as const, label: 'Por Colaborador' },
+              ]).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`px-2.5 py-1 rounded-[3px] transition-colors ${timelogLens === opt.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setTimelogLens(opt.id)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {timelogLens === 'squad' && <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} />}
+            {timelogLens === 'atual' && (
             <div className="grid grid-cols-1 gap-4">
               <HoursRankingCard
                 title="Horas por Fábrica (DevOps)"
@@ -2612,6 +2633,7 @@ export default function FabricaDashboard() {
                 }}
               />
             </div>
+            )}
 
             {/* ── Horas consolidadas por PBI/Bug (próprias + tasks filhas) ───── */}
             <Card className="animate-fade-in border-l-4 border-l-sky-400">
