@@ -7,9 +7,6 @@ import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabr
 import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 
-/** Altura do canvas de design do TV (1320 x 742 ≈ 16:9) — o KioskFit escala isto. */
-const TV_CANVAS_H = 742;
-
 type FabKpisTv = {
   total: number;
   done: number;
@@ -38,8 +35,10 @@ function Kpi({ valor, rotulo, cor }: { valor: number | string; rotulo: string; c
 /**
  * Modo TV da Fábrica. Diferente da aba Executiva: sem Saúde dos itens, Itens
  * saudáveis, Transbordo e Linha de base — e com Qualidade por fábrica, Evolução
- * diária e Capacity por squad (uso cruzado). Monta um canvas 16:9 que preenche
- * o telão (o KioskFit escala; se o conteúdo fosse baixo, sobraria vazio embaixo).
+ * diária e Capacity por squad (uso cruzado).
+ *
+ * Ocupa 100% da altura que o KioskFit entrega (que varia com o formato da tela)
+ * e distribui em linhas flex — por isso preenche o telão em qualquer proporção.
  */
 export function FabricaTvView({ fab, sprintCode, periodLabel }: FabricaTvViewProps) {
   const categoria = useMemo(() => {
@@ -58,7 +57,7 @@ export function FabricaTvView({ fab, sprintCode, periodLabel }: FabricaTvViewPro
   const corConcl = conclPct >= 80 ? 'hsl(142,71%,42%)' : conclPct >= 50 ? 'hsl(38,92%,50%)' : 'hsl(0,72%,52%)';
 
   return (
-    <div className="w-full flex flex-col gap-2.5 overflow-hidden" style={{ height: TV_CANVAS_H }}>
+    <div className="w-full h-full flex flex-col gap-2.5 overflow-hidden">
       {/* Faixa de KPIs — compacta, sem Saúde dos itens */}
       <Card className="flex-none">
         <CardContent className="py-2.5 flex items-center gap-2">
