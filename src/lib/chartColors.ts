@@ -45,3 +45,21 @@ export const HEALTH_COLORS = {
 export function getChartColor(index: number): string {
   return CHART_COLORS[index % CHART_COLORS.length];
 }
+
+/** Cor fixa por fábrica — identidade consistente entre os gráficos de Fábrica. */
+export const FABRICA_COLORS: Record<string, string> = {
+  K8: 'hsl(43,74%,49%)',
+  FLEXX: 'hsl(265,52%,58%)',
+  STAGING: 'hsl(205,55%,47%)',
+  APP: 'hsl(160,55%,42%)',
+};
+
+export function fabricaColor(name: string, idx = 0): string {
+  return FABRICA_COLORS[name] ?? getChartColor(idx);
+}
+
+/** Cor da medalha por posição no ranking (1º = melhor). */
+export const MEDAL_COLORS = ['hsl(142,71%,45%)', 'hsl(43,74%,49%)', 'hsl(205,55%,47%)', 'hsl(0,72%,55%)'] as const;
+export function medalColor(rank: number): string {
+  return MEDAL_COLORS[Math.min(rank, MEDAL_COLORS.length - 1)];
+}

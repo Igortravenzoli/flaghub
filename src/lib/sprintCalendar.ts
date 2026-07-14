@@ -47,6 +47,24 @@ export function getCurrentOfficialSprintCode(baseDate: Date = new Date()): strin
   return `S${sprintNum}-${year}`;
 }
 
+/**
+ * Quarter da sprint pelo mês em que ela TERMINA (regra do gestor:
+ * "considerar o final da Sprint"). Jan/Fev/Mar → Q1, Abr/Mai/Jun → Q2, etc.
+ * Robusto ao calendário real (usa a data de término), sem hard-code de
+ * números de sprint — Q1 cai em S1..S6 naturalmente.
+ */
+export function quarterFromSprintCode(sprintCode: string): { quarter: number; year: number } | null {
+  const range = getOfficialSprintRange(sprintCode);
+  if (!range) return null;
+  return { quarter: Math.floor(range.to.getMonth() / 3) + 1, year: range.to.getFullYear() };
+}
+
+/** Rótulo curto do quarter da sprint, ex.: "Q1". Null se o código for inválido. */
+export function quarterLabel(sprintCode: string): string | null {
+  const q = quarterFromSprintCode(sprintCode);
+  return q ? `Q${q.quarter}` : null;
+}
+
 export function formatSprintIntervalLabel(sprintCode: string): string {
   const range = getOfficialSprintRange(sprintCode);
   if (!range) return sprintCode;

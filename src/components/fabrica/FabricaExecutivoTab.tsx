@@ -3,6 +3,7 @@ import { Zap, Gauge, Timer, Shuffle, RotateCcw, HeartPulse, Target, CalendarCloc
 import { BlocoCard, MetaCard, SecHeader } from '@/components/executivo/BlocoCard';
 import { useGerencialFabrica } from '@/hooks/useGerencialFabrica';
 import { DesempenhoTrendChart } from '@/components/fabrica/DesempenhoTrendChart';
+import { RankingFabricasCard } from '@/components/fabrica/RankingFabricasCard';
 
 // Metas desejadas (TO BE) — placeholders configuráveis; alinhar com a gestão (Henrique).
 const META_CONCLUSAO_PCT = 90;   // % do escopo concluído ao fim da sprint
@@ -199,6 +200,10 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
           </div>
         </BlocoCard>
       </div>
+
+      {/* ═══════ DESEMPENHO POR FÁBRICA — RANKING ═══════ */}
+      <SecHeader title="Desempenho por Fábrica" subtitle="ranking · desempenho × qualidade" />
+      <RankingFabricasCard maxSprints={6} />
     </div>
   );
 }
