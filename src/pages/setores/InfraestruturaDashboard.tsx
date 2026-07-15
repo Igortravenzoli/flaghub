@@ -484,7 +484,7 @@ export default function InfraestruturaDashboard() {
               // Sprint selecionada (ou range custom) limita o SGSI por data de
               // criação/modificação; "Todas as Sprints" mostra tudo.
               const sgsiRange = customActive && customRange ? customRange : sprintUnionRange;
-              return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} secao={sgsiSecao} />;
+              return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} secao={sgsiSecao} onSecaoChange={setSgsiSecao} />;
             })()}
           </TabsContent>
 
