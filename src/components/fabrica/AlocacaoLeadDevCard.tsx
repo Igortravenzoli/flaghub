@@ -64,9 +64,9 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
     return SQUADS.map((squad) => {
       const membros = roster.filter((r) => r.squad === squad);
       const lead = membros.find((r) => r.papel === 'lead') ?? null;
-      // Lead não conta como hora de fábrica — fica só no cabeçalho, fora das linhas e dos totais.
+      // Lead só gestor (conta_horas=false) fica só no cabeçalho; lead executor conta como dev.
       const devs = membros
-        .filter((r) => r.papel !== 'lead')
+        .filter((r) => r.conta_horas !== false)
         .map((r) => {
           const stat = byCollab.get(normName(r.colaborador));
           const total = stat?.total ?? 0;
@@ -120,7 +120,9 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                       {s.lead ? s.lead.colaborador : s.squad}
                     </span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded border" style={{ borderColor: cor, color: cor }}>
-                      {s.lead ? `Lead · ${s.squad}` : `${s.squad} · lead não definido`}
+                      {s.lead
+                        ? `${s.lead.conta_horas === false ? 'Lead gestor' : 'Lead executor'} · ${s.squad}`
+                        : `${s.squad} · lead não definido`}
                     </span>
                     <span className="ml-auto text-xs tabular-nums">
                       {temCapacidade && s.cap > 0 ? (

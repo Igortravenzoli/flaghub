@@ -13,6 +13,8 @@ export type RosterEntry = {
   colaborador: string;
   squad: string;
   papel?: string | null;
+  /** Se as horas contam como hora de fábrica (false = lead só gestor). */
+  conta_horas?: boolean;
 };
 
 const DIACRITICS = new RegExp('[\\u0300-\\u036f]', 'g');
@@ -39,13 +41,14 @@ export function homeSquadOf(map: Map<string, string>, name: string | null | unde
 }
 
 /**
- * Nomes (normalizados) dos leads. Lead NÃO conta como hora de fábrica (regra do
- * gestor) — usado para excluir da capacidade e do realizado das squads.
+ * Nomes (normalizados) de quem NÃO conta como hora de fábrica — os leads só
+ * gestores (conta_horas = false). Lead executor conta normalmente.
+ * Usado para excluir do realizado das squads.
  */
-export function buildLeadNameSet(rows: RosterEntry[]): Set<string> {
+export function buildNaoContaSet(rows: RosterEntry[]): Set<string> {
   const s = new Set<string>();
   for (const r of rows) {
-    if (r?.papel === 'lead' && r.colaborador) s.add(normName(r.colaborador));
+    if (r?.conta_horas === false && r.colaborador) s.add(normName(r.colaborador));
   }
   return s;
 }

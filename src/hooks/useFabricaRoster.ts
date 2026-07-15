@@ -13,6 +13,8 @@ export interface SquadMembershipRow {
   ativo: boolean;
   /** Horas produtivas por dia útil (base da capacidade do período). */
   capacidade_h_dia: number;
+  /** Se as horas contam como hora de fábrica. false = lead só gestor (não opera). */
+  conta_horas: boolean;
 }
 
 /** Roster fixo dev -> squad. Base da visão por squad e do uso cruzado. */
@@ -22,7 +24,7 @@ export function useFabricaRoster() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('fabrica_squad_membership')
-        .select('colaborador, squad, papel, ativo, capacidade_h_dia')
+        .select('colaborador, squad, papel, ativo, capacidade_h_dia, conta_horas')
         .eq('ativo', true);
       if (error) throw error;
       return (data || []) as SquadMembershipRow[];

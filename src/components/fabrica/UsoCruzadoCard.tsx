@@ -3,7 +3,7 @@ import { ArrowLeftRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { buildHomeSquadMap, buildLeadNameSet, homeSquadOf, normName, SQUADS } from '@/lib/fabricaRoster';
+import { buildHomeSquadMap, buildNaoContaSet, homeSquadOf, normName, SQUADS } from '@/lib/fabricaRoster';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { businessDaysBetween } from '@/lib/sprintCalendar';
 
@@ -44,8 +44,8 @@ function fmtDelta(minutes: number): string {
 export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false, fill = false }: UsoCruzadoCardProps) {
   const { data: rosterRows = [], isLoading: rosterLoading } = useFabricaRoster();
   const homeMap = useMemo(() => buildHomeSquadMap(rosterRows), [rosterRows]);
-  // Lead não conta como hora de fábrica (regra do gestor) — fora da capacidade e do realizado.
-  const leadSet = useMemo(() => buildLeadNameSet(rosterRows), [rosterRows]);
+  // Lead só gestor (conta_horas=false) não conta como hora de fábrica — fora da capacidade e do realizado.
+  const naoContaSet = useMemo(() => buildNaoContaSet(rosterRows), [rosterRows]);
 
   const businessDays = useMemo(
     () => (dateFrom && dateTo ? businessDaysBetween(dateFrom, dateTo) : null),
@@ -58,7 +58,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     if (!businessDays) return out;
     for (const squad of SQUADS) {
       const hDia = rosterRows
-        .filter((r) => r.squad === squad && r.papel !== 'lead')
+        .filter((r) => r.squad === squad && r.conta_horas !== false)
         .reduce((s, r) => s + (Number(r.capacidade_h_dia) || 0), 0);
       out[squad] = hDia * businessDays * 60;
     }
@@ -77,7 +77,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
       const dest = SQUADS.includes(clean) ? clean : OUTRAS;
       destSet.add(dest);
       for (const c of row.collaborators) {
-        if (leadSet.has(normName(c.name))) continue; // lead não conta como hora de fábrica
+        if (naoContaSet.has(normName(c.name))) continue; // lead só gestor não conta
         const home = homeSquadOf(homeMap, c.name) ?? SEM_SQUAD;
         if (home === SEM_SQUAD) semSquad += c.minutes;
         bump(home, dest, c.minutes);
@@ -94,7 +94,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     const destinos = [...SQUADS.filter((s) => destSet.has(s)), ...(destSet.has(OUTRAS) ? [OUTRAS] : [])];
     const hasData = Object.keys(matrix).length > 0 && SQUADS.some((s) => squadTotals[s] > 0);
     return { matrix, squadTotals, crossTotals, semSquadMin: semSquad, destinos, hasData };
-  }, [fabricaRows, homeMap, leadSet]);
+  }, [fabricaRows, homeMap, naoContaSet]);
 
   const maxCap = useMemo(() => Math.max(1, ...SQUADS.map((s) => capByHome[s] ?? 0)), [capByHome]);
   const temCapacidade = !!businessDays && SQUADS.some((s) => (capByHome[s] ?? 0) > 0);
@@ -226,7 +226,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
 
             <p className="text-[11px] text-muted-foreground mt-2">
               {temCapacidade
-                ? <>Barra até o traço = 100% da capacidade (Σ h/dia dos devs × {businessDays} dias úteis; <b>lead não conta</b>). Preenchida = realizado; <b style={{ color: COR_CRUZADO }}>âmbar</b> = uso cruzado; hachura = ociosa.</>
+                ? <>Barra até o traço = 100% da capacidade (Σ h/dia × {businessDays} dias úteis; <b>lead só gestor não conta</b>). Preenchida = realizado; <b style={{ color: COR_CRUZADO }}>âmbar</b> = uso cruzado; hachura = ociosa.</>
                 : <>Realizado por squad; <b style={{ color: COR_CRUZADO }}>âmbar</b> = uso cruzado. (Selecione uma sprint para ver a capacidade.)</>}
               {semSquadMin > 0 && ` "${SEM_SQUAD}" = ${fmtH(semSquadMin)} de quem não está no roster.`}
             </p>
