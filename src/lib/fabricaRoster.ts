@@ -37,3 +37,15 @@ export function homeSquadOf(map: Map<string, string>, name: string | null | unde
   if (!name) return null;
   return map.get(normName(name)) ?? null;
 }
+
+/**
+ * Nomes (normalizados) dos leads. Lead NÃO conta como hora de fábrica (regra do
+ * gestor) — usado para excluir da capacidade e do realizado das squads.
+ */
+export function buildLeadNameSet(rows: RosterEntry[]): Set<string> {
+  const s = new Set<string>();
+  for (const r of rows) {
+    if (r?.papel === 'lead' && r.colaborador) s.add(normName(r.colaborador));
+  }
+  return s;
+}

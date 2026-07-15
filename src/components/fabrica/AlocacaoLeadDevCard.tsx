@@ -64,7 +64,9 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
     return SQUADS.map((squad) => {
       const membros = roster.filter((r) => r.squad === squad);
       const lead = membros.find((r) => r.papel === 'lead') ?? null;
+      // Lead não conta como hora de fábrica — fica só no cabeçalho, fora das linhas e dos totais.
       const devs = membros
+        .filter((r) => r.papel !== 'lead')
         .map((r) => {
           const stat = byCollab.get(normName(r.colaborador));
           const total = stat?.total ?? 0;
