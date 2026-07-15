@@ -1,29 +1,32 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useBIInfraSgsi, NameValue, SimNao } from '@/hooks/useBIInfra';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   ShieldCheck, RefreshCw, Flame, AlertTriangle, FileWarning, KeyRound,
-  Lightbulb, CalendarCheck,
+  Lightbulb, CalendarCheck, Search, X, Copy, Check, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
-
-// Seções da Gestão SG — o seletor fica no dropdown da própria aba
-// "Gestão SG" do dashboard (InfraestruturaDashboard).
-export const SGSI_SECOES = [
-  { value: 'mudancas', label: 'Mudanças (010)', Icon: RefreshCw },
-  { value: 'incidentes', label: 'Incidentes (017)', Icon: Flame },
-  { value: 'riscos', label: 'Riscos (012)', Icon: AlertTriangle },
-  { value: 'conformidade', label: 'NC & Melhorias (018/011)', Icon: Lightbulb },
-  { value: 'acessos', label: 'Acessos (014)', Icon: KeyRound },
-] as const;
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
+// Seções da Gestão SG — o seletor fica nas pills do próprio painel; o dropdown
+// da aba "Gestão SG" (InfraestruturaDashboard) apenas semeia a seção inicial.
+export const SGSI_SECOES = [
+  { value: 'mudancas', label: 'Mudanças', badge: '010', Icon: RefreshCw },
+  { value: 'incidentes', label: 'Incidentes', badge: '017', Icon: Flame },
+  { value: 'riscos', label: 'Riscos', badge: '012', Icon: AlertTriangle },
+  { value: 'conformidade', label: 'NC & Melhorias', badge: '018/011', Icon: Lightbulb },
+  { value: 'acessos', label: 'Acessos', badge: '014', Icon: KeyRound },
+] as const;
+
 // ── Constantes ────────────────────────────────────────────────────────
-// Espelho refatorado do Power BI "SG-LST Usecase 1.04" (8 páginas → 6 visões).
+// Espelho refatorado do Power BI "SG-LST Usecase 1.04" (8 páginas → 5 visões).
 
 const PALETTE = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
 
@@ -49,13 +52,39 @@ function pct(parte: number, todo: number) {
   return todo > 0 ? Math.round((parte / todo) * 100) : 0;
 }
 
+/** Normaliza para busca: minúsculas, sem acentos. */
+function norm(s: string) {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+/** true se a query casa com qualquer um dos campos (busca acento-insensível). */
+function hit(q: string, ...parts: (string | number | null | undefined)[]): boolean {
+  if (!q) return true;
+  const nq = norm(q);
+  return parts.some((p) => p != null && p !== '' && norm(String(p)).includes(nq));
+}
+
 // ── Building blocks ───────────────────────────────────────────────────
+
+/** Realça o trecho que casa com a busca dentro de um texto curto. */
+function Highlight({ text, q }: { text: string; q: string }) {
+  if (!q || !text) return <>{text}</>;
+  const idx = norm(text).indexOf(norm(q));
+  if (idx < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="rounded bg-primary/25 text-foreground px-0.5">{text.slice(idx, idx + q.length)}</mark>
+      {text.slice(idx + q.length)}
+    </>
+  );
+}
 
 function KpiTile({ label, value, sub, color, onClick, active }: {
   label: string; value: ReactNode; sub?: ReactNode; color?: string;
   onClick?: () => void; active?: boolean;
 }) {
-  const className = `text-left w-full rounded-xl border bg-card px-4 py-3 space-y-1 ${onClick ? 'transition-colors hover:bg-muted/30 cursor-pointer' : ''} ${active ? 'border-primary bg-primary/5' : 'border-border'}`;
+  const className = `text-left w-full rounded-xl border bg-card px-4 py-3 space-y-1 ${onClick ? 'transition-colors hover:bg-muted/30 cursor-pointer' : ''} ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/40' : 'border-border'}`;
   const inner = (
     <>
       <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">{label}</p>
@@ -66,6 +95,16 @@ function KpiTile({ label, value, sub, color, onClick, active }: {
   return onClick
     ? <button type="button" onClick={onClick} className={className}>{inner}</button>
     : <div className={className}>{inner}</div>;
+}
+
+/** Métrica secundária compacta (strip abaixo dos KPIs primários). */
+function MiniStat({ label, value, tone }: { label: string; value: ReactNode; tone?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+      <span className="text-[11px] text-muted-foreground truncate">{label}</span>
+      <span className="text-sm font-bold font-mono shrink-0" style={tone ? { color: tone } : undefined}>{value}</span>
+    </div>
+  );
 }
 
 function MiniDonut({ title, data, isLoading }: { title: string; data?: NameValue[]; isLoading: boolean }) {
@@ -105,27 +144,64 @@ function MiniDonut({ title, data, isLoading }: { title: string; data?: NameValue
   );
 }
 
-function MiniBars({ title, data, isLoading }: { title: string; data?: NameValue[]; isLoading: boolean }) {
-  const max = Math.max(1, ...(data ?? []).map(d => d.value));
+/** Barras horizontais: mostra top-N e expande (com rolagem) o restante. */
+function MiniBars({ title, data, isLoading, topN = 5 }: {
+  title: string; data?: NameValue[]; isLoading: boolean; topN?: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const rows = data ?? [];
+  const max = Math.max(1, ...rows.map(d => d.value));
+  const overflow = rows.length - topN;
+  const visible = expanded ? rows : rows.slice(0, topN);
+  useEffect(() => { setExpanded(false); }, [title, rows.length]);
+
+  const Bar = ({ d, i }: { d: NameValue; i: number }) => (
+    <div>
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="text-muted-foreground truncate pr-2">{d.name}</span>
+        <span className="font-bold font-mono">{d.value}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(3, pct(d.value, max))}%`, background: PALETTE[i % PALETTE.length] }} />
+      </div>
+    </div>
+  );
+
   return (
     <Card>
-      <CardHeader className="pb-1 pt-4 px-4">
+      <CardHeader className="pb-1 pt-4 px-4 flex-row items-center justify-between space-y-0">
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        {!isLoading && rows.length > 0 && (
+          <span className="text-[11px] text-muted-foreground">top {Math.min(topN, rows.length)} de {rows.length}</span>
+        )}
       </CardHeader>
       <CardContent className="pt-2 pb-4 space-y-2.5">
-        {isLoading || !data
-          ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)
-          : data.map((d, i) => (
-            <div key={d.name}>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-muted-foreground truncate pr-2">{d.name}</span>
-                <span className="font-bold font-mono">{d.value}</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(3, pct(d.value, max))}%`, background: PALETTE[i % PALETTE.length] }} />
-              </div>
-            </div>
-          ))}
+        {isLoading || !data ? (
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)
+        ) : rows.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">sem dados</p>
+        ) : (
+          <>
+            {!expanded && visible.map((d, i) => <Bar key={d.name} d={d} i={i} />)}
+            {expanded && (
+              <ScrollArea className="max-h-52 pr-2">
+                <div className="space-y-2.5">
+                  {rows.map((d, i) => <Bar key={d.name} d={d} i={i} />)}
+                </div>
+              </ScrollArea>
+            )}
+            {overflow > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpanded(v => !v)}
+                className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline pt-0.5"
+              >
+                <ChevronsUpDown className="h-3 w-3" />
+                {expanded ? 'Recolher' : `Mostrar todos (+${overflow})`}
+              </button>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -152,6 +228,20 @@ function SimNaoTile({ label, valor, isLoading }: { label: string; valor?: SimNao
   );
 }
 
+/** Colapsável para gráficos secundários — reduz o ruído da visão principal. */
+function MaisAnalises({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {open ? 'Menos análises' : 'Mais análises'}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-3">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 interface SgColumn<T> {
   key: string;
   header: string;
@@ -159,20 +249,47 @@ interface SgColumn<T> {
   render?: (row: T) => ReactNode;
 }
 
-function SgTable<T extends { id: number }>({ title, columns, rows, isLoading }: {
+/** Célula "OS" — identificador destacado, monoespaçado, com cópia rápida. */
+function OsCell({ value, q }: { value: string; q: string }) {
+  const [copied, setCopied] = useState(false);
+  const clean = value && value !== '—' ? value : '';
+  const copy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!clean) return;
+    navigator.clipboard?.writeText(clean).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    }).catch(() => {});
+  };
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono font-semibold text-primary">
+      <Highlight text={value || '—'} q={q} />
+      {clean && (
+        <button type="button" onClick={copy} aria-label="Copiar OS" className="text-muted-foreground/50 hover:text-primary transition-colors">
+          {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+        </button>
+      )}
+    </span>
+  );
+}
+
+function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, onRowClick }: {
   title: string; columns: SgColumn<T>[]; rows?: T[]; isLoading: boolean;
+  onRowClick?: (row: T) => void;
 }) {
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-2 pt-4 px-4">
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-        {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens</p>}
+        {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens{onRowClick ? ' · clique para detalhes' : ''}</p>}
       </CardHeader>
       <CardContent className="p-0">
         {isLoading || !rows ? (
           <div className="p-4 space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
+        ) : rows.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-8 text-center">Nenhum registro para o filtro/busca atual.</p>
         ) : (
-          <ScrollArea className="max-h-72">
+          <ScrollArea className="max-h-80">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-card/95 backdrop-blur border-b border-border z-10">
                 <tr className="text-muted-foreground text-[11px]">
@@ -181,7 +298,11 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading }: 
               </thead>
               <tbody>
                 {rows.map(row => (
-                  <tr key={row.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                  <tr
+                    key={row.id}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    className={`border-b border-border/40 transition-colors ${onRowClick ? 'cursor-pointer hover:bg-primary/5' : 'hover:bg-muted/30'}`}
+                  >
                     {columns.map(c => (
                       <td key={c.key} className={`py-2 px-3 ${c.className ?? ''}`}>
                         {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? '—')}
@@ -207,55 +328,130 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Detalhe do registro (drawer) ──────────────────────────────────────
+
+interface RecordDetail {
+  os: string;
+  titulo: string;
+  origem: string;
+  campos: { label: string; value: ReactNode }[];
+}
+
+function RecordSheet({ detail, onClose }: { detail: RecordDetail | null; onClose: () => void }) {
+  return (
+    <Sheet open={!!detail} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto p-0">
+        {detail && (
+          <>
+            <SheetHeader className="border-b border-border p-5 space-y-1 text-left">
+              <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">{detail.origem}</p>
+              <SheetTitle className="font-mono text-primary text-base">{detail.os}</SheetTitle>
+              <p className="text-sm text-foreground leading-snug">{detail.titulo}</p>
+            </SheetHeader>
+            <dl className="divide-y divide-border/60">
+              {detail.campos.map(({ label, value }) => (
+                <div key={label} className="grid grid-cols-[130px_1fr] gap-3 px-5 py-2.5">
+                  <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground pt-0.5">{label}</dt>
+                  <dd className="text-xs text-foreground break-words">{value || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Painel principal ──────────────────────────────────────────────────
 
-export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
+export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecaoChange }: {
   dateFrom?: Date; dateTo?: Date;
-  /** Seção ativa — controlada pelo dropdown da aba Gestão SG no dashboard */
+  /** Seção inicial — semeada pelo dropdown da aba Gestão SG no dashboard */
   secao?: string;
+  /** Mantém o dropdown da aba em sincronia quando as pills trocam de seção */
+  onSecaoChange?: (secao: string) => void;
 }) {
   const { data, isLoading, isError, refetch } = useBIInfraSgsi(dateFrom, dateTo);
+
+  // Seção controlada pelo painel (pills); semeada e sincronizada com o prop.
+  const [activeSecao, setActiveSecao] = useState(secao);
+  useEffect(() => { setActiveSecao(secao); }, [secao]);
+  const gotoSecao = (s: string) => { setActiveSecao(s); onSecaoChange?.(s); };
+
+  // Busca global (OS/chamado/protocolo/solicitante/ambiente/…) em todas as seções
+  const [q, setQ] = useState('');
   // Drill-through: clique nos KPIs filtra a tabela analítica do bloco
   const [drill, setDrill] = useState<string | null>(null);
   const toggleDrill = (k: string) => setDrill((p) => (p === k ? null : k));
-  useEffect(() => { setDrill(null); }, [secao]);
+  useEffect(() => { setDrill(null); }, [activeSecao]);
 
-  if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
+  // Registro aberto no drawer
+  const [detail, setDetail] = useState<RecordDetail | null>(null);
 
   const d = data;
 
-  // Visões analíticas filtradas pelos KPIs clicados
+  // ── Filtros por seção: drill (KPI) + busca global ──
   const mudItens = (d?.mudancas.itens ?? []).filter((i) => {
-    switch (drill) {
-      case 'mud:concluidas': return /realizado|conclu/i.test(i.status);
-      case 'mud:pendentes': return !/realizado|conclu|rejeitad/i.test(i.status);
-      case 'mud:gestor': return /gestor/i.test(i.status);
-      case 'mud:ti': return /aguard/i.test(i.status) && /\bti\b/i.test(i.status);
-      default: return true;
-    }
+    const drillOk = (() => {
+      switch (drill) {
+        case 'mud:concluidas': return /realizado|conclu/i.test(i.status);
+        case 'mud:pendentes': return !/realizado|conclu|rejeitad/i.test(i.status);
+        default: return true;
+      }
+    })();
+    return drillOk && hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.risco);
   });
   const incItens = (d?.incidentes.itens ?? []).filter((i) => {
-    switch (drill) {
-      case 'inc:ativos': return /ativo|aberto|andamento/i.test(i.status);
-      case 'inc:contornados': return /contorn/i.test(i.status);
-      case 'inc:resolvidos': return /resolv|encerr|conclu/i.test(i.status);
-      default: return true;
-    }
+    const drillOk = (() => {
+      switch (drill) {
+        case 'inc:ativos': return /ativo|aberto|andamento/i.test(i.status);
+        case 'inc:resolvidos': return /resolv|encerr|conclu/i.test(i.status);
+        default: return true;
+      }
+    })();
+    return drillOk && hit(q, i.protocolo, i.titulo, i.ativo, i.motivo, i.priorizacao, i.status, i.tipo, i.sla, i.categoria);
   });
-  const riscoItens = (d?.riscos.itens ?? []).filter((i) =>
-    drill === 'risco:abertos' ? !/tratad|encerr|conclu|finaliz|rejeitad/i.test(i.status) : true,
-  );
-  const ncItens = (d?.naoConformidades.itens ?? []).filter((i) =>
-    drill === 'nc:recorrentes' ? i.recorrente : true,
+  const riscoItens = (d?.riscos.itens ?? []).filter((i) => {
+    const drillOk = drill === 'risco:abertos' ? !/tratad|encerr|conclu|finaliz|rejeitad/i.test(i.status) : true;
+    return drillOk && hit(q, i.id, i.descricao, i.cid, i.categoriaAmeaca, i.tipoAmeaca, i.ativoAfetado, i.status, i.responsavelAjuste);
+  });
+  const ncItens = (d?.naoConformidades.itens ?? []).filter((i) => {
+    const drillOk = drill === 'nc:recorrentes' ? i.recorrente : true;
+    return drillOk && hit(q, i.processo, i.detalhes, i.causaRaiz, i.status, i.solicitante);
+  });
+  const omItens = (d?.melhorias.itens ?? []).filter((i) =>
+    hit(q, i.oportunidade, i.processo, i.beneficios, i.status, i.solicitante),
   );
   const acessoItens = (d?.acessos.itens ?? []).filter((i) => {
-    switch (drill) {
-      case 'acs:pendentes': return /pendente|aguard|análise|analise/i.test(i.status);
-      case 'acs:admin': return i.permissoesAdmin;
-      default: return true;
-    }
+    const drillOk = (() => {
+      switch (drill) {
+        case 'acs:pendentes': return /pendente|aguard|análise|analise/i.test(i.status);
+        case 'acs:admin': return i.permissoesAdmin;
+        default: return true;
+      }
+    })();
+    return drillOk && hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.status);
   });
-  const drillBadge = drill ? ' · filtro do KPI ativo (clique novamente para limpar)' : '';
+
+  // ── Contadores da busca por seção (ignora drill) — para os chips cross-seção ──
+  const searchCounts = useMemo(() => {
+    if (!q || !d) return null;
+    return {
+      mudancas: d.mudancas.itens.filter((i) => hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.risco)).length,
+      incidentes: d.incidentes.itens.filter((i) => hit(q, i.protocolo, i.titulo, i.ativo, i.motivo, i.priorizacao, i.status, i.tipo, i.sla, i.categoria)).length,
+      riscos: d.riscos.itens.filter((i) => hit(q, i.id, i.descricao, i.cid, i.categoriaAmeaca, i.tipoAmeaca, i.ativoAfetado, i.status, i.responsavelAjuste)).length,
+      conformidade:
+        d.naoConformidades.itens.filter((i) => hit(q, i.processo, i.detalhes, i.causaRaiz, i.status, i.solicitante)).length +
+        d.melhorias.itens.filter((i) => hit(q, i.oportunidade, i.processo, i.beneficios, i.status, i.solicitante)).length,
+      acessos: d.acessos.itens.filter((i) => hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.status)).length,
+    } as Record<string, number>;
+  }, [q, d]);
+  const totalHits = searchCounts ? Object.values(searchCounts).reduce((s, n) => s + n, 0) : 0;
+
+  const drillBadge = drill ? ' · filtro do KPI ativo' : '';
+
+  if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
   if (d && d.totalItensBase === 0) {
     return (
@@ -272,20 +468,62 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <ShieldCheck className="h-5 w-5 text-primary" />
-        <h2 className="text-base font-bold tracking-tight uppercase">Gestão SG · Listas SharePoint</h2>
-        {d && (
-          <span className="text-[11px] text-muted-foreground ml-1 inline-flex items-center gap-1">
-            <CalendarCheck className="h-3 w-3" /> atualizado em {fmtDate(d.atualizadoEm)}
-            {dateFrom && dateTo
-              ? <> · {d.totalItens} de {d.totalItensBase} itens no período</>
-              : <> · {d.totalItensBase} itens</>}
-          </span>
-        )}
+      {/* ── Cabeçalho: título + atualização + busca global ── */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
+          <h2 className="text-base font-bold tracking-tight uppercase whitespace-nowrap">Gestão SG · Listas SharePoint</h2>
+          {d && (
+            <span className="text-[11px] text-muted-foreground ml-1 hidden xl:inline-flex items-center gap-1 whitespace-nowrap">
+              <CalendarCheck className="h-3 w-3" /> atualizado em {fmtDate(d.atualizadoEm)}
+              {dateFrom && dateTo
+                ? <> · {d.totalItens} de {d.totalItensBase} itens</>
+                : <> · {d.totalItensBase} itens</>}
+            </span>
+          )}
+        </div>
+        <div className="relative w-full lg:w-80 shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar OS, chamado, protocolo, solicitante…"
+            className="h-9 pl-9 pr-9 text-sm"
+            aria-label="Busca global na Gestão SG"
+          />
+          {q && (
+            <button type="button" onClick={() => setQ('')} aria-label="Limpar busca" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Gestão à vista — dias sem ocorrências */}
+      {/* ── Resultados cross-seção da busca ── */}
+      {q && searchCounts && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/20 px-3 py-2">
+          <span className="text-[11px] font-medium text-muted-foreground">
+            {totalHits > 0 ? `${totalHits} resultado${totalHits > 1 ? 's' : ''} para “${q}”:` : `Nada encontrado para “${q}”.`}
+          </span>
+          {SGSI_SECOES.map(({ value, label }) => {
+            const n = searchCounts[value] ?? 0;
+            if (n === 0) return null;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => gotoSecao(value)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${activeSecao === value ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card hover:bg-muted/40'}`}
+              >
+                {label}
+                <span className="font-mono font-bold">{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Gestão à vista — dias sem ocorrências ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {diasSemCards.map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="rounded-xl border border-border bg-card px-4 py-3">
@@ -302,55 +540,89 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
         ))}
       </div>
 
+      {/* ── Seletor de seções (pills) ── */}
+      <div className="flex flex-wrap gap-1.5 rounded-xl border border-border bg-muted/30 p-1.5">
+        {SGSI_SECOES.map(({ value, label, badge, Icon }) => {
+          const on = activeSecao === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => gotoSecao(value)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${on ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+              <span className={`font-mono text-[10px] ${on ? 'text-primary' : 'text-muted-foreground/60'}`}>{badge}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {d && d.totalItens === 0 && d.totalItensBase > 0 ? (
         <DashboardEmptyState description={`Nenhuma atividade SG no período selecionado (${d.totalItensBase} itens no histórico). Selecione "Todas as Sprints" para ver o panorama completo.`} />
       ) : (
-      <Tabs value={secao}>
+      <Tabs value={activeSecao}>
 
         {/* ── Mudanças (SG-LST-010) ── */}
-        <TabsContent value="mudancas" className="space-y-3 mt-3">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            <KpiTile label="Solicitações" value={d?.mudancas.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+        <TabsContent value="mudancas" className="space-y-3 mt-0">
+          <div className="grid grid-cols-3 gap-3">
+            <KpiTile label="Solicitações" value={d?.mudancas.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
             <KpiTile label="Concluídas" value={d ? `${pct(d.mudancas.concluidos, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.concluidos} itens`} color="#10b981" onClick={() => toggleDrill('mud:concluidas')} active={drill === 'mud:concluidas'} />
             <KpiTile label="Pendentes" value={d ? `${pct(d.mudancas.pendentes, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.pendentes} itens`} color="#f59e0b" onClick={() => toggleDrill('mud:pendentes')} active={drill === 'mud:pendentes'} />
-            <KpiTile label="Aguardando Gestor" value={d?.mudancas.aguardandoGestor ?? '—'} color="#8b5cf6" onClick={() => toggleDrill('mud:gestor')} active={drill === 'mud:gestor'} />
-            <KpiTile label="Aguardando TI" value={d?.mudancas.aguardandoTI ?? '—'} color="#3b82f6" onClick={() => toggleDrill('mud:ti')} active={drill === 'mud:ti'} />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <SimNaoTile label="Atualizações bem-sucedidas" valor={d?.mudancas.atualizacoesBemSucedidas} isLoading={isLoading} />
-            <SimNaoTile label="Validação e testes do pacote" valor={d?.mudancas.validacaoTestes} isLoading={isLoading} />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <MiniStat label="Aguardando Gestor" value={d?.mudancas.aguardandoGestor ?? '—'} tone="#8b5cf6" />
+            <MiniStat label="Aguardando TI" value={d?.mudancas.aguardandoTI ?? '—'} tone="#3b82f6" />
+            <MiniStat label="Atualização OK" value={d ? `${pct(d.mudancas.atualizacoesBemSucedidas.sim, d.mudancas.atualizacoesBemSucedidas.sim + d.mudancas.atualizacoesBemSucedidas.nao)}%` : '—'} tone="#10b981" />
+            <MiniStat label="Validação e testes" value={d ? `${pct(d.mudancas.validacaoTestes.sim, d.mudancas.validacaoTestes.sim + d.mudancas.validacaoTestes.nao)}%` : '—'} tone="#10b981" />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <MiniDonut title="Por status" data={d?.mudancas.porStatus} isLoading={isLoading} />
             <MiniBars title="Por ambiente" data={d?.mudancas.porAmbiente} isLoading={isLoading} />
-            <MiniDonut title="Por risco" data={d?.mudancas.porRisco} isLoading={isLoading} />
-            <MiniBars title="Por categoria" data={d?.mudancas.porCategoria} isLoading={isLoading} />
           </div>
+          <MaisAnalises>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <MiniDonut title="Por risco" data={d?.mudancas.porRisco} isLoading={isLoading} />
+              <MiniBars title="Por categoria" data={d?.mudancas.porCategoria} isLoading={isLoading} />
+            </div>
+          </MaisAnalises>
           <SgTable
             title={`Mudanças e atualizações${drillBadge}`}
             isLoading={isLoading}
             rows={mudItens}
+            onRowClick={(r) => setDetail({
+              os: r.chamado, titulo: r.motivo !== '—' ? r.motivo : r.tipoMudanca, origem: 'SG-LST-010 · Mudança',
+              campos: [
+                { label: 'Ambiente', value: r.ambiente }, { label: 'Tipo', value: r.tipoMudanca },
+                { label: 'Categoria', value: r.categoria }, { label: 'Risco', value: r.risco },
+                { label: 'Status', value: <StatusBadge status={r.status} /> }, { label: 'Solicitante', value: r.solicitante },
+                { label: 'Aprovador TI', value: r.aprovadorTI }, { label: 'Motivo', value: r.motivo },
+                { label: 'Modificado', value: fmtDate(r.modificado) },
+              ],
+            })}
             columns={[
-              { key: 'chamado', header: 'Chamado', className: 'font-mono', render: r => <span className="font-semibold text-primary">{r.chamado}</span> },
+              { key: 'chamado', header: 'OS / Chamado', render: r => <OsCell value={r.chamado} q={q} /> },
               { key: 'ambiente', header: 'Ambiente' },
               { key: 'tipoMudanca', header: 'Tipo' },
-              { key: 'categoria', header: 'Categoria' },
               { key: 'risco', header: 'Risco', render: r => <Badge variant={r.risco === 'Alto' ? 'destructive' : 'outline'} className="text-[10px]">{r.risco}</Badge> },
               { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
               { key: 'solicitante', header: 'Solicitante' },
-              { key: 'aprovadorTI', header: 'Aprovador TI' },
               { key: 'modificado', header: 'Modificado', render: r => fmtDate(r.modificado) },
             ]}
           />
         </TabsContent>
 
         {/* ── Incidentes (SG-LST-017) ── */}
-        <TabsContent value="incidentes" className="space-y-3 mt-3">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <KpiTile label="Incidentes" value={d?.incidentes.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+        <TabsContent value="incidentes" className="space-y-3 mt-0">
+          <div className="grid grid-cols-3 gap-3">
+            <KpiTile label="Incidentes" value={d?.incidentes.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
             <KpiTile label="Ativos" value={d?.incidentes.ativos ?? '—'} sub={d && `${pct(d.incidentes.ativos, d.incidentes.total)}% do total`} color="#ef4444" onClick={() => toggleDrill('inc:ativos')} active={drill === 'inc:ativos'} />
-            <KpiTile label="Contornados" value={d?.incidentes.contornados ?? '—'} sub={d && `${pct(d.incidentes.contornados, d.incidentes.total)}% do total`} color="#f59e0b" onClick={() => toggleDrill('inc:contornados')} active={drill === 'inc:contornados'} />
             <KpiTile label="Resolvidos" value={d?.incidentes.resolvidos ?? '—'} sub={d && `${pct(d.incidentes.resolvidos, d.incidentes.total)}% do total`} color="#10b981" onClick={() => toggleDrill('inc:resolvidos')} active={drill === 'inc:resolvidos'} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <MiniStat label="Contornados" value={d?.incidentes.contornados ?? '—'} tone="#f59e0b" />
+            <MiniStat label="Dentro do SLA" value={d?.incidentes.pctDentroSla != null ? `${d.incidentes.pctDentroSla}%` : '—'} tone="#10b981" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <MiniDonut title="SLA" data={d?.incidentes.porSLA} isLoading={isLoading} />
@@ -360,61 +632,80 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
             title={`Incidentes${drillBadge}`}
             isLoading={isLoading}
             rows={incItens}
+            onRowClick={(r) => setDetail({
+              os: r.protocolo, titulo: r.titulo, origem: 'SG-LST-017 · Incidente',
+              campos: [
+                { label: 'Ativo', value: r.ativo }, { label: 'Tipo', value: r.tipo },
+                { label: 'Prioridade', value: r.priorizacao }, { label: 'SLA', value: <StatusBadge status={r.sla} /> },
+                { label: 'Status', value: <StatusBadge status={r.status} /> },
+                { label: 'Downtime', value: r.downtimeHoras > 0 ? `${r.downtimeHoras.toFixed(1)}h` : '—' },
+                { label: 'Motivo', value: r.motivo }, { label: 'Início', value: fmtDate(r.inicio) },
+              ],
+            })}
             columns={[
-              { key: 'protocolo', header: 'Protocolo', className: 'font-mono', render: r => <span className="font-semibold text-primary">{r.protocolo}</span> },
-              { key: 'titulo', header: 'Título', className: 'max-w-[200px] truncate' },
+              { key: 'protocolo', header: 'OS / Protocolo', render: r => <OsCell value={r.protocolo} q={q} /> },
+              { key: 'titulo', header: 'Título', className: 'max-w-[220px] truncate', render: r => <Highlight text={r.titulo} q={q} /> },
               { key: 'ativo', header: 'Ativo' },
               { key: 'priorizacao', header: 'Prioridade', render: r => <Badge variant={r.priorizacao === 'Alta' ? 'destructive' : 'outline'} className="text-[10px]">{r.priorizacao}</Badge> },
               { key: 'sla', header: 'SLA', render: r => <StatusBadge status={r.sla} /> },
               { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
-              { key: 'downtimeHoras', header: 'Downtime', render: r => r.downtimeHoras > 0 ? `${r.downtimeHoras.toFixed(1)}h` : '—' },
               { key: 'inicio', header: 'Início', render: r => fmtDate(r.inicio) },
             ]}
           />
         </TabsContent>
 
         {/* ── Riscos (SG-LST-012) ── */}
-        <TabsContent value="riscos" className="space-y-3 mt-3">
+        <TabsContent value="riscos" className="space-y-3 mt-0">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <KpiTile label="Riscos mapeados" value={d?.riscos.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+            <KpiTile label="Riscos mapeados" value={d?.riscos.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
             <KpiTile label="Em aberto" value={d?.riscos.abertos ?? '—'} color="#f59e0b" onClick={() => toggleDrill('risco:abertos')} active={drill === 'risco:abertos'} />
             <SimNaoTile label="Plano de tratamento eficaz" valor={d?.riscos.tratamentoEficaz} isLoading={isLoading} />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            <MiniDonut title="Por status" data={d?.riscos.porStatus} isLoading={isLoading} />
-            <MiniDonut title="CID afetado" data={d?.riscos.porCID} isLoading={isLoading} />
-            <MiniDonut title="Categoria da ameaça" data={d?.riscos.porCategoriaAmeaca} isLoading={isLoading} />
-            <MiniDonut title="Tipo de ameaça" data={d?.riscos.porTipoAmeaca} isLoading={isLoading} />
-          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <MiniBars title="O que o risco afeta" data={d?.riscos.porAtivoAfetado} isLoading={isLoading} />
+            <MiniDonut title="Por status" data={d?.riscos.porStatus} isLoading={isLoading} />
             <MiniBars title="Por ambiente" data={d?.riscos.porAmbiente} isLoading={isLoading} />
           </div>
+          <MaisAnalises>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <MiniDonut title="CID afetado" data={d?.riscos.porCID} isLoading={isLoading} />
+              <MiniDonut title="Categoria da ameaça" data={d?.riscos.porCategoriaAmeaca} isLoading={isLoading} />
+              <MiniDonut title="Tipo de ameaça" data={d?.riscos.porTipoAmeaca} isLoading={isLoading} />
+              <MiniBars title="O que o risco afeta" data={d?.riscos.porAtivoAfetado} isLoading={isLoading} />
+            </div>
+          </MaisAnalises>
           <SgTable
             title={`Análises de risco${drillBadge}`}
             isLoading={isLoading}
             rows={riscoItens}
+            onRowClick={(r) => setDetail({
+              os: `#${r.id}`, titulo: r.descricao, origem: 'SG-LST-012 · Risco',
+              campos: [
+                { label: 'CID', value: r.cid }, { label: 'Categoria', value: r.categoriaAmeaca },
+                { label: 'Tipo ameaça', value: r.tipoAmeaca }, { label: 'Ativo/afeta', value: r.ativoAfetado },
+                { label: 'Ambiente', value: r.ambiente }, { label: 'Status', value: <StatusBadge status={r.status} /> },
+                { label: 'Responsável', value: r.responsavelAjuste }, { label: 'Limite', value: fmtDate(r.dataLimite) },
+                { label: 'Eficaz?', value: r.eficaz },
+              ],
+            })}
             columns={[
-              { key: 'id', header: 'ID', className: 'font-mono' },
-              { key: 'descricao', header: 'Risco', className: 'max-w-[220px] truncate' },
+              { key: 'id', header: 'ID', render: r => <OsCell value={`#${r.id}`} q={q} /> },
+              { key: 'descricao', header: 'Risco', className: 'max-w-[240px] truncate', render: r => <Highlight text={r.descricao} q={q} /> },
               { key: 'cid', header: 'CID' },
               { key: 'categoriaAmeaca', header: 'Categoria' },
-              { key: 'ativoAfetado', header: 'Ativo' },
               { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
               { key: 'responsavelAjuste', header: 'Responsável' },
               { key: 'dataLimite', header: 'Limite', render: r => fmtDate(r.dataLimite) },
-              { key: 'eficaz', header: 'Eficaz?' },
             ]}
           />
         </TabsContent>
 
         {/* ── NC & Melhorias (SG-LST-018 / SG-LST-011) ── */}
-        <TabsContent value="conformidade" className="space-y-3 mt-3">
+        <TabsContent value="conformidade" className="space-y-3 mt-0">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <div className="space-y-3 rounded-2xl border border-border bg-muted/20 p-4">
               <h3 className="text-sm font-bold uppercase tracking-tight">Não conformidades (018)</h3>
               <div className="grid grid-cols-2 gap-3">
-                <KpiTile label="Total NC" value={d?.naoConformidades.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+                <KpiTile label="Total NC" value={d?.naoConformidades.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
                 <KpiTile label="Recorrentes" value={d?.naoConformidades.recorrentes ?? '—'} color="#ef4444" onClick={() => toggleDrill('nc:recorrentes')} active={drill === 'nc:recorrentes'} />
               </div>
               <SimNaoTile label="Tratamento eficaz" valor={d?.naoConformidades.tratamentoEficaz} isLoading={isLoading} />
@@ -426,10 +717,18 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
                 title={`NC${drillBadge}`}
                 isLoading={isLoading}
                 rows={ncItens}
+                onRowClick={(r) => setDetail({
+                  os: r.processo, titulo: r.detalhes, origem: 'SG-LST-018 · Não conformidade',
+                  campos: [
+                    { label: 'Processo', value: r.processo }, { label: 'Causa raiz', value: r.causaRaiz },
+                    { label: 'Recorrente', value: r.recorrente ? 'Sim' : 'Não' }, { label: 'Ação', value: r.acao },
+                    { label: 'Status', value: <StatusBadge status={r.status} /> }, { label: 'Eficaz?', value: r.eficaz },
+                    { label: 'Solicitante', value: r.solicitante }, { label: 'Criado', value: fmtDate(r.criado) },
+                  ],
+                })}
                 columns={[
-                  { key: 'processo', header: 'Processo' },
-                  { key: 'detalhes', header: 'Detalhes', className: 'max-w-[180px] truncate' },
-                  { key: 'causaRaiz', header: 'Causa raiz' },
+                  { key: 'processo', header: 'Processo', render: r => <span className="font-medium"><Highlight text={r.processo} q={q} /></span> },
+                  { key: 'causaRaiz', header: 'Causa raiz', className: 'max-w-[160px] truncate' },
                   { key: 'recorrente', header: 'Recorrente', render: r => r.recorrente ? <Badge variant="destructive" className="text-[10px]">Sim</Badge> : 'Não' },
                   { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
                   { key: 'criado', header: 'Criado', render: r => fmtDate(r.criado) },
@@ -450,11 +749,18 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
               <SgTable
                 title="OM recentes"
                 isLoading={isLoading}
-                rows={d?.melhorias.itens}
+                rows={omItens}
+                onRowClick={(r) => setDetail({
+                  os: `OM #${r.id}`, titulo: r.oportunidade, origem: 'SG-LST-011 · Melhoria',
+                  campos: [
+                    { label: 'Processo', value: r.processo }, { label: 'Benefícios', value: r.beneficios },
+                    { label: 'Status', value: <StatusBadge status={r.status} /> }, { label: 'Eficaz?', value: r.eficaz },
+                    { label: 'Solicitante', value: r.solicitante },
+                  ],
+                })}
                 columns={[
-                  { key: 'oportunidade', header: 'Oportunidade', className: 'max-w-[180px] truncate' },
+                  { key: 'oportunidade', header: 'Oportunidade', className: 'max-w-[200px] truncate', render: r => <Highlight text={r.oportunidade} q={q} /> },
                   { key: 'processo', header: 'Processo' },
-                  { key: 'beneficios', header: 'Benefícios', className: 'max-w-[180px] truncate' },
                   { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
                   { key: 'solicitante', header: 'Solicitante' },
                 ]}
@@ -464,15 +770,17 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
         </TabsContent>
 
         {/* ── Acessos (SG-LST-014) ── */}
-        <TabsContent value="acessos" className="space-y-3 mt-3">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            <KpiTile label="Solicitações" value={d?.acessos.total ?? '—'} onClick={() => setDrill(null)} active={false} />
+        <TabsContent value="acessos" className="space-y-3 mt-0">
+          <div className="grid grid-cols-3 gap-3">
+            <KpiTile label="Solicitações" value={d?.acessos.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
             <KpiTile label="Pendentes" value={d?.acessos.pendentes ?? '—'} color="#f59e0b" onClick={() => toggleDrill('acs:pendentes')} active={drill === 'acs:pendentes'} />
-            <KpiTile label="Acesso DevOps" value={d?.acessos.acessoDevOps.sim ?? '—'} sub="contas com acesso" color="#3b82f6" />
-            <KpiTile label="Acesso TS" value={d?.acessos.acessoTS.sim ?? '—'} sub="contas com acesso" color="#8b5cf6" />
             <KpiTile label="Permissões admin" value={d?.acessos.permissoesAdmin.sim ?? '—'} sub="exigem revisão" color="#ef4444" onClick={() => toggleDrill('acs:admin')} active={drill === 'acs:admin'} />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-2">
+            <MiniStat label="Acesso DevOps" value={d?.acessos.acessoDevOps.sim ?? '—'} tone="#3b82f6" />
+            <MiniStat label="Acesso TS" value={d?.acessos.acessoTS.sim ?? '—'} tone="#8b5cf6" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <MiniDonut title="Por status" data={d?.acessos.porStatus} isLoading={isLoading} />
             <MiniBars title="Tipo de solicitação" data={d?.acessos.porTipo} isLoading={isLoading} />
             <MiniBars title="Por projeto" data={d?.acessos.porProjeto} isLoading={isLoading} />
@@ -481,13 +789,21 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
             title={`Solicitações de acesso${drillBadge}`}
             isLoading={isLoading}
             rows={acessoItens}
+            onRowClick={(r) => setDetail({
+              os: r.titulo, titulo: r.descricao, origem: 'SG-LST-014 · Acesso',
+              campos: [
+                { label: 'Tipo', value: r.tipo }, { label: 'Projeto', value: r.projeto },
+                { label: 'Solicitante', value: r.solicitante }, { label: 'Acesso DevOps', value: r.acessoDevOps ? 'Sim' : 'Não' },
+                { label: 'Acesso TS', value: r.acessoTS ? 'Sim' : 'Não' }, { label: 'Admin', value: r.permissoesAdmin ? 'Sim' : 'Não' },
+                { label: 'Status', value: <StatusBadge status={r.status} /> }, { label: 'Descrição', value: r.descricao },
+                { label: 'Última revisão', value: fmtDate(r.ultimaRevisao) },
+              ],
+            })}
             columns={[
-              { key: 'titulo', header: 'Solicitação', className: 'font-mono', render: r => <span className="font-semibold text-primary">{r.titulo}</span> },
-              { key: 'descricao', header: 'Descrição', className: 'max-w-[200px] truncate' },
+              { key: 'titulo', header: 'OS / Solicitação', render: r => <OsCell value={r.titulo} q={q} /> },
               { key: 'tipo', header: 'Tipo' },
               { key: 'projeto', header: 'Projeto' },
               { key: 'solicitante', header: 'Solicitante' },
-              { key: 'cargo', header: 'Cargo' },
               { key: 'permissoesAdmin', header: 'Admin', render: r => r.permissoesAdmin ? <Badge variant="destructive" className="text-[10px]">Sim</Badge> : 'Não' },
               { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
               { key: 'ultimaRevisao', header: 'Última revisão', render: r => fmtDate(r.ultimaRevisao) },
@@ -496,6 +812,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas' }: {
         </TabsContent>
       </Tabs>
       )}
+
+      <RecordSheet detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }
