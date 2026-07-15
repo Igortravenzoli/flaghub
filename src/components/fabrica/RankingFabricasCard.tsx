@@ -99,6 +99,12 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
 
   return (
     <Card className={fill ? 'h-full flex flex-col' : undefined}>
+      {/* Barras "crescem" da base ao montar (e a cada rotação do TV, que remonta o card). */}
+      <style>{`
+        @keyframes fabBarGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+        .fab-bar { transform-box: fill-box; transform-origin: 50% 100%; animation: fabBarGrow .7s cubic-bezier(.22,1,.36,1) both; }
+        @media (prefers-reduced-motion: reduce) { .fab-bar { animation: none; } }
+      `}</style>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-sm font-medium flex items-center gap-1.5">
@@ -151,16 +157,18 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
                       const cx = i * GROUP_W + GROUP_W / 2;
                       const outerX = cx - OUTER_W / 2;
                       const outerY = y(c.desempenho);
+                      const delay = { animationDelay: `${i * 90}ms` };
                       return (
                         <g key={c.sprint + i}>
                           {/* Barra externa = Desempenho */}
                           <rect
+                            className="fab-bar" style={delay}
                             x={outerX} y={outerY} width={OUTER_W} height={CHART_BOTTOM - outerY}
                             rx="3" fill={color} fillOpacity="0.18" stroke={color} strokeWidth="1.5"
                           />
                           {/* Barras internas = Qualidade (Bug, Retorno QA) */}
-                          <rect x={cx - INNER_W - 1} y={y(c.bug)} width={INNER_W} height={CHART_BOTTOM - y(c.bug)} fill="hsl(0,72%,55%)" />
-                          <rect x={cx + 1} y={y(c.retorno)} width={INNER_W} height={CHART_BOTTOM - y(c.retorno)} fill="hsl(38,92%,50%)" />
+                          <rect className="fab-bar" style={{ animationDelay: `${i * 90 + 120}ms` }} x={cx - INNER_W - 1} y={y(c.bug)} width={INNER_W} height={CHART_BOTTOM - y(c.bug)} fill="hsl(0,72%,55%)" />
+                          <rect className="fab-bar" style={{ animationDelay: `${i * 90 + 120}ms` }} x={cx + 1} y={y(c.retorno)} width={INNER_W} height={CHART_BOTTOM - y(c.retorno)} fill="hsl(38,92%,50%)" />
                           <text x={cx} y={outerY - 3} textAnchor="middle" fontSize="11" fontFamily="monospace" fontWeight="700" fill="hsl(var(--foreground))">{c.desempenho}</text>
                           <text x={cx} y="120" textAnchor="middle" fontSize="9" fill="hsl(var(--muted-foreground))">{c.sprint}</text>
                         </g>

@@ -24,9 +24,10 @@ const SECTOR_VIEWS: Record<string, React.ComponentType> = {
 const DESIGN_WIDTH = 1320;
 
 /**
- * Setores cuja view já é `h-full` + flex e por isso consegue ESTICAR para
- * preencher qualquer formato de tela. Os demais seguem no modo legado
- * (encolhe até caber) até serem adaptados — assim ninguém corta conteúdo.
+ * Setores cuja view já é `h-full` + flex + min-h-0 e por isso ESTICA para
+ * preencher qualquer formato de tela sem cortar. Só adicionar aqui DEPOIS de
+ * validar visualmente que o setor se molda a alturas variadas — no modo fill
+ * não há mais rede de proteção contra corte. Os demais seguem no modo legado.
  */
 const FILL_READY = new Set(['fabrica']);
 
@@ -61,23 +62,17 @@ function KioskFit({ children, fill }: { children: ReactNode; fill: boolean }) {
       if (!Number.isFinite(scaleW) || scaleW <= 0) return;
 
       if (fill) {
-        // Altura disponível, em unidades de design.
-        const availH = ch / scaleW;
-        const natural = i?.scrollHeight ?? 0;
-
-        // Rede de segurança: se o conteúdo NÃO consegue encolher até a altura
-        // disponível (setor ainda não adaptado, gráfico de altura fixa, etc.),
-        // reduz a escala até caber em vez de CORTAR. Pior caso = sobra folga,
-        // que é exatamente o comportamento antigo. Nunca perde informação.
-        if (natural > availH + 1) {
-          setFit({ scale: ch / natural, designHeight: natural });
-          return;
-        }
-        setFit({ scale: scaleW, designHeight: availH });
+        // Setor adaptado (h-full + flex + min-h-0): o conteúdo se molda a
+        // QUALQUER altura, então basta escalar pela largura e dar ao canvas a
+        // altura exata da tela. Preenche cw × ch, sem faixa e sem distorção.
+        // (Não medir scrollHeight: conteúdo flex "enche o que recebe", logo não
+        // tem uma altura natural — medir só levava a encolher errado.)
+        setFit({ scale: scaleW, designHeight: ch / scaleW });
         return;
       }
 
-      // Legado: encolhe até caber, aceitando sobra num dos eixos.
+      // Legado (setor ainda não adaptado): encolhe até caber por min(w,h),
+      // aceitando sobra num dos eixos — melhor sobrar do que cortar conteúdo.
       const ih = i?.offsetHeight ?? 0;
       if (!ih) return;
       const scale = Math.min(scaleW, ch / ih);
