@@ -1,29 +1,20 @@
 import { useMemo } from 'react';
-import { Zap, Gauge, Timer, Shuffle, RotateCcw, HeartPulse, Target, CalendarClock, Activity } from 'lucide-react';
-import { BlocoCard, MetaCard, SecHeader } from '@/components/executivo/BlocoCard';
-import { useGerencialFabrica } from '@/hooks/useGerencialFabrica';
+import { Zap, RotateCcw, CalendarClock } from 'lucide-react';
+import { BlocoCard } from '@/components/executivo/BlocoCard';
 import { DesempenhoTrendChart } from '@/components/fabrica/DesempenhoTrendChart';
 import { RankingFabricasCard } from '@/components/fabrica/RankingFabricasCard';
-
-// Metas desejadas (TO BE) — placeholders configuráveis; alinhar com a gestão (Henrique).
-const META_CONCLUSAO_PCT = 90;   // % do escopo concluído ao fim da sprint
-const META_SAUDAVEL_PCT = 85;    // % de itens saudáveis
-const META_TRANSBORDO_PCT = 10;  // teto de transbordo (quanto menor melhor)
+import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabricaCharts';
+import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
+import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 
 interface FabKpisLite {
   total: number;
   done: number;
   inProgress: number;
   toDo: number;
-  velocidadeMedia: number | null;
-  velocidadeSource?: string | null;
-  leadTimeMedio: number | null;
-  leadTimeSource?: string | null;
-  transbordoPct: number | null;
-  transbordoCount: number;
-  realOverflowCount: number;
   isLoading: boolean;
   items?: Array<{ work_item_type?: string | null; tags?: string | null }>;
+  horasPorFabricaFull?: Array<{ key: string; collaborators: { name: string; minutes: number }[] }>;
 }
 
 interface FabricaExecutivoTabProps {
@@ -34,28 +25,12 @@ interface FabricaExecutivoTabProps {
   periodLabel?: string;
 }
 
-function toIso(d?: Date | null): string | undefined {
-  return d ? d.toISOString().slice(0, 10) : undefined;
-}
-
+/**
+ * Visão Executiva da Fábrica — MESMO conteúdo do modo TV, em layout de aba
+ * (tudo empilhado, versões completas dos cards). Sem "O que queremos"/metas,
+ * Saúde dos itens ou Linha de base: o que não está no TV saiu daqui também.
+ */
 export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo, periodLabel }: FabricaExecutivoTabProps) {
-  // Escopo selecionado (AS IS / TO BE)
-  const { data: gerencial = [] } = useGerencialFabrica(selectedSprintCode || undefined, toIso(dateFrom), toIso(dateTo));
-
-  const agg = useMemo(() => {
-    const qaReturn = gerencial.reduce((s, r) => s + (r.qa_return_total || 0), 0);
-    const criticos = gerencial.reduce((s, r) => s + (r.itens_criticos || 0), 0);
-    const atencao = gerencial.reduce((s, r) => s + (r.itens_atencao || 0), 0);
-    const saudaveis = gerencial.reduce((s, r) => s + (r.itens_saudaveis || 0), 0);
-    const gargaloRow = [...gerencial].sort((a, b) => (b.gargalo_avg_days || 0) - (a.gargalo_avg_days || 0))[0];
-    return {
-      qaReturn, criticos, atencao, saudaveis,
-      totalHealth: criticos + atencao + saudaveis,
-      gargalo: gargaloRow?.gargalo_principal ?? null,
-      gargaloDias: gargaloRow?.gargalo_avg_days ?? null,
-    };
-  }, [gerencial]);
-
   // Classificação das demandas no escopo (mesmas regras de fn_classifica_demanda)
   const categoria = useMemo(() => {
     let bug = 0, retorno = 0, aviao = 0;
@@ -70,22 +45,18 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
   }, [fab.items]);
 
   const conclPct = fab.total > 0 ? Math.round((fab.done / fab.total) * 100) : 0;
-  const saudavelPct = agg.totalHealth > 0 ? Math.round((agg.saudaveis / agg.totalHealth) * 100) : 0;
-  const transbordoPct = fab.transbordoPct ?? 0;
-  const num = (v: number | null) => (v == null ? '—' : v);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
         <h2 className="text-xl font-bold">Visão Executiva</h2>
         <p className="text-sm text-muted-foreground">
-          Fábrica · onde estamos · o que queremos · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
+          Fábrica · mesma visão do modo TV {periodLabel ? `· ${periodLabel}` : ''}
         </p>
       </div>
 
-      {/* ═══════ ONDE ESTAMOS — AS IS ═══════ */}
-      <SecHeader title="Onde estamos" subtitle="AS IS · cenário atual" />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <BlocoCard icon={Zap} titulo="Itens no escopo">
           <div className="flex items-end justify-between">
             <div>
@@ -127,83 +98,27 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
           </div>
           <p className="text-[11px] text-muted-foreground border-t pt-2">Classificação das demandas no escopo por tag.</p>
         </BlocoCard>
-
-        <BlocoCard icon={HeartPulse} titulo="Saúde dos itens">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div><p className="text-3xl font-bold font-mono text-[hsl(142,71%,45%)]">{agg.saudaveis}</p><p className="text-[11px] text-muted-foreground">saudável</p></div>
-            <div><p className="text-3xl font-bold font-mono text-amber-500">{agg.atencao}</p><p className="text-[11px] text-muted-foreground">atenção</p></div>
-            <div><p className="text-3xl font-bold font-mono text-destructive">{agg.criticos}</p><p className="text-[11px] text-muted-foreground">crítico</p></div>
-          </div>
-          {agg.totalHealth > 0 && (
-            <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div style={{ width: `${(agg.saudaveis / agg.totalHealth) * 100}%`, backgroundColor: 'hsl(142,71%,45%)' }} />
-              <div style={{ width: `${(agg.atencao / agg.totalHealth) * 100}%`, backgroundColor: '#f59e0b' }} />
-              <div style={{ width: `${(agg.criticos / agg.totalHealth) * 100}%`, backgroundColor: '#ef4444' }} />
-            </div>
-          )}
-        </BlocoCard>
       </div>
 
-      {/* ═══════ O QUE QUEREMOS — TO BE ═══════ */}
-      <SecHeader title="O que queremos" subtitle="TO BE · meta desejada (atingimento)" />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <MetaCard
-          icon={Target}
-          titulo="Conclusão da sprint"
-          realizado={conclPct}
-          meta={META_CONCLUSAO_PCT}
-          detalhe={`${fab.done}/${fab.total} itens concluídos no escopo.`}
-        />
-        <MetaCard
-          icon={HeartPulse}
-          titulo="Itens saudáveis"
-          realizado={saudavelPct}
-          meta={META_SAUDAVEL_PCT}
-          detalhe={`${agg.saudaveis}/${agg.totalHealth} itens com saúde verde.`}
-        />
-        <MetaCard
-          icon={Shuffle}
-          titulo="Transbordo"
-          realizado={transbordoPct}
-          meta={META_TRANSBORDO_PCT}
-          menorMelhor
-          detalhe={`${fab.transbordoCount} itens migraram de sprint · ${fab.realOverflowCount} overflow real.`}
-        />
-      </div>
+      {/* Desempenho · evolução por sprint */}
+      <BlocoCard icon={CalendarClock} titulo="Desempenho · evolução por sprint">
+        <DesempenhoTrendChart height={220} />
+        <p className="text-[11px] text-muted-foreground border-t pt-2">
+          % Entrega (concluído ÷ escopo, ↑ melhor) · % Retorno QA · % Bug (↓ melhor) — últimas 8 sprints.
+        </p>
+      </BlocoCard>
 
-      {/* ═══════ DE ONDE VIEMOS — HISTÓRICO ═══════ */}
-      <SecHeader title="De onde viemos" subtitle="histórico · linha de base · evolução" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <BlocoCard icon={CalendarClock} titulo="Desempenho · evolução por sprint" className="lg:col-span-2">
-          <DesempenhoTrendChart height={200} />
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
-            % Entrega (concluído ÷ escopo, ↑ melhor) · % Retorno QA · % Bug (↓ melhor) — últimas 8 sprints.
-          </p>
-        </BlocoCard>
-
-        <BlocoCard icon={Activity} titulo="Linha de base">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Gauge className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold font-mono">{num(fab.velocidadeMedia)}{fab.velocidadeMedia != null ? ' h' : ''}<span className="text-xs text-muted-foreground">/sprint</span></p>
-                <p className="text-[11px] text-muted-foreground">velocidade média ({fab.velocidadeSource === 'timelog' ? 'timelog' : 'effort'})</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 border-t pt-2">
-              <Timer className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold font-mono">{num(fab.leadTimeMedio)}{fab.leadTimeMedio != null ? ' h' : ''}<span className="text-xs text-muted-foreground">/item</span></p>
-                <p className="text-[11px] text-muted-foreground">lead time médio ({fab.leadTimeSource === 'timelog' ? 'timelog' : 'effort'})</p>
-              </div>
-            </div>
-          </div>
-        </BlocoCard>
-      </div>
-
-      {/* ═══════ DESEMPENHO POR FÁBRICA — RANKING ═══════ */}
-      <SecHeader title="Desempenho por Fábrica" subtitle="ranking · desempenho × qualidade" />
+      {/* Desempenho por Fábrica — ranking */}
       <RankingFabricasCard maxSprints={6} />
+
+      {/* Qualidade das Fábricas — por sprint */}
+      <QualidadePorFabricaCharts maxSprints={6} />
+
+      {/* Evolução diária — Entregue & Done */}
+      <DailyProgressCard sprintCode={selectedSprintCode} />
+
+      {/* Capacidade × Realizado por Squad (uso cruzado) */}
+      <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} dateFrom={dateFrom} dateTo={dateTo} />
     </div>
   );
 }
