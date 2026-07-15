@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState, useCallback } from 'react';
 import type { FabricaItem } from '@/hooks/useFabricaKpis';
+import { isFabricaCountableState } from '@/hooks/useFabricaKpis';
 import type { SprintSnapshotRow, SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { cleanFabricaName } from '@/lib/fabricaNames';
@@ -442,7 +443,9 @@ export function GerenciaTab({
 
   // â”€â”€ Current sprint metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const allManagerItems = useMemo(
-    () => items.filter((item) => item.count_in_kpi !== false && isManagerLike(item)),
+    // Exclui Removed (e outros estados não-contáveis) — não fazem parte da sprint
+    // e poluíam as listas/drilldowns.
+    () => items.filter((item) => item.count_in_kpi !== false && isManagerLike(item) && isFabricaCountableState(item.state)),
     [items],
   );
 

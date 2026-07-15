@@ -18,7 +18,8 @@ const PAGES = 2;
 type FabKpisTv = {
   total: number;
   done: number;
-  inProgress: number;
+  inProgress: number; // inclui "entregue"
+  entregue: number;
   toDo: number;
   isLoading: boolean;
   items?: Array<{ work_item_type?: string | null; tags?: string | null }>;
@@ -70,7 +71,10 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
     return { bug, retorno, aviao };
   }, [fab.items]);
 
-  const conclPct = fab.total > 0 ? Math.round((fab.done / fab.total) * 100) : 0;
+  // Concluído = Done + Entregue (regra do gestor). "em dev" exclui os entregues.
+  const concluido = fab.done + fab.entregue;
+  const conclPct = fab.total > 0 ? Math.round((concluido / fab.total) * 100) : 0;
+  const emDev = Math.max(0, fab.inProgress - fab.entregue);
   const corConcl = conclPct >= 80 ? 'hsl(142,71%,42%)' : conclPct >= 50 ? 'hsl(38,92%,50%)' : 'hsl(0,72%,52%)';
 
   return (
@@ -84,9 +88,11 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
           </div>
           <div className="flex items-center flex-1 divide-x divide-border">
             <Kpi valor={fab.isLoading ? '—' : fab.total} rotulo="itens no escopo" />
-            <Kpi valor={`${conclPct}%`} rotulo="concluído" cor={corConcl} />
+            <Kpi valor={`${conclPct}%`} rotulo="concluído (D+E)" cor={corConcl} />
+            <Kpi valor={emDev} rotulo="em dev" cor="hsl(28,90%,52%)" />
+            <Kpi valor={fab.toDo} rotulo="a fazer" cor="hsl(0,72%,52%)" />
+            <Kpi valor={fab.entregue} rotulo="entregue" cor="hsl(210,80%,52%)" />
             <Kpi valor={fab.done} rotulo="done" cor="hsl(142,71%,42%)" />
-            <Kpi valor={fab.inProgress} rotulo="em dev" cor="hsl(210,80%,52%)" />
             <Kpi valor={categoria.bug} rotulo="bugs" cor="hsl(0,72%,52%)" />
             <Kpi valor={categoria.retorno} rotulo="retorno QA" cor="hsl(38,92%,50%)" />
             <Kpi valor={categoria.aviao} rotulo="aviões" cor="hsl(199,89%,48%)" />

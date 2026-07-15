@@ -14,6 +14,8 @@ export const FABRICA_IN_PROGRESS_STATES = new Set([
   'em teste',
   'aguardando deploy',
 ]);
+// "Entregue" = já saiu do dev, aguardando teste/deploy (subconjunto de in-progress).
+const FABRICA_ENTREGUE_STATES = new Set(['aguardando teste', 'em teste', 'aguardando deploy']);
 const FABRICA_TODO_STATES = new Set(['to do', 'new']);
 const DONE_STATES = new Set(['done', 'closed', 'resolved']);
 const FABRICA_MANAGER_ITEM_TYPES = new Set(['Product Backlog Item', 'User Story', 'Bug']);
@@ -32,6 +34,10 @@ export function isFabricaInProgress(state: string | null | undefined): boolean {
 
 export function isFabricaCountableState(state: string | null | undefined): boolean {
   return FABRICA_COUNTABLE_STATES.has(normalizeFabricaState(state));
+}
+
+export function isFabricaEntregue(state: string | null | undefined): boolean {
+  return FABRICA_ENTREGUE_STATES.has(normalizeFabricaState(state));
 }
 
 function isFabricaManagerItem(workItemType: string | null | undefined): boolean {
@@ -438,7 +444,8 @@ export function useFabricaKpis(
   const kpiItems = filteredItems.filter(i => i.count_in_kpi !== false && isFabricaCountableState(i.state));
 
   const total      = kpiItems.length;
-  const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length;
+  const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length; // inclui "entregue"
+  const entregue   = kpiItems.filter(i => isFabricaEntregue(i.state)).length;
   const toDo       = kpiItems.filter(i => isFabricaTodo(i.state)).length;
   const done       = kpiItems.filter(i => isDone(i.state)).length;
 
@@ -943,6 +950,7 @@ export function useFabricaKpis(
     allWorkItems: nonInfraWorkItems,
     total,
     inProgress,
+    entregue,
     toDo,
     done,
     porColaborador,

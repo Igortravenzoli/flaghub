@@ -10,7 +10,8 @@ import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 interface FabKpisLite {
   total: number;
   done: number;
-  inProgress: number;
+  inProgress: number; // inclui "entregue"
+  entregue: number;
   toDo: number;
   isLoading: boolean;
   items?: Array<{ work_item_type?: string | null; tags?: string | null }>;
@@ -44,7 +45,10 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
     return { bug, retorno, aviao };
   }, [fab.items]);
 
-  const conclPct = fab.total > 0 ? Math.round((fab.done / fab.total) * 100) : 0;
+  // Concluído = Done + Entregue (regra do gestor); "em dev" exclui os entregues.
+  const concluido = fab.done + fab.entregue;
+  const conclPct = fab.total > 0 ? Math.round((concluido / fab.total) * 100) : 0;
+  const emDev = Math.max(0, fab.inProgress - fab.entregue);
 
   return (
     <div className="space-y-4">
@@ -65,18 +69,20 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
             </div>
             <div className="text-right">
               <p className="text-2xl font-bold font-mono" style={{ color: conclPct >= 80 ? '#16a34a' : conclPct >= 50 ? '#f59e0b' : '#ef4444' }}>{conclPct}%</p>
-              <p className="text-[11px] text-muted-foreground">concluído</p>
+              <p className="text-[11px] text-muted-foreground">concluído · Done + Entregue</p>
             </div>
           </div>
           {fab.total > 0 && (
             <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
               <div style={{ width: `${(fab.done / fab.total) * 100}%`, backgroundColor: 'hsl(142,71%,45%)' }} />
-              <div style={{ width: `${(fab.inProgress / fab.total) * 100}%`, backgroundColor: 'hsl(210,80%,52%)' }} />
+              <div style={{ width: `${(fab.entregue / fab.total) * 100}%`, backgroundColor: 'hsl(160,60%,45%)' }} />
+              <div style={{ width: `${(emDev / fab.total) * 100}%`, backgroundColor: 'hsl(210,80%,52%)' }} />
             </div>
           )}
-          <div className="grid grid-cols-3 gap-2 border-t pt-2 text-center">
-            <div><p className="text-lg font-bold font-mono text-[hsl(210,80%,52%)]">{fab.inProgress}</p><p className="text-[11px] text-muted-foreground">em dev</p></div>
+          <div className="grid grid-cols-4 gap-2 border-t pt-2 text-center">
+            <div><p className="text-lg font-bold font-mono text-[hsl(28,90%,52%)]">{emDev}</p><p className="text-[11px] text-muted-foreground">em dev</p></div>
             <div><p className="text-lg font-bold font-mono text-amber-500">{fab.toDo}</p><p className="text-[11px] text-muted-foreground">a fazer</p></div>
+            <div><p className="text-lg font-bold font-mono text-[hsl(210,80%,52%)]">{fab.entregue}</p><p className="text-[11px] text-muted-foreground">entregue</p></div>
             <div><p className="text-lg font-bold font-mono text-[hsl(142,71%,45%)]">{fab.done}</p><p className="text-[11px] text-muted-foreground">done</p></div>
           </div>
         </BlocoCard>
