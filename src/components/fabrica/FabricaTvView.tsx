@@ -29,6 +29,8 @@ type FabricaTvViewProps = {
   fab: FabKpisTv;
   sprintCode?: string | null;
   periodLabel?: string;
+  dateFrom?: Date | null;
+  dateTo?: Date | null;
 };
 
 function Kpi({ valor, rotulo, cor }: { valor: number | string; rotulo: string; cor?: string }) {
@@ -48,7 +50,7 @@ function Kpi({ valor, rotulo, cor }: { valor: number | string; rotulo: string; c
  * A faixa de KPIs fica fixa nas duas, então o número principal nunca some da parede.
  * Sem Saúde dos itens / Itens saudáveis / Transbordo / Linha de base (saíram do TV).
  */
-export function FabricaTvView({ fab, sprintCode, periodLabel }: FabricaTvViewProps) {
+export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }: FabricaTvViewProps) {
   const [page, setPage] = useState(0);
 
   useEffect(() => {
@@ -138,7 +140,7 @@ export function FabricaTvView({ fab, sprintCode, periodLabel }: FabricaTvViewPro
               <DailyProgressCard sprintCode={sprintCode} fill />
             </div>
             <div className="col-span-5 h-full min-h-0">
-              <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} compact fill />
+              <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} dateFrom={dateFrom} dateTo={dateTo} compact fill />
             </div>
           </div>
         </>

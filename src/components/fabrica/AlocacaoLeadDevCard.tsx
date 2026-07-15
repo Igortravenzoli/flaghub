@@ -5,6 +5,7 @@ import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
 import { normName, SQUADS } from '@/lib/fabricaRoster';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
+import { businessDaysBetween } from '@/lib/sprintCalendar';
 
 type FabricaScopeRow = {
   key: string;
@@ -14,10 +15,16 @@ type FabricaScopeRow = {
 type AlocacaoLeadDevCardProps = {
   /** Horas por fábrica (Epic) com colaboradores — ex.: fab.horasPorFabricaFull. */
   fabricaRows: FabricaScopeRow[];
+  /** Período do realizado — capacidade = h/dia × dias úteis nesse intervalo. */
+  dateFrom?: Date | null;
+  dateTo?: Date | null;
 };
 
 function fmtH(minutes: number): string {
   return `${Math.round((minutes / 60) * 10) / 10}h`;
+}
+function fmtDelta(minutes: number): string {
+  return `${minutes >= 0 ? '+' : '−'}${fmtH(Math.abs(minutes))}`;
 }
 
 /**
@@ -28,9 +35,14 @@ function fmtH(minutes: number): string {
  * O cabeçalho mostra o LEAD da squad quando ele está marcado no roster
  * (papel='lead'); enquanto não estiver, mostra o nome da squad.
  */
-export function AlocacaoLeadDevCard({ fabricaRows }: AlocacaoLeadDevCardProps) {
+export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoLeadDevCardProps) {
   const { data: roster = [], isLoading } = useFabricaRoster();
   const [aberta, setAberta] = useState<string | null>(null);
+
+  const businessDays = useMemo(
+    () => (dateFrom && dateTo ? businessDaysBetween(dateFrom, dateTo) : null),
+    [dateFrom, dateTo],
+  );
 
   // Horas de cada colaborador por fábrica de DESTINO (fábrica do item).
   const byCollab = useMemo(() => {
@@ -60,14 +72,17 @@ export function AlocacaoLeadDevCard({ fabricaRows }: AlocacaoLeadDevCardProps) {
           const crossDests = [...(stat?.byDest ?? new Map<string, number>())]
             .filter(([d]) => d !== squad)
             .sort((a, b) => b[1] - a[1]);
-          return { nome: r.colaborador, papel: r.papel, total, own, cross: total - own, crossDests };
+          const cap = businessDays ? (Number(r.capacidade_h_dia) || 0) * businessDays * 60 : 0;
+          return { nome: r.colaborador, papel: r.papel, total, own, cross: total - own, crossDests, cap };
         })
         .sort((a, b) => b.total - a.total);
       const total = devs.reduce((s, d) => s + d.total, 0);
       const cross = devs.reduce((s, d) => s + d.cross, 0);
-      return { squad, lead, devs, total, cross };
+      const cap = devs.reduce((s, d) => s + d.cap, 0);
+      return { squad, lead, devs, total, cross, cap };
     }).filter((s) => s.devs.length > 0);
-  }, [roster, byCollab]);
+  }, [roster, byCollab, businessDays]);
+  const temCapacidade = !!businessDays;
 
   return (
     <Card>
@@ -106,8 +121,18 @@ export function AlocacaoLeadDevCard({ fabricaRows }: AlocacaoLeadDevCardProps) {
                       {s.lead ? `Lead · ${s.squad}` : `${s.squad} · lead não definido`}
                     </span>
                     <span className="ml-auto text-xs tabular-nums">
-                      <span className="font-mono font-semibold">{fmtH(s.total)}</span>
-                      {s.cross > 0 && <span className="text-amber-600 dark:text-amber-400"> · {crossPct}% cruzado</span>}
+                      {temCapacidade && s.cap > 0 ? (
+                        <>
+                          <span className="font-mono font-semibold">{Math.round((s.total / s.cap) * 100)}%</span>
+                          <span className="text-muted-foreground"> · {fmtH(s.total)}/{fmtH(s.cap)} </span>
+                          <span className={s.total - s.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-destructive font-medium'}>{fmtDelta(s.total - s.cap)}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-mono font-semibold">{fmtH(s.total)}</span>
+                          {s.cross > 0 && <span className="text-amber-600 dark:text-amber-400"> · {crossPct}% cruzado</span>}
+                        </>
+                      )}
                     </span>
                   </button>
 
@@ -116,8 +141,10 @@ export function AlocacaoLeadDevCard({ fabricaRows }: AlocacaoLeadDevCardProps) {
                       {s.devs.map((d) => {
                         const ownPct = d.total > 0 ? (d.own / d.total) * 100 : 0;
                         const crossPctDev = d.total > 0 ? (d.cross / d.total) * 100 : 0;
+                        const showCap = temCapacidade && d.cap > 0;
+                        const capFillPct = showCap ? Math.min(d.total / d.cap, 1) * 100 : 100;
                         return (
-                          <div key={d.nome} className="grid grid-cols-[1fr_84px_140px] items-center gap-3 px-3 py-2 pl-9">
+                          <div key={d.nome} className="grid grid-cols-[1fr_150px_120px] items-center gap-3 px-3 py-2 pl-9">
                             <span className="text-sm flex items-center gap-1.5 flex-wrap">
                               <span className={d.total === 0 ? 'text-muted-foreground' : ''}>{d.nome}</span>
                               {d.papel === 'lead' && (
@@ -128,17 +155,23 @@ export function AlocacaoLeadDevCard({ fabricaRows }: AlocacaoLeadDevCardProps) {
                                   {fmtH(min)} → {dest}
                                 </span>
                               ))}
-                              {d.total === 0 && (
-                                <span className="text-[10px] px-1.5 rounded bg-muted text-muted-foreground">sem apontamento</span>
+                              {d.total === 0 && d.cap === 0 && (
+                                <span className="text-[10px] px-1.5 rounded bg-muted text-muted-foreground">{showCap || !temCapacidade ? 'sem apontamento' : 'sem capacity'}</span>
                               )}
                             </span>
-                            <span className="text-xs text-right font-mono tabular-nums">{fmtH(d.total)}</span>
-                            <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
-                              <div style={{ width: `${ownPct}%`, background: cor }} title={`própria fábrica: ${fmtH(d.own)}`} />
-                              <div style={{ width: `${crossPctDev}%`, background: 'hsl(38,92%,50%)' }} title={`outras fábricas: ${fmtH(d.cross)}`} />
+                            <span className="text-xs text-right font-mono tabular-nums">
+                              {showCap ? (
+                                <>{fmtH(d.total)}<span className="text-muted-foreground">/{fmtH(d.cap)}</span> <span className={d.total - d.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}>{fmtDelta(d.total - d.cap)}</span></>
+                              ) : fmtH(d.total)}
+                            </span>
+                            <div className="relative flex h-2 w-full overflow-hidden rounded-full bg-muted">
+                              <div className="flex h-full" style={{ width: `${capFillPct}%` }}>
+                                <div style={{ width: `${ownPct}%`, background: cor }} title={`própria fábrica: ${fmtH(d.own)}`} />
+                                <div style={{ width: `${crossPctDev}%`, background: 'hsl(28,92%,55%)' }} title={`outras fábricas: ${fmtH(d.cross)}`} />
+                              </div>
                             </div>
                           </div>
-                        );
+                          );
                       })}
                     </div>
                   )}

@@ -65,6 +65,24 @@ export function quarterLabel(sprintCode: string): string | null {
   return q ? `Q${q.quarter}` : null;
 }
 
+/**
+ * Dias úteis (seg–sex) no intervalo [from, to] inclusive. Base da capacidade do
+ * período (capacidade = horas/dia × dias úteis). Não considera feriados — a
+ * planilha do gestor também não considera.
+ */
+export function businessDaysBetween(from: Date, to: Date): number {
+  const start = startOfDay(from);
+  const end = startOfDay(to);
+  const days = differenceInCalendarDays(end, start);
+  if (days < 0) return 0;
+  let count = 0;
+  for (let i = 0; i <= days; i++) {
+    const dow = addDays(start, i).getDay(); // 0=dom, 6=sáb
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
+}
+
 export function formatSprintIntervalLabel(sprintCode: string): string {
   const range = getOfficialSprintRange(sprintCode);
   if (!range) return sprintCode;

@@ -2586,8 +2586,8 @@ export default function FabricaDashboard() {
             </div>
             {timelogLens === 'squad' && (
               <div className="space-y-4">
-                <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} />
-                <AlocacaoLeadDevCard fabricaRows={fab.horasPorFabricaFull || []} />
+                <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} />
+                <AlocacaoLeadDevCard fabricaRows={fab.horasPorFabricaFull || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} />
               </div>
             )}
             {timelogLens === 'atual' && (

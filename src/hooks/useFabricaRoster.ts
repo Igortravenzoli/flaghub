@@ -11,6 +11,8 @@ export interface SquadMembershipRow {
   squad: string;
   papel: string;
   ativo: boolean;
+  /** Horas produtivas por dia útil (base da capacidade do período). */
+  capacidade_h_dia: number;
 }
 
 /** Roster fixo dev -> squad. Base da visão por squad e do uso cruzado. */
@@ -20,7 +22,7 @@ export function useFabricaRoster() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('fabrica_squad_membership')
-        .select('colaborador, squad, papel, ativo')
+        .select('colaborador, squad, papel, ativo, capacidade_h_dia')
         .eq('ativo', true);
       if (error) throw error;
       return (data || []) as SquadMembershipRow[];
