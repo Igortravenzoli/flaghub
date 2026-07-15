@@ -164,11 +164,16 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                                 <>{fmtH(d.total)}<span className="text-muted-foreground">/{fmtH(d.cap)}</span> <span className={d.total - d.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}>{fmtDelta(d.total - d.cap)}</span></>
                               ) : fmtH(d.total)}
                             </span>
-                            <div className="relative flex h-2 w-full overflow-hidden rounded-full bg-muted">
-                              <div className="flex h-full" style={{ width: `${capFillPct}%` }}>
+                            <div
+                              className="relative h-2.5 w-full overflow-hidden rounded-full"
+                              style={{ background: showCap ? 'repeating-linear-gradient(90deg, hsl(var(--muted)), hsl(var(--muted)) 4px, hsl(var(--border)) 4px, hsl(var(--border)) 5px)' : 'hsl(var(--muted))' }}
+                              title={showCap ? `capacidade ${fmtH(d.cap)} · realizado ${fmtH(d.total)}` : undefined}
+                            >
+                              <div className="absolute inset-y-0 left-0 flex" style={{ width: `${capFillPct}%` }}>
                                 <div style={{ width: `${ownPct}%`, background: cor }} title={`própria fábrica: ${fmtH(d.own)}`} />
                                 <div style={{ width: `${crossPctDev}%`, background: 'hsl(28,92%,55%)' }} title={`outras fábricas: ${fmtH(d.cross)}`} />
                               </div>
+                              {showCap && <div className="absolute inset-y-0 right-0 w-px bg-foreground/50" />}
                             </div>
                           </div>
                           );

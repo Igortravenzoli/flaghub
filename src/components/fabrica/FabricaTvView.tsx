@@ -124,8 +124,8 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
             </CardContent>
           </Card>
 
-          <div className="flex-1 min-h-0">
-            <RankingFabricasCard maxSprints={4} columns={4} fill />
+          <div className="flex-[1.25] min-h-0">
+            <RankingFabricasCard maxSprints={3} columns={4} fill />
           </div>
         </>
       ) : (

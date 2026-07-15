@@ -41,9 +41,10 @@ type FabricaRank = { name: string; score: number; desempenho: number; cells: Spr
 const CHART_TOP = 10;
 const CHART_BOTTOM = 104;
 const CHART_H = CHART_BOTTOM - CHART_TOP;
-const GROUP_W = 62;
-const OUTER_W = 40;
-const INNER_W = 13;
+// Geometria: no TV (fill) as barras são maiores e mais espaçadas (menos sprints,
+// leitura a distância); no painel, mais compactas.
+const GEO_TV = { GROUP_W: 92, OUTER_W: 58, INNER_W: 17 };
+const GEO_PANEL = { GROUP_W: 62, OUTER_W: 40, INNER_W: 13 };
 
 function y(value: number): number {
   return CHART_BOTTOM - (Math.max(0, Math.min(100, value)) / 100) * CHART_H;
@@ -128,6 +129,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
           <div className={`grid gap-3 ${fill ? 'flex-1 min-h-0' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
             {ranking.map((f, idx) => {
               const color = fabricaColor(f.name, idx);
+              const { GROUP_W, OUTER_W, INNER_W } = fill ? GEO_TV : GEO_PANEL;
               const vbW = Math.max(GROUP_W * f.cells.length, GROUP_W);
               return (
                 <div key={f.name} className={`border rounded-lg p-3 ${fill ? 'flex flex-col min-h-0' : ''}`}>
@@ -169,8 +171,11 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
                           {/* Barras internas = Qualidade (Bug, Retorno QA) */}
                           <rect className="fab-bar" style={{ animationDelay: `${i * 90 + 120}ms` }} x={cx - INNER_W - 1} y={y(c.bug)} width={INNER_W} height={CHART_BOTTOM - y(c.bug)} fill="hsl(0,72%,55%)" />
                           <rect className="fab-bar" style={{ animationDelay: `${i * 90 + 120}ms` }} x={cx + 1} y={y(c.retorno)} width={INNER_W} height={CHART_BOTTOM - y(c.retorno)} fill="hsl(38,92%,50%)" />
-                          <text x={cx} y={outerY - 3} textAnchor="middle" fontSize="11" fontFamily="monospace" fontWeight="700" fill="hsl(var(--foreground))">{c.desempenho}</text>
-                          <text x={cx} y="120" textAnchor="middle" fontSize="9" fill="hsl(var(--muted-foreground))">{c.sprint}</text>
+                          {/* No TV, o número (grande) só na sprint atual — evita encavalar; as anteriores mostram a tendência pela altura. */}
+                          {(!fill || i === f.cells.length - 1) && (
+                            <text x={cx} y={outerY - 4} textAnchor="middle" fontSize={fill ? 22 : 11} fontFamily="monospace" fontWeight={fill ? 800 : 700} fill="hsl(var(--foreground))">{c.desempenho}</text>
+                          )}
+                          <text x={cx} y="120" textAnchor="middle" fontSize={fill ? 11 : 9} fill="hsl(var(--muted-foreground))">{c.sprint}</text>
                         </g>
                       );
                     })}
