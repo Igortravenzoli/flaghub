@@ -2,8 +2,12 @@ import { useMemo, type ReactNode } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, LabelList,
 } from 'recharts';
-import { Headphones, Users, Clock, CalendarClock, Monitor, ShieldCheck, Gauge } from 'lucide-react';
+import {
+  Headphones, Users, Clock, CalendarClock, Monitor, ShieldCheck, Gauge,
+  TrendingUp, TrendingDown, Minus, AlertOctagon, Globe, Crosshair,
+} from 'lucide-react';
 import { BlocoCard, SecHeader } from '@/components/executivo/BlocoCard';
+import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ConsultorKpi, TipoChamadoKpi, RegistroPorGrupo, HistoricoEntry } from '@/hooks/useHelpdeskKpis';
 import {
@@ -19,6 +23,32 @@ const META_24H_PCT = 48;
 const CONSULTORES_CS = ['ailton', 'italo', 'leandro', 'vagner', 'guimaraes', 'ricardo', 'wilker', 'bruna', 'ronaldo'];
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const isConsultorCS = (nome: string) => { const n = norm(nome); return CONSULTORES_CS.some((t) => n.includes(t)); };
+
+const MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+/** 'YYYY-MM' → 'mmm/aa'. */
+const fmtMes = (ym: string) => {
+  const [y, m] = ym.split('-');
+  return `${MESES_ABREV[Number(m) - 1] ?? m}/${(y ?? '').slice(2)}`;
+};
+
+// ── Incidentes com PARADA (estrutura de priorização) ──────────────────────
+// Origem de dados ainda a definir (VDesk/Automate) — mapeamento provisório dos
+// incidentes que futuramente terão origem automática. Peso: Global = impacto
+// máximo (todos os clientes); Pontual = proporcional (clientes afetados ÷ base).
+type IncidenteParadaEscopo = 'global' | 'pontual';
+interface IncidenteParada {
+  nome: string;
+  sistema: string;
+  escopo: IncidenteParadaEscopo;
+  /** Apenas para escopo pontual: nº de clientes afetados. */
+  clientesAfetados?: number;
+}
+const INCIDENTES_PARADA_SEED: IncidenteParada[] = [
+  { nome: 'Trava versão app Merchan', sistema: 'ConnectMerchan', escopo: 'global' },
+  { nome: 'Trava versão banco Merchan', sistema: 'ConnectMerchan', escopo: 'global' },
+  { nome: 'Lentidão digitação de pedidos', sistema: 'Flexx', escopo: 'global' },
+  { nome: 'Erro componente NFE', sistema: 'Flexx', escopo: 'pontual', clientesAfetados: 3 },
+];
 
 const corOk = (ok: boolean | null) => (ok == null ? undefined : ok ? '#16a34a' : '#ef4444');
 const okLow = (v?: number | null, m?: number | null) => (v == null || m == null ? null : v <= m);
@@ -138,6 +168,58 @@ function ProdutividadeHeatmap({ registros, isLoading }: { registros: PorDiaItem[
   );
 }
 
+/** Delta mês-a-mês estilo Nestlé (▲ verde / ▼ vermelho / — neutro). */
+function DeltaBadge({ atual, anterior }: { atual: number; anterior: number }) {
+  if (anterior <= 0) return <span className="text-[11px] text-muted-foreground">—</span>;
+  const pct = Math.round(((atual - anterior) / anterior) * 100);
+  const Icon = pct > 0 ? TrendingUp : pct < 0 ? TrendingDown : Minus;
+  const cor = pct > 0 ? '#16a34a' : pct < 0 ? '#ef4444' : '#64748b';
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: cor }}>
+      <Icon className="h-3 w-3" />{pct > 0 ? '+' : ''}{pct}%
+    </span>
+  );
+}
+
+/** Priorização de incidentes com parada por escopo (Global × Pontual). Estrutura
+ *  provisória — origem de dados a definir (VDesk/Automate). */
+function IncidentesComParadaCard({ base }: { base: number }) {
+  const peso = (i: IncidenteParada): { pct: number | null; label: string } => {
+    if (i.escopo === 'global') return { pct: 100, label: 'todos os clientes' };
+    const n = i.clientesAfetados ?? 0;
+    return { pct: base > 0 ? Math.round((n / base) * 100) : null, label: `${n} cliente${n > 1 ? 's' : ''}` };
+  };
+  return (
+    <BlocoCard icon={AlertOctagon} titulo="Incidentes com parada · priorização" className="lg:col-span-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {INCIDENTES_PARADA_SEED.map((i) => {
+          const p = peso(i);
+          const global = i.escopo === 'global';
+          return (
+            <div key={i.nome} className="flex items-center gap-2 rounded-lg border p-2">
+              {global ? <Globe className="h-4 w-4 text-red-500 shrink-0" /> : <Crosshair className="h-4 w-4 text-amber-500 shrink-0" />}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-foreground truncate" title={i.nome}>{i.nome}</p>
+                <p className="text-[10px] text-muted-foreground">{i.sistema} · {p.label}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <Badge variant={global ? 'destructive' : 'outline'} className="text-[10px]">{global ? 'Global' : 'Pontual'}</Badge>
+                <p className="text-xs font-bold font-mono mt-0.5" style={{ color: global ? '#ef4444' : '#f59e0b' }}>
+                  {p.pct != null ? `${p.pct}%` : '—'}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-muted-foreground/80 border-t pt-2">
+        Estrutura provisória — origem a definir (VDesk/Automate). Peso: <b>Global</b> = impacto máximo (todos os clientes);{' '}
+        <b>Pontual</b> = proporcional (afetados ÷ {base > 0 ? `${base} clientes do período` : 'base de clientes'}).
+      </p>
+    </BlocoCard>
+  );
+}
+
 interface HelpdeskExecutivoTabProps {
   totalRegistros: number;
   totalHoras: number;
@@ -201,6 +283,24 @@ export function HelpdeskExecutivoTab({
       })),
     [historico]
   );
+
+  // Comparativo mensal (mês atual × anterior + série do período) — agregado do histórico.
+  const mensal = useMemo(() => {
+    const byMonth = new Map<string, { registros: number; minutos: number }>();
+    for (const h of historico) {
+      const mes = h.date?.slice(0, 7);
+      if (!mes) continue;
+      const cur = byMonth.get(mes) ?? { registros: 0, minutos: 0 };
+      cur.registros += h.totalRegistros;
+      cur.minutos += h.totalMinutos;
+      byMonth.set(mes, cur);
+    }
+    return [...byMonth.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mes, v]) => ({ mes, mesLabel: fmtMes(mes), registros: v.registros, horas: Math.round(v.minutos / 60 * 10) / 10 }));
+  }, [historico]);
+  const mesAtual = mensal.at(-1);
+  const mesAnterior = mensal.at(-2);
 
   return (
     <div className="space-y-5">
@@ -339,6 +439,67 @@ export function HelpdeskExecutivoTab({
           )}
           <p className="text-[11px] text-muted-foreground border-t pt-2">Volume por sistema (role para ver todos).</p>
         </BlocoCard>
+      </div>
+
+      {/* ═══════ 4ª LINHA — COMPARATIVO MENSAL (mês atual × anterior · anual) ═══════ */}
+      <SecHeader title="Comparativo mensal" subtitle="mês atual × anterior · selecione 'Ano' no período para o comparativo anual completo" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <BlocoCard icon={CalendarClock} titulo="Mês atual × anterior">
+          {!mesAtual ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">Sem série mensal no período.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-[11px] text-muted-foreground">{mesAtual.mesLabel} · registros</p>
+                  <p className="text-3xl font-bold font-mono">{mesAtual.registros}</p>
+                </div>
+                {mesAnterior && <DeltaBadge atual={mesAtual.registros} anterior={mesAnterior.registros} />}
+              </div>
+              <div className="flex items-end justify-between border-t pt-2">
+                <div>
+                  <p className="text-[11px] text-muted-foreground">{mesAtual.mesLabel} · horas</p>
+                  <p className="text-2xl font-bold font-mono">{mesAtual.horas}h</p>
+                </div>
+                {mesAnterior && <DeltaBadge atual={mesAtual.horas} anterior={mesAnterior.horas} />}
+              </div>
+              {mesAnterior ? (
+                <p className="text-[10px] text-muted-foreground border-t pt-2">
+                  vs {mesAnterior.mesLabel}: {mesAnterior.registros} registros · {mesAnterior.horas}h
+                </p>
+              ) : (
+                <p className="text-[10px] text-muted-foreground border-t pt-2">
+                  Selecione “Ano” no período para comparar com o mês anterior.
+                </p>
+              )}
+            </div>
+          )}
+        </BlocoCard>
+
+        <BlocoCard icon={TrendingUp} titulo="Série mensal de registros" className="lg:col-span-2">
+          {mensal.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Sem série mensal no período.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={mensal} margin={{ top: 16, right: 8, left: -24, bottom: 0 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="mesLabel" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v} registros`, '']} />
+                <Bar dataKey="registros" fill="hsl(199,89%,48%)" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="registros" position="top" style={{ fontSize: 10 }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          <p className="text-[11px] text-muted-foreground border-t pt-2">Registros por mês no período (comparativo mensal e anual).</p>
+        </BlocoCard>
+      </div>
+
+      {/* ═══════ 5ª LINHA — INCIDENTES COM PARADA (Global × Pontual) ═══════ */}
+      <SecHeader title="Incidentes com parada" subtitle="priorização por escopo (Global × Pontual) — estrutura provisória, origem a definir" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <IncidentesComParadaCard base={registrosPorCliente.length} />
       </div>
     </div>
   );

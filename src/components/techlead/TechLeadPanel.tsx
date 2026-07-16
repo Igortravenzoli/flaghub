@@ -210,7 +210,8 @@ export function TechLeadPanel() {
   const [uploading, setUploading] = useState(false);
   const [selectedSistema, setSelectedSistema] = useState<PorSistemaItem | null>(null);
   const [sistemaSearch, setSistemaSearch] = useState('');
-  const [sistemaSortKey, setSistemaSortKey] = useState<keyof PorSistemaItem>('totalRegistros');
+  // Padrão: tempo médio (TM/OS) em ordem decrescente — foco do gestor (Wilker).
+  const [sistemaSortKey, setSistemaSortKey] = useState<keyof PorSistemaItem>('tempoMedioMinutos');
   const [sistemaSortDir, setSistemaSortDir] = useState<'asc' | 'desc'>('desc');
 
   const acumulado = useTechLeadAcumulado(filters.dateFrom, filters.dateTo);

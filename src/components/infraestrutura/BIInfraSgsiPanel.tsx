@@ -10,7 +10,7 @@ import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
-  ShieldCheck, RefreshCw, Flame, AlertTriangle, FileWarning, KeyRound,
+  ShieldCheck, RefreshCw, Flame, AlertTriangle, KeyRound,
   Lightbulb, CalendarCheck, Search, X, Copy, Check, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
@@ -80,11 +80,15 @@ function Highlight({ text, q }: { text: string; q: string }) {
   );
 }
 
-function KpiTile({ label, value, sub, color, onClick, active }: {
+function KpiTile({ label, value, sub, color, onClick, active, bare }: {
   label: string; value: ReactNode; sub?: ReactNode; color?: string;
   onClick?: () => void; active?: boolean;
+  /** Sem borda/fundo próprios — para uso dentro de um GroupCard consolidado. */
+  bare?: boolean;
 }) {
-  const className = `text-left w-full rounded-xl border bg-card px-4 py-3 space-y-1 ${onClick ? 'transition-colors hover:bg-muted/30 cursor-pointer' : ''} ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/40' : 'border-border'}`;
+  const base = bare
+    ? `text-left w-full rounded-lg px-3 py-2 space-y-1 ${onClick ? 'transition-colors hover:bg-muted/40 cursor-pointer' : ''} ${active ? 'bg-primary/5 ring-1 ring-primary/40' : ''}`
+    : `text-left w-full rounded-xl border bg-card px-4 py-3 space-y-1 ${onClick ? 'transition-colors hover:bg-muted/30 cursor-pointer' : ''} ${active ? 'border-primary bg-primary/5 ring-1 ring-primary/40' : 'border-border'}`;
   const inner = (
     <>
       <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">{label}</p>
@@ -93,8 +97,19 @@ function KpiTile({ label, value, sub, color, onClick, active }: {
     </>
   );
   return onClick
-    ? <button type="button" onClick={onClick} className={className}>{inner}</button>
-    : <div className={className}>{inner}</div>;
+    ? <button type="button" onClick={onClick} className={base}>{inner}</button>
+    : <div className={base}>{inner}</div>;
+}
+
+/** Card consolidado com título e uma grade de métricas internas (sem bordas duplas). */
+function GroupCard({ title, cols = 3, children }: { title: string; cols?: number; children: ReactNode }) {
+  const gridCols = cols === 4 ? 'grid-cols-2 lg:grid-cols-4' : cols === 2 ? 'grid-cols-2' : 'grid-cols-3';
+  return (
+    <Card className="p-3 space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground px-1">{title}</p>
+      <div className={`grid ${gridCols} gap-1`}>{children}</div>
+    </Card>
+  );
 }
 
 /** Métrica secundária compacta (strip abaixo dos KPIs primários). */
@@ -107,13 +122,17 @@ function MiniStat({ label, value, tone }: { label: string; value: ReactNode; ton
   );
 }
 
-function MiniDonut({ title, data, isLoading }: { title: string; data?: NameValue[]; isLoading: boolean }) {
+function MiniDonut({ title, data, isLoading, onSelect }: {
+  title: string; data?: NameValue[]; isLoading: boolean;
+  /** Clique numa fatia/legenda → dirige a tabela analítica abaixo. */
+  onSelect?: (name: string) => void;
+}) {
   const total = (data ?? []).reduce((s, d) => s + d.value, 0);
   return (
     <Card>
       <CardHeader className="pb-1 pt-4 px-4">
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-        {!isLoading && <p className="text-xs text-muted-foreground">{total} registros</p>}
+        {!isLoading && <p className="text-xs text-muted-foreground">{total} registros{onSelect ? ' · clique para filtrar' : ''}</p>}
       </CardHeader>
       <CardContent className="pt-0 pb-4">
         {isLoading || !data ? <Skeleton className="h-36 w-full" /> : (
@@ -121,7 +140,9 @@ function MiniDonut({ title, data, isLoading }: { title: string; data?: NameValue
             <div className="h-36 flex-1 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={data} cx="50%" cy="50%" innerRadius={38} outerRadius={56} paddingAngle={3} dataKey="value" nameKey="name">
+                  <Pie data={data} cx="50%" cy="50%" innerRadius={38} outerRadius={56} paddingAngle={3} dataKey="value" nameKey="name"
+                    onClick={onSelect ? (e: { name?: string }) => e?.name && onSelect(e.name) : undefined}
+                    className={onSelect ? 'cursor-pointer focus:outline-none' : undefined}>
                     {data.map((e, i) => <Cell key={e.name} fill={colorFor(e.name, i)} />)}
                   </Pie>
                   <Tooltip contentStyle={{ fontSize: 12 }} />
@@ -129,13 +150,23 @@ function MiniDonut({ title, data, isLoading }: { title: string; data?: NameValue
               </ResponsiveContainer>
             </div>
             <div className="space-y-1.5 text-xs shrink-0 max-w-[55%]">
-              {data.map((e, i) => (
-                <div key={e.name} className="flex items-center gap-2">
-                  <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: colorFor(e.name, i) }} />
-                  <span className="text-muted-foreground truncate">{e.name}</span>
-                  <span className="font-bold font-mono ml-auto pl-2">{e.value}</span>
-                </div>
-              ))}
+              {data.map((e, i) => {
+                const row = (
+                  <>
+                    <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: colorFor(e.name, i) }} />
+                    <span className="text-muted-foreground truncate">{e.name}</span>
+                    <span className="font-bold font-mono ml-auto pl-2">{e.value}</span>
+                  </>
+                );
+                return onSelect ? (
+                  <button key={e.name} type="button" onClick={() => onSelect(e.name)}
+                    className="flex w-full items-center gap-2 rounded hover:bg-muted/40 transition-colors text-left">
+                    {row}
+                  </button>
+                ) : (
+                  <div key={e.name} className="flex items-center gap-2">{row}</div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -145,8 +176,10 @@ function MiniDonut({ title, data, isLoading }: { title: string; data?: NameValue
 }
 
 /** Barras horizontais: mostra top-N e expande (com rolagem) o restante. */
-function MiniBars({ title, data, isLoading, topN = 5 }: {
+function MiniBars({ title, data, isLoading, topN = 5, onSelect }: {
   title: string; data?: NameValue[]; isLoading: boolean; topN?: number;
+  /** Clique numa barra → dirige a tabela analítica abaixo. */
+  onSelect?: (name: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const rows = data ?? [];
@@ -155,17 +188,26 @@ function MiniBars({ title, data, isLoading, topN = 5 }: {
   const visible = expanded ? rows : rows.slice(0, topN);
   useEffect(() => { setExpanded(false); }, [title, rows.length]);
 
-  const Bar = ({ d, i }: { d: NameValue; i: number }) => (
-    <div>
-      <div className="flex items-center justify-between text-xs mb-1">
-        <span className="text-muted-foreground truncate pr-2">{d.name}</span>
-        <span className="font-bold font-mono">{d.value}</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(3, pct(d.value, max))}%`, background: PALETTE[i % PALETTE.length] }} />
-      </div>
-    </div>
-  );
+  const Bar = ({ d, i }: { d: NameValue; i: number }) => {
+    const content = (
+      <>
+        <div className="flex items-center justify-between gap-2 text-xs mb-1">
+          <span className="text-muted-foreground truncate pr-2">{d.name}</span>
+          <span className="font-bold font-mono shrink-0">{d.value}</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(3, pct(d.value, max)))}%`, background: PALETTE[i % PALETTE.length] }} />
+        </div>
+      </>
+    );
+    return onSelect ? (
+      <button type="button" onClick={() => onSelect(d.name)} className="block w-full text-left rounded px-1 -mx-1 hover:bg-muted/40 transition-colors">
+        {content}
+      </button>
+    ) : (
+      <div>{content}</div>
+    );
+  };
 
   return (
     <Card>
@@ -459,12 +501,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
     );
   }
 
-  const diasSemCards = [
-    { label: 'Dias sem incidentes', value: d?.diasSem.incidentes, icon: Flame, color: '#10b981' },
-    { label: 'Dias sem riscos novos', value: d?.diasSem.riscos, icon: AlertTriangle, color: '#3b82f6' },
-    { label: 'Dias sem não conformidades', value: d?.diasSem.naoConformidades, icon: FileWarning, color: '#8b5cf6' },
-    { label: 'Dias sem atualização malsucedida', value: d?.diasSem.attMalSucedidas, icon: RefreshCw, color: '#f59e0b' },
-  ];
+  // Rótulo da seção ativa (o seletor agora é o dropdown ▼ da aba "Gestão SG").
+  const secaoAtiva = SGSI_SECOES.find((s) => s.value === activeSecao) ?? SGSI_SECOES[0];
 
   return (
     <div className="space-y-4">
@@ -523,40 +561,11 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
         </div>
       )}
 
-      {/* ── Gestão à vista — dias sem ocorrências ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {diasSemCards.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="rounded-xl border border-border bg-card px-4 py-3">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1 rounded-md" style={{ background: `${color}15` }}>
-                <Icon className="h-3 w-3" style={{ color }} />
-              </div>
-              <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
-            </div>
-            {isLoading ? <Skeleton className="h-8 w-16" /> : (
-              <span className="text-3xl font-bold font-mono" style={{ color }}>{value ?? '—'}</span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* ── Seletor de seções (pills) ── */}
-      <div className="flex flex-wrap gap-1.5 rounded-xl border border-border bg-muted/30 p-1.5">
-        {SGSI_SECOES.map(({ value, label, badge, Icon }) => {
-          const on = activeSecao === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => gotoSecao(value)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${on ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-background/50'}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-              <span className={`font-mono text-[10px] ${on ? 'text-primary' : 'text-muted-foreground/60'}`}>{badge}</span>
-            </button>
-          );
-        })}
+      {/* ── Rótulo da seção ativa (troca de seção pelo dropdown ▼ da aba Gestão SG) ── */}
+      <div className="flex items-center gap-2 border-b border-border pb-2">
+        <secaoAtiva.Icon className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-sm font-bold tracking-tight">{secaoAtiva.label}</span>
+        <span className="font-mono text-[10px] text-muted-foreground/70">SG-LST-{secaoAtiva.badge}</span>
       </div>
 
       {d && d.totalItens === 0 && d.totalItensBase > 0 ? (
@@ -566,25 +575,27 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
 
         {/* ── Mudanças (SG-LST-010) ── */}
         <TabsContent value="mudancas" className="space-y-3 mt-0">
-          <div className="grid grid-cols-3 gap-3">
-            <KpiTile label="Solicitações" value={d?.mudancas.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
-            <KpiTile label="Concluídas" value={d ? `${pct(d.mudancas.concluidos, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.concluidos} itens`} color="#10b981" onClick={() => toggleDrill('mud:concluidas')} active={drill === 'mud:concluidas'} />
-            <KpiTile label="Pendentes" value={d ? `${pct(d.mudancas.pendentes, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.pendentes} itens`} color="#f59e0b" onClick={() => toggleDrill('mud:pendentes')} active={drill === 'mud:pendentes'} />
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-            <MiniStat label="Aguardando Gestor" value={d?.mudancas.aguardandoGestor ?? '—'} tone="#8b5cf6" />
-            <MiniStat label="Aguardando TI" value={d?.mudancas.aguardandoTI ?? '—'} tone="#3b82f6" />
-            <MiniStat label="Atualização OK" value={d ? `${pct(d.mudancas.atualizacoesBemSucedidas.sim, d.mudancas.atualizacoesBemSucedidas.sim + d.mudancas.atualizacoesBemSucedidas.nao)}%` : '—'} tone="#10b981" />
-            <MiniStat label="Validação e testes" value={d ? `${pct(d.mudancas.validacaoTestes.sim, d.mudancas.validacaoTestes.sim + d.mudancas.validacaoTestes.nao)}%` : '—'} tone="#10b981" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <GroupCard title="Solicitações · Concluídas · Pendentes" cols={3}>
+              <KpiTile bare label="Solicitações" value={d?.mudancas.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
+              <KpiTile bare label="Concluídas" value={d ? `${pct(d.mudancas.concluidos, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.concluidos} itens`} color="#10b981" onClick={() => toggleDrill('mud:concluidas')} active={drill === 'mud:concluidas'} />
+              <KpiTile bare label="Pendentes" value={d ? `${pct(d.mudancas.pendentes, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.pendentes} itens`} color="#f59e0b" onClick={() => toggleDrill('mud:pendentes')} active={drill === 'mud:pendentes'} />
+            </GroupCard>
+            <GroupCard title="Status" cols={4}>
+              <KpiTile bare label="Aguardando Gestor" value={d?.mudancas.aguardandoGestor ?? '—'} color="#8b5cf6" />
+              <KpiTile bare label="Aguardando TI" value={d?.mudancas.aguardandoTI ?? '—'} color="#3b82f6" />
+              <KpiTile bare label="Atualização" value={d ? `${pct(d.mudancas.atualizacoesBemSucedidas.sim, d.mudancas.atualizacoesBemSucedidas.sim + d.mudancas.atualizacoesBemSucedidas.nao)}%` : '—'} color="#10b981" />
+              <KpiTile bare label="Testes" value={d ? `${pct(d.mudancas.validacaoTestes.sim, d.mudancas.validacaoTestes.sim + d.mudancas.validacaoTestes.nao)}%` : '—'} color="#10b981" />
+            </GroupCard>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <MiniDonut title="Por status" data={d?.mudancas.porStatus} isLoading={isLoading} />
-            <MiniBars title="Por ambiente" data={d?.mudancas.porAmbiente} isLoading={isLoading} />
+            <MiniDonut title="Por status" data={d?.mudancas.porStatus} isLoading={isLoading} onSelect={setQ} />
+            <MiniBars title="Por ambiente" data={d?.mudancas.porAmbiente} isLoading={isLoading} onSelect={setQ} />
           </div>
           <MaisAnalises>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <MiniDonut title="Por risco" data={d?.mudancas.porRisco} isLoading={isLoading} />
-              <MiniBars title="Por categoria" data={d?.mudancas.porCategoria} isLoading={isLoading} />
+              <MiniDonut title="Por risco" data={d?.mudancas.porRisco} isLoading={isLoading} onSelect={setQ} />
+              <MiniBars title="Por categoria" data={d?.mudancas.porCategoria} isLoading={isLoading} onSelect={setQ} />
             </div>
           </MaisAnalises>
           <SgTable
@@ -625,8 +636,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
             <MiniStat label="Dentro do SLA" value={d?.incidentes.pctDentroSla != null ? `${d.incidentes.pctDentroSla}%` : '—'} tone="#10b981" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <MiniDonut title="SLA" data={d?.incidentes.porSLA} isLoading={isLoading} />
-            <MiniDonut title="Por categoria" data={d?.incidentes.porCategoria} isLoading={isLoading} />
+            <MiniDonut title="SLA" data={d?.incidentes.porSLA} isLoading={isLoading} onSelect={setQ} />
+            <MiniDonut title="Por categoria" data={d?.incidentes.porCategoria} isLoading={isLoading} onSelect={setQ} />
           </div>
           <SgTable
             title={`Incidentes${drillBadge}`}
@@ -662,15 +673,15 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
             <SimNaoTile label="Plano de tratamento eficaz" valor={d?.riscos.tratamentoEficaz} isLoading={isLoading} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <MiniDonut title="Por status" data={d?.riscos.porStatus} isLoading={isLoading} />
-            <MiniBars title="Por ambiente" data={d?.riscos.porAmbiente} isLoading={isLoading} />
+            <MiniDonut title="Por status" data={d?.riscos.porStatus} isLoading={isLoading} onSelect={setQ} />
+            <MiniBars title="Por ambiente" data={d?.riscos.porAmbiente} isLoading={isLoading} onSelect={setQ} />
           </div>
           <MaisAnalises>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-              <MiniDonut title="CID afetado" data={d?.riscos.porCID} isLoading={isLoading} />
-              <MiniDonut title="Categoria da ameaça" data={d?.riscos.porCategoriaAmeaca} isLoading={isLoading} />
-              <MiniDonut title="Tipo de ameaça" data={d?.riscos.porTipoAmeaca} isLoading={isLoading} />
-              <MiniBars title="O que o risco afeta" data={d?.riscos.porAtivoAfetado} isLoading={isLoading} />
+              <MiniDonut title="CID afetado" data={d?.riscos.porCID} isLoading={isLoading} onSelect={setQ} />
+              <MiniDonut title="Categoria da ameaça" data={d?.riscos.porCategoriaAmeaca} isLoading={isLoading} onSelect={setQ} />
+              <MiniDonut title="Tipo de ameaça" data={d?.riscos.porTipoAmeaca} isLoading={isLoading} onSelect={setQ} />
+              <MiniBars title="O que o risco afeta" data={d?.riscos.porAtivoAfetado} isLoading={isLoading} onSelect={setQ} />
             </div>
           </MaisAnalises>
           <SgTable
@@ -710,8 +721,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
               </div>
               <SimNaoTile label="Tratamento eficaz" valor={d?.naoConformidades.tratamentoEficaz} isLoading={isLoading} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <MiniDonut title="Por status" data={d?.naoConformidades.porStatus} isLoading={isLoading} />
-                <MiniBars title="Causa raiz" data={d?.naoConformidades.porCausaRaiz} isLoading={isLoading} />
+                <MiniDonut title="Por status" data={d?.naoConformidades.porStatus} isLoading={isLoading} onSelect={setQ} />
+                <MiniBars title="Causa raiz" data={d?.naoConformidades.porCausaRaiz} isLoading={isLoading} onSelect={setQ} />
               </div>
               <SgTable
                 title={`NC${drillBadge}`}
@@ -743,8 +754,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
                 <KpiTile label="Eficazes" value={d?.melhorias.eficazes ?? '—'} sub={d && `${pct(d.melhorias.eficazes, d.melhorias.total)}% do total`} color="#10b981" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <MiniDonut title="Por status" data={d?.melhorias.porStatus} isLoading={isLoading} />
-                <MiniBars title="Processo afetado" data={d?.melhorias.porAmbiente} isLoading={isLoading} />
+                <MiniDonut title="Por status" data={d?.melhorias.porStatus} isLoading={isLoading} onSelect={setQ} />
+                <MiniBars title="Processo afetado" data={d?.melhorias.porAmbiente} isLoading={isLoading} onSelect={setQ} />
               </div>
               <SgTable
                 title="OM recentes"
@@ -781,9 +792,9 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
             <MiniStat label="Acesso TS" value={d?.acessos.acessoTS.sim ?? '—'} tone="#8b5cf6" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <MiniDonut title="Por status" data={d?.acessos.porStatus} isLoading={isLoading} />
-            <MiniBars title="Tipo de solicitação" data={d?.acessos.porTipo} isLoading={isLoading} />
-            <MiniBars title="Por projeto" data={d?.acessos.porProjeto} isLoading={isLoading} />
+            <MiniDonut title="Por status" data={d?.acessos.porStatus} isLoading={isLoading} onSelect={setQ} />
+            <MiniBars title="Tipo de solicitação" data={d?.acessos.porTipo} isLoading={isLoading} onSelect={setQ} />
+            <MiniBars title="Por projeto" data={d?.acessos.porProjeto} isLoading={isLoading} onSelect={setQ} />
           </div>
           <SgTable
             title={`Solicitações de acesso${drillBadge}`}

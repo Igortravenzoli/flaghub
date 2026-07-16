@@ -178,9 +178,12 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
       });
   })();
 
-  const countByTag = (tag: string) => items.filter(i => i.tags?.toUpperCase().includes(tag.toUpperCase())).length;
+  const hasTag = (i: InfraItem, tag: string) => i.tags?.toUpperCase().includes(tag.toUpperCase()) ?? false;
+  const countByTag = (tag: string) => items.filter(i => hasTag(i, tag)).length;
   const melhorias = countByTag('MELHORIA');
   const iso27001 = countByTag('ISO27001') + countByTag('ISO');
+  // Riscos mapeados no board DevOps pela tag #Risco (combina com os riscos do SG-LST-012).
+  const riscoItens = items.filter(i => hasTag(i, 'RISCO'));
   const sprintMigracoes = items.reduce((sum, i) => sum + (i.sprint_migration_count || 0), 0);
   const transbordo = items.reduce((sum, i) => sum + (i.real_overflow_count || 0), 0);
 
@@ -196,6 +199,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
     concluidos,
     melhorias,
     iso27001,
+    riscoItens,
     sprintMigracoes,
     transbordo,
     backlog,

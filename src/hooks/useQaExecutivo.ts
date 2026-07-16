@@ -71,10 +71,25 @@ export function useQaExecRetornosDistribuicao(year: number) {
 }
 
 // ── Controle de versão de sistemas (qualidade_sistema_versions) ──────────────
+/** Ambientes onde a versão atual de um sistema pode estar aplicada. */
+export const SISTEMA_AMBIENTES = [
+  'Brk Prod', 'Brk PA', 'SX', 'S1', 'S4', 'S6', 'Froneri', 'Nespresso',
+] as const;
+export type SistemaAmbiente = (typeof SISTEMA_AMBIENTES)[number];
+
 export interface SistemaVersao {
   id: string;
   sistema_nome: string;
+  /** Versão atual em evidência (produção corrente). */
   versao_atual: string;
+  /** Versão imediatamente anterior à atual. */
+  versao_anterior: string | null;
+  /** Próxima versão / versão nova a ser liberada. */
+  versao_nova: string | null;
+  /** Data prevista/realizada da versão nova (YYYY-MM-DD). */
+  data_nova_versao: string | null;
+  /** Ambientes onde a versão atual está aplicada. */
+  ambientes: string[];
   ordem: number;
   notas: string | null;
   is_active: boolean;
@@ -103,7 +118,16 @@ export function useSistemaVersaoMutations() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['qualidade-sistema-versions'] });
 
   const create = useMutation({
-    mutationFn: async (v: { sistema_nome: string; versao_atual: string; ordem?: number; notas?: string | null }) => {
+    mutationFn: async (v: {
+      sistema_nome: string;
+      versao_atual: string;
+      versao_anterior?: string | null;
+      versao_nova?: string | null;
+      data_nova_versao?: string | null;
+      ambientes?: string[];
+      ordem?: number;
+      notas?: string | null;
+    }) => {
       const { error } = await (supabase as any).from('qualidade_sistema_versions').insert(v);
       if (error) throw error;
     },
