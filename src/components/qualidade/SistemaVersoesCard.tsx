@@ -3,14 +3,17 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from '@/components/ui/dialog';
-import { Boxes, Pencil, Trash2, Plus, Lock } from 'lucide-react';
+import { Boxes, Pencil, Trash2, Plus, Lock, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  useQualidadeSistemaVersions, useSistemaVersaoMutations, type SistemaVersao,
+  useQualidadeSistemaVersions, useSistemaVersaoMutations, SISTEMA_AMBIENTES,
+  type SistemaVersao,
 } from '@/hooks/useQaExecutivo';
 
 interface SistemaVersoesCardProps {
@@ -21,12 +24,26 @@ interface SistemaVersoesCardProps {
 interface FormState {
   id?: string;
   sistema_nome: string;
+  versao_anterior: string;
   versao_atual: string;
+  versao_nova: string;
+  data_nova_versao: string;
+  ambientes: string[];
   ordem: number;
   notas: string;
 }
 
-const EMPTY: FormState = { sistema_nome: '', versao_atual: '', ordem: 0, notas: '' };
+const EMPTY: FormState = {
+  sistema_nome: '', versao_anterior: '', versao_atual: '', versao_nova: '',
+  data_nova_versao: '', ambientes: [], ordem: 0, notas: '',
+};
+
+/** Formata 'YYYY-MM-DD' → 'DD/MM/YYYY' sem passar por Date (evita shift de fuso). */
+function fmtData(iso: string | null): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
 
 export function SistemaVersoesCard({ canManage = false }: SistemaVersoesCardProps) {
   const { data: sistemas = [], isLoading } = useQualidadeSistemaVersions();
@@ -38,20 +55,39 @@ export function SistemaVersoesCard({ canManage = false }: SistemaVersoesCardProp
 
   const openCreate = () => { setForm({ ...EMPTY, ordem: (sistemas.at(-1)?.ordem ?? 0) + 10 }); setOpen(true); };
   const openEdit = (s: SistemaVersao) => {
-    setForm({ id: s.id, sistema_nome: s.sistema_nome, versao_atual: s.versao_atual, ordem: s.ordem, notas: s.notas ?? '' });
+    setForm({
+      id: s.id,
+      sistema_nome: s.sistema_nome,
+      versao_anterior: s.versao_anterior ?? '',
+      versao_atual: s.versao_atual,
+      versao_nova: s.versao_nova ?? '',
+      data_nova_versao: s.data_nova_versao?.slice(0, 10) ?? '',
+      ambientes: s.ambientes ?? [],
+      ordem: s.ordem,
+      notas: s.notas ?? '',
+    });
     setOpen(true);
   };
 
   const handleSave = async () => {
     const nome = form.sistema_nome.trim();
     if (!nome) { toast.error('Informe o nome do sistema.'); return; }
-    const versao = form.versao_atual.trim() || '—';
+    const payload = {
+      sistema_nome: nome,
+      versao_atual: form.versao_atual.trim() || '—',
+      versao_anterior: form.versao_anterior.trim() || null,
+      versao_nova: form.versao_nova.trim() || null,
+      data_nova_versao: form.data_nova_versao || null,
+      ambientes: form.ambientes,
+      ordem: form.ordem,
+      notas: form.notas.trim() || null,
+    };
     try {
       if (isEdit) {
-        await update.mutateAsync({ id: form.id!, updates: { sistema_nome: nome, versao_atual: versao, ordem: form.ordem, notas: form.notas.trim() || null } });
+        await update.mutateAsync({ id: form.id!, updates: payload });
         toast.success('Versão atualizada.');
       } else {
-        await create.mutateAsync({ sistema_nome: nome, versao_atual: versao, ordem: form.ordem, notas: form.notas.trim() || null });
+        await create.mutateAsync(payload);
         toast.success('Sistema cadastrado.');
       }
       setOpen(false);
@@ -89,7 +125,7 @@ export function SistemaVersoesCard({ canManage = false }: SistemaVersoesCardProp
                 <Plus className="h-3.5 w-3.5" /> Novo
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[420px]">
+            <DialogContent className="sm:max-w-[520px]">
               <DialogHeader>
                 <DialogTitle>{isEdit ? 'Editar sistema' : 'Novo sistema'}</DialogTitle>
               </DialogHeader>
@@ -99,19 +135,58 @@ export function SistemaVersoesCard({ canManage = false }: SistemaVersoesCardProp
                   <Input id="sv-nome" placeholder="ex: Flexx" value={form.sistema_nome}
                     onChange={(e) => setForm((f) => ({ ...f, sistema_nome: e.target.value }))} />
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="sv-versao" className="text-xs">Versão atual</Label>
-                  <Input id="sv-versao" placeholder="ex: 1.65.1" value={form.versao_atual}
-                    onChange={(e) => setForm((f) => ({ ...f, versao_atual: e.target.value }))} />
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="sv-anterior" className="text-xs">Versão anterior</Label>
+                    <Input id="sv-anterior" placeholder="ex: 1.64.0" value={form.versao_anterior}
+                      onChange={(e) => setForm((f) => ({ ...f, versao_anterior: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="sv-versao" className="text-xs">Versão atual <span className="text-primary">•</span></Label>
+                    <Input id="sv-versao" placeholder="ex: 1.65.1" value={form.versao_atual}
+                      onChange={(e) => setForm((f) => ({ ...f, versao_atual: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="sv-nova" className="text-xs">Versão nova</Label>
+                    <Input id="sv-nova" placeholder="ex: 1.66.0" value={form.versao_nova}
+                      onChange={(e) => setForm((f) => ({ ...f, versao_nova: e.target.value }))} />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="sv-ordem" className="text-xs">Ordem de exibição</Label>
-                  <Input id="sv-ordem" type="number" value={form.ordem}
-                    onChange={(e) => setForm((f) => ({ ...f, ordem: Number(e.target.value) || 0 }))} />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="sv-data" className="text-xs">Data nova versão</Label>
+                    <Input id="sv-data" type="date" value={form.data_nova_versao}
+                      onChange={(e) => setForm((f) => ({ ...f, data_nova_versao: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="sv-ordem" className="text-xs">Ordem de exibição</Label>
+                    <Input id="sv-ordem" type="number" value={form.ordem}
+                      onChange={(e) => setForm((f) => ({ ...f, ordem: Number(e.target.value) || 0 }))} />
+                  </div>
                 </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Ambientes (versão atual)</Label>
+                  <ToggleGroup
+                    type="multiple"
+                    value={form.ambientes}
+                    onValueChange={(v) => setForm((f) => ({ ...f, ambientes: v }))}
+                    className="flex-wrap justify-start gap-1"
+                  >
+                    {SISTEMA_AMBIENTES.map((amb) => (
+                      <ToggleGroupItem key={amb} value={amb} size="sm"
+                        className="h-7 px-2 text-[11px] data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+                        {amb}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                </div>
+
                 <div className="space-y-1">
                   <Label htmlFor="sv-notas" className="text-xs">Notas (opcional)</Label>
-                  <Input id="sv-notas" placeholder="changelog, data de deploy…" value={form.notas}
+                  <Input id="sv-notas" placeholder="changelog, observações…" value={form.notas}
                     onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))} />
                 </div>
               </div>
@@ -135,35 +210,72 @@ export function SistemaVersoesCard({ canManage = false }: SistemaVersoesCardProp
       ) : sistemas.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nenhum sistema cadastrado.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-xs">Sistema</TableHead>
-              <TableHead className="text-xs">Versão atual</TableHead>
-              {canManage && <TableHead className="text-xs w-[80px] text-right">Ações</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sistemas.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell className="font-medium">{s.sistema_nome}</TableCell>
-                <TableCell className="font-mono">{s.versao_atual}</TableCell>
-                {canManage && (
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(s)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(s)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                )}
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs">Sistema</TableHead>
+                <TableHead className="text-xs">Anterior</TableHead>
+                <TableHead className="text-xs">Atual</TableHead>
+                <TableHead className="text-xs">Nova</TableHead>
+                <TableHead className="text-xs">Ambientes</TableHead>
+                {canManage && <TableHead className="text-xs w-[80px] text-right">Ações</TableHead>}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {sistemas.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-medium whitespace-nowrap">{s.sistema_nome}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                    {s.versao_anterior || '—'}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="font-mono font-semibold">{s.versao_atual}</span>
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" title="em evidência" />
+                    </span>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {s.versao_nova ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <ArrowRight className="h-3 w-3" />
+                        <span className="font-mono text-foreground">{s.versao_nova}</span>
+                        {s.data_nova_versao && <span className="text-[10px]">· {fmtData(s.data_nova_versao)}</span>}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {s.ambientes?.length ? (
+                      <div className="flex flex-wrap gap-1">
+                        {s.ambientes.map((amb) => (
+                          <Badge key={amb} variant="secondary" className="px-1.5 py-0 text-[10px] font-normal">
+                            {amb}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
+                  {canManage && (
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(s)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDelete(s)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </Card>
   );

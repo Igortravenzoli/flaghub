@@ -3,8 +3,9 @@ import { vi } from 'vitest';
 import type { BIInfraSgsiResponse } from '@/hooks/useBIInfra';
 
 // Mock do hook de dados — o painel é testado com um snapshot representativo,
-// sem Supabase. Validamos a IA refatorada: busca global cross-seção, pills de
-// seção, coluna OS destacada, top-5 de ambientes com expandir e o drawer.
+// sem Supabase. Validamos a IA refatorada: busca global cross-seção, rótulo da
+// seção ativa (troca via dropdown da aba), coluna OS destacada, top-5 de
+// ambientes com expandir e o drawer.
 const mockData: BIInfraSgsiResponse = {
   success: true,
   message: 'mock',
@@ -73,14 +74,12 @@ vi.mock('@/hooks/useBIInfra', () => ({
 import { BIInfraSgsiPanel } from '@/components/infraestrutura/BIInfraSgsiPanel';
 
 describe('BIInfraSgsiPanel — IA refatorada', () => {
-  it('renderiza cabeçalho, busca global e pills de seção', () => {
+  it('renderiza cabeçalho, busca global e rótulo da seção ativa', () => {
     render(<BIInfraSgsiPanel secao="mudancas" />);
     expect(screen.getByText('Gestão SG · Listas SharePoint')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Buscar OS, chamado, protocolo/i)).toBeInTheDocument();
-    // pills das 5 seções
-    ['Mudanças', 'Incidentes', 'Riscos', 'NC & Melhorias', 'Acessos'].forEach((label) =>
-      expect(screen.getByRole('button', { name: new RegExp(label) })).toBeInTheDocument()
-    );
+    // rótulo da seção ativa — a troca de seção agora é pelo dropdown ▼ da aba
+    expect(screen.getByText('SG-LST-010')).toBeInTheDocument();
   });
 
   it('coluna OS destacada aparece na tabela de mudanças', () => {
@@ -115,9 +114,8 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
     expect(within(dialog).getByText('OS-9001')).toBeInTheDocument();
   });
 
-  it('troca de seção via pill revela a tabela de acessos', () => {
-    render(<BIInfraSgsiPanel secao="mudancas" />);
-    fireEvent.click(screen.getByRole('button', { name: /Acessos/ }));
+  it('seção acessos (semeada pelo dropdown da aba) revela a tabela de acessos', () => {
+    render(<BIInfraSgsiPanel secao="acessos" />);
     expect(screen.getByText('OS / Solicitação')).toBeInTheDocument();
     expect(screen.getByText('ACS-700')).toBeInTheDocument();
   });

@@ -289,14 +289,21 @@ export function DevopsCoberturaPanel() {
               <div className="space-y-1.5">
                 {novasTri.criadas.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Nenhuma pipeline criada neste trimestre (com base em createdDate das definitions).</p>
-                ) : novasTri.criadas.slice(0, 6).map(p => (
-                  <div key={`${p.repo}-${p.nome}`} className="flex items-center gap-2 text-xs">
-                    <Workflow className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                    <span className="font-mono font-semibold truncate">{p.nome}</span>
-                    <span className="text-muted-foreground truncate">· {p.projeto}/{p.repo}</span>
-                    <span className="text-muted-foreground ml-auto shrink-0">{fmtDate(p.criadaEm)}</span>
-                  </div>
-                ))}
+                ) : (
+                  <>
+                    {novasTri.criadas.slice(0, 6).map(p => (
+                      <div key={`${p.repo}-${p.nome}`} className="flex items-center gap-2 text-xs">
+                        <Workflow className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        <span className="font-mono font-semibold truncate">{p.nome}</span>
+                        <span className="text-muted-foreground truncate">· {p.projeto}/{p.repo}</span>
+                        <span className="text-muted-foreground ml-auto shrink-0">{fmtDate(p.criadaEm)}</span>
+                      </div>
+                    ))}
+                    {novasTri.criadas.length > 6 && (
+                      <p className="text-xs text-muted-foreground pl-6">+{novasTri.criadas.length - 6} outras pipelines/repos atuados</p>
+                    )}
+                  </>
+                )}
               </div>
             </>
           )}

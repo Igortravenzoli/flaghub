@@ -25,7 +25,8 @@ export function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMess
     if (next.has(name)) next.delete(name); else next.add(name);
     return next;
   });
-  const maxHours = data.length > 0 ? data[0].hours : 1;
+  // Guarda contra divisor 0/NaN (itens com 0h ⇒ largura Infinity ⇒ estouro da caixa).
+  const maxHours = Math.max(1, data[0]?.hours ?? 1);
 
   if (isLoading) {
     return (
@@ -85,17 +86,17 @@ export function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMess
               <div className={`group flex items-stretch gap-1 rounded-md px-1 py-1 transition-colors ${isActive ? 'ring-1 ring-primary bg-muted/40' : ''}`}>
                 <button
                   type="button"
-                  className={`flex-1 text-left ${onItemClick ? 'cursor-pointer hover:bg-muted/50 rounded-sm' : ''}`}
+                  className={`flex-1 min-w-0 text-left ${onItemClick ? 'cursor-pointer hover:bg-muted/50 rounded-sm' : ''}`}
                   onClick={() => onItemClick?.(item)}
                 >
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-foreground font-medium truncate max-w-[60%]">{item.name}</span>
-                    <span className="text-muted-foreground font-mono text-xs">{item.hours}h</span>
+                  <div className="flex items-center justify-between gap-2 min-w-0 text-sm mb-1">
+                    <span className="text-foreground font-medium truncate min-w-0">{item.name}</span>
+                    <span className="text-muted-foreground font-mono text-xs shrink-0">{item.hours}h</span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-700 ease-out"
-                      style={{ width: `${Math.max(4, (item.hours / maxHours) * 100)}%`, background: color }}
+                      style={{ width: `${Math.min(100, Math.max(4, (item.hours / maxHours) * 100))}%`, background: color }}
                     />
                   </div>
                 </button>
