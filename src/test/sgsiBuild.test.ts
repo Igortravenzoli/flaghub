@@ -44,6 +44,8 @@ describe('buildSgsiResponse', () => {
     item('010', 12, { Status: 'Aguardando aprovação TI', 'Título': ['Broker PA', 'Broker PROD'], Risco: 'Alto', 'Atualizações bem sucedidas': 'Não', 'Solicitante atualização': 'Paula', 'Criado por': 'Bruno' }, '2026-06-01T08:00:00Z'),
     item('010', 13, { Status: 'Aguardando aprovação Gestores', 'Título': ['Staging Área PROD'] }, '2026-06-05T08:00:00Z'),
     item('010', 14, { Status: 'Rejeitado' }, '2026-04-10T08:00:00Z'),
+    // "Título" pode chegar como STRING JSON de array (visto em prod: ["Froneri"])
+    item('010', 15, { Status: 'Rejeitado', 'Título': '["Froneri"]' }, '2026-03-02T08:00:00Z'),
     // 017 — incidentes (último criado em 06/06 → 5 dias sem incidentes em 11/06;
     // o campo "Data e hora inicio Incidente" é texto livre e não conta p/ diasSem)
     item('017', 21, { Status: 'Resolvido', SLA: 'Dentro do SLA', Categoria: 'Disponibilidade', Protocolo: 'INC-21', 'Data e hora inicio Incidente': 'Dia: 06/06/2026 - Horário: 03h00', 'Tempo Downtime': '2,5' }, '2026-06-06T03:00:00Z'),
@@ -66,8 +68,10 @@ describe('buildSgsiResponse', () => {
   const r = buildSgsiResponse(rows, '2026-06-11T11:00:00Z', NOW);
 
   it('separa os blocos por lista e calcula os KPIs de mudanças', () => {
-    expect(r.totalItens).toBe(14);
-    expect(r.mudancas.total).toBe(4);
+    expect(r.totalItens).toBe(15);
+    expect(r.mudancas.total).toBe(5);
+    // string JSON de array vira valor limpo (sem colchetes/aspas)
+    expect(r.mudancas.itens.find(i => i.id === 15)?.ambiente).toBe('Froneri');
     expect(r.mudancas.concluidos).toBe(1);          // Realizado
     expect(r.mudancas.pendentes).toBe(2);           // exclui Realizado e Rejeitado
     expect(r.mudancas.aguardandoTI).toBe(1);
@@ -142,8 +146,8 @@ describe('buildSgsiResponse', () => {
     // 010 no período: itens 12 (01/06) e 13 (05/06); fora: 11 (01/05) e 14 (10/04)
     expect(f.mudancas.total).toBe(2);
     expect(f.mudancas.concluidos).toBe(0);
-    expect(f.totalItensBase).toBe(14);
-    expect(f.totalItens).toBeLessThan(14);
+    expect(f.totalItensBase).toBe(15);
+    expect(f.totalItens).toBeLessThan(15);
 
     // "dias sem" continua atemporal: último incidente 06/06 → 5 dias
     expect(f.diasSem.incidentes).toBe(5);

@@ -99,8 +99,12 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   const ultimasSprints = useMemo(() => kpis.doneBySprint.slice(-3), [kpis.doneBySprint]);
 
   // ── Ocorrências recentes (SG-LST) e riscos combinados (SG + DevOps #Risco) ──
+  // Ordenação por data PARSEADA (toDate): "inicio" mistura ISO e texto livre
+  // ("Dia: 09/10/2023 - 06h27") — comparação de string colocaria 2023 na frente.
+  const tsInicio = (i: SgIncidenteItem) => toDate(i.inicio)?.getTime() ?? 0;
   const incidentesRecentes: SgIncidenteItem[] = useMemo(
-    () => (sgsiBase?.incidentes.itens ?? []).filter((i) => within30d(i.inicio)).sort((a, b) => (b.inicio ?? '').localeCompare(a.inicio ?? '')),
+    () => (sgsiBase?.incidentes.itens ?? []).filter((i) => within30d(i.inicio)).sort((a, b) => tsInicio(b) - tsInicio(a)),
+     
     [sgsiBase],
   );
   const riscosSg: SgRiscoItem[] = useMemo(
@@ -115,7 +119,8 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   const risco30Exec = sgsiBase?.riscos.pctResolvido30d ?? null;
   const corSlaExec = (p: number | null) => (p == null ? undefined : p > 90 ? '#16a34a' : p >= 80 ? '#f59e0b' : '#ef4444');
   const ultimoIncidente: SgIncidenteItem | undefined = useMemo(
-    () => [...(sgsiBase?.incidentes.itens ?? [])].sort((a, b) => (b.inicio ?? '').localeCompare(a.inicio ?? ''))[0],
+    () => [...(sgsiBase?.incidentes.itens ?? [])].sort((a, b) => tsInicio(b) - tsInicio(a))[0],
+     
     [sgsiBase],
   );
   const mudStats = useMemo(() => {
@@ -228,7 +233,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   const cardMudancas = (tv: boolean) => {
     const amostra = tv ? [...mudStats.concluidas.slice(0, 3), ...mudStats.pendentes.slice(0, 1)] : mudAmostra;
     return (
-      <BlocoCard icon={RefreshCw} titulo={`Gestão de Mudanças · ${periodLabel ?? 'período selecionado'}`} className={tv ? 'flex-none' : undefined}>
+      <BlocoCard icon={RefreshCw} titulo={`Gestão de Mudanças · ${periodLabel ?? 'período selecionado'}`} className={tv ? 'flex-[2] min-h-0 overflow-hidden' : undefined}>
         {tv ? (
           <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
             <span className="text-sm text-muted-foreground">Solicitações <b className="font-mono text-lg text-foreground">{mudStats.total}</b></span>
@@ -263,7 +268,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
         {amostra.length === 0 ? (
           <p className="text-sm text-muted-foreground py-3 text-center">Nenhuma mudança no período selecionado.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
+          <div className={`overflow-x-auto rounded-lg border ${tv ? 'flex-1 min-h-0 overflow-y-hidden' : ''}`}>
             <table className="w-full text-xs">
               <thead className="border-b bg-muted/30">
                 <tr className="text-muted-foreground text-[10px] uppercase tracking-wider">
@@ -367,13 +372,13 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           </div>
         </BlocoCard>
 
-        {/* Incidentes | Riscos lado a lado (flex-1) */}
-        <div className="flex-1 min-h-0 grid grid-cols-2 gap-3">
+        {/* Incidentes | Riscos lado a lado — prioridade de altura (3:2 vs Mudanças) */}
+        <div className="flex-[3] min-h-0 grid grid-cols-2 gap-3">
           {cardIncidentes(true)}
           {cardRiscos(true)}
         </div>
 
-        {/* Mudanças da sprint (compacto) */}
+        {/* Mudanças da sprint (compacto; tabela corta internamente o que não couber) */}
         {cardMudancas(true)}
       </div>
     );

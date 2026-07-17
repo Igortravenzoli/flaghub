@@ -230,7 +230,8 @@ export interface SgsiRawItem {
 
 // ── Helpers puros (testáveis) ──────────────────────────────────────────
 
-/** Valores de um campo: colunas multi-escolha do SharePoint chegam como array. */
+/** Valores de um campo: colunas multi-escolha do SharePoint chegam como array
+ *  — ou como STRING JSON de array ('["Froneri"]'), que também expandimos. */
 function valuesOf(item: SgsiRawItem, ...names: string[]): string[] {
   for (const name of names) {
     const v = item.fields[name];
@@ -240,7 +241,20 @@ function valuesOf(item: SgsiRawItem, ...names: string[]): string[] {
       if (arr.length > 0) return arr;
       continue;
     }
-    if (typeof v === 'string') return [v];
+    if (typeof v === 'string') {
+      const s = v.trim();
+      if (s.startsWith('[') && s.endsWith(']')) {
+        try {
+          const arr = JSON.parse(s);
+          if (Array.isArray(arr)) {
+            const out = arr.map((x) => String(x)).filter(Boolean);
+            if (out.length > 0) return out;
+            continue;
+          }
+        } catch { /* texto normal que começa com colchete */ }
+      }
+      return [v];
+    }
     if (typeof v === 'number' || typeof v === 'boolean') return [String(v)];
   }
   return [];
