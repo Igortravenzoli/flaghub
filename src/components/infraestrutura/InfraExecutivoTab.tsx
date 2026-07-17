@@ -56,7 +56,13 @@ interface InfraExecutivoTabProps {
 function toDate(iso?: string | null): Date | null {
   if (!iso) return null;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (!Number.isNaN(d.getTime())) return d;
+  // Campos como "Data e hora inicio Incidente" são texto livre no SharePoint
+  // (ex.: "Dia: 09/10/2023 - 06h27") — extrai o primeiro dd/mm/aaaa.
+  const m = iso.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return null;
+  const livre = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return Number.isNaN(livre.getTime()) ? null : livre;
 }
 /** dd/mm a partir de ISO (sem shift de fuso relevante para exibição curta). */
 function fmtDia(iso?: string | null): string {
@@ -73,7 +79,12 @@ function within30d(iso?: string | null, ref: Date = new Date()): boolean {
 
 export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode }: InfraExecutivoTabProps) {
   const { data: repos = [], isLoading: reposLoading } = useDevopsRepos();
+  // Escopo da sprint/período selecionado — usado APENAS na amostra de Mudanças.
   const { data: sgsi } = useBIInfraSgsi(dateFrom, dateTo);
+  // Base completa — incidentes/riscos são "últimos 30 dias" e independem do
+  // filtro de sprint (senão o TV/executiva fica vazio quando a ocorrência caiu
+  // na sprint anterior).
+  const { data: sgsiBase } = useBIInfraSgsi();
 
   const cobertura = useMemo(() => computeCoberturaKpis(repos, 0), [repos]);
   const pipelinesTri = useMemo(() => countPipelinesNovasTrimestre(repos), [repos]);
@@ -89,23 +100,23 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
   // ── Ocorrências recentes (SG-LST) e riscos combinados (SG + DevOps #Risco) ──
   const incidentesRecentes: SgIncidenteItem[] = useMemo(
-    () => (sgsi?.incidentes.itens ?? []).filter((i) => within30d(i.inicio)).sort((a, b) => (b.inicio ?? '').localeCompare(a.inicio ?? '')),
-    [sgsi],
+    () => (sgsiBase?.incidentes.itens ?? []).filter((i) => within30d(i.inicio)).sort((a, b) => (b.inicio ?? '').localeCompare(a.inicio ?? '')),
+    [sgsiBase],
   );
   const riscosSg: SgRiscoItem[] = useMemo(
-    () => (sgsi?.riscos.itens ?? []).filter((r) => !/tratad|encerr|conclu|finaliz|rejeitad/i.test(r.status)),
-    [sgsi],
+    () => (sgsiBase?.riscos.itens ?? []).filter((r) => !/tratad|encerr|conclu|finaliz|rejeitad/i.test(r.status)),
+    [sgsiBase],
   );
   const riscosDevops: RiscoDevopsItem[] = kpis.riscoItens ?? [];
   const riscosCombinados = riscosSg.length + riscosDevops.length;
 
   // ── Layout aprovado (mock 17/07): Incidentes | Riscos + Mudanças da sprint ──
-  const incPctExec = sgsi?.incidentes.pctDentroSla ?? null;
-  const risco30Exec = sgsi?.riscos.pctResolvido30d ?? null;
+  const incPctExec = sgsiBase?.incidentes.pctDentroSla ?? null;
+  const risco30Exec = sgsiBase?.riscos.pctResolvido30d ?? null;
   const corSlaExec = (p: number | null) => (p == null ? undefined : p > 90 ? '#16a34a' : p >= 80 ? '#f59e0b' : '#ef4444');
   const ultimoIncidente: SgIncidenteItem | undefined = useMemo(
-    () => [...(sgsi?.incidentes.itens ?? [])].sort((a, b) => (b.inicio ?? '').localeCompare(a.inicio ?? ''))[0],
-    [sgsi],
+    () => [...(sgsiBase?.incidentes.itens ?? [])].sort((a, b) => (b.inicio ?? '').localeCompare(a.inicio ?? ''))[0],
+    [sgsiBase],
   );
   const mudStats = useMemo(() => {
     const itens = sgsi?.mudancas.itens ?? [];
@@ -131,9 +142,9 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   // ── Modo TV: 3 blocos — meta pipelines com alvos+atuados · incidentes SLA · riscos ──
   if (tvMode) {
     const corSla = (p: number) => (p > 90 ? '#16a34a' : p >= 80 ? '#f59e0b' : '#ef4444');
-    const incPct = sgsi?.incidentes.pctDentroSla ?? null;
+    const incPct = sgsiBase?.incidentes.pctDentroSla ?? null;
     const incTop = incidentesRecentes.slice(0, 3);
-    const riscoPct = sgsi?.riscos.pctResolvido30d ?? null;
+    const riscoPct = sgsiBase?.riscos.pctResolvido30d ?? null;
     return (
       <div className="space-y-4">
         <div>
@@ -206,13 +217,13 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
               <div className="w-[300px] flex-shrink-0">
                 <div className="flex items-end gap-3">
                   <p className="text-6xl font-bold font-mono leading-none" style={{ color: corSla(incPct ?? 0) }}>{incPct != null ? `${incPct}%` : '—'}</p>
-                  <p className="text-2xl font-mono text-muted-foreground pb-1">{sgsi?.incidentes.resolvidos ?? 0}/{sgsi?.incidentes.total ?? 0}</p>
+                  <p className="text-2xl font-mono text-muted-foreground pb-1">{sgsiBase?.incidentes.resolvidos ?? 0}/{sgsiBase?.incidentes.total ?? 0}</p>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">incidentes dentro do SLA · meta &gt; 90%</p>
                 <div className="h-2.5 rounded-full bg-muted overflow-hidden mt-2">
                   <div className="h-full rounded-full" style={{ width: `${Math.min(incPct ?? 0, 100)}%`, backgroundColor: corSla(incPct ?? 0) }} />
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-2">{sgsi?.diasSem.incidentes ?? '—'} dias sem incidentes</p>
+                <p className="text-[11px] text-muted-foreground mt-2">{sgsiBase?.diasSem.incidentes ?? '—'} dias sem incidentes</p>
               </div>
               <div className="flex-1 grid grid-cols-3 gap-3 border-l pl-6">
                 {incTop.length === 0 ? (
@@ -432,7 +443,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
         <BlocoCard icon={Activity} titulo="Gestão de Incidentes">
           <div className="flex items-end gap-3">
             <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(incPctExec) }}>
-              {sgsi?.diasSem.incidentes ?? '—'}
+              {sgsiBase?.diasSem.incidentes ?? '—'}
               <span className="text-sm text-muted-foreground font-sans font-normal"> dias sem incidentes</span>
             </p>
             {ultimoIncidente && (
@@ -449,7 +460,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
               <p className="text-[10px] text-muted-foreground">incidentes últimos 30 dias</p>
             </div>
             <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-              <p className="text-lg font-bold font-mono leading-tight">{sgsi?.incidentes.ativos ?? '—'}</p>
+              <p className="text-lg font-bold font-mono leading-tight">{sgsiBase?.incidentes.ativos ?? '—'}</p>
               <p className="text-[10px] text-muted-foreground">ativos agora</p>
             </div>
           </div>
@@ -472,7 +483,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
         <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos">
           <div className="flex items-end gap-3">
             <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(risco30Exec) }}>
-              {sgsi?.diasSem.riscos ?? '—'}
+              {sgsiBase?.diasSem.riscos ?? '—'}
               <span className="text-sm text-muted-foreground font-sans font-normal"> dias sem riscos novos</span>
             </p>
           </div>
@@ -486,7 +497,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
               <p className="text-[10px] text-muted-foreground">em aberto (SG + DevOps)</p>
             </div>
             <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-              <p className="text-lg font-bold font-mono leading-tight">{sgsi?.riscos.total ?? '—'}</p>
+              <p className="text-lg font-bold font-mono leading-tight">{sgsiBase?.riscos.total ?? '—'}</p>
               <p className="text-[10px] text-muted-foreground">riscos mapeados</p>
             </div>
           </div>
