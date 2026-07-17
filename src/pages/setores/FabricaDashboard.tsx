@@ -1159,7 +1159,7 @@ export default function FabricaDashboard() {
     };
 
     switch (fabKpiFilter) {
-      case 'in_progress': items = items.filter(i => isFabricaInProgress(i.state)); break;
+      case 'in_progress': items = items.filter(i => isFabricaInProgress(i.state) && !isEntregueState(i.state)); break;
       case 'todo': items = items.filter(i => isFabricaTodo(i.state)); break;
       case 'done': items = items.filter(i => isDone(i.state)); break;
       case 'entregue': items = filterByState(['Aguardando Teste', 'Em Teste', 'Aguardando Deploy']); break;
