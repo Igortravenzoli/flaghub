@@ -67,6 +67,10 @@ vi.mock('@/hooks/useDevopsCobertura', async (orig) => ({
 }));
 
 import { InfraExecutivoTab } from '@/components/infraestrutura/InfraExecutivoTab';
+import { TooltipProvider } from '@/components/ui/tooltip';
+
+// O app envolve tudo em TooltipProvider (App.tsx) — replicamos aqui p/ o olhinho.
+const renderTv = (ui: React.ReactElement) => render(<TooltipProvider>{ui}</TooltipProvider>);
 
 const kpis = {
   total: 10, concluidos: 5, emAndamento: 3, pendentes: 2,
@@ -78,7 +82,7 @@ const kpis = {
 
 describe('InfraExecutivoTab — modo TV (layout aprovado)', () => {
   it('"último" usa a data PARSEADA pt-BR — ontem ganha de texto livre 2023 e de dd/mm ambíguo', () => {
-    render(<InfraExecutivoTab kpis={kpis} tvMode periodLabel="S14-2026" />);
+    renderTv(<InfraExecutivoTab kpis={kpis} tvMode periodLabel="S14-2026" />);
     expect(screen.getByText(new RegExp(`último: ${ontemLabel} · Inc Broker`))).toBeInTheDocument();
     expect(screen.queryByText(/último: 09\/10/)).not.toBeInTheDocument();
     // "12/03/2026" NÃO pode virar 3 de dezembro (parse americano)
@@ -86,26 +90,26 @@ describe('InfraExecutivoTab — modo TV (layout aprovado)', () => {
   });
 
   it('exibe texto do incidente e solução no card de incidentes', () => {
-    render(<InfraExecutivoTab kpis={kpis} tvMode />);
+    renderTv(<InfraExecutivoTab kpis={kpis} tvMode />);
     expect(screen.getByText('Fila de integração travada no Broker')).toBeInTheDocument();
     expect(screen.getByText(/Reprocessamento da fila/)).toBeInTheDocument();
   });
 
   it('exibe solução no card de riscos e a quebra SG + DevOps', () => {
-    render(<InfraExecutivoTab kpis={kpis} tvMode />);
+    renderTv(<InfraExecutivoTab kpis={kpis} tvMode />);
     expect(screen.getByText(/Campanha de conscientização/)).toBeInTheDocument();
     expect(screen.getByText(/1 SG \+ 1 DevOps/)).toBeInTheDocument();
   });
 
   it('"dias sem riscos novos" pondera a task #Risco mais recente do DevOps', () => {
-    render(<InfraExecutivoTab kpis={kpis} tvMode />);
+    renderTv(<InfraExecutivoTab kpis={kpis} tvMode />);
     // SG diz 141 dias, mas a task DevOps foi criada ontem → contador = 1
     const bloco = screen.getByText('dias sem riscos novos').parentElement;
     expect(bloco?.textContent).toMatch(/^1\s*dias sem riscos novos/);
   });
 
   it('renderiza o card Gestão de Mudanças com KPIs e amostra no TV', () => {
-    render(<InfraExecutivoTab kpis={kpis} tvMode periodLabel="S14-2026" />);
+    renderTv(<InfraExecutivoTab kpis={kpis} tvMode periodLabel="S14-2026" />);
     expect(screen.getByText('Gestão de Mudanças · S14-2026')).toBeInTheDocument();
     expect(screen.getByText('770188')).toBeInTheDocument();
     expect(screen.getByText('Rejeitadas')).toBeInTheDocument();

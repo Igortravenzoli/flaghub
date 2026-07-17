@@ -4,8 +4,9 @@ import {
 } from 'recharts';
 import {
   Server, GitBranch, ShieldCheck, Wrench, CalendarClock, Workflow, Activity,
-  CheckCircle2, RefreshCw,
+  CheckCircle2, RefreshCw, Eye,
 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { BlocoCard, corMetaHigh } from '@/components/executivo/BlocoCard';
 import { useDevopsRepos, computeCoberturaKpis, countPipelinesNovasTrimestre } from '@/hooks/useDevopsCobertura';
 import { useBIInfraSgsi, type SgIncidenteItem, type SgRiscoItem, type SgMudancaItem } from '@/hooks/useBIInfra';
@@ -193,24 +194,28 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           <KpiLinha label="últimos 30 dias" valor={incidentesRecentes.length} />
           <KpiLinha label="ativos agora" valor={sgsiBase?.incidentes.ativos ?? '—'} />
         </div>
-        {/* Direita: listagem de incidentes com causa/solução */}
-        <div className="flex-1 min-w-0 border-l pl-4 space-y-2 overflow-hidden">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ocorrências recentes · incidente / solução</p>
+        {/* Direita: listagem de incidentes com causa/solução (scroll além de 3) */}
+        <div className="flex-1 min-w-0 border-l pl-4 flex flex-col gap-2 overflow-hidden">
+          <p className="flex-none text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ocorrências recentes · incidente / solução</p>
           {incidentesRecentes.length === 0 ? (
             <p className="text-[11px] text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
-          ) : incidentesRecentes.slice(0, 3).map((i) => {
-            const ok = /sim|dentro/i.test(i.sla);
-            // Causa: "Descrição incidente" quando preenchida; senão o "Motivo incidente".
-            const causa = i.descricao !== '—' && i.descricao !== i.titulo
-              ? i.descricao
-              : i.motivo !== '—' ? `Causa: ${i.motivo}` : undefined;
-            return (
-              <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
-                detalhe={causa}
-                solucao={i.solucao !== '—' ? i.solucao : undefined}
-                badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
-            );
-          })}
+          ) : (
+            <div className={`space-y-2 pr-1 overflow-y-auto ${tv ? 'flex-1 min-h-0' : 'max-h-56'}`}>
+              {incidentesRecentes.map((i) => {
+                const ok = /sim|dentro/i.test(i.sla);
+                // Causa: "Descrição incidente" quando preenchida; senão o "Motivo incidente".
+                const causa = i.descricao !== '—' && i.descricao !== i.titulo
+                  ? i.descricao
+                  : i.motivo !== '—' ? `Causa: ${i.motivo}` : undefined;
+                return (
+                  <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
+                    detalhe={causa}
+                    solucao={i.solucao !== '—' ? i.solucao : undefined}
+                    badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
       {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-017 · análise e tratamento de incidentes</p>}
@@ -232,21 +237,21 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           <KpiLinha label={`em aberto · ${riscosSg.length} SG + ${riscosDevops.length} DevOps`} valor={riscosCombinados} cor={riscosCombinados > 0 ? '#f59e0b' : undefined} />
           <KpiLinha label="riscos mapeados" valor={sgsiBase?.riscos.total ?? '—'} />
         </div>
-        {/* Direita: listagem de riscos com solução */}
-        <div className="flex-1 min-w-0 border-l pl-4 space-y-2 overflow-hidden">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Riscos · situação / solução</p>
+        {/* Direita: listagem de riscos com solução (scroll além de 3) */}
+        <div className="flex-1 min-w-0 border-l pl-4 flex flex-col gap-2 overflow-hidden">
+          <p className="flex-none text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Riscos · situação / solução</p>
           {riscosCombinados === 0 ? (
             <p className="text-[11px] text-muted-foreground">Sem riscos em aberto.</p>
           ) : (
-            <>
-              {riscosSg.slice(0, 2).map((r) => (
+            <div className={`space-y-2 pr-1 overflow-y-auto ${tv ? 'flex-1 min-h-0' : 'max-h-56'}`}>
+              {riscosSg.map((r) => (
                 <RecenteRow key={`sg-${r.id}`} data={`SG #${r.id}`} texto={r.descricao}
                   solucao={r.solucao !== '—' ? r.solucao : undefined} badge={r.status} />
               ))}
-              {riscosDevops.slice(0, 2).map((r) => (
+              {riscosDevops.map((r) => (
                 <RecenteRow key={`do-${r.id}`} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
               ))}
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -566,12 +571,31 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   );
 }
 
+// ── Linha truncada com "olhinho": …texto + Eye → tooltip com o texto completo ──
+function LinhaOlho({ children, completo }: { children: ReactNode; completo: string }) {
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      <p className="text-[11px] text-muted-foreground truncate min-w-0 flex-1">{children}</p>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" aria-label="Ver texto completo" className="shrink-0 cursor-help text-muted-foreground/50 hover:text-foreground transition-colors">
+            <Eye className="h-3 w-3" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-md whitespace-pre-wrap text-xs leading-snug">
+          {completo}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 // ── Linha de ocorrência recente (incidentes/riscos) ──────────────────────
 function RecenteRow({ data, texto, badge, badgeCor = '#64748b', detalhe, solucao }: {
   data: string; texto: string; badge?: string; badgeCor?: string;
-  /** Texto do incidente/risco (linha secundária, truncada). */
+  /** Texto do incidente/risco (linha secundária, truncada + olhinho). */
   detalhe?: string;
-  /** Solução aplicada/plano de ação (linha verde, truncada). */
+  /** Solução aplicada/plano de ação (linha verde, truncada + olhinho). */
   solucao?: string;
 }) {
   return (
@@ -585,13 +609,11 @@ function RecenteRow({ data, texto, badge, badgeCor = '#64748b', detalhe, solucao
           </span>
         )}
       </div>
-      {detalhe && (
-        <p className="text-[11px] text-muted-foreground truncate" title={detalhe}>{detalhe}</p>
-      )}
+      {detalhe && <LinhaOlho completo={detalhe}>{detalhe}</LinhaOlho>}
       {solucao && (
-        <p className="text-[11px] text-muted-foreground truncate" title={solucao}>
+        <LinhaOlho completo={`Solução: ${solucao}`}>
           <span className="font-medium text-[hsl(142,71%,45%)]">Solução:</span> {solucao}
-        </p>
+        </LinhaOlho>
       )}
     </div>
   );
