@@ -1265,7 +1265,7 @@ export default function FabricaDashboard() {
       if (collaboratorViewMode === 'tasks') {
         return isTaskOnlyItem(item) && !isRemoved(item.state);
       }
-      return isManagerLikeItem(item);
+      return isManagerLikeItem(item) && !isRemoved(item.state);
     })
   ), [collaboratorScopedItems, collaboratorViewMode]);
 
