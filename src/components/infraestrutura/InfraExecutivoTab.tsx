@@ -7,7 +7,7 @@ import {
   CheckCircle2, AlertTriangle, FileWarning, RefreshCw,
 } from 'lucide-react';
 import { BlocoCard, corMetaHigh } from '@/components/executivo/BlocoCard';
-import { useDevopsRepos, computeCoberturaKpis, computeCoberturaPorProjeto, countPipelinesNovasTrimestre } from '@/hooks/useDevopsCobertura';
+import { useDevopsRepos, computeCoberturaKpis, countPipelinesNovasTrimestre } from '@/hooks/useDevopsCobertura';
 import { useBIInfraSgsi, type SgIncidenteItem, type SgRiscoItem, type SgNcItem } from '@/hooks/useBIInfra';
 
 // Metas (espelham as constantes do DevopsCoberturaPanel)
@@ -77,7 +77,6 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
   const cobertura = useMemo(() => computeCoberturaKpis(repos, 0), [repos]);
   const pipelinesTri = useMemo(() => countPipelinesNovasTrimestre(repos), [repos]);
-  const coberturaProjetos = useMemo(() => computeCoberturaPorProjeto(repos), [repos]);
 
   const conclPct = kpis.total > 0 ? Math.round((kpis.concluidos / kpis.total) * 100) : 0;
   const coberturaPct = cobertura.coberturaPct ?? 0;
@@ -170,22 +169,6 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                       {pipelinesTri.criadas.length > criadasTop.length && (
                         <span className="text-xs text-muted-foreground self-center">+{pipelinesTri.criadas.length - criadasTop.length}</span>
                       )}
-                    </div>
-                  </div>
-                )}
-                {coberturaProjetos.length > 0 && (
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">Cobertura por projeto</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {coberturaProjetos.slice(0, 4).map((p) => (
-                        <span key={p.projeto} className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs">
-                          <span className="font-medium text-foreground">{p.projeto}</span>
-                          <span className="text-muted-foreground">{p.cobertos}/{p.aplicaveis}</span>
-                          <span className="font-mono font-semibold" style={{ color: p.coberturaPct != null ? corMetaHigh(p.coberturaPct) : undefined }}>
-                            {p.coberturaPct != null ? `${p.coberturaPct}%` : '—'}
-                          </span>
-                        </span>
-                      ))}
                     </div>
                   </div>
                 )}
@@ -368,18 +351,6 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
             <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(coberturaPct, 100)}%`, backgroundColor: corMetaHigh(coberturaPct) }} />
           </div>
-          {coberturaProjetos.length > 0 && (
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {coberturaProjetos.slice(0, 3).map((p) => (
-                <span key={p.projeto} className="inline-flex items-center gap-1 text-[11px]">
-                  <span className="text-muted-foreground truncate">{p.projeto}</span>
-                  <span className="font-mono font-semibold" style={{ color: p.coberturaPct != null ? corMetaHigh(p.coberturaPct) : undefined }}>
-                    {p.coberturaPct != null ? `${p.coberturaPct}%` : '—'}
-                  </span>
-                </span>
-              ))}
-            </div>
-          )}
           <p className="text-[11px] text-muted-foreground border-t pt-2">% de repos aplicáveis com pelo menos 1 pipeline ativa.</p>
         </BlocoCard>
       </div>
