@@ -40,8 +40,8 @@ describe('buildSgsiResponse', () => {
   const rows: SgsiRawItem[] = [
     // 010 — mudanças (status reais: Realizado/Aprovado/Rejeitado/Aguardando...;
     // "Título" carrega os ambientes como multi-escolha)
-    item('010', 11, { Status: 'Realizado', 'Título': ['Broker PROD'], Risco: 'Baixo', 'Atualizações bem sucedidas': 'Sim', 'Número do chamado': 'MUD-0011' }, '2026-05-01T08:00:00Z'),
-    item('010', 12, { Status: 'Aguardando aprovação TI', 'Título': ['Broker PA', 'Broker PROD'], Risco: 'Alto', 'Atualizações bem sucedidas': 'Não' }, '2026-06-01T08:00:00Z'),
+    item('010', 11, { Status: 'Realizado', 'Título': ['Broker PROD'], Risco: 'Baixo', 'Atualizações bem sucedidas': 'Sim', 'Número do chamado': 'MUD-0011', 'Criado por': 'Ana', 'Aprovador TI': 'Rodolfo', 'Aprovador Gestor': 'Marcos', 'Data e Hora conclusão': '2026-05-02T10:00:00Z' }, '2026-05-01T08:00:00Z'),
+    item('010', 12, { Status: 'Aguardando aprovação TI', 'Título': ['Broker PA', 'Broker PROD'], Risco: 'Alto', 'Atualizações bem sucedidas': 'Não', 'Solicitante atualização': 'Paula', 'Criado por': 'Bruno' }, '2026-06-01T08:00:00Z'),
     item('010', 13, { Status: 'Aguardando aprovação Gestores', 'Título': ['Staging Área PROD'] }, '2026-06-05T08:00:00Z'),
     item('010', 14, { Status: 'Rejeitado' }, '2026-04-10T08:00:00Z'),
     // 017 — incidentes (último criado em 06/06 → 5 dias sem incidentes em 11/06;
@@ -76,6 +76,20 @@ describe('buildSgsiResponse', () => {
     // itens ordenados do mais recente para o mais antigo
     expect(r.mudancas.itens[0].id).toBe(13);
     expect(r.mudancas.itens.find(i => i.id === 11)?.chamado).toBe('MUD-0011');
+  });
+
+  it('mudanças: solicitante cai para "Criado por" e expõe datas/aprovadores', () => {
+    const m11 = r.mudancas.itens.find(i => i.id === 11)!;
+    expect(m11.solicitante).toBe('Ana');            // fallback: quem criou o item
+    expect(m11.aprovadorTI).toBe('Rodolfo');
+    expect(m11.aprovadorGestor).toBe('Marcos');
+    expect(m11.criado).toBe('2026-05-01T08:00:00Z');
+    expect(m11.conclusao).toBe('2026-05-02T10:00:00Z');
+
+    const m12 = r.mudancas.itens.find(i => i.id === 12)!;
+    expect(m12.solicitante).toBe('Paula');          // campo explícito vence o fallback
+    expect(m12.conclusao).toBe('');                 // sem conclusão registrada
+    expect(m12.aprovadorGestor).toBe('—');
   });
 
   it('ambiente das mudanças vem do Título multi-escolha (cada valor conta)', () => {

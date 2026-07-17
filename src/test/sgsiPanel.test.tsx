@@ -21,8 +21,8 @@ const mockData: BIInfraSgsiResponse = {
     porRisco: [{ name: 'Alto', value: 1 }], porCategoria: [{ name: 'Infra', value: 3 }],
     atualizacoesBemSucedidas: { sim: 3, nao: 1 }, validacaoTestes: { sim: 4, nao: 0 },
     itens: [
-      { id: 1, chamado: 'OS-9001', ambiente: 'PROD', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Upgrade cluster', status: 'Realizado', solicitante: 'Ana', aprovadorTI: 'Rodolfo', risco: 'Alto', modificado: '2026-07-09T10:00:00Z' },
-      { id: 2, chamado: 'OS-9002', ambiente: 'DEV', tipoMudanca: 'Emergencial', categoria: 'Infra', motivo: 'Hotfix', status: 'Aguardando aprovação Gestores', solicitante: 'Bruno', aprovadorTI: '—', risco: 'Baixo', modificado: '2026-07-08T10:00:00Z' },
+      { id: 1, chamado: 'OS-9001', ambiente: 'PROD', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Upgrade cluster', status: 'Realizado', solicitante: 'Ana', aprovadorTI: 'Rodolfo', aprovadorGestor: 'Marcos', risco: 'Alto', criado: '2026-07-01T09:00:00Z', conclusao: '2026-07-09T10:00:00Z', modificado: '2026-07-09T10:00:00Z' },
+      { id: 2, chamado: 'OS-9002', ambiente: 'DEV', tipoMudanca: 'Emergencial', categoria: 'Infra', motivo: 'Hotfix', status: 'Aguardando aprovação Gestores', solicitante: 'Bruno', aprovadorTI: '—', aprovadorGestor: '—', risco: 'Baixo', criado: '2026-07-05T09:00:00Z', conclusao: '', modificado: '2026-07-08T10:00:00Z' },
     ],
   },
   incidentes: {
@@ -86,6 +86,20 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
     render(<BIInfraSgsiPanel secao="mudancas" />);
     expect(screen.getByText('OS / Chamado')).toBeInTheDocument();
     expect(screen.getByText('OS-9001')).toBeInTheDocument();
+  });
+
+  it('toggle de olho alterna entre visão compacta e completa nas mudanças', () => {
+    render(<BIInfraSgsiPanel secao="mudancas" />);
+    // compacto (padrão): sem as colunas extras
+    expect(screen.queryByText('Aprovador Gestor')).not.toBeInTheDocument();
+    expect(screen.queryByText('Data solicitação')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Exibir todas as informações'));
+    expect(screen.getByText('Aprovador Gestor')).toBeInTheDocument();
+    expect(screen.getByText('Data solicitação')).toBeInTheDocument();
+    expect(screen.getByText('Conclusão')).toBeInTheDocument();
+    expect(screen.getByText('Marcos')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Exibir visão compacta'));
+    expect(screen.queryByText('Aprovador Gestor')).not.toBeInTheDocument();
   });
 
   it('top-5 de ambientes mostra "Mostrar todos" quando há mais de 5', () => {

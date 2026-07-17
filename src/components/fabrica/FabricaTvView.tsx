@@ -126,7 +126,8 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 min-h-0 pb-3">
-              <DesempenhoTrendChart height="100%" maxSprints={8} showValues />
+              {/* tv: barras largas, fontes maiores e média de entrega rotulada */}
+              <DesempenhoTrendChart height="100%" maxSprints={8} showValues tv />
             </CardContent>
           </Card>
 

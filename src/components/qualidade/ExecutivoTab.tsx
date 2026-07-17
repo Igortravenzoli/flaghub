@@ -68,6 +68,14 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
   const { isAdmin } = useAuth();
   const canManage = isAdmin || isOwner('qualidade');
 
+  // ── Modo TV (telão): tipografia ampliada + layout que ESTICA para preencher
+  // a altura que o KioskFit entregar (fill mode). Fora do TV nada muda. ──────
+  const numMain = tvMode ? 'text-6xl' : 'text-4xl';
+  const numMeta = tvMode ? 'text-5xl' : 'text-3xl';
+  const numSec = tvMode ? 'text-4xl' : 'text-2xl';
+  const lbl = tvMode ? 'text-sm' : 'text-[11px]';
+  const foot = tvMode ? 'text-xs' : 'text-[11px]';
+
   // ── Meta: % no prazo (<=2 sprints) vs atraso (>2) ────────────────────────────
   const meta = useMemo(() => {
     const noPrazo = fila?.no_prazo ?? 0;
@@ -132,28 +140,57 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
 
   const totalHandoff = useMemo(() => handoffData.reduce((s, d) => s + d.entradas, 0), [handoffData]);
 
+  // Mesmo gráfico nos dois modos; só o container muda (fixo × estica no TV).
+  const handoffChart = (
+    <BarChart data={handoffData} margin={{ top: 16, right: 12, bottom: 4, left: 0 }}>
+      <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+      <XAxis dataKey="label" tick={{ fontSize: tvMode ? 13 : 10 }} interval="preserveStartEnd" />
+      <YAxis allowDecimals={false} tick={{ fontSize: tvMode ? 13 : 11 }} />
+      <RTooltip contentStyle={{ fontSize: 12 }} />
+      <Bar dataKey="entradas" fill={QA_TONES.info.solid} radius={[3, 3, 0, 0]} />
+      {sprintMarkers.map((m) => (
+        <ReferenceLine
+          key={m.label}
+          x={m.label}
+          stroke={QA_TONES.danger.solid}
+          strokeDasharray="4 3"
+          label={{ value: m.sprint, position: 'top', fontSize: tvMode ? 13 : 11, fill: QA_TONES.danger.solid }}
+        />
+      ))}
+    </BarChart>
+  );
+
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold">Visão Executiva</h2>
-        <p className="text-sm text-muted-foreground">
-          Qualidade · onde estamos · o que queremos · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
-        </p>
-      </div>
+    <div className={tvMode ? 'h-full min-h-0 flex flex-col gap-3 overflow-hidden' : 'space-y-4'}>
+      {tvMode ? (
+        <div className="flex-none flex items-baseline gap-3">
+          <h2 className="text-2xl font-bold">Visão Executiva</h2>
+          <p className="text-sm text-muted-foreground">
+            Qualidade · onde estamos · o que queremos · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
+          </p>
+        </div>
+      ) : (
+        <div>
+          <h2 className="text-xl font-bold">Visão Executiva</h2>
+          <p className="text-sm text-muted-foreground">
+            Qualidade · onde estamos · o que queremos · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
+          </p>
+        </div>
+      )}
 
       {/* ── Linha 1: onde estamos · o que queremos · qualidade do processo ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 ${tvMode ? 'flex-none' : ''}`}>
 
         {/* Onde estamos — Fila QA */}
         <BlocoCard icon={ListChecks} titulo="Onde estamos · Fila QA">
           <div className="flex items-end justify-between">
             <div>
-              <p className="text-4xl font-bold font-mono">{filaLoading ? '—' : fila?.total_qa ?? 0}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">total no escopo QA</p>
+              <p className={`${numMain} font-bold font-mono`}>{filaLoading ? '—' : fila?.total_qa ?? 0}</p>
+              <p className={`${tvMode ? 'text-sm' : 'text-xs'} text-muted-foreground mt-0.5`}>total no escopo QA</p>
             </div>
             <div className="text-right space-y-0.5">
-              <p className="text-sm font-mono"><span className="font-semibold text-[hsl(142,71%,40%)]">{fila?.em_teste ?? 0}</span> em teste</p>
-              <p className="text-sm font-mono"><span className="font-semibold text-[hsl(199,89%,45%)]">{fila?.aguardando_deploy ?? 0}</span> ag. deploy</p>
+              <p className={`${tvMode ? 'text-xl' : 'text-sm'} font-mono`}><span className="font-semibold text-[hsl(142,71%,40%)]">{fila?.em_teste ?? 0}</span> em teste</p>
+              <p className={`${tvMode ? 'text-xl' : 'text-sm'} font-mono`}><span className="font-semibold text-[hsl(199,89%,45%)]">{fila?.aguardando_deploy ?? 0}</span> ag. deploy</p>
             </div>
           </div>
           {!!fila?.total_qa && (
@@ -162,7 +199,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
               <div style={{ width: `${(fila.aguardando_deploy / fila.total_qa) * 100}%`, backgroundColor: QA_TONES.info.solid }} />
             </div>
           )}
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
+          <p className={`${foot} text-muted-foreground border-t pt-2`}>
             Escopo de qualidade (Em Teste + Aguardando Deploy). Sprint atual: {fila?.sprint_atual ?? '—'}.
           </p>
         </BlocoCard>
@@ -171,26 +208,26 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
         <BlocoCard icon={Target} titulo="O que queremos · Meta de vazão">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <p className="text-3xl font-bold font-mono text-[hsl(142,71%,40%)]">{filaLoading ? '—' : meta.noPrazo}</p>
-              <p className="text-[11px] text-muted-foreground">no prazo (≤ 2 sprints)</p>
+              <p className={`${numMeta} font-bold font-mono text-[hsl(142,71%,40%)]`}>{filaLoading ? '—' : meta.noPrazo}</p>
+              <p className={`${lbl} text-muted-foreground`}>no prazo (≤ 2 sprints)</p>
             </div>
             <div>
-              <p className="text-3xl font-bold font-mono" style={{ color: meta.atraso > 0 ? QA_TONES.danger.solid : QA_TONES.success.solid }}>
+              <p className={`${numMeta} font-bold font-mono`} style={{ color: meta.atraso > 0 ? QA_TONES.danger.solid : QA_TONES.success.solid }}>
                 {filaLoading ? '—' : meta.atraso}
               </p>
-              <p className="text-[11px] text-muted-foreground">em atraso (&gt; 2 sprints)</p>
+              <p className={`${lbl} text-muted-foreground`}>em atraso (&gt; 2 sprints)</p>
             </div>
           </div>
           <div>
-            <div className="flex items-center justify-between text-xs mb-0.5">
+            <div className={`flex items-center justify-between ${tvMode ? 'text-sm' : 'text-xs'} mb-0.5`}>
               <span className="text-muted-foreground">% da fila no prazo</span>
               <span className="font-mono font-semibold" style={{ color: meta.cor }}>{meta.pct.toFixed(0)}%</span>
             </div>
-            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div className={`${tvMode ? 'h-2.5' : 'h-1.5'} rounded-full bg-muted overflow-hidden`}>
               <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(meta.pct, 100)}%`, backgroundColor: meta.cor }} />
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
+          <p className={`${foot} text-muted-foreground border-t pt-2`}>
             Meta: nada há mais de 2 sprints sem DONE = atraso (represamento).
             {(fila?.sem_sprint ?? 0) > 0 && ` ${fila!.sem_sprint} sem sprint de origem (fora do cálculo de atraso).`}
           </p>
@@ -200,23 +237,23 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
         <BlocoCard icon={RotateCcw} titulo="Qualidade · retornos por nº de ciclos">
           <div className="grid grid-cols-4 gap-2 text-center">
             <div>
-              <p className="text-2xl font-bold font-mono">{retLoading ? '—' : retornos?.itens_com_retorno ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">total</p>
+              <p className={`${numSec} font-bold font-mono`}>{retLoading ? '—' : retornos?.itens_com_retorno ?? 0}</p>
+              <p className={`${lbl} text-muted-foreground`}>total</p>
             </div>
             <div>
-              <p className="text-2xl font-bold font-mono text-muted-foreground">{retLoading ? '—' : retornos?.itens_1x ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">voltaram 1x</p>
+              <p className={`${numSec} font-bold font-mono text-muted-foreground`}>{retLoading ? '—' : retornos?.itens_1x ?? 0}</p>
+              <p className={`${lbl} text-muted-foreground`}>voltaram 1x</p>
             </div>
             <div>
-              <p className="text-2xl font-bold font-mono text-[hsl(43,85%,40%)]">{retLoading ? '—' : retornos?.itens_2x ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">voltaram 2x</p>
+              <p className={`${numSec} font-bold font-mono text-[hsl(43,85%,40%)]`}>{retLoading ? '—' : retornos?.itens_2x ?? 0}</p>
+              <p className={`${lbl} text-muted-foreground`}>voltaram 2x</p>
             </div>
             <div className="rounded-lg bg-destructive/10 py-0.5">
-              <p className="text-2xl font-bold font-mono text-destructive">{retLoading ? '—' : retornos?.itens_3x_mais ?? 0}</p>
-              <p className="text-[11px] text-destructive font-medium">≥ 3x ⚠</p>
+              <p className={`${numSec} font-bold font-mono text-destructive`}>{retLoading ? '—' : retornos?.itens_3x_mais ?? 0}</p>
+              <p className={`${lbl} text-destructive font-medium`}>≥ 3x ⚠</p>
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
+          <p className={`${foot} text-muted-foreground border-t pt-2`}>
             {retornos?.itens_com_retorno ?? 0} itens encerrados com retorno (tag RETORNO QA) em {year} — soma dos 3 grupos. ≥3 = sinal de problema no processo.
           </p>
         </BlocoCard>
@@ -239,7 +276,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="sprint" width={64} tick={{ fontSize: 11 }} />
                 <RTooltip
-                  formatter={(v: number, _n, p: any) => [`${v} itens · ${p.payload.age} sprint(s)`, p.payload.atraso ? 'ATRASO' : 'no prazo']}
+                  formatter={(v: number, _n, p: { payload?: { age?: number; atraso?: boolean } }) => [`${v} itens · ${p.payload?.age} sprint(s)`, p.payload?.atraso ? 'ATRASO' : 'no prazo']}
                   contentStyle={{ fontSize: 12 }}
                 />
                 <Bar dataKey="n" radius={[0, 4, 4, 0]}>
@@ -282,59 +319,49 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
       )}
 
       {/* ── Linha 3 + 4: em TV a reconciliação/versões vem antes da distribuição ── */}
-      <div className="flex flex-col gap-4">
-      <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'order-2' : undefined}>
+      <div className={tvMode ? 'flex-1 min-h-0 flex flex-col gap-3' : 'flex flex-col gap-4'}>
+      <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'order-2 flex-[1.2] min-h-0' : undefined}>
         {handoffData.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sem entradas registradas no período.</p>
+        ) : tvMode ? (
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">{handoffChart}</ResponsiveContainer>
+          </div>
         ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={handoffData} margin={{ top: 16, right: 12, bottom: 4, left: 0 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-              <RTooltip contentStyle={{ fontSize: 12 }} />
-              <Bar dataKey="entradas" fill={QA_TONES.info.solid} radius={[3, 3, 0, 0]} />
-              {sprintMarkers.map((m) => (
-                <ReferenceLine
-                  key={m.label}
-                  x={m.label}
-                  stroke={QA_TONES.danger.solid}
-                  strokeDasharray="4 3"
-                  label={{ value: m.sprint, position: 'top', fontSize: 11, fill: QA_TONES.danger.solid }}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={240}>{handoffChart}</ResponsiveContainer>
         )}
-        <p className="text-[11px] text-muted-foreground border-t pt-2">
+        <p className={`${foot} text-muted-foreground border-t pt-2`}>
           {totalHandoff} entradas no período. As linhas tracejadas marcam o fim de cada sprint (S11, S12…) — as barras à esquerda de cada linha pertencem àquela sprint.
         </p>
       </BlocoCard>
 
       {/* ── Linha 4: reconciliação (bug 76-vs-26) + controle de versão ── */}
-      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 ${tvMode ? 'order-1' : ''}`}>
+      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 ${tvMode ? 'order-1 flex-1 min-h-0 auto-rows-fr' : ''}`}>
 
         {/* Reconciliação retorno QA × encerramentos */}
-        <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação">
+        <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação" className={tvMode ? 'min-h-0' : undefined}>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <p className="text-2xl font-bold font-mono">{retornos?.reconc.total_encerrados ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">encerrados em {year}</p>
+              <p className={`${numSec} font-bold font-mono`}>{retornos?.reconc.total_encerrados ?? 0}</p>
+              <p className={`${lbl} text-muted-foreground`}>encerrados em {year}</p>
             </div>
             <div>
-              <p className="text-2xl font-bold font-mono text-[hsl(142,71%,40%)]">{retornos?.reconc.sem_retorno ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">sem retorno</p>
+              <p className={`${numSec} font-bold font-mono text-[hsl(142,71%,40%)]`}>{retornos?.reconc.sem_retorno ?? 0}</p>
+              <p className={`${lbl} text-muted-foreground`}>sem retorno</p>
             </div>
             <div>
-              <p className="text-2xl font-bold font-mono text-destructive">{retornos?.reconc.com_retorno ?? 0}</p>
-              <p className="text-[11px] text-muted-foreground">com retorno</p>
+              <p className={`${numSec} font-bold font-mono text-destructive`}>{retornos?.reconc.com_retorno ?? 0}</p>
+              <p className={`${lbl} text-muted-foreground`}>com retorno</p>
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">
-            Mesma base da aba <b>Encerramentos por usuário</b>: {retornos?.reconc.com_retorno ?? 0} com retorno = {retornos?.itens_1x ?? 0} (1x) + {retornos?.itens_2x ?? 0} (2x) + {retornos?.itens_3x_mais ?? 0} (≥3x).
-          </p>
+          {/* Nota longa só fora do TV — no telão o espaço vai p/ a lista de ≥3x */}
+          {!tvMode && (
+            <p className="text-[11px] text-muted-foreground border-t pt-2">
+              Mesma base da aba <b>Encerramentos por usuário</b>: {retornos?.reconc.com_retorno ?? 0} com retorno = {retornos?.itens_1x ?? 0} (1x) + {retornos?.itens_2x ?? 0} (2x) + {retornos?.itens_3x_mais ?? 0} (≥3x).
+            </p>
+          )}
           {!!retornos?.top_3x_mais?.length && (
-            <div className="space-y-1 overflow-y-auto max-h-[150px] pr-1 border-t pt-2">
+            <div className={`space-y-1 overflow-y-auto pr-1 border-t pt-2 ${tvMode ? 'flex-1 min-h-0' : 'max-h-[150px]'}`}>
               <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3 text-destructive" /> Itens com ≥ 3 retornos
               </p>
@@ -352,7 +379,15 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
         </BlocoCard>
 
         {/* Controle de versão de sistemas (somente leitura em TV) */}
-        <SistemaVersoesCard canManage={tvMode ? false : canManage} />
+        {tvMode ? (
+          // Célula do grid tem altura fixa (auto-rows-fr): o card estica até
+          // preenchê-la e, se a tabela crescer além, rola dentro em vez de vazar.
+          <div className="min-h-0 overflow-y-auto [&>div]:min-h-full">
+            <SistemaVersoesCard canManage={false} />
+          </div>
+        ) : (
+          <SistemaVersoesCard canManage={canManage} />
+        )}
       </div>
       </div>
     </div>

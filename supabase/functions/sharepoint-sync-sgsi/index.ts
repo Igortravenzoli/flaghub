@@ -145,6 +145,56 @@ function normalizeFields(
   return out
 }
 
+/** Mapa lookupId → nome a partir da "User Information List" (lista oculta do
+ *  site — pode não vir na listagem padrão, por isso o fallback por título).
+ *  Best-effort: qualquer falha loga e devolve mapa vazio, sem derrubar o sync. */
+async function fetchUserMap(
+  token: string,
+  siteId: string,
+  lists: { id: string; displayName: string }[],
+): Promise<Map<number, string>> {
+  const userMap = new Map<number, string>()
+  try {
+    let listId = lists.find((l) => /user information list/i.test(l.displayName ?? ''))?.id
+    if (!listId) {
+      const info = await graphJson<{ id: string }>(
+        token, `/sites/${siteId}/lists/${encodeURIComponent('User Information List')}`
+      )
+      listId = info.id
+    }
+    let next: string | null = `${GRAPH}/sites/${siteId}/lists/${listId}/items?expand=fields&$top=200`
+    while (next) {
+      const page = await graphJson<{ value: GraphListItem[]; '@odata.nextLink'?: string }>(token, next)
+      for (const item of page.value || []) {
+        const id = parseInt(item.id, 10)
+        const title = item.fields?.['Title']
+        if (Number.isFinite(id) && typeof title === 'string' && title) userMap.set(id, title)
+      }
+      next = page['@odata.nextLink'] ?? null
+    }
+    console.log(`[SGSI] User Information List: ${userMap.size} usuários mapeados`)
+  } catch (err) {
+    console.warn(`[SGSI] Falha ao mapear usuários (lookupId→nome), seguindo sem nomes: ${(err as Error).message}`)
+  }
+  return userMap
+}
+
+/** Para cada "<Campo> (lookupId)" resolvível no mapa, grava também "<Campo>"
+ *  com o nome do usuário (sem sobrescrever se a chave já existir no item). */
+function applyUserNames(fields: Record<string, unknown>, userMap: Map<number, string>): void {
+  if (userMap.size === 0) return
+  for (const [key, value] of Object.entries(fields)) {
+    if (!key.endsWith(' (lookupId)')) continue
+    const base = key.slice(0, -' (lookupId)'.length)
+    if (base in fields) continue
+    const ids = Array.isArray(value) ? value : [value]
+    const names = ids
+      .map((v) => userMap.get(typeof v === 'number' ? v : parseInt(String(v), 10)))
+      .filter((n): n is string => !!n)
+    if (names.length > 0) fields[base] = names.join(', ')
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders(req) })
@@ -215,6 +265,10 @@ serve(async (req) => {
       console.log(`[SGSI] Listas SG não mapeadas: ${naoMapeadas.join(' | ')}`)
     }
 
+    // 1b. Usuários do site: resolve lookupIds de pessoa (Solicitante,
+    // Aprovador TI/Gestor, Criado por…) para nomes legíveis no espelho.
+    const userMap = await fetchUserMap(token, site.id, listsData.value || [])
+
     // 2. Por lista: colunas (mapa internal→display) + itens paginados
     const resumo: Record<string, number> = {}
     for (const { listKey, graphListId, displayName } of matched) {
@@ -234,14 +288,18 @@ serve(async (req) => {
         next = page['@odata.nextLink'] ?? null
       }
 
-      const rows = items.map((item) => ({
-        list_key: listKey,
-        item_id: parseInt(item.id, 10),
-        fields: normalizeFields(item.fields ?? {}, columnMap),
-        created_sp: item.createdDateTime ?? null,
-        modified_sp: item.lastModifiedDateTime ?? null,
-        synced_at: syncedAt,
-      }))
+      const rows = items.map((item) => {
+        const fields = normalizeFields(item.fields ?? {}, columnMap)
+        applyUserNames(fields, userMap)
+        return {
+          list_key: listKey,
+          item_id: parseInt(item.id, 10),
+          fields,
+          created_sp: item.createdDateTime ?? null,
+          modified_sp: item.lastModifiedDateTime ?? null,
+          synced_at: syncedAt,
+        }
+      })
 
       // Snapshot: upsert da lista, substitui os itens
       const { error: listErr } = await admin.from('sgsi_lists').upsert({

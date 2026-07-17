@@ -1,17 +1,17 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { useBIInfraSgsi, NameValue, SimNao } from '@/hooks/useBIInfra';
+import { useBIInfraSgsi, NameValue, SimNao, SgMudancaItem } from '@/hooks/useBIInfra';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
-  ShieldCheck, RefreshCw, Flame, AlertTriangle, KeyRound,
-  Lightbulb, CalendarCheck, Search, X, Copy, Check, ChevronDown, ChevronsUpDown,
+  ShieldCheck, RefreshCw, Flame, AlertTriangle, KeyRound, Lightbulb,
+  CalendarCheck, Search, X, Copy, Check, ChevronDown, ChevronsUpDown, Eye, EyeOff,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -315,15 +315,20 @@ function OsCell({ value, q }: { value: string; q: string }) {
   );
 }
 
-function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, onRowClick }: {
+function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, onRowClick, headerAction }: {
   title: string; columns: SgColumn<T>[]; rows?: T[]; isLoading: boolean;
   onRowClick?: (row: T) => void;
+  /** Ação extra no cabeçalho do card (ex.: toggle compacto/completo). */
+  headerAction?: ReactNode;
 }) {
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="pb-2 pt-4 px-4">
-        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-        {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens{onRowClick ? ' · clique para detalhes' : ''}</p>}
+      <CardHeader className="pb-2 pt-4 px-4 flex-row items-start justify-between space-y-0 gap-2">
+        <div className="space-y-1 min-w-0">
+          <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+          {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens{onRowClick ? ' · clique para detalhes' : ''}</p>}
+        </div>
+        {headerAction}
       </CardHeader>
       <CardContent className="p-0">
         {isLoading || !rows ? (
@@ -332,7 +337,9 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, on
           <p className="text-xs text-muted-foreground py-8 text-center">Nenhum registro para o filtro/busca atual.</p>
         ) : (
           <ScrollArea className="max-h-80">
-            <table className="w-full text-xs">
+            {/* min-width quando há muitas colunas (visão completa) → rolagem
+                horizontal dentro do card em vez de estourar/espremer células */}
+            <table className={`w-full text-xs ${columns.length > 8 ? 'min-w-[960px]' : ''}`}>
               <thead className="sticky top-0 bg-card/95 backdrop-blur border-b border-border z-10">
                 <tr className="text-muted-foreground text-[11px]">
                   {columns.map(c => <th key={c.key} className={`py-2 px-3 text-left font-medium ${c.className ?? ''}`}>{c.header}</th>)}
@@ -354,6 +361,7 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, on
                 ))}
               </tbody>
             </table>
+            <ScrollBar orientation="horizontal" />
           </ScrollArea>
         )}
       </CardContent>
@@ -431,6 +439,9 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
   // Registro aberto no drawer
   const [detail, setDetail] = useState<RecordDetail | null>(null);
 
+  // Tabela de mudanças: visão compacta (padrão) ↔ completa (toggle de olho)
+  const [mostrarTudo, setMostrarTudo] = useState(false);
+
   const d = data;
 
   // ── Filtros por seção: drill (KPI) + busca global ──
@@ -442,7 +453,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
         default: return true;
       }
     })();
-    return drillOk && hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.risco);
+    return drillOk && hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.risco);
   });
   const incItens = (d?.incidentes.itens ?? []).filter((i) => {
     const drillOk = (() => {
@@ -480,7 +491,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
   const searchCounts = useMemo(() => {
     if (!q || !d) return null;
     return {
-      mudancas: d.mudancas.itens.filter((i) => hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.risco)).length,
+      mudancas: d.mudancas.itens.filter((i) => hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.risco)).length,
       incidentes: d.incidentes.itens.filter((i) => hit(q, i.protocolo, i.titulo, i.ativo, i.motivo, i.priorizacao, i.status, i.tipo, i.sla, i.categoria)).length,
       riscos: d.riscos.itens.filter((i) => hit(q, i.id, i.descricao, i.cid, i.categoriaAmeaca, i.tipoAmeaca, i.ativoAfetado, i.status, i.responsavelAjuste)).length,
       conformidade:
@@ -492,6 +503,28 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
   const totalHits = searchCounts ? Object.values(searchCounts).reduce((s, n) => s + n, 0) : 0;
 
   const drillBadge = drill ? ' · filtro do KPI ativo' : '';
+
+  // Colunas da tabela de mudanças — a visão completa (olho) acrescenta as
+  // datas de solicitação/conclusão e os aprovadores TI/Gestor.
+  const mudColumns: SgColumn<SgMudancaItem>[] = [
+    { key: 'chamado', header: 'OS / Chamado', render: (r) => <OsCell value={r.chamado} q={q} /> },
+    { key: 'ambiente', header: 'Ambiente' },
+    { key: 'tipoMudanca', header: 'Tipo' },
+    { key: 'risco', header: 'Risco', render: (r) => <Badge variant={r.risco === 'Alto' ? 'destructive' : 'outline'} className="text-[10px]">{r.risco}</Badge> },
+    { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
+    ...(mostrarTudo ? [
+      { key: 'criado', header: 'Data solicitação', className: 'whitespace-nowrap', render: (r) => fmtDate(r.criado) },
+      // "Data e Hora conclusão" pode ser texto livre — fmtDate devolve o
+      // original quando não parseia.
+      { key: 'conclusao', header: 'Conclusão', className: 'whitespace-nowrap', render: (r) => fmtDate(r.conclusao) },
+    ] as SgColumn<SgMudancaItem>[] : []),
+    { key: 'solicitante', header: 'Solicitante' },
+    ...(mostrarTudo ? [
+      { key: 'aprovadorTI', header: 'Aprovador TI' },
+      { key: 'aprovadorGestor', header: 'Aprovador Gestor' },
+    ] as SgColumn<SgMudancaItem>[] : []),
+    { key: 'modificado', header: 'Modificado', className: 'whitespace-nowrap', render: (r) => fmtDate(r.modificado) },
+  ];
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
 
@@ -602,25 +635,29 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
             title={`Mudanças e atualizações${drillBadge}`}
             isLoading={isLoading}
             rows={mudItens}
+            headerAction={
+              <button
+                type="button"
+                onClick={() => setMostrarTudo((v) => !v)}
+                title={mostrarTudo ? 'Exibir visão compacta' : 'Exibir todas as informações'}
+                aria-label={mostrarTudo ? 'Exibir visão compacta' : 'Exibir todas as informações'}
+                className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors shrink-0"
+              >
+                {mostrarTudo ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            }
             onRowClick={(r) => setDetail({
               os: r.chamado, titulo: r.motivo !== '—' ? r.motivo : r.tipoMudanca, origem: 'SG-LST-010 · Mudança',
               campos: [
                 { label: 'Ambiente', value: r.ambiente }, { label: 'Tipo', value: r.tipoMudanca },
                 { label: 'Categoria', value: r.categoria }, { label: 'Risco', value: r.risco },
                 { label: 'Status', value: <StatusBadge status={r.status} /> }, { label: 'Solicitante', value: r.solicitante },
-                { label: 'Aprovador TI', value: r.aprovadorTI }, { label: 'Motivo', value: r.motivo },
-                { label: 'Modificado', value: fmtDate(r.modificado) },
+                { label: 'Aprovador TI', value: r.aprovadorTI }, { label: 'Aprovador Gestor', value: r.aprovadorGestor },
+                { label: 'Motivo', value: r.motivo }, { label: 'Data solicitação', value: fmtDate(r.criado) },
+                { label: 'Conclusão', value: fmtDate(r.conclusao) }, { label: 'Modificado', value: fmtDate(r.modificado) },
               ],
             })}
-            columns={[
-              { key: 'chamado', header: 'OS / Chamado', render: r => <OsCell value={r.chamado} q={q} /> },
-              { key: 'ambiente', header: 'Ambiente' },
-              { key: 'tipoMudanca', header: 'Tipo' },
-              { key: 'risco', header: 'Risco', render: r => <Badge variant={r.risco === 'Alto' ? 'destructive' : 'outline'} className="text-[10px]">{r.risco}</Badge> },
-              { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
-              { key: 'solicitante', header: 'Solicitante' },
-              { key: 'modificado', header: 'Modificado', render: r => fmtDate(r.modificado) },
-            ]}
+            columns={mudColumns}
           />
         </TabsContent>
 

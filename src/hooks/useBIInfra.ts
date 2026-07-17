@@ -36,7 +36,12 @@ export interface SgMudancaItem {
   status: string;
   solicitante: string;
   aprovadorTI: string;
+  aprovadorGestor: string;
   risco: string;
+  /** Data de abertura da solicitação (created_sp do SharePoint). */
+  criado: string;
+  /** "Data e Hora conclusão" — pode vir como texto livre da lista. */
+  conclusao: string;
   modificado: string;
 }
 
@@ -369,9 +374,14 @@ export function buildSgsiResponse(
       categoria: str(i, 'Categoria da mudança', 'Categoria') || DASH,
       motivo: str(i, 'Motivo da mudança ou atualização') || DASH,
       status: str(i, 'Status') || DASH,
-      solicitante: str(i, 'Solicitante atualização') || DASH,
+      // "Solicitante atualização" fica vazio na lista — o solicitante real
+      // costuma ser quem criou o item (nomes resolvidos do lookupId no sync).
+      solicitante: str(i, 'Solicitante atualização') || str(i, 'Criado por') || DASH,
       aprovadorTI: str(i, 'Aprovador TI') || DASH,
+      aprovadorGestor: str(i, 'Aprovador Gestor') || DASH,
       risco: str(i, 'Risco') || DASH,
+      criado: i.created_sp ?? '',
+      conclusao: str(i, 'Data e Hora conclusão'),
       modificado: i.modified_sp ?? i.created_sp ?? '',
     })),
   };

@@ -47,6 +47,9 @@ export default function Home() {
   const [kioskCurrentIndex, setKioskCurrentIndex] = useState(0);
   const [kioskRotate, setKioskRotate] = useState(false);
   const [kioskInterval, setKioskInterval] = useState(30);
+  const [kioskPaused, setKioskPaused] = useState(false);
+  // Incrementa a cada navegação manual para reiniciar o timer de rotação
+  const [kioskTimerTick, setKioskTimerTick] = useState(0);
   const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
   const [showMonitorKioskPicker, setShowMonitorKioskPicker] = useState(false);
 
@@ -148,14 +151,39 @@ export default function Home() {
     document.exitFullscreen?.().catch(() => {});
   }, []);
 
-  // Rotation timer
+  // Navegação manual do kiosk (com wrap-around); reinicia o timer para não haver pulo duplo
+  const kioskSectorCount = activeSectors.length;
+
+  const kioskGoTo = useCallback((index: number) => {
+    if (kioskSectorCount === 0) return;
+    setKioskCurrentIndex(((index % kioskSectorCount) + kioskSectorCount) % kioskSectorCount);
+    setKioskTimerTick((t) => t + 1);
+  }, [kioskSectorCount]);
+
+  const kioskGoPrev = useCallback(() => {
+    if (kioskSectorCount === 0) return;
+    setKioskCurrentIndex((prev) => (prev - 1 + kioskSectorCount) % kioskSectorCount);
+    setKioskTimerTick((t) => t + 1);
+  }, [kioskSectorCount]);
+
+  const kioskGoNext = useCallback(() => {
+    if (kioskSectorCount === 0) return;
+    setKioskCurrentIndex((prev) => (prev + 1) % kioskSectorCount);
+    setKioskTimerTick((t) => t + 1);
+  }, [kioskSectorCount]);
+
+  const kioskTogglePause = useCallback(() => {
+    setKioskPaused((p) => !p);
+  }, []);
+
+  // Rotation timer (kioskTimerTick reinicia o intervalo após navegação manual)
   useEffect(() => {
-    if (!kioskActive || !kioskRotate || activeSectors.length <= 1) return;
+    if (!kioskActive || !kioskRotate || kioskPaused || activeSectors.length <= 1) return;
     const interval = setInterval(() => {
       setKioskCurrentIndex((prev) => (prev + 1) % activeSectors.length);
     }, kioskInterval * 1000);
     return () => clearInterval(interval);
-  }, [kioskActive, kioskRotate, kioskInterval, activeSectors.length]);
+  }, [kioskActive, kioskRotate, kioskPaused, kioskInterval, activeSectors.length, kioskTimerTick]);
 
   // ESC to exit
   useEffect(() => {
@@ -172,6 +200,7 @@ export default function Home() {
     setKioskRotate(config.rotateEnabled);
     setKioskInterval(config.intervalSec);
     setKioskCurrentIndex(0);
+    setKioskPaused(false);
     setKioskActive(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
   };
@@ -182,6 +211,11 @@ export default function Home() {
         activeSectors={activeSectors}
         currentIndex={kioskCurrentIndex}
         rotateEnabled={kioskRotate}
+        paused={kioskPaused}
+        onTogglePause={kioskTogglePause}
+        onPrev={kioskGoPrev}
+        onNext={kioskGoNext}
+        onGoTo={kioskGoTo}
         onExit={exitKiosk}
       />
     );
