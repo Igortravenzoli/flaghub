@@ -35,12 +35,12 @@ const mockSgsi: BIInfraSgsiResponse = {
     porSLA: [], porCategoria: [],
     itens: [
       // Antigo (2023) com data em texto livre — NÃO pode ser o "último".
-      { id: 10, titulo: 'FlagCloud', ativo: 'Servidor', motivo: 'Falha', priorizacao: 'Alta', protocolo: 'INC-1', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Cloud', downtimeHoras: 1, inicio: 'Dia: 09/10/2023 - 06h27', descricao: 'Queda do ambiente FlagCloud', solucao: 'Reinício do cluster' },
+      { id: 10, titulo: 'FlagCloud', ativo: 'Servidor', motivo: 'Falha', priorizacao: 'Alta', protocolo: 'INC-1', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Cloud', downtimeHoras: 1, inicio: 'Dia: 09/10/2023 - 06h27', produto: 'FlagCloud', descricao: 'Queda do ambiente FlagCloud', solucao: 'Reinício do cluster' },
       // Ontem, ISO — este é o último e é recente (30d).
-      { id: 11, titulo: 'Inc Broker', ativo: 'Broker', motivo: 'Fila travada', priorizacao: 'Alta', protocolo: 'INC-2', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Broker', downtimeHoras: 0.5, inicio: ontemIso, descricao: 'Fila de integração travada no Broker', solucao: 'Reprocessamento da fila e ajuste do job' },
+      { id: 11, titulo: 'Inc Broker', ativo: 'Broker', motivo: 'Fila travada', priorizacao: 'Alta', protocolo: 'INC-2', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Broker', downtimeHoras: 0.5, inicio: ontemIso, produto: 'ConnectMerchan', descricao: 'Fila de integração travada no Broker', solucao: 'Reprocessamento da fila e ajuste do job' },
       // 12/03 em pt-BR = 12 de março (o parser nativo leria 3 de dezembro,
       // futuro, e este item roubaria o "último").
-      { id: 12, titulo: 'Ambiente FlexxPromo', ativo: 'Promo', motivo: 'Config', priorizacao: 'Média', protocolo: 'INC-3', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Promo', downtimeHoras: 0, inicio: '12/03/2026 as 10:00', descricao: '—', solucao: '—' },
+      { id: 12, titulo: 'Ambiente FlexxPromo', ativo: 'Promo', motivo: 'Config', priorizacao: 'Média', protocolo: 'INC-3', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Promo', downtimeHoras: 0, inicio: '12/03/2026 as 10:00', produto: '—', descricao: '—', solucao: '—' },
     ],
   },
   riscos: {
@@ -89,10 +89,12 @@ describe('InfraExecutivoTab — modo TV (layout aprovado)', () => {
     expect(screen.queryByText(/último: 03\/12/)).not.toBeInTheDocument();
   });
 
-  it('exibe texto do incidente e solução no card de incidentes', () => {
+  it('exibe texto do incidente, solução e produto afetado no card de incidentes', () => {
     renderTv(<InfraExecutivoTab kpis={kpis} tvMode />);
     expect(screen.getByText('Fila de integração travada no Broker')).toBeInTheDocument();
     expect(screen.getByText(/Reprocessamento da fila/)).toBeInTheDocument();
+    // título + produto afetado na linha
+    expect(screen.getByText('Inc Broker · ConnectMerchan')).toBeInTheDocument();
   });
 
   it('exibe solução no card de riscos e a quebra SG + DevOps', () => {

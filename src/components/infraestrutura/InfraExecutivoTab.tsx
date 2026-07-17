@@ -6,7 +6,7 @@ import {
   Server, GitBranch, ShieldCheck, Wrench, CalendarClock, Workflow, Activity,
   CheckCircle2, RefreshCw, Eye,
 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { BlocoCard, corMetaHigh } from '@/components/executivo/BlocoCard';
 import { useDevopsRepos, computeCoberturaKpis, countPipelinesNovasTrimestre } from '@/hooks/useDevopsCobertura';
 import { useBIInfraSgsi, type SgIncidenteItem, type SgRiscoItem, type SgMudancaItem } from '@/hooks/useBIInfra';
@@ -137,6 +137,16 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
   // ── Layout aprovado (mock 17/07): Incidentes | Riscos + Mudanças da sprint ──
   const incPctExec = sgsiBase?.incidentes.pctDentroSla ?? null;
+  // Fração por trás do % ("por que 98 e não 100?"): Sim/Não do histórico todo;
+  // vazios e "Não se aplica" ficam fora da conta (mesma regra do hook).
+  const slaCounts = useMemo(() => {
+    const itens = sgsiBase?.incidentes.itens ?? [];
+    const norm = (s: string) => s.trim().toLowerCase();
+    return {
+      sim: itens.filter((i) => norm(i.sla) === 'sim').length,
+      nao: itens.filter((i) => ['não', 'nao'].includes(norm(i.sla))).length,
+    };
+  }, [sgsiBase]);
   const risco30Exec = sgsiBase?.riscos.pctResolvido30d ?? null;
   const corSlaExec = (p: number | null) => (p == null ? undefined : p > 90 ? '#16a34a' : p >= 80 ? '#f59e0b' : '#ef4444');
   const ultimoIncidente: SgIncidenteItem | undefined = useMemo(
@@ -169,7 +179,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   // lateral direita (pedido do gestor: KPIs ocupavam a tela e a lista sumia). ──
   const KpiLinha = ({ label, valor, cor }: { label: string; valor: ReactNode; cor?: string }) => (
     <div className="flex items-baseline justify-between gap-2 rounded-md border bg-muted/20 px-2 py-1">
-      <span className="text-[10px] text-muted-foreground truncate">{label}</span>
+      <span className="text-[10px] text-muted-foreground truncate" title={label}>{label}</span>
       <span className="text-sm font-bold font-mono shrink-0" style={cor ? { color: cor } : undefined}>{valor}</span>
     </div>
   );
@@ -190,7 +200,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
               </p>
             )}
           </div>
-          <KpiLinha label="dentro do SLA · meta > 90%" valor={incPctExec != null ? `${incPctExec}%` : '—'} cor={corSlaExec(incPctExec)} />
+          <KpiLinha label={`dentro do SLA · ${slaCounts.sim}/${slaCounts.sim + slaCounts.nao} hist. · meta > 90%`} valor={incPctExec != null ? `${incPctExec}%` : '—'} cor={corSlaExec(incPctExec)} />
           <KpiLinha label="últimos 30 dias" valor={incidentesRecentes.length} />
           <KpiLinha label="ativos agora" valor={sgsiBase?.incidentes.ativos ?? '—'} />
         </div>
@@ -207,8 +217,12 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                 const causa = i.descricao !== '—' && i.descricao !== i.titulo
                   ? i.descricao
                   : i.motivo !== '—' ? `Causa: ${i.motivo}` : undefined;
+                // Título + produto afetado (quando distintos): "Broker · ConnectMerchan".
+                const rotulo = i.produto !== '—' && i.produto !== i.titulo
+                  ? `${i.titulo} · ${i.produto}`
+                  : i.titulo;
                 return (
-                  <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
+                  <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={rotulo}
                     detalhe={causa}
                     solucao={i.solucao !== '—' ? i.solucao : undefined}
                     badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
@@ -571,21 +585,23 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   );
 }
 
-// ── Linha truncada com "olhinho": …texto + Eye → tooltip com o texto completo ──
+// ── Linha truncada com "olhinho": …texto + Eye → texto completo. Hover mostra
+// o title nativo (funciona em qualquer lugar); clique abre popover estilizado
+// (o tooltip Radix falhava dentro do canvas escalado do kiosk). ──────────────
 function LinhaOlho({ children, completo }: { children: ReactNode; completo: string }) {
   return (
     <div className="flex items-center gap-1 min-w-0">
       <p className="text-[11px] text-muted-foreground truncate min-w-0 flex-1">{children}</p>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button type="button" aria-label="Ver texto completo" className="shrink-0 cursor-help text-muted-foreground/50 hover:text-foreground transition-colors">
+      <Popover>
+        <PopoverTrigger asChild>
+          <button type="button" title={completo} aria-label="Ver texto completo" className="shrink-0 cursor-pointer text-muted-foreground/50 hover:text-foreground transition-colors">
             <Eye className="h-3 w-3" />
           </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-md whitespace-pre-wrap text-xs leading-snug">
+        </PopoverTrigger>
+        <PopoverContent side="top" align="end" className="w-auto max-w-md whitespace-pre-wrap p-3 text-xs leading-snug">
           {completo}
-        </TooltipContent>
-      </Tooltip>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

@@ -29,7 +29,7 @@ const mockData: BIInfraSgsiResponse = {
     total: 2, ativos: 1, contornados: 0, resolvidos: 1, pctDentroSla: 50,
     porSLA: [{ name: 'Sim', value: 1 }, { name: 'Não', value: 1 }], porCategoria: [{ name: 'Rede', value: 2 }],
     itens: [
-      { id: 10, titulo: 'Queda de rede', ativo: 'Switch core', motivo: 'Falha', priorizacao: 'Alta', protocolo: 'INC-500', status: 'Resolvido', tipo: 'Rede', sla: 'Sim', categoria: 'Rede', downtimeHoras: 2, inicio: '2026-07-01T08:00:00Z', descricao: 'Switch core parou de responder', solucao: 'Reinício do equipamento e troca da fonte' },
+      { id: 10, titulo: 'Queda de rede', ativo: 'Switch core', motivo: 'Falha', priorizacao: 'Alta', protocolo: 'INC-500', status: 'Resolvido', tipo: 'Rede', sla: 'Sim', categoria: 'Rede', downtimeHoras: 2, inicio: '2026-07-01T08:00:00Z', produto: 'Datacenter', descricao: 'Switch core parou de responder', solucao: 'Reinício do equipamento e troca da fonte' },
     ],
   },
   riscos: {

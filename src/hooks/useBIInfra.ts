@@ -76,8 +76,10 @@ export interface SgIncidenteItem {
   inicio: string;
   /** Texto do incidente ("Descrição incidente"). */
   descricao: string;
-  /** Solução aplicada ("Solução corretiva"). */
+  /** Solução aplicada ("Solução corretiva" / "Lições aprendidas"). */
   solucao: string;
+  /** Produto afetado ("Produto"). */
+  produto: string;
 }
 
 export interface SgIncidentesBloco {
@@ -437,6 +439,7 @@ export function buildSgsiResponse(
       inicio: str(i, 'Data e hora inicio Incidente') || i.created_sp || '',
       descricao: str(i, 'Descrição incidente') || DASH,
       solucao: str(i, 'Solução corretiva', 'Lições aprendidas') || DASH,
+      produto: str(i, 'Produto') || DASH,
     })),
   };
 

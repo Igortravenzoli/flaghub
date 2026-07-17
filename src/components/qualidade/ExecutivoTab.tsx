@@ -68,12 +68,13 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
   const { isAdmin } = useAuth();
   const canManage = isAdmin || isOwner('qualidade');
 
-  // ── Modo TV (telão): tipografia ampliada + layout que ESTICA para preencher
-  // a altura que o KioskFit entregar (fill mode). Fora do TV nada muda. ──────
-  const numMain = tvMode ? 'text-6xl' : 'text-4xl';
-  const numMeta = tvMode ? 'text-5xl' : 'text-3xl';
-  const numSec = tvMode ? 'text-4xl' : 'text-2xl';
-  const lbl = tvMode ? 'text-sm' : 'text-[11px]';
+  // ── Modo TV (telão): layout que ESTICA para preencher a altura do KioskFit
+  // (fill mode). Tipografia só um degrau acima do normal — no telão de 742px de
+  // canvas, número gigante = informação espremida. Fora do TV nada muda. ──────
+  const numMain = tvMode ? 'text-4xl' : 'text-4xl';
+  const numMeta = tvMode ? 'text-3xl' : 'text-3xl';
+  const numSec = tvMode ? 'text-2xl' : 'text-2xl';
+  const lbl = tvMode ? 'text-xs' : 'text-[11px]';
   const foot = tvMode ? 'text-xs' : 'text-[11px]';
 
   // ── Meta: % no prazo (<=2 sprints) vs atraso (>2) ────────────────────────────
@@ -164,7 +165,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
     <div className={tvMode ? 'h-full min-h-0 flex flex-col gap-3 overflow-hidden' : 'space-y-4'}>
       {tvMode ? (
         <div className="flex-none flex items-baseline gap-3">
-          <h2 className="text-2xl font-bold">Visão Executiva</h2>
+          <h2 className="text-lg font-bold">Visão Executiva</h2>
           <p className="text-sm text-muted-foreground">
             Qualidade · onde estamos · o que queremos · de onde viemos {periodLabel ? `· ${periodLabel}` : ''}
           </p>
@@ -199,9 +200,11 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
               <div style={{ width: `${(fila.aguardando_deploy / fila.total_qa) * 100}%`, backgroundColor: QA_TONES.info.solid }} />
             </div>
           )}
-          <p className={`${foot} text-muted-foreground border-t pt-2`}>
-            Escopo de qualidade (Em Teste + Aguardando Deploy). Sprint atual: {fila?.sprint_atual ?? '—'}.
-          </p>
+          {!tvMode && (
+            <p className={`${foot} text-muted-foreground border-t pt-2`}>
+              Escopo de qualidade (Em Teste + Aguardando Deploy). Sprint atual: {fila?.sprint_atual ?? '—'}.
+            </p>
+          )}
         </BlocoCard>
 
         {/* O que queremos — Meta de vazão / idade */}
@@ -227,10 +230,12 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
               <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(meta.pct, 100)}%`, backgroundColor: meta.cor }} />
             </div>
           </div>
-          <p className={`${foot} text-muted-foreground border-t pt-2`}>
-            Meta: nada há mais de 2 sprints sem DONE = atraso (represamento).
-            {(fila?.sem_sprint ?? 0) > 0 && ` ${fila!.sem_sprint} sem sprint de origem (fora do cálculo de atraso).`}
-          </p>
+          {!tvMode && (
+            <p className={`${foot} text-muted-foreground border-t pt-2`}>
+              Meta: nada há mais de 2 sprints sem DONE = atraso (represamento).
+              {(fila?.sem_sprint ?? 0) > 0 && ` ${fila!.sem_sprint} sem sprint de origem (fora do cálculo de atraso).`}
+            </p>
+          )}
         </BlocoCard>
 
         {/* Qualidade do processo — retornos quantificados */}
@@ -253,9 +258,11 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
               <p className={`${lbl} text-destructive font-medium`}>≥ 3x ⚠</p>
             </div>
           </div>
-          <p className={`${foot} text-muted-foreground border-t pt-2`}>
-            {retornos?.itens_com_retorno ?? 0} itens encerrados com retorno (tag RETORNO QA) em {year} — soma dos 3 grupos. ≥3 = sinal de problema no processo.
-          </p>
+          {!tvMode && (
+            <p className={`${foot} text-muted-foreground border-t pt-2`}>
+              {retornos?.itens_com_retorno ?? 0} itens encerrados com retorno (tag RETORNO QA) em {year} — soma dos 3 grupos. ≥3 = sinal de problema no processo.
+            </p>
+          )}
         </BlocoCard>
       </div>
 
@@ -318,9 +325,10 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
       </div>
       )}
 
-      {/* ── Linha 3 + 4: em TV a reconciliação/versões vem antes da distribuição ── */}
-      <div className={tvMode ? 'flex-1 min-h-0 flex flex-col gap-3' : 'flex flex-col gap-4'}>
-      <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'order-2 flex-[1.2] min-h-0' : undefined}>
+      {/* ── Linha 3 + 4: no TV vira UMA grade de 3 colunas (reconciliação ·
+          versões · distribuição), cada card com a altura toda — sem espremer ── */}
+      <div className={tvMode ? 'flex-1 min-h-0 grid grid-cols-3 gap-3' : 'flex flex-col gap-4'}>
+      <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'order-3 min-h-0 overflow-hidden' : undefined}>
         {handoffData.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sem entradas registradas no período.</p>
         ) : tvMode ? (
@@ -335,11 +343,13 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
         </p>
       </BlocoCard>
 
-      {/* ── Linha 4: reconciliação (bug 76-vs-26) + controle de versão ── */}
-      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 ${tvMode ? 'order-1 flex-1 min-h-0 auto-rows-fr' : ''}`}>
+      {/* ── Linha 4: reconciliação (bug 76-vs-26) + controle de versão.
+          No TV o wrapper vira display:contents — os dois cards entram direto
+          como colunas da grade de 3 ao lado da distribuição. ── */}
+      <div className={tvMode ? 'contents' : 'grid grid-cols-1 lg:grid-cols-2 gap-4'}>
 
         {/* Reconciliação retorno QA × encerramentos */}
-        <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação" className={tvMode ? 'min-h-0' : undefined}>
+        <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação" className={tvMode ? 'order-1 min-h-0 overflow-hidden' : undefined}>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
               <p className={`${numSec} font-bold font-mono`}>{retornos?.reconc.total_encerrados ?? 0}</p>
@@ -380,9 +390,9 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
 
         {/* Controle de versão de sistemas (somente leitura em TV) */}
         {tvMode ? (
-          // Célula do grid tem altura fixa (auto-rows-fr): o card estica até
-          // preenchê-la e, se a tabela crescer além, rola dentro em vez de vazar.
-          <div className="min-h-0 overflow-y-auto [&>div]:min-h-full">
+          // Coluna da grade tem altura fixa: o card estica até preenchê-la e,
+          // se a tabela crescer além, rola dentro em vez de vazar.
+          <div className="order-2 min-h-0 overflow-y-auto [&>div]:min-h-full">
             <SistemaVersoesCard canManage={false} />
           </div>
         ) : (
