@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, LabelList, Tooltip as RTooltip,
 } from 'recharts';
@@ -55,14 +55,16 @@ interface InfraExecutivoTabProps {
 // ── Helpers de data ──────────────────────────────────────────────────────
 function toDate(iso?: string | null): Date | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (!Number.isNaN(d.getTime())) return d;
-  // Campos como "Data e hora inicio Incidente" são texto livre no SharePoint
-  // (ex.: "Dia: 09/10/2023 - 06h27") — extrai o primeiro dd/mm/aaaa.
+  // dd/mm/aaaa SEMPRE tem prioridade: o parser nativo lê "12/03/2026" como
+  // formato americano (3 de dezembro!) — os campos do SG são texto livre pt-BR
+  // (ex.: "25/06/2026 as 17:00", "Dia: 09/10/2023 - 06h27").
   const m = iso.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!m) return null;
-  const livre = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  return Number.isNaN(livre.getTime()) ? null : livre;
+  if (m) {
+    const livre = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    if (!Number.isNaN(livre.getTime())) return livre;
+  }
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 /** dd/mm a partir de ISO (sem shift de fuso relevante para exibição curta). */
 function fmtDia(iso?: string | null): string {
@@ -101,7 +103,11 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   // ── Ocorrências recentes (SG-LST) e riscos combinados (SG + DevOps #Risco) ──
   // Ordenação por data PARSEADA (toDate): "inicio" mistura ISO e texto livre
   // ("Dia: 09/10/2023 - 06h27") — comparação de string colocaria 2023 na frente.
-  const tsInicio = (i: SgIncidenteItem) => toDate(i.inicio)?.getTime() ?? 0;
+  // Datas futuras (erro de digitação no forms) não disputam o "último".
+  const tsInicio = (i: SgIncidenteItem) => {
+    const t = toDate(i.inicio)?.getTime() ?? 0;
+    return t > Date.now() + 86400000 ? 0 : t;
+  };
   const incidentesRecentes: SgIncidenteItem[] = useMemo(
     () => (sgsiBase?.incidentes.itens ?? []).filter((i) => within30d(i.inicio)).sort((a, b) => tsInicio(b) - tsInicio(a)),
      
@@ -158,49 +164,54 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
     /realizado|conclu/i.test(s) ? '#10b981' : /rejeitad/i.test(s) ? '#ef4444' : /gestor/i.test(s) ? '#8b5cf6' : '#f59e0b';
   const corRiscoMud = (r: string) => (/alto/i.test(r) ? '#ef4444' : /m[eé]dio/i.test(r) ? '#f59e0b' : '#64748b');
 
-  // ── Cards do layout aprovado (17/07) — compartilhados entre executiva e TV ──
+  // ── Cards do layout aprovado (17/07) — KPIs empilhados à esquerda, lista na
+  // lateral direita (pedido do gestor: KPIs ocupavam a tela e a lista sumia). ──
+  const KpiLinha = ({ label, valor, cor }: { label: string; valor: ReactNode; cor?: string }) => (
+    <div className="flex items-baseline justify-between gap-2 rounded-md border bg-muted/20 px-2 py-1">
+      <span className="text-[10px] text-muted-foreground truncate">{label}</span>
+      <span className="text-sm font-bold font-mono shrink-0" style={cor ? { color: cor } : undefined}>{valor}</span>
+    </div>
+  );
+
   const cardIncidentes = (tv: boolean) => (
     <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
-      <div className="flex items-end gap-3 flex-wrap">
-        <p className={`text-4xl font-bold font-mono leading-none`} style={{ color: corSlaExec(incPctExec) }}>
-          {sgsiBase?.diasSem.incidentes ?? '—'}
-          <span className={`${tv ? 'text-base' : 'text-sm'} text-muted-foreground font-sans font-normal`}> dias sem incidentes</span>
-        </p>
-        {ultimoIncidente && (
-          <p className="text-[11px] text-muted-foreground pb-0.5">último: {fmtDia(ultimoIncidente.inicio)} · {ultimoIncidente.titulo}</p>
-        )}
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: corSlaExec(incPctExec) }}>{incPctExec != null ? `${incPctExec}%` : '—'}</p>
-          <p className="text-[10px] text-muted-foreground">dentro do SLA · meta &gt; 90%</p>
+      <div className="flex items-stretch gap-4 flex-1 min-h-0">
+        {/* Esquerda: KPIs empilhados na vertical */}
+        <div className="w-[200px] shrink-0 flex flex-col gap-1.5">
+          <div className="mb-0.5">
+            <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(incPctExec) }}>
+              {sgsiBase?.diasSem.incidentes ?? '—'}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">dias sem incidentes</p>
+            {ultimoIncidente && (
+              <p className="text-[10px] text-muted-foreground/80 truncate" title={ultimoIncidente.titulo}>
+                último: {fmtDia(ultimoIncidente.inicio)} · {ultimoIncidente.titulo}
+              </p>
+            )}
+          </div>
+          <KpiLinha label="dentro do SLA · meta > 90%" valor={incPctExec != null ? `${incPctExec}%` : '—'} cor={corSlaExec(incPctExec)} />
+          <KpiLinha label="últimos 30 dias" valor={incidentesRecentes.length} />
+          <KpiLinha label="ativos agora" valor={sgsiBase?.incidentes.ativos ?? '—'} />
         </div>
-        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`}>{incidentesRecentes.length}</p>
-          <p className="text-[10px] text-muted-foreground">incidentes últimos 30 dias</p>
+        {/* Direita: listagem de incidentes com causa/solução */}
+        <div className="flex-1 min-w-0 border-l pl-4 space-y-2 overflow-hidden">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ocorrências recentes · incidente / solução</p>
+          {incidentesRecentes.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
+          ) : incidentesRecentes.slice(0, 3).map((i) => {
+            const ok = /sim|dentro/i.test(i.sla);
+            // Causa: "Descrição incidente" quando preenchida; senão o "Motivo incidente".
+            const causa = i.descricao !== '—' && i.descricao !== i.titulo
+              ? i.descricao
+              : i.motivo !== '—' ? `Causa: ${i.motivo}` : undefined;
+            return (
+              <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
+                detalhe={causa}
+                solucao={i.solucao !== '—' ? i.solucao : undefined}
+                badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
+            );
+          })}
         </div>
-        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`}>{sgsiBase?.incidentes.ativos ?? '—'}</p>
-          <p className="text-[10px] text-muted-foreground">ativos agora</p>
-        </div>
-      </div>
-      <div className={`space-y-2 border-t pt-2 ${tv ? 'flex-1 min-h-0 overflow-hidden' : ''}`}>
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ocorrências recentes · incidente / solução</p>
-        {incidentesRecentes.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
-        ) : incidentesRecentes.slice(0, tv ? 2 : 3).map((i) => {
-          const ok = /sim|dentro/i.test(i.sla);
-          // Causa: "Descrição incidente" quando preenchida; senão o "Motivo incidente".
-          const causa = i.descricao !== '—' && i.descricao !== i.titulo
-            ? i.descricao
-            : i.motivo !== '—' ? `Causa: ${i.motivo}` : undefined;
-          return (
-            <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
-              detalhe={causa}
-              solucao={i.solucao !== '—' ? i.solucao : undefined}
-              badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
-          );
-        })}
       </div>
       {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-017 · análise e tratamento de incidentes</p>}
     </BlocoCard>
@@ -208,41 +219,36 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
   const cardRiscos = (tv: boolean) => (
     <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
-      <div className="flex items-end gap-3">
-        <p className={`text-4xl font-bold font-mono leading-none`} style={{ color: corSlaExec(risco30Exec) }}>
-          {diasSemRiscos ?? '—'}
-          <span className={`${tv ? 'text-base' : 'text-sm'} text-muted-foreground font-sans font-normal`}> dias sem riscos novos</span>
-        </p>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: corSlaExec(risco30Exec) }}>{risco30Exec != null ? `${risco30Exec}%` : '—'}</p>
-          <p className="text-[10px] text-muted-foreground">resolvidos ≤ 30 dias · meta &gt; 90%</p>
+      <div className="flex items-stretch gap-4 flex-1 min-h-0">
+        {/* Esquerda: KPIs empilhados na vertical */}
+        <div className="w-[200px] shrink-0 flex flex-col gap-1.5">
+          <div className="mb-0.5">
+            <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(risco30Exec) }}>
+              {diasSemRiscos ?? '—'}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">dias sem riscos novos</p>
+          </div>
+          <KpiLinha label="resolvidos ≤ 30d · meta > 90%" valor={risco30Exec != null ? `${risco30Exec}%` : '—'} cor={corSlaExec(risco30Exec)} />
+          <KpiLinha label={`em aberto · ${riscosSg.length} SG + ${riscosDevops.length} DevOps`} valor={riscosCombinados} cor={riscosCombinados > 0 ? '#f59e0b' : undefined} />
+          <KpiLinha label="riscos mapeados" valor={sgsiBase?.riscos.total ?? '—'} />
         </div>
-        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: riscosCombinados > 0 ? '#f59e0b' : undefined }}>{riscosCombinados}</p>
-          <p className="text-[10px] text-muted-foreground">em aberto · {riscosSg.length} SG + {riscosDevops.length} DevOps</p>
+        {/* Direita: listagem de riscos com solução */}
+        <div className="flex-1 min-w-0 border-l pl-4 space-y-2 overflow-hidden">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Riscos · situação / solução</p>
+          {riscosCombinados === 0 ? (
+            <p className="text-[11px] text-muted-foreground">Sem riscos em aberto.</p>
+          ) : (
+            <>
+              {riscosSg.slice(0, 2).map((r) => (
+                <RecenteRow key={`sg-${r.id}`} data={`SG #${r.id}`} texto={r.descricao}
+                  solucao={r.solucao !== '—' ? r.solucao : undefined} badge={r.status} />
+              ))}
+              {riscosDevops.slice(0, 2).map((r) => (
+                <RecenteRow key={`do-${r.id}`} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
+              ))}
+            </>
+          )}
         </div>
-        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`}>{sgsiBase?.riscos.total ?? '—'}</p>
-          <p className="text-[10px] text-muted-foreground">riscos mapeados</p>
-        </div>
-      </div>
-      <div className={`space-y-2 border-t pt-2 ${tv ? 'flex-1 min-h-0 overflow-hidden' : ''}`}>
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Riscos · situação / solução</p>
-        {riscosCombinados === 0 ? (
-          <p className="text-[11px] text-muted-foreground">Sem riscos em aberto.</p>
-        ) : (
-          <>
-            {riscosSg.slice(0, 2).map((r) => (
-              <RecenteRow key={`sg-${r.id}`} data={`SG #${r.id}`} texto={r.descricao}
-                solucao={r.solucao !== '—' ? r.solucao : undefined} badge={r.status} />
-            ))}
-            {riscosDevops.slice(0, 2).map((r) => (
-              <RecenteRow key={`do-${r.id}`} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
-            ))}
-          </>
-        )}
       </div>
       {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-012 · análise de riscos + board DevOps (tag #Risco)</p>}
     </BlocoCard>

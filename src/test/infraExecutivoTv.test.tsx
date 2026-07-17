@@ -38,6 +38,9 @@ const mockSgsi: BIInfraSgsiResponse = {
       { id: 10, titulo: 'FlagCloud', ativo: 'Servidor', motivo: 'Falha', priorizacao: 'Alta', protocolo: 'INC-1', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Cloud', downtimeHoras: 1, inicio: 'Dia: 09/10/2023 - 06h27', descricao: 'Queda do ambiente FlagCloud', solucao: 'Reinício do cluster' },
       // Ontem, ISO — este é o último e é recente (30d).
       { id: 11, titulo: 'Inc Broker', ativo: 'Broker', motivo: 'Fila travada', priorizacao: 'Alta', protocolo: 'INC-2', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Broker', downtimeHoras: 0.5, inicio: ontemIso, descricao: 'Fila de integração travada no Broker', solucao: 'Reprocessamento da fila e ajuste do job' },
+      // 12/03 em pt-BR = 12 de março (o parser nativo leria 3 de dezembro,
+      // futuro, e este item roubaria o "último").
+      { id: 12, titulo: 'Ambiente FlexxPromo', ativo: 'Promo', motivo: 'Config', priorizacao: 'Média', protocolo: 'INC-3', status: 'Resolvido', tipo: 'Infra', sla: 'Sim', categoria: 'Promo', downtimeHoras: 0, inicio: '12/03/2026 as 10:00', descricao: '—', solucao: '—' },
     ],
   },
   riscos: {
@@ -74,10 +77,12 @@ const kpis = {
 };
 
 describe('InfraExecutivoTab — modo TV (layout aprovado)', () => {
-  it('"último" usa a data PARSEADA — incidente de ontem ganha do texto livre de 2023', () => {
+  it('"último" usa a data PARSEADA pt-BR — ontem ganha de texto livre 2023 e de dd/mm ambíguo', () => {
     render(<InfraExecutivoTab kpis={kpis} tvMode periodLabel="S14-2026" />);
     expect(screen.getByText(new RegExp(`último: ${ontemLabel} · Inc Broker`))).toBeInTheDocument();
     expect(screen.queryByText(/último: 09\/10/)).not.toBeInTheDocument();
+    // "12/03/2026" NÃO pode virar 3 de dezembro (parse americano)
+    expect(screen.queryByText(/último: 03\/12/)).not.toBeInTheDocument();
   });
 
   it('exibe texto do incidente e solução no card de incidentes', () => {
@@ -95,8 +100,8 @@ describe('InfraExecutivoTab — modo TV (layout aprovado)', () => {
   it('"dias sem riscos novos" pondera a task #Risco mais recente do DevOps', () => {
     render(<InfraExecutivoTab kpis={kpis} tvMode />);
     // SG diz 141 dias, mas a task DevOps foi criada ontem → contador = 1
-    const p = screen.getByText(/dias sem riscos novos/).closest('p');
-    expect(p?.textContent).toMatch(/^1\s*dias sem riscos novos/);
+    const bloco = screen.getByText('dias sem riscos novos').parentElement;
+    expect(bloco?.textContent).toMatch(/^1\s*dias sem riscos novos/);
   });
 
   it('renderiza o card Gestão de Mudanças com KPIs e amostra no TV', () => {
