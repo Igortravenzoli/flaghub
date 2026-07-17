@@ -4,11 +4,11 @@ import {
 } from 'recharts';
 import {
   Server, GitBranch, ShieldCheck, Wrench, CalendarClock, Workflow, Activity,
-  CheckCircle2, AlertTriangle, FileWarning, RefreshCw,
+  CheckCircle2, AlertTriangle, RefreshCw,
 } from 'lucide-react';
 import { BlocoCard, corMetaHigh } from '@/components/executivo/BlocoCard';
 import { useDevopsRepos, computeCoberturaKpis, countPipelinesNovasTrimestre } from '@/hooks/useDevopsCobertura';
-import { useBIInfraSgsi, type SgIncidenteItem, type SgRiscoItem, type SgNcItem } from '@/hooks/useBIInfra';
+import { useBIInfraSgsi, type SgIncidenteItem, type SgRiscoItem, type SgMudancaItem } from '@/hooks/useBIInfra';
 
 // Metas (espelham as constantes do DevopsCoberturaPanel)
 const META_PIPELINES_TRIMESTRE = 3;
@@ -92,17 +92,41 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
     () => (sgsi?.incidentes.itens ?? []).filter((i) => within30d(i.inicio)).sort((a, b) => (b.inicio ?? '').localeCompare(a.inicio ?? '')),
     [sgsi],
   );
-  const ncRecentes: SgNcItem[] = useMemo(
-    () => (sgsi?.naoConformidades.itens ?? []).filter((i) => within30d(i.criado)).sort((a, b) => (b.criado ?? '').localeCompare(a.criado ?? '')),
-    [sgsi],
-  );
   const riscosSg: SgRiscoItem[] = useMemo(
     () => (sgsi?.riscos.itens ?? []).filter((r) => !/tratad|encerr|conclu|finaliz|rejeitad/i.test(r.status)),
     [sgsi],
   );
   const riscosDevops: RiscoDevopsItem[] = kpis.riscoItens ?? [];
   const riscosCombinados = riscosSg.length + riscosDevops.length;
-  const attMalSucedidas = sgsi?.mudancas.atualizacoesBemSucedidas.nao ?? 0;
+
+  // ── Layout aprovado (mock 17/07): Incidentes | Riscos + Mudanças da sprint ──
+  const incPctExec = sgsi?.incidentes.pctDentroSla ?? null;
+  const risco30Exec = sgsi?.riscos.pctResolvido30d ?? null;
+  const corSlaExec = (p: number | null) => (p == null ? undefined : p > 90 ? '#16a34a' : p >= 80 ? '#f59e0b' : '#ef4444');
+  const ultimoIncidente: SgIncidenteItem | undefined = useMemo(
+    () => [...(sgsi?.incidentes.itens ?? [])].sort((a, b) => (b.inicio ?? '').localeCompare(a.inicio ?? ''))[0],
+    [sgsi],
+  );
+  const mudStats = useMemo(() => {
+    const itens = sgsi?.mudancas.itens ?? [];
+    const isConcl = (s: string) => /realizado|conclu/i.test(s);
+    const isRej = (s: string) => /rejeitad/i.test(s);
+    const byCriado = (a: SgMudancaItem, b: SgMudancaItem) =>
+      (b.criado || b.modificado || '').localeCompare(a.criado || a.modificado || '');
+    return {
+      total: itens.length,
+      concluidas: itens.filter((i) => isConcl(i.status)).sort(byCriado),
+      pendentes: itens.filter((i) => !isConcl(i.status) && !isRej(i.status)).sort(byCriado),
+      rejeitadas: itens.filter((i) => isRej(i.status)).length,
+    };
+  }, [sgsi]);
+  const mudAmostra = useMemo(
+    () => [...mudStats.concluidas.slice(0, 6), ...mudStats.pendentes.slice(0, 2)],
+    [mudStats],
+  );
+  const corStatusMud = (s: string) =>
+    /realizado|conclu/i.test(s) ? '#10b981' : /rejeitad/i.test(s) ? '#ef4444' : /gestor/i.test(s) ? '#8b5cf6' : '#f59e0b';
+  const corRiscoMud = (r: string) => (/alto/i.test(r) ? '#ef4444' : /m[eé]dio/i.test(r) ? '#f59e0b' : '#64748b');
 
   // ── Modo TV: 3 blocos — meta pipelines com alvos+atuados · incidentes SLA · riscos ──
   if (tvMode) {
@@ -354,8 +378,8 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
         </BlocoCard>
       </div>
 
-      {/* ── Linha 2: de onde viemos · disponibilidade SG · iniciativas ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* ── Linha 2: de onde viemos · iniciativas ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         {/* De onde viemos — Done por sprint */}
         <BlocoCard icon={CalendarClock} titulo="De onde viemos · Done por sprint">
@@ -377,43 +401,6 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
             </ResponsiveContainer>
           )}
           <p className="text-[11px] text-muted-foreground border-t pt-2">Tasks concluídas ao fim de cada sprint — últimas 3 mapeadas.</p>
-        </BlocoCard>
-
-        {/* Disponibilidade — Gestão SG (metas SLA) */}
-        <BlocoCard icon={ShieldCheck} titulo="Disponibilidade · Gestão SG">
-          {(() => {
-            const incPct = sgsi?.incidentes.pctDentroSla ?? null;
-            const risco30 = sgsi?.riscos.pctResolvido30d ?? null;
-            const corSla = (p: number | null) => (p == null ? undefined : p > 90 ? '#16a34a' : p >= 80 ? '#f59e0b' : '#ef4444');
-            return (
-              <div className="grid grid-cols-2 gap-2 text-center">
-                <div>
-                  <p className="text-3xl font-bold font-mono" style={{ color: corSla(incPct) }}>{incPct != null ? `${incPct}%` : '—'}</p>
-                  <p className="text-[11px] text-muted-foreground">incidentes dentro do SLA</p>
-                  <p className="text-[10px] text-muted-foreground">meta &gt; 90%</p>
-                </div>
-                <div>
-                  <p className="text-3xl font-bold font-mono" style={{ color: corSla(risco30) }}>{risco30 != null ? `${risco30}%` : '—'}</p>
-                  <p className="text-[11px] text-muted-foreground">riscos resolvidos ≤ 30 dias</p>
-                  <p className="text-[10px] text-muted-foreground">meta &gt; 90%</p>
-                </div>
-              </div>
-            );
-          })()}
-          <div className="grid grid-cols-3 gap-2 text-center border-t pt-2">
-            <div>
-              <p className="text-lg font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.incidentes ?? '—'}</p>
-              <p className="text-[10px] text-muted-foreground">dias s/ incidente</p>
-            </div>
-            <div>
-              <p className="text-lg font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.riscos ?? '—'}</p>
-              <p className="text-[10px] text-muted-foreground">dias s/ risco</p>
-            </div>
-            <div>
-              <p className="text-lg font-bold font-mono text-[hsl(142,71%,45%)]">{sgsi?.diasSem.naoConformidades ?? '—'}</p>
-              <p className="text-[10px] text-muted-foreground">dias s/ NC</p>
-            </div>
-          </div>
         </BlocoCard>
 
         {/* Iniciativas & Riscos */}
@@ -439,94 +426,156 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
         </BlocoCard>
       </div>
 
-      {/* ── Linha 3: Gestão SG · dias sem ocorrências + recentes (30d) ── */}
-      <BlocoCard icon={ShieldCheck} titulo="Gestão SG · dias sem ocorrências (últimos 30 dias)">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          {/* Incidentes */}
-          <OcorrenciaCol
-            icon={Activity} cor="#ef4444" titulo="Incidentes"
-            dias={sgsi?.diasSem.incidentes} nRecentes={incidentesRecentes.length}
-            vazio="Sem incidentes em 30d"
-          >
-            {incidentesRecentes.slice(0, 3).map((i) => {
+      {/* ── Linha 3: Gestão de Incidentes | Gestão de Riscos (layout aprovado 17/07) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Gestão de Incidentes (SG-LST-017) */}
+        <BlocoCard icon={Activity} titulo="Gestão de Incidentes">
+          <div className="flex items-end gap-3">
+            <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(incPctExec) }}>
+              {sgsi?.diasSem.incidentes ?? '—'}
+              <span className="text-sm text-muted-foreground font-sans font-normal"> dias sem incidentes</span>
+            </p>
+            {ultimoIncidente && (
+              <p className="text-[11px] text-muted-foreground pb-0.5">último: {fmtDia(ultimoIncidente.inicio)} · {ultimoIncidente.titulo}</p>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+              <p className="text-lg font-bold font-mono leading-tight" style={{ color: corSlaExec(incPctExec) }}>{incPctExec != null ? `${incPctExec}%` : '—'}</p>
+              <p className="text-[10px] text-muted-foreground">dentro do SLA · meta &gt; 90%</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+              <p className="text-lg font-bold font-mono leading-tight">{incidentesRecentes.length}</p>
+              <p className="text-[10px] text-muted-foreground">incidentes últimos 30 dias</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+              <p className="text-lg font-bold font-mono leading-tight">{sgsi?.incidentes.ativos ?? '—'}</p>
+              <p className="text-[10px] text-muted-foreground">ativos agora</p>
+            </div>
+          </div>
+          <div className="space-y-1.5 border-t pt-2">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ocorrências recentes · SLA</p>
+            {incidentesRecentes.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
+            ) : incidentesRecentes.slice(0, 3).map((i) => {
               const ok = /sim|dentro/i.test(i.sla);
               return (
                 <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
-                  badge={ok ? 'dentro SLA' : 'fora SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
+                  badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
               );
             })}
-          </OcorrenciaCol>
+          </div>
+          <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-017 · análise e tratamento de incidentes</p>
+        </BlocoCard>
 
-          {/* Riscos (SG + DevOps #Risco) */}
-          <OcorrenciaCol
-            icon={AlertTriangle} cor="#f59e0b" titulo="Riscos novos"
-            dias={sgsi?.diasSem.riscos} nRecentes={riscosCombinados}
-            vazio="Sem riscos em aberto"
-          >
-            {riscosSg.slice(0, 2).map((r) => (
-              <RecenteRow key={`sg-${r.id}`} data={`SG #${r.id}`} texto={r.descricao} badge={r.status} />
-            ))}
-            {riscosDevops.slice(0, 2).map((r) => (
-              <RecenteRow key={`do-${r.id}`} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
-            ))}
-          </OcorrenciaCol>
-
-          {/* Não conformidades */}
-          <OcorrenciaCol
-            icon={FileWarning} cor="#8b5cf6" titulo="Não conformidades"
-            dias={sgsi?.diasSem.naoConformidades} nRecentes={ncRecentes.length}
-            vazio="Sem NC em 30d"
-          >
-            {ncRecentes.slice(0, 3).map((n) => (
-              <RecenteRow key={n.id} data={fmtDia(n.criado)} texto={n.detalhes || n.processo} badge={n.status} />
-            ))}
-          </OcorrenciaCol>
-
-          {/* Atualizações malsucedidas */}
-          <OcorrenciaCol
-            icon={RefreshCw} cor="#3b82f6" titulo="Atualização malsucedida"
-            dias={sgsi?.diasSem.attMalSucedidas} nRecentes={attMalSucedidas}
-            vazio="Nenhuma malsucedida"
-          >
-            {attMalSucedidas > 0 && (
-              <p className="text-[11px] text-muted-foreground">
-                {attMalSucedidas} mudança{attMalSucedidas > 1 ? 's' : ''} com atualização não bem-sucedida — ver aba Gestão SG · Mudanças.
-              </p>
+        {/* Gestão de Riscos (SG-LST-012 + DevOps #Risco) */}
+        <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos">
+          <div className="flex items-end gap-3">
+            <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(risco30Exec) }}>
+              {sgsi?.diasSem.riscos ?? '—'}
+              <span className="text-sm text-muted-foreground font-sans font-normal"> dias sem riscos novos</span>
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+              <p className="text-lg font-bold font-mono leading-tight" style={{ color: corSlaExec(risco30Exec) }}>{risco30Exec != null ? `${risco30Exec}%` : '—'}</p>
+              <p className="text-[10px] text-muted-foreground">resolvidos ≤ 30 dias · meta &gt; 90%</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+              <p className="text-lg font-bold font-mono leading-tight" style={{ color: riscosCombinados > 0 ? '#f59e0b' : undefined }}>{riscosCombinados}</p>
+              <p className="text-[10px] text-muted-foreground">em aberto (SG + DevOps)</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+              <p className="text-lg font-bold font-mono leading-tight">{sgsi?.riscos.total ?? '—'}</p>
+              <p className="text-[10px] text-muted-foreground">riscos mapeados</p>
+            </div>
+          </div>
+          <div className="space-y-1.5 border-t pt-2">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Riscos · situação</p>
+            {riscosCombinados === 0 ? (
+              <p className="text-[11px] text-muted-foreground">Sem riscos em aberto.</p>
+            ) : (
+              <>
+                {riscosSg.slice(0, 2).map((r) => (
+                  <RecenteRow key={`sg-${r.id}`} data={`SG #${r.id}`} texto={r.descricao} badge={r.status} />
+                ))}
+                {riscosDevops.slice(0, 2).map((r) => (
+                  <RecenteRow key={`do-${r.id}`} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
+                ))}
+              </>
             )}
-          </OcorrenciaCol>
+          </div>
+          <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-012 · análise de riscos + board DevOps (tag #Risco)</p>
+        </BlocoCard>
+      </div>
+
+      {/* ── Linha 4: Gestão de Mudanças · sprint corrente (layout aprovado 17/07) ── */}
+      <BlocoCard icon={RefreshCw} titulo={`Gestão de Mudanças · ${periodLabel ?? 'período selecionado'}`}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="rounded-lg border bg-muted/20 px-3 py-2">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Solicitações</p>
+            <p className="text-2xl font-bold font-mono">{mudStats.total}</p>
+          </div>
+          <div className="rounded-lg border bg-muted/20 px-3 py-2">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Concluídas</p>
+            <p className="text-2xl font-bold font-mono text-[hsl(142,71%,45%)]">
+              {mudStats.concluidas.length}
+              <span className="text-sm text-muted-foreground"> · {mudStats.total > 0 ? Math.round((mudStats.concluidas.length / mudStats.total) * 100) : 0}%</span>
+            </p>
+          </div>
+          <div className="rounded-lg border bg-muted/20 px-3 py-2">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Pendentes</p>
+            <p className="text-2xl font-bold font-mono text-amber-500">{mudStats.pendentes.length}</p>
+          </div>
+          <div className="rounded-lg border bg-muted/20 px-3 py-2">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Rejeitadas</p>
+            <p className="text-2xl font-bold font-mono text-red-500">{mudStats.rejeitadas}</p>
+          </div>
         </div>
+
+        {mudAmostra.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">Nenhuma mudança no período selecionado.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-xs">
+              <thead className="border-b bg-muted/30">
+                <tr className="text-muted-foreground text-[10px] uppercase tracking-wider">
+                  <th className="py-1.5 px-3 text-left font-medium">Data</th>
+                  <th className="py-1.5 px-3 text-left font-medium">OS / Chamado</th>
+                  <th className="py-1.5 px-3 text-left font-medium">Ambiente</th>
+                  <th className="py-1.5 px-3 text-left font-medium">Mudança (resumo)</th>
+                  <th className="py-1.5 px-3 text-left font-medium">Risco</th>
+                  <th className="py-1.5 px-3 text-left font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mudAmostra.map((m) => (
+                  <tr key={m.id} className="border-b last:border-b-0">
+                    <td className="py-1.5 px-3 font-mono text-muted-foreground whitespace-nowrap">{fmtDia(m.criado || m.modificado)}</td>
+                    <td className="py-1.5 px-3 font-mono font-semibold text-primary whitespace-nowrap">{m.chamado}</td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">{m.ambiente}</td>
+                    <td className="py-1.5 px-3 max-w-[320px] truncate" title={m.motivo}>{m.motivo !== '—' ? m.motivo : m.tipoMudanca}</td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">
+                      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corRiscoMud(m.risco)}20`, color: corRiscoMud(m.risco) }}>{m.risco}</span>
+                    </td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">
+                      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corStatusMud(m.status)}20`, color: corStatusMud(m.status) }}>{m.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">
+          Amostra resumida ({Math.min(6, mudStats.concluidas.length)} concluídas mais recentes{mudStats.pendentes.length > 0 ? ` + ${Math.min(2, mudStats.pendentes.length)} pendente${Math.min(2, mudStats.pendentes.length) > 1 ? 's' : ''}` : ''}) — detalhe completo na aba Gestão SG · Mudanças.
+        </p>
       </BlocoCard>
     </div>
   );
 }
 
-// ── Subcomponentes da linha "dias sem ocorrências" ───────────────────────
-function OcorrenciaCol({ icon: Icon, cor, titulo, dias, nRecentes, vazio, children }: {
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  cor: string; titulo: string; dias?: number | null; nRecentes: number; vazio: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border bg-card p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="p-1 rounded-md" style={{ background: `${cor}18` }}>
-          <Icon className="h-3.5 w-3.5" style={{ color: cor }} />
-        </div>
-        <span className="text-[11px] font-medium text-muted-foreground">{titulo}</span>
-      </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-bold font-mono" style={{ color: cor }}>{dias ?? '—'}</span>
-        <span className="text-[10px] text-muted-foreground">dias sem</span>
-      </div>
-      <div className="space-y-1.5 border-t pt-2">
-        {nRecentes === 0 ? (
-          <p className="text-[11px] text-muted-foreground">{vazio}</p>
-        ) : children}
-      </div>
-    </div>
-  );
-}
-
+// ── Linha de ocorrência recente (incidentes/riscos) ──────────────────────
 function RecenteRow({ data, texto, badge, badgeCor = '#64748b' }: {
   data: string; texto: string; badge?: string; badgeCor?: string;
 }) {
