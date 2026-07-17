@@ -74,6 +74,10 @@ export interface SgIncidenteItem {
   categoria: string;
   downtimeHoras: number;
   inicio: string;
+  /** Texto do incidente ("Descrição incidente"). */
+  descricao: string;
+  /** Solução aplicada ("Solução corretiva"). */
+  solucao: string;
 }
 
 export interface SgIncidentesBloco {
@@ -101,6 +105,8 @@ export interface SgRiscoItem {
   responsavelAjuste: string;
   dataLimite: string;
   eficaz: string;
+  /** Solução/tratamento ("Descrição da ação a ser tomada" ou "Controle a ser adotado"). */
+  solucao: string;
 }
 
 export interface SgRiscosBloco {
@@ -413,6 +419,8 @@ export function buildSgsiResponse(
       categoria: str(i, 'Categoria') || DASH,
       downtimeHoras: num(i, 'Tempo Downtime'),
       inicio: str(i, 'Data e hora inicio Incidente') || i.created_sp || '',
+      descricao: str(i, 'Descrição incidente') || DASH,
+      solucao: str(i, 'Solução corretiva') || DASH,
     })),
   };
 
@@ -452,6 +460,7 @@ export function buildSgsiResponse(
       responsavelAjuste: str(i, 'Responsável pelo ajuste') || DASH,
       dataLimite: str(i, 'Data limite solução') || '',
       eficaz: str(i, 'O plano de tratamento de risco foi eficaz?') || DASH,
+      solucao: str(i, 'Descrição da ação a ser tomada', 'Controle a ser adotado') || DASH,
     })),
   };
 

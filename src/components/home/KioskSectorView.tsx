@@ -29,7 +29,7 @@ const DESIGN_WIDTH = 1320;
  * validar visualmente que o setor se molda a alturas variadas — no modo fill
  * não há mais rede de proteção contra corte. Os demais seguem no modo legado.
  */
-const FILL_READY = new Set(['fabrica', 'qualidade']);
+const FILL_READY = new Set(['fabrica', 'qualidade', 'infraestrutura']);
 
 /**
  * Escala o conteúdo para ocupar TODA a área do modo TV, em qualquer proporção

@@ -688,6 +688,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
                 { label: 'Status', value: <StatusBadge status={r.status} /> },
                 { label: 'Downtime', value: r.downtimeHoras > 0 ? `${r.downtimeHoras.toFixed(1)}h` : '—' },
                 { label: 'Motivo', value: r.motivo }, { label: 'Início', value: fmtDate(r.inicio) },
+                { label: 'Descrição', value: r.descricao }, { label: 'Solução', value: r.solucao },
               ],
             })}
             columns={[
@@ -732,7 +733,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
                 { label: 'Tipo ameaça', value: r.tipoAmeaca }, { label: 'Ativo/afeta', value: r.ativoAfetado },
                 { label: 'Ambiente', value: r.ambiente }, { label: 'Status', value: <StatusBadge status={r.status} /> },
                 { label: 'Responsável', value: r.responsavelAjuste }, { label: 'Limite', value: fmtDate(r.dataLimite) },
-                { label: 'Eficaz?', value: r.eficaz },
+                { label: 'Eficaz?', value: r.eficaz }, { label: 'Solução', value: r.solucao },
               ],
             })}
             columns={[

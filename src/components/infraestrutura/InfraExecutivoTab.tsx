@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import {
   Server, GitBranch, ShieldCheck, Wrench, CalendarClock, Workflow, Activity,
-  CheckCircle2, AlertTriangle, RefreshCw,
+  CheckCircle2, RefreshCw,
 } from 'lucide-react';
 import { BlocoCard, corMetaHigh } from '@/components/executivo/BlocoCard';
 import { useDevopsRepos, computeCoberturaKpis, countPipelinesNovasTrimestre } from '@/hooks/useDevopsCobertura';
@@ -48,7 +48,7 @@ interface InfraExecutivoTabProps {
   dateFrom?: Date;
   dateTo?: Date;
   periodLabel?: string;
-  /** Modo TV (kiosk): 3 blocos — meta pipeline Q3 com alvos+atuados, incidentes SLA e riscos ≤30d (dados reais do SG). */
+  /** Modo TV (kiosk): layout aprovado em tela cheia — pipelines · incidentes|riscos · mudanças da sprint. */
   tvMode?: boolean;
 }
 
@@ -139,157 +139,234 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
     /realizado|conclu/i.test(s) ? '#10b981' : /rejeitad/i.test(s) ? '#ef4444' : /gestor/i.test(s) ? '#8b5cf6' : '#f59e0b';
   const corRiscoMud = (r: string) => (/alto/i.test(r) ? '#ef4444' : /m[eé]dio/i.test(r) ? '#f59e0b' : '#64748b');
 
-  // ── Modo TV: 3 blocos — meta pipelines com alvos+atuados · incidentes SLA · riscos ──
-  if (tvMode) {
-    const corSla = (p: number) => (p > 90 ? '#16a34a' : p >= 80 ? '#f59e0b' : '#ef4444');
-    const incPct = sgsiBase?.incidentes.pctDentroSla ?? null;
-    const incTop = incidentesRecentes.slice(0, 3);
-    const riscoPct = sgsiBase?.riscos.pctResolvido30d ?? null;
+  // ── Cards do layout aprovado (17/07) — compartilhados entre executiva e TV ──
+  const cardIncidentes = (tv: boolean) => (
+    <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'h-full min-h-0 overflow-hidden' : undefined}>
+      <div className="flex items-end gap-3 flex-wrap">
+        <p className={`${tv ? 'text-5xl' : 'text-4xl'} font-bold font-mono leading-none`} style={{ color: corSlaExec(incPctExec) }}>
+          {sgsiBase?.diasSem.incidentes ?? '—'}
+          <span className={`${tv ? 'text-base' : 'text-sm'} text-muted-foreground font-sans font-normal`}> dias sem incidentes</span>
+        </p>
+        {ultimoIncidente && (
+          <p className="text-[11px] text-muted-foreground pb-0.5">último: {fmtDia(ultimoIncidente.inicio)} · {ultimoIncidente.titulo}</p>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: corSlaExec(incPctExec) }}>{incPctExec != null ? `${incPctExec}%` : '—'}</p>
+          <p className="text-[10px] text-muted-foreground">dentro do SLA · meta &gt; 90%</p>
+        </div>
+        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`}>{incidentesRecentes.length}</p>
+          <p className="text-[10px] text-muted-foreground">incidentes últimos 30 dias</p>
+        </div>
+        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`}>{sgsiBase?.incidentes.ativos ?? '—'}</p>
+          <p className="text-[10px] text-muted-foreground">ativos agora</p>
+        </div>
+      </div>
+      <div className={`space-y-2 border-t pt-2 ${tv ? 'flex-1 min-h-0 overflow-hidden' : ''}`}>
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ocorrências recentes · incidente / solução</p>
+        {incidentesRecentes.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
+        ) : incidentesRecentes.slice(0, tv ? 2 : 3).map((i) => {
+          const ok = /sim|dentro/i.test(i.sla);
+          return (
+            <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
+              detalhe={i.descricao !== '—' && i.descricao !== i.titulo ? i.descricao : undefined}
+              solucao={i.solucao !== '—' ? i.solucao : undefined}
+              badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
+          );
+        })}
+      </div>
+      {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-017 · análise e tratamento de incidentes</p>}
+    </BlocoCard>
+  );
+
+  const cardRiscos = (tv: boolean) => (
+    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'h-full min-h-0 overflow-hidden' : undefined}>
+      <div className="flex items-end gap-3">
+        <p className={`${tv ? 'text-5xl' : 'text-4xl'} font-bold font-mono leading-none`} style={{ color: corSlaExec(risco30Exec) }}>
+          {sgsiBase?.diasSem.riscos ?? '—'}
+          <span className={`${tv ? 'text-base' : 'text-sm'} text-muted-foreground font-sans font-normal`}> dias sem riscos novos</span>
+        </p>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: corSlaExec(risco30Exec) }}>{risco30Exec != null ? `${risco30Exec}%` : '—'}</p>
+          <p className="text-[10px] text-muted-foreground">resolvidos ≤ 30 dias · meta &gt; 90%</p>
+        </div>
+        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: riscosCombinados > 0 ? '#f59e0b' : undefined }}>{riscosCombinados}</p>
+          <p className="text-[10px] text-muted-foreground">em aberto (SG + DevOps)</p>
+        </div>
+        <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
+          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`}>{sgsiBase?.riscos.total ?? '—'}</p>
+          <p className="text-[10px] text-muted-foreground">riscos mapeados</p>
+        </div>
+      </div>
+      <div className={`space-y-2 border-t pt-2 ${tv ? 'flex-1 min-h-0 overflow-hidden' : ''}`}>
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Riscos · situação / solução</p>
+        {riscosCombinados === 0 ? (
+          <p className="text-[11px] text-muted-foreground">Sem riscos em aberto.</p>
+        ) : (
+          <>
+            {riscosSg.slice(0, 2).map((r) => (
+              <RecenteRow key={`sg-${r.id}`} data={`SG #${r.id}`} texto={r.descricao}
+                solucao={r.solucao !== '—' ? r.solucao : undefined} badge={r.status} />
+            ))}
+            {riscosDevops.slice(0, 2).map((r) => (
+              <RecenteRow key={`do-${r.id}`} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
+            ))}
+          </>
+        )}
+      </div>
+      {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-012 · análise de riscos + board DevOps (tag #Risco)</p>}
+    </BlocoCard>
+  );
+
+  const cardMudancas = (tv: boolean) => {
+    const amostra = tv ? [...mudStats.concluidas.slice(0, 3), ...mudStats.pendentes.slice(0, 1)] : mudAmostra;
     return (
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold">Visão Executiva</h2>
-          <p className="text-sm text-muted-foreground">
-            Infraestrutura · metas e disponibilidade {periodLabel ? `· ${periodLabel}` : ''}
+      <BlocoCard icon={RefreshCw} titulo={`Gestão de Mudanças · ${periodLabel ?? 'período selecionado'}`} className={tv ? 'flex-none' : undefined}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Solicitações</p>
+            <p className={`${tv ? 'text-xl' : 'text-2xl'} font-bold font-mono`}>{mudStats.total}</p>
+          </div>
+          <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Concluídas</p>
+            <p className={`${tv ? 'text-xl' : 'text-2xl'} font-bold font-mono text-[hsl(142,71%,45%)]`}>
+              {mudStats.concluidas.length}
+              <span className="text-sm text-muted-foreground"> · {mudStats.total > 0 ? Math.round((mudStats.concluidas.length / mudStats.total) * 100) : 0}%</span>
+            </p>
+          </div>
+          <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Pendentes</p>
+            <p className={`${tv ? 'text-xl' : 'text-2xl'} font-bold font-mono text-amber-500`}>{mudStats.pendentes.length}</p>
+          </div>
+          <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Rejeitadas</p>
+            <p className={`${tv ? 'text-xl' : 'text-2xl'} font-bold font-mono text-red-500`}>{mudStats.rejeitadas}</p>
+          </div>
+        </div>
+
+        {amostra.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-3 text-center">Nenhuma mudança no período selecionado.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-xs">
+              <thead className="border-b bg-muted/30">
+                <tr className="text-muted-foreground text-[10px] uppercase tracking-wider">
+                  <th className="py-1.5 px-3 text-left font-medium">Data</th>
+                  <th className="py-1.5 px-3 text-left font-medium">OS / Chamado</th>
+                  <th className="py-1.5 px-3 text-left font-medium">Ambiente</th>
+                  <th className="py-1.5 px-3 text-left font-medium">Mudança (resumo)</th>
+                  <th className="py-1.5 px-3 text-left font-medium">Risco</th>
+                  <th className="py-1.5 px-3 text-left font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {amostra.map((m) => (
+                  <tr key={m.id} className="border-b last:border-b-0">
+                    <td className="py-1.5 px-3 font-mono text-muted-foreground whitespace-nowrap">{fmtDia(m.criado || m.modificado)}</td>
+                    <td className="py-1.5 px-3 font-mono font-semibold text-primary whitespace-nowrap">{m.chamado}</td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">{m.ambiente}</td>
+                    <td className="py-1.5 px-3 max-w-[320px] truncate" title={m.motivo}>{m.motivo !== '—' ? m.motivo : m.tipoMudanca}</td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">
+                      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corRiscoMud(m.risco)}20`, color: corRiscoMud(m.risco) }}>{m.risco}</span>
+                    </td>
+                    <td className="py-1.5 px-3 whitespace-nowrap">
+                      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corStatusMud(m.status)}20`, color: corStatusMud(m.status) }}>{m.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!tv && (
+          <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">
+            Amostra resumida ({Math.min(6, mudStats.concluidas.length)} concluídas mais recentes{mudStats.pendentes.length > 0 ? ` + ${Math.min(2, mudStats.pendentes.length)} pendente${Math.min(2, mudStats.pendentes.length) > 1 ? 's' : ''}` : ''}) — detalhe completo na aba Gestão SG · Mudanças.
           </p>
+        )}
+      </BlocoCard>
+    );
+  };
+
+  // ── Modo TV: layout aprovado em tela cheia — pipelines · incidentes|riscos · mudanças ──
+  if (tvMode) {
+    return (
+      <div className="h-full min-h-0 flex flex-col gap-3 overflow-hidden">
+        <div className="flex-none flex items-baseline gap-3">
+          <h2 className="text-xl font-bold">Visão Executiva</h2>
+          <p className="text-sm text-muted-foreground">Infraestrutura {periodLabel ? `· ${periodLabel}` : ''}</p>
         </div>
 
-        <div className="flex flex-col gap-4">
-          {/* BLOCO 1 — Meta pipelines (KPI+barra à esq · alvos + repos atuados à dir) */}
-          <BlocoCard icon={GitBranch} titulo={`Meta · Pipelines ${pipelinesTri.trimestre}`} className="min-h-[200px] justify-center">
-            <div className="flex items-stretch gap-6">
-              <div className="w-[300px] flex-shrink-0 space-y-3">
+        {/* Meta pipelines (KPI+barra à esq · alvos + feito no trimestre à dir) */}
+        <BlocoCard icon={GitBranch} titulo={`Meta · Pipelines ${pipelinesTri.trimestre}`} className="flex-none">
+          <div className="flex items-stretch gap-6">
+            <div className="w-[280px] flex-shrink-0 space-y-2">
+              <div>
+                <p className="text-5xl font-bold font-mono leading-none" style={{ color: corPipelines }}>
+                  {reposLoading ? '—' : pipelinesNovas}
+                  <span className="text-xl text-muted-foreground"> / {META_PIPELINES_TRIMESTRE}</span>
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">pipelines novas no trimestre</p>
+                <div className="h-2 rounded-full bg-muted overflow-hidden mt-1.5">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((pipelinesNovas / META_PIPELINES_TRIMESTRE) * 100, 100)}%`, backgroundColor: corPipelines }} />
+                </div>
+              </div>
+              <div className="flex items-end justify-between border-t pt-1.5">
+                <span className="text-sm text-muted-foreground">cobertura CI/CD · meta {META_COBERTURA_PCT}%</span>
+                <span className="text-lg font-bold font-mono" style={{ color: corMetaHigh(coberturaPct) }}>{reposLoading ? '—' : `${coberturaPct}%`}</span>
+              </div>
+            </div>
+            <div className="flex-1 border-l pl-6 space-y-2">
+              <div className="grid grid-cols-3 gap-2">
+                {TV_PIPELINE_ALVOS.map((a) => (
+                  <div key={a.nome} className="rounded-lg border bg-muted/30 px-3 py-2 flex flex-col justify-between gap-1">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Alvo</span>
+                    <span className="text-sm font-semibold text-foreground leading-tight">{a.nome}</span>
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-medium rounded px-1.5 py-0.5 self-start ${
+                      a.status === 'Concluído' ? 'text-emerald-500 bg-emerald-500/10'
+                        : a.status ? 'text-amber-500 bg-amber-500/10'
+                        : 'text-sky-400 bg-sky-500/10'
+                    }`}>
+                      {a.status === 'Concluído' && <CheckCircle2 className="h-3 w-3" />}
+                      {a.status ?? 'Em andamento'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {reposAtuados.length > 0 && (
                 <div>
-                  <p className="text-6xl font-bold font-mono leading-none" style={{ color: corPipelines }}>
-                    {reposLoading ? '—' : pipelinesNovas}
-                    <span className="text-2xl text-muted-foreground"> / {META_PIPELINES_TRIMESTRE}</span>
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">pipelines novas no trimestre</p>
-                  <div className="h-2.5 rounded-full bg-muted overflow-hidden mt-2">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((pipelinesNovas / META_PIPELINES_TRIMESTRE) * 100, 100)}%`, backgroundColor: corPipelines }} />
-                  </div>
-                </div>
-                <div className="flex items-end justify-between border-t pt-2">
-                  <span className="text-sm text-muted-foreground">cobertura CI/CD · meta {META_COBERTURA_PCT}%</span>
-                  <span className="text-xl font-bold font-mono" style={{ color: corMetaHigh(coberturaPct) }}>{reposLoading ? '—' : `${coberturaPct}%`}</span>
-                </div>
-              </div>
-              <div className="flex-1 border-l pl-6 space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  {TV_PIPELINE_ALVOS.map((a) => (
-                    <div key={a.nome} className="rounded-lg border bg-muted/30 p-3 flex flex-col justify-between gap-2">
-                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Alvo</span>
-                      <span className="text-base font-semibold text-foreground leading-tight">{a.nome}</span>
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-medium rounded px-1.5 py-0.5 self-start ${
-                        a.status === 'Concluído' ? 'text-emerald-500 bg-emerald-500/10'
-                          : a.status ? 'text-amber-500 bg-amber-500/10'
-                          : 'text-sky-400 bg-sky-500/10'
-                      }`}>
-                        {a.status === 'Concluído' && <CheckCircle2 className="h-3 w-3" />}
-                        {a.status ?? 'Em andamento'}
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Feito no trimestre · repositórios atuados (contam na meta)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {reposAtuados.slice(0, 6).map((repo) => (
+                      <span key={repo} className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-0.5 text-xs">
+                        <GitBranch className="h-3 w-3 text-[hsl(142,71%,45%)]" />
+                        <span className="font-medium text-foreground">{repo}</span>
                       </span>
-                    </div>
-                  ))}
-                </div>
-                {reposAtuados.length > 0 && (
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">Feito no trimestre · repositórios atuados (contam na meta)</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {reposAtuados.slice(0, 6).map((repo) => (
-                        <span key={repo} className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs">
-                          <GitBranch className="h-3 w-3 text-[hsl(142,71%,45%)]" />
-                          <span className="font-medium text-foreground">{repo}</span>
-                        </span>
-                      ))}
-                      {reposAtuados.length > 6 && (
-                        <span className="text-xs text-muted-foreground self-center">+{reposAtuados.length - 6}</span>
-                      )}
-                    </div>
+                    ))}
+                    {reposAtuados.length > 6 && (
+                      <span className="text-xs text-muted-foreground self-center">+{reposAtuados.length - 6}</span>
+                    )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-          </BlocoCard>
+          </div>
+        </BlocoCard>
 
-          {/* BLOCO 2 — Gestão SG · Incidentes (SG-LST-017 real) */}
-          <BlocoCard icon={Activity} titulo="Gestão SG · Incidentes" className="min-h-[200px] justify-center">
-            <div className="flex items-stretch gap-6">
-              <div className="w-[300px] flex-shrink-0">
-                <div className="flex items-end gap-3">
-                  <p className="text-6xl font-bold font-mono leading-none" style={{ color: corSla(incPct ?? 0) }}>{incPct != null ? `${incPct}%` : '—'}</p>
-                  <p className="text-2xl font-mono text-muted-foreground pb-1">{sgsiBase?.incidentes.resolvidos ?? 0}/{sgsiBase?.incidentes.total ?? 0}</p>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">incidentes dentro do SLA · meta &gt; 90%</p>
-                <div className="h-2.5 rounded-full bg-muted overflow-hidden mt-2">
-                  <div className="h-full rounded-full" style={{ width: `${Math.min(incPct ?? 0, 100)}%`, backgroundColor: corSla(incPct ?? 0) }} />
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-2">{sgsiBase?.diasSem.incidentes ?? '—'} dias sem incidentes</p>
-              </div>
-              <div className="flex-1 grid grid-cols-3 gap-3 border-l pl-6">
-                {incTop.length === 0 ? (
-                  <p className="col-span-3 self-center text-center text-sm text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
-                ) : incTop.map((i) => {
-                  const ok = /sim|dentro/i.test(i.sla);
-                  return (
-                    <div key={i.id} className="rounded-lg border bg-muted/30 p-3 flex flex-col justify-between gap-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-mono text-muted-foreground bg-muted rounded px-1.5 py-0.5">{fmtDia(i.inicio)}</span>
-                        {ok ? <CheckCircle2 className="h-4 w-4 text-[hsl(142,71%,45%)]" /> : <AlertTriangle className="h-4 w-4 text-red-500" />}
-                      </div>
-                      <span className="text-base font-semibold text-foreground leading-tight line-clamp-2">{i.titulo}</span>
-                      <span className={`text-[11px] font-medium ${ok ? 'text-[hsl(142,71%,45%)]' : 'text-red-500'}`}>{ok ? 'dentro do SLA' : 'fora do SLA'}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </BlocoCard>
-
-          {/* BLOCO 3 — Gestão SG · Riscos (SG-LST-012 + DevOps #Risco) */}
-          <BlocoCard icon={ShieldCheck} titulo="Gestão SG · Riscos" className="min-h-[200px] justify-center">
-            <div className="flex items-stretch gap-6">
-              <div className="w-[300px] flex-shrink-0">
-                <div className="flex items-end gap-3">
-                  <p className="text-6xl font-bold font-mono leading-none" style={{ color: corSla(riscoPct ?? 0) }}>{riscoPct != null ? `${riscoPct}%` : '—'}</p>
-                  <p className="text-2xl font-mono text-muted-foreground pb-1">{riscosCombinados} abertos</p>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">riscos resolvidos ≤ 30 dias · meta &gt; 90%</p>
-                <div className="h-2.5 rounded-full bg-muted overflow-hidden mt-2">
-                  <div className="h-full rounded-full" style={{ width: `${Math.min(riscoPct ?? 0, 100)}%`, backgroundColor: corSla(riscoPct ?? 0) }} />
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-2">SG-LST-012: {riscosSg.length} · DevOps #Risco: {riscosDevops.length}</p>
-              </div>
-              <div className="flex-1 grid grid-cols-2 gap-3 border-l pl-6">
-                {riscosCombinados === 0 ? (
-                  <p className="col-span-2 self-center text-center text-sm text-muted-foreground">Sem riscos em aberto.</p>
-                ) : (
-                  <>
-                    {riscosSg.slice(0, 2).map((r) => (
-                      <div key={`sg-${r.id}`} className="rounded-lg border bg-muted/30 p-3 flex flex-col justify-between gap-2">
-                        <span className="text-[11px] font-mono text-muted-foreground bg-muted rounded px-1.5 py-0.5 self-start">SG · #{r.id}</span>
-                        <span className="flex items-center gap-2 text-base font-semibold text-foreground leading-tight line-clamp-2">
-                          <ShieldCheck className="h-4 w-4 text-[hsl(280,65%,60%)] flex-shrink-0" />
-                          {r.descricao}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">{r.status}</span>
-                      </div>
-                    ))}
-                    {riscosDevops.slice(0, 2).map((r) => (
-                      <div key={`do-${r.id}`} className="rounded-lg border bg-muted/30 p-3 flex flex-col justify-between gap-2">
-                        <span className="text-[11px] font-mono text-muted-foreground bg-muted rounded px-1.5 py-0.5 self-start">DevOps · #{r.id}</span>
-                        <span className="flex items-center gap-2 text-base font-semibold text-foreground leading-tight line-clamp-2">
-                          <GitBranch className="h-4 w-4 text-[hsl(210,80%,52%)] flex-shrink-0" />
-                          {r.title}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">{r.state}</span>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            </div>
-          </BlocoCard>
+        {/* Incidentes | Riscos lado a lado (flex-1) */}
+        <div className="flex-1 min-h-0 grid grid-cols-2 gap-3">
+          {cardIncidentes(true)}
+          {cardRiscos(true)}
         </div>
+
+        {/* Mudanças da sprint (compacto) */}
+        {cardMudancas(true)}
       </div>
     );
   }
@@ -439,165 +516,42 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
       {/* ── Linha 3: Gestão de Incidentes | Gestão de Riscos (layout aprovado 17/07) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Gestão de Incidentes (SG-LST-017) */}
-        <BlocoCard icon={Activity} titulo="Gestão de Incidentes">
-          <div className="flex items-end gap-3">
-            <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(incPctExec) }}>
-              {sgsiBase?.diasSem.incidentes ?? '—'}
-              <span className="text-sm text-muted-foreground font-sans font-normal"> dias sem incidentes</span>
-            </p>
-            {ultimoIncidente && (
-              <p className="text-[11px] text-muted-foreground pb-0.5">último: {fmtDia(ultimoIncidente.inicio)} · {ultimoIncidente.titulo}</p>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-              <p className="text-lg font-bold font-mono leading-tight" style={{ color: corSlaExec(incPctExec) }}>{incPctExec != null ? `${incPctExec}%` : '—'}</p>
-              <p className="text-[10px] text-muted-foreground">dentro do SLA · meta &gt; 90%</p>
-            </div>
-            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-              <p className="text-lg font-bold font-mono leading-tight">{incidentesRecentes.length}</p>
-              <p className="text-[10px] text-muted-foreground">incidentes últimos 30 dias</p>
-            </div>
-            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-              <p className="text-lg font-bold font-mono leading-tight">{sgsiBase?.incidentes.ativos ?? '—'}</p>
-              <p className="text-[10px] text-muted-foreground">ativos agora</p>
-            </div>
-          </div>
-          <div className="space-y-1.5 border-t pt-2">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ocorrências recentes · SLA</p>
-            {incidentesRecentes.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
-            ) : incidentesRecentes.slice(0, 3).map((i) => {
-              const ok = /sim|dentro/i.test(i.sla);
-              return (
-                <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
-                  badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
-              );
-            })}
-          </div>
-          <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-017 · análise e tratamento de incidentes</p>
-        </BlocoCard>
-
-        {/* Gestão de Riscos (SG-LST-012 + DevOps #Risco) */}
-        <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos">
-          <div className="flex items-end gap-3">
-            <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(risco30Exec) }}>
-              {sgsiBase?.diasSem.riscos ?? '—'}
-              <span className="text-sm text-muted-foreground font-sans font-normal"> dias sem riscos novos</span>
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-              <p className="text-lg font-bold font-mono leading-tight" style={{ color: corSlaExec(risco30Exec) }}>{risco30Exec != null ? `${risco30Exec}%` : '—'}</p>
-              <p className="text-[10px] text-muted-foreground">resolvidos ≤ 30 dias · meta &gt; 90%</p>
-            </div>
-            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-              <p className="text-lg font-bold font-mono leading-tight" style={{ color: riscosCombinados > 0 ? '#f59e0b' : undefined }}>{riscosCombinados}</p>
-              <p className="text-[10px] text-muted-foreground">em aberto (SG + DevOps)</p>
-            </div>
-            <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-              <p className="text-lg font-bold font-mono leading-tight">{sgsiBase?.riscos.total ?? '—'}</p>
-              <p className="text-[10px] text-muted-foreground">riscos mapeados</p>
-            </div>
-          </div>
-          <div className="space-y-1.5 border-t pt-2">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Riscos · situação</p>
-            {riscosCombinados === 0 ? (
-              <p className="text-[11px] text-muted-foreground">Sem riscos em aberto.</p>
-            ) : (
-              <>
-                {riscosSg.slice(0, 2).map((r) => (
-                  <RecenteRow key={`sg-${r.id}`} data={`SG #${r.id}`} texto={r.descricao} badge={r.status} />
-                ))}
-                {riscosDevops.slice(0, 2).map((r) => (
-                  <RecenteRow key={`do-${r.id}`} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
-                ))}
-              </>
-            )}
-          </div>
-          <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-012 · análise de riscos + board DevOps (tag #Risco)</p>
-        </BlocoCard>
+        {cardIncidentes(false)}
+        {cardRiscos(false)}
       </div>
 
       {/* ── Linha 4: Gestão de Mudanças · sprint corrente (layout aprovado 17/07) ── */}
-      <BlocoCard icon={RefreshCw} titulo={`Gestão de Mudanças · ${periodLabel ?? 'período selecionado'}`}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          <div className="rounded-lg border bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Solicitações</p>
-            <p className="text-2xl font-bold font-mono">{mudStats.total}</p>
-          </div>
-          <div className="rounded-lg border bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Concluídas</p>
-            <p className="text-2xl font-bold font-mono text-[hsl(142,71%,45%)]">
-              {mudStats.concluidas.length}
-              <span className="text-sm text-muted-foreground"> · {mudStats.total > 0 ? Math.round((mudStats.concluidas.length / mudStats.total) * 100) : 0}%</span>
-            </p>
-          </div>
-          <div className="rounded-lg border bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Pendentes</p>
-            <p className="text-2xl font-bold font-mono text-amber-500">{mudStats.pendentes.length}</p>
-          </div>
-          <div className="rounded-lg border bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Rejeitadas</p>
-            <p className="text-2xl font-bold font-mono text-red-500">{mudStats.rejeitadas}</p>
-          </div>
-        </div>
-
-        {mudAmostra.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4 text-center">Nenhuma mudança no período selecionado.</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-xs">
-              <thead className="border-b bg-muted/30">
-                <tr className="text-muted-foreground text-[10px] uppercase tracking-wider">
-                  <th className="py-1.5 px-3 text-left font-medium">Data</th>
-                  <th className="py-1.5 px-3 text-left font-medium">OS / Chamado</th>
-                  <th className="py-1.5 px-3 text-left font-medium">Ambiente</th>
-                  <th className="py-1.5 px-3 text-left font-medium">Mudança (resumo)</th>
-                  <th className="py-1.5 px-3 text-left font-medium">Risco</th>
-                  <th className="py-1.5 px-3 text-left font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mudAmostra.map((m) => (
-                  <tr key={m.id} className="border-b last:border-b-0">
-                    <td className="py-1.5 px-3 font-mono text-muted-foreground whitespace-nowrap">{fmtDia(m.criado || m.modificado)}</td>
-                    <td className="py-1.5 px-3 font-mono font-semibold text-primary whitespace-nowrap">{m.chamado}</td>
-                    <td className="py-1.5 px-3 whitespace-nowrap">{m.ambiente}</td>
-                    <td className="py-1.5 px-3 max-w-[320px] truncate" title={m.motivo}>{m.motivo !== '—' ? m.motivo : m.tipoMudanca}</td>
-                    <td className="py-1.5 px-3 whitespace-nowrap">
-                      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corRiscoMud(m.risco)}20`, color: corRiscoMud(m.risco) }}>{m.risco}</span>
-                    </td>
-                    <td className="py-1.5 px-3 whitespace-nowrap">
-                      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corStatusMud(m.status)}20`, color: corStatusMud(m.status) }}>{m.status}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">
-          Amostra resumida ({Math.min(6, mudStats.concluidas.length)} concluídas mais recentes{mudStats.pendentes.length > 0 ? ` + ${Math.min(2, mudStats.pendentes.length)} pendente${Math.min(2, mudStats.pendentes.length) > 1 ? 's' : ''}` : ''}) — detalhe completo na aba Gestão SG · Mudanças.
-        </p>
-      </BlocoCard>
+      {cardMudancas(false)}
     </div>
   );
 }
 
 // ── Linha de ocorrência recente (incidentes/riscos) ──────────────────────
-function RecenteRow({ data, texto, badge, badgeCor = '#64748b' }: {
+function RecenteRow({ data, texto, badge, badgeCor = '#64748b', detalhe, solucao }: {
   data: string; texto: string; badge?: string; badgeCor?: string;
+  /** Texto do incidente/risco (linha secundária, truncada). */
+  detalhe?: string;
+  /** Solução aplicada/plano de ação (linha verde, truncada). */
+  solucao?: string;
 }) {
   return (
-    <div className="flex items-start gap-1.5 text-[11px]">
-      <span className="font-mono text-muted-foreground shrink-0">{data}</span>
-      <span className="text-foreground truncate flex-1 min-w-0" title={texto}>{texto}</span>
-      {badge && (
-        <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium" style={{ background: `${badgeCor}20`, color: badgeCor }}>
-          {badge}
-        </span>
+    <div className="space-y-0.5">
+      <div className="flex items-start gap-1.5 text-[11px]">
+        <span className="font-mono text-muted-foreground shrink-0">{data}</span>
+        <span className="text-foreground truncate flex-1 min-w-0 font-medium" title={texto}>{texto}</span>
+        {badge && (
+          <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium" style={{ background: `${badgeCor}20`, color: badgeCor }}>
+            {badge}
+          </span>
+        )}
+      </div>
+      {detalhe && (
+        <p className="text-[11px] text-muted-foreground truncate" title={detalhe}>{detalhe}</p>
+      )}
+      {solucao && (
+        <p className="text-[11px] text-muted-foreground truncate" title={solucao}>
+          <span className="font-medium text-[hsl(142,71%,45%)]">Solução:</span> {solucao}
+        </p>
       )}
     </div>
   );
