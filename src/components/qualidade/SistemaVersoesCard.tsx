@@ -19,6 +19,8 @@ import {
 interface SistemaVersoesCardProps {
   /** Mostra controles de CRUD (admin global ou owner da área qualidade). */
   canManage?: boolean;
+  /** Modo telão: oculta a coluna "Anterior" para a tabela caber sem scroll. */
+  compact?: boolean;
 }
 
 interface FormState {
@@ -45,7 +47,7 @@ function fmtData(iso: string | null): string {
   return y && m && d ? `${d}/${m}/${y}` : iso;
 }
 
-export function SistemaVersoesCard({ canManage = false }: SistemaVersoesCardProps) {
+export function SistemaVersoesCard({ canManage = false, compact = false }: SistemaVersoesCardProps) {
   const { data: sistemas = [], isLoading } = useQualidadeSistemaVersions();
   const { create, update, remove } = useSistemaVersaoMutations();
 
@@ -215,7 +217,7 @@ export function SistemaVersoesCard({ canManage = false }: SistemaVersoesCardProp
             <TableHeader>
               <TableRow>
                 <TableHead className="text-xs">Sistema</TableHead>
-                <TableHead className="text-xs">Anterior</TableHead>
+                {!compact && <TableHead className="text-xs">Anterior</TableHead>}
                 <TableHead className="text-xs">Atual</TableHead>
                 <TableHead className="text-xs">Nova</TableHead>
                 <TableHead className="text-xs">Ambientes</TableHead>
@@ -226,9 +228,11 @@ export function SistemaVersoesCard({ canManage = false }: SistemaVersoesCardProp
               {sistemas.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium whitespace-nowrap">{s.sistema_nome}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                    {s.versao_anterior || '—'}
-                  </TableCell>
+                  {!compact && (
+                    <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                      {s.versao_anterior || '—'}
+                    </TableCell>
+                  )}
                   <TableCell className="whitespace-nowrap">
                     <span className="inline-flex items-center gap-1.5">
                       <span className="font-mono font-semibold">{s.versao_atual}</span>

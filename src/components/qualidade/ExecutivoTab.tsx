@@ -326,8 +326,9 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
       )}
 
       {/* ── Linha 3 + 4: no TV vira UMA grade de 3 colunas (reconciliação ·
-          versões · distribuição), cada card com a altura toda — sem espremer ── */}
-      <div className={tvMode ? 'flex-1 min-h-0 grid grid-cols-3 gap-3' : 'flex flex-col gap-4'}>
+          versões · distribuição), cada card com a altura toda. Versões leva a
+          faixa mais larga — a tabela tem 5 colunas e cortava no 1/3. ── */}
+      <div className={tvMode ? 'flex-1 min-h-0 grid grid-cols-[1fr_1.5fr_1.1fr] gap-3' : 'flex flex-col gap-4'}>
       <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'order-3 min-h-0 overflow-hidden' : undefined}>
         {handoffData.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sem entradas registradas no período.</p>
@@ -393,7 +394,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
           // Coluna da grade tem altura fixa: o card estica até preenchê-la e,
           // se a tabela crescer além, rola dentro em vez de vazar.
           <div className="order-2 min-h-0 overflow-y-auto [&>div]:min-h-full">
-            <SistemaVersoesCard canManage={false} />
+            <SistemaVersoesCard canManage={false} compact />
           </div>
         ) : (
           <SistemaVersoesCard canManage={canManage} />
