@@ -77,6 +77,8 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
   const cobertura = useMemo(() => computeCoberturaKpis(repos, 0), [repos]);
   const pipelinesTri = useMemo(() => countPipelinesNovasTrimestre(repos), [repos]);
+  // "Feito no trimestre": só os repositórios atuados (sem nome de pipeline), únicos.
+  const reposAtuados = useMemo(() => [...new Set(pipelinesTri.criadas.map((c) => c.repo))], [pipelinesTri]);
 
   const conclPct = kpis.total > 0 ? Math.round((kpis.concluidos / kpis.total) * 100) : 0;
   const coberturaPct = cobertura.coberturaPct ?? 0;
@@ -108,7 +110,6 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
     const incPct = sgsi?.incidentes.pctDentroSla ?? null;
     const incTop = incidentesRecentes.slice(0, 3);
     const riscoPct = sgsi?.riscos.pctResolvido30d ?? null;
-    const criadasTop = pipelinesTri.criadas.slice(0, 6);
     return (
       <div className="space-y-4">
         <div>
@@ -155,19 +156,18 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                     </div>
                   ))}
                 </div>
-                {criadasTop.length > 0 && (
+                {reposAtuados.length > 0 && (
                   <div>
-                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">Repositórios atuados no trimestre</p>
+                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">Feito no trimestre · repositórios atuados (contam na meta)</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {criadasTop.map((c) => (
-                        <span key={`${c.repo}-${c.nome}`} className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs">
+                      {reposAtuados.slice(0, 6).map((repo) => (
+                        <span key={repo} className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs">
                           <GitBranch className="h-3 w-3 text-[hsl(142,71%,45%)]" />
-                          <span className="font-medium text-foreground">{c.repo}</span>
-                          <span className="text-muted-foreground">· {c.nome}</span>
+                          <span className="font-medium text-foreground">{repo}</span>
                         </span>
                       ))}
-                      {pipelinesTri.criadas.length > criadasTop.length && (
-                        <span className="text-xs text-muted-foreground self-center">+{pipelinesTri.criadas.length - criadasTop.length}</span>
+                      {reposAtuados.length > 6 && (
+                        <span className="text-xs text-muted-foreground self-center">+{reposAtuados.length - 6}</span>
                       )}
                     </div>
                   </div>
@@ -312,19 +312,18 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
             <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((pipelinesNovas / META_PIPELINES_TRIMESTRE) * 100, 100)}%`, backgroundColor: corPipelines }} />
           </div>
-          {pipelinesTri.criadas.length > 0 ? (
+          {reposAtuados.length > 0 ? (
             <div className="border-t pt-2 space-y-1">
-              <p className="text-[11px] font-medium text-muted-foreground">Repositórios atuados ({pipelinesNovas}/{META_PIPELINES_TRIMESTRE}):</p>
+              <p className="text-[11px] font-medium text-muted-foreground">Feito no trimestre · repositórios atuados ({pipelinesNovas}/{META_PIPELINES_TRIMESTRE}):</p>
               <ul className="space-y-0.5">
-                {pipelinesTri.criadas.slice(0, 4).map((c) => (
-                  <li key={`${c.repo}-${c.nome}`} className="flex items-center gap-1.5 text-[11px]">
+                {reposAtuados.slice(0, 4).map((repo) => (
+                  <li key={repo} className="flex items-center gap-1.5 text-[11px]">
                     <GitBranch className="h-3 w-3 text-[hsl(142,71%,45%)] flex-shrink-0" />
-                    <span className="font-medium text-foreground truncate">{c.repo}</span>
-                    <span className="text-muted-foreground truncate">· {c.nome}</span>
+                    <span className="font-medium text-foreground truncate">{repo}</span>
                   </li>
                 ))}
-                {pipelinesTri.criadas.length > 4 && (
-                  <li className="text-[11px] text-muted-foreground">+{pipelinesTri.criadas.length - 4} outras</li>
+                {reposAtuados.length > 4 && (
+                  <li className="text-[11px] text-muted-foreground">+{reposAtuados.length - 4} outros</li>
                 )}
               </ul>
             </div>
