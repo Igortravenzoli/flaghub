@@ -26,7 +26,7 @@ const TV_PIPELINE_ALVOS = [
 interface DoneBySprint { sprintCode: string; done: number; total: number }
 
 /** Item de work item DevOps com a tag #Risco (combina com o SG-LST-012). */
-interface RiscoDevopsItem { id: number | null; title: string | null; state: string | null }
+interface RiscoDevopsItem { id: number | null; title: string | null; state: string | null; created_date?: string | null }
 
 interface InfraKpisLite {
   total: number;
@@ -111,8 +111,22 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
     () => (sgsiBase?.riscos.itens ?? []).filter((r) => !/tratad|encerr|conclu|finaliz|rejeitad/i.test(r.status)),
     [sgsiBase],
   );
-  const riscosDevops: RiscoDevopsItem[] = kpis.riscoItens ?? [];
+  const riscosDevops: RiscoDevopsItem[] = useMemo(() => kpis.riscoItens ?? [], [kpis.riscoItens]);
   const riscosCombinados = riscosSg.length + riscosDevops.length;
+  // "Dias sem riscos novos" pondera o registro mais recente das DUAS fontes:
+  // formulário SG (created_sp, via diasSem) e tasks #Risco do DevOps (created_date).
+  const diasSemRiscos = useMemo(() => {
+    const tsDevops = riscosDevops
+      .map((r) => toDate(r.created_date ?? null)?.getTime())
+      .filter((n): n is number => n != null);
+    const devopsDias = tsDevops.length > 0
+      ? Math.max(0, Math.floor((Date.now() - Math.max(...tsDevops)) / 86400000))
+      : null;
+    const sgDias = sgsiBase?.diasSem.riscos ?? null;
+    if (sgDias == null) return devopsDias;
+    if (devopsDias == null) return sgDias;
+    return Math.min(sgDias, devopsDias);
+  }, [riscosDevops, sgsiBase]);
 
   // ── Layout aprovado (mock 17/07): Incidentes | Riscos + Mudanças da sprint ──
   const incPctExec = sgsiBase?.incidentes.pctDentroSla ?? null;
@@ -146,7 +160,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
   // ── Cards do layout aprovado (17/07) — compartilhados entre executiva e TV ──
   const cardIncidentes = (tv: boolean) => (
-    <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'h-full min-h-0 overflow-hidden' : undefined}>
+    <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
       <div className="flex items-end gap-3 flex-wrap">
         <p className={`text-4xl font-bold font-mono leading-none`} style={{ color: corSlaExec(incPctExec) }}>
           {sgsiBase?.diasSem.incidentes ?? '—'}
@@ -176,9 +190,13 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           <p className="text-[11px] text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
         ) : incidentesRecentes.slice(0, tv ? 2 : 3).map((i) => {
           const ok = /sim|dentro/i.test(i.sla);
+          // Causa: "Descrição incidente" quando preenchida; senão o "Motivo incidente".
+          const causa = i.descricao !== '—' && i.descricao !== i.titulo
+            ? i.descricao
+            : i.motivo !== '—' ? `Causa: ${i.motivo}` : undefined;
           return (
             <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={i.titulo}
-              detalhe={i.descricao !== '—' && i.descricao !== i.titulo ? i.descricao : undefined}
+              detalhe={causa}
               solucao={i.solucao !== '—' ? i.solucao : undefined}
               badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
           );
@@ -189,10 +207,10 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   );
 
   const cardRiscos = (tv: boolean) => (
-    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'h-full min-h-0 overflow-hidden' : undefined}>
+    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
       <div className="flex items-end gap-3">
         <p className={`text-4xl font-bold font-mono leading-none`} style={{ color: corSlaExec(risco30Exec) }}>
-          {sgsiBase?.diasSem.riscos ?? '—'}
+          {diasSemRiscos ?? '—'}
           <span className={`${tv ? 'text-base' : 'text-sm'} text-muted-foreground font-sans font-normal`}> dias sem riscos novos</span>
         </p>
       </div>
@@ -231,9 +249,10 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   );
 
   const cardMudancas = (tv: boolean) => {
-    const amostra = tv ? [...mudStats.concluidas.slice(0, 3), ...mudStats.pendentes.slice(0, 1)] : mudAmostra;
+    // No TV o bloco é vertical (coluna direita inteira) — cabem mais linhas.
+    const amostra = tv ? [...mudStats.concluidas.slice(0, 8), ...mudStats.pendentes.slice(0, 2)] : mudAmostra;
     return (
-      <BlocoCard icon={RefreshCw} titulo={`Gestão de Mudanças · ${periodLabel ?? 'período selecionado'}`} className={tv ? 'flex-[2] min-h-0 overflow-hidden' : undefined}>
+      <BlocoCard icon={RefreshCw} titulo={`Gestão de Mudanças · ${periodLabel ?? 'período selecionado'}`} className={tv ? 'h-full min-h-0 overflow-hidden' : undefined}>
         {tv ? (
           <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
             <span className="text-sm text-muted-foreground">Solicitações <b className="font-mono text-lg text-foreground">{mudStats.total}</b></span>
@@ -276,7 +295,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                   <th className="py-1.5 px-3 text-left font-medium">OS / Chamado</th>
                   <th className="py-1.5 px-3 text-left font-medium">Ambiente</th>
                   <th className="py-1.5 px-3 text-left font-medium">Mudança (resumo)</th>
-                  <th className="py-1.5 px-3 text-left font-medium">Risco</th>
+                  {!tv && <th className="py-1.5 px-3 text-left font-medium">Risco</th>}
                   <th className="py-1.5 px-3 text-left font-medium">Status</th>
                 </tr>
               </thead>
@@ -286,10 +305,12 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                     <td className="py-1.5 px-3 font-mono text-muted-foreground whitespace-nowrap">{fmtDia(m.criado || m.modificado)}</td>
                     <td className="py-1.5 px-3 font-mono font-semibold text-primary whitespace-nowrap">{m.chamado}</td>
                     <td className="py-1.5 px-3 whitespace-nowrap">{m.ambiente}</td>
-                    <td className="py-1.5 px-3 max-w-[320px] truncate" title={m.motivo}>{m.motivo !== '—' ? m.motivo : m.tipoMudanca}</td>
-                    <td className="py-1.5 px-3 whitespace-nowrap">
-                      <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corRiscoMud(m.risco)}20`, color: corRiscoMud(m.risco) }}>{m.risco}</span>
-                    </td>
+                    <td className={`py-1.5 px-3 truncate ${tv ? 'max-w-[200px]' : 'max-w-[320px]'}`} title={m.motivo}>{m.motivo !== '—' ? m.motivo : m.tipoMudanca}</td>
+                    {!tv && (
+                      <td className="py-1.5 px-3 whitespace-nowrap">
+                        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corRiscoMud(m.risco)}20`, color: corRiscoMud(m.risco) }}>{m.risco}</span>
+                      </td>
+                    )}
                     <td className="py-1.5 px-3 whitespace-nowrap">
                       <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: `${corStatusMud(m.status)}20`, color: corStatusMud(m.status) }}>{m.status}</span>
                     </td>
@@ -372,14 +393,14 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           </div>
         </BlocoCard>
 
-        {/* Incidentes | Riscos lado a lado — prioridade de altura (3:2 vs Mudanças) */}
-        <div className="flex-[3] min-h-0 grid grid-cols-2 gap-3">
-          {cardIncidentes(true)}
-          {cardRiscos(true)}
+        {/* Esquerda: Incidentes sobre Riscos · Direita: Mudanças vertical (mais linhas) */}
+        <div className="flex-1 min-h-0 grid grid-cols-2 gap-2.5">
+          <div className="flex flex-col gap-2.5 min-h-0">
+            {cardIncidentes(true)}
+            {cardRiscos(true)}
+          </div>
+          {cardMudancas(true)}
         </div>
-
-        {/* Mudanças da sprint (compacto; tabela corta internamente o que não couber) */}
-        {cardMudancas(true)}
       </div>
     );
   }

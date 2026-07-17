@@ -69,7 +69,7 @@ const kpis = {
   total: 10, concluidos: 5, emAndamento: 3, pendentes: 2,
   melhorias: 1, iso27001: 1, sprintMigracoes: 0, transbordo: 0,
   doneBySprint: [],
-  riscoItens: [{ id: 16164, title: 'Emails Falsos Engenharia Social', state: 'To Do' }],
+  riscoItens: [{ id: 16164, title: 'Emails Falsos Engenharia Social', state: 'To Do', created_date: ontemIso }],
   isLoading: false,
 };
 
@@ -90,6 +90,13 @@ describe('InfraExecutivoTab — modo TV (layout aprovado)', () => {
     render(<InfraExecutivoTab kpis={kpis} tvMode />);
     expect(screen.getByText(/Campanha de conscientização/)).toBeInTheDocument();
     expect(screen.getByText(/1 SG \+ 1 DevOps/)).toBeInTheDocument();
+  });
+
+  it('"dias sem riscos novos" pondera a task #Risco mais recente do DevOps', () => {
+    render(<InfraExecutivoTab kpis={kpis} tvMode />);
+    // SG diz 141 dias, mas a task DevOps foi criada ontem → contador = 1
+    const p = screen.getByText(/dias sem riscos novos/).closest('p');
+    expect(p?.textContent).toMatch(/^1\s*dias sem riscos novos/);
   });
 
   it('renderiza o card Gestão de Mudanças com KPIs e amostra no TV', () => {

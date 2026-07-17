@@ -422,9 +422,11 @@ export function buildSgsiResponse(
     porCategoria: countBy(l017, 'Categoria'),
     itens: recentes(l017, 150).map((i) => ({
       id: i.item_id,
-      titulo: str(i, 'Título', 'Title') || DASH,
+      // Nos lançamentos recentes o Título vem vazio — cai para o Produto afetado.
+      titulo: str(i, 'Título', 'Title', 'Produto') || DASH,
       ativo: str(i, 'Identificação do Ativo', 'Ativo afetado') || DASH,
-      motivo: str(i, 'Motivo incidente', 'Motivo identificado') || DASH,
+      // 'Motivo identificado' é Sim/Não (não é texto) — a causa fica só no 'Motivo incidente'.
+      motivo: str(i, 'Motivo incidente') || DASH,
       priorizacao: str(i, 'Priorização') || DASH,
       protocolo: str(i, 'Protocolo') || `#${i.item_id}`,
       status: str(i, ...STATUS_017) || DASH,
@@ -434,7 +436,7 @@ export function buildSgsiResponse(
       downtimeHoras: num(i, 'Tempo Downtime'),
       inicio: str(i, 'Data e hora inicio Incidente') || i.created_sp || '',
       descricao: str(i, 'Descrição incidente') || DASH,
-      solucao: str(i, 'Solução corretiva') || DASH,
+      solucao: str(i, 'Solução corretiva', 'Lições aprendidas') || DASH,
     })),
   };
 

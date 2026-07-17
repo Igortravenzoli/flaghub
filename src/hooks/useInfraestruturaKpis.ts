@@ -182,8 +182,10 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
   const countByTag = (tag: string) => items.filter(i => hasTag(i, tag)).length;
   const melhorias = countByTag('MELHORIA');
   const iso27001 = countByTag('ISO27001') + countByTag('ISO');
-  // Riscos mapeados no board DevOps pela tag #Risco (combina com os riscos do SG-LST-012).
-  const riscoItens = items.filter(i => hasTag(i, 'RISCO'));
+  // Riscos mapeados no board DevOps pela tag #Risco (combina com os riscos do
+  // SG-LST-012). Atemporal: risco aberto vale independente do filtro de sprint,
+  // e a data de criação alimenta o contador "dias sem riscos novos".
+  const riscoItens = allItemsEnriched.filter(i => hasTag(i, 'RISCO'));
   const sprintMigracoes = items.reduce((sum, i) => sum + (i.sprint_migration_count || 0), 0);
   const transbordo = items.reduce((sum, i) => sum + (i.real_overflow_count || 0), 0);
 
