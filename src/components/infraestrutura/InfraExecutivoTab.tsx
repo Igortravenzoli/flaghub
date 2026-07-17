@@ -143,7 +143,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   const cardIncidentes = (tv: boolean) => (
     <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'h-full min-h-0 overflow-hidden' : undefined}>
       <div className="flex items-end gap-3 flex-wrap">
-        <p className={`${tv ? 'text-5xl' : 'text-4xl'} font-bold font-mono leading-none`} style={{ color: corSlaExec(incPctExec) }}>
+        <p className={`text-4xl font-bold font-mono leading-none`} style={{ color: corSlaExec(incPctExec) }}>
           {sgsiBase?.diasSem.incidentes ?? '—'}
           <span className={`${tv ? 'text-base' : 'text-sm'} text-muted-foreground font-sans font-normal`}> dias sem incidentes</span>
         </p>
@@ -153,15 +153,15 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: corSlaExec(incPctExec) }}>{incPctExec != null ? `${incPctExec}%` : '—'}</p>
+          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: corSlaExec(incPctExec) }}>{incPctExec != null ? `${incPctExec}%` : '—'}</p>
           <p className="text-[10px] text-muted-foreground">dentro do SLA · meta &gt; 90%</p>
         </div>
         <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`}>{incidentesRecentes.length}</p>
+          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`}>{incidentesRecentes.length}</p>
           <p className="text-[10px] text-muted-foreground">incidentes últimos 30 dias</p>
         </div>
         <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`}>{sgsiBase?.incidentes.ativos ?? '—'}</p>
+          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`}>{sgsiBase?.incidentes.ativos ?? '—'}</p>
           <p className="text-[10px] text-muted-foreground">ativos agora</p>
         </div>
       </div>
@@ -186,22 +186,22 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   const cardRiscos = (tv: boolean) => (
     <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'h-full min-h-0 overflow-hidden' : undefined}>
       <div className="flex items-end gap-3">
-        <p className={`${tv ? 'text-5xl' : 'text-4xl'} font-bold font-mono leading-none`} style={{ color: corSlaExec(risco30Exec) }}>
+        <p className={`text-4xl font-bold font-mono leading-none`} style={{ color: corSlaExec(risco30Exec) }}>
           {sgsiBase?.diasSem.riscos ?? '—'}
           <span className={`${tv ? 'text-base' : 'text-sm'} text-muted-foreground font-sans font-normal`}> dias sem riscos novos</span>
         </p>
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: corSlaExec(risco30Exec) }}>{risco30Exec != null ? `${risco30Exec}%` : '—'}</p>
+          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: corSlaExec(risco30Exec) }}>{risco30Exec != null ? `${risco30Exec}%` : '—'}</p>
           <p className="text-[10px] text-muted-foreground">resolvidos ≤ 30 dias · meta &gt; 90%</p>
         </div>
         <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: riscosCombinados > 0 ? '#f59e0b' : undefined }}>{riscosCombinados}</p>
-          <p className="text-[10px] text-muted-foreground">em aberto (SG + DevOps)</p>
+          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`} style={{ color: riscosCombinados > 0 ? '#f59e0b' : undefined }}>{riscosCombinados}</p>
+          <p className="text-[10px] text-muted-foreground">em aberto · {riscosSg.length} SG + {riscosDevops.length} DevOps</p>
         </div>
         <div className="rounded-lg border bg-muted/20 px-2.5 py-1.5">
-          <p className={`${tv ? 'text-2xl' : 'text-lg'} font-bold font-mono leading-tight`}>{sgsiBase?.riscos.total ?? '—'}</p>
+          <p className={`${tv ? 'text-xl' : 'text-lg'} font-bold font-mono leading-tight`}>{sgsiBase?.riscos.total ?? '—'}</p>
           <p className="text-[10px] text-muted-foreground">riscos mapeados</p>
         </div>
       </div>
@@ -229,27 +229,36 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
     const amostra = tv ? [...mudStats.concluidas.slice(0, 3), ...mudStats.pendentes.slice(0, 1)] : mudAmostra;
     return (
       <BlocoCard icon={RefreshCw} titulo={`Gestão de Mudanças · ${periodLabel ?? 'período selecionado'}`} className={tv ? 'flex-none' : undefined}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-          <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Solicitações</p>
-            <p className={`${tv ? 'text-xl' : 'text-2xl'} font-bold font-mono`}>{mudStats.total}</p>
+        {tv ? (
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+            <span className="text-sm text-muted-foreground">Solicitações <b className="font-mono text-lg text-foreground">{mudStats.total}</b></span>
+            <span className="text-sm text-muted-foreground">Concluídas <b className="font-mono text-lg text-[hsl(142,71%,45%)]">{mudStats.concluidas.length}</b> <span className="text-xs">({mudStats.total > 0 ? Math.round((mudStats.concluidas.length / mudStats.total) * 100) : 0}%)</span></span>
+            <span className="text-sm text-muted-foreground">Pendentes <b className="font-mono text-lg text-amber-500">{mudStats.pendentes.length}</b></span>
+            <span className="text-sm text-muted-foreground">Rejeitadas <b className="font-mono text-lg text-red-500">{mudStats.rejeitadas}</b></span>
           </div>
-          <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Concluídas</p>
-            <p className={`${tv ? 'text-xl' : 'text-2xl'} font-bold font-mono text-[hsl(142,71%,45%)]`}>
-              {mudStats.concluidas.length}
-              <span className="text-sm text-muted-foreground"> · {mudStats.total > 0 ? Math.round((mudStats.concluidas.length / mudStats.total) * 100) : 0}%</span>
-            </p>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Solicitações</p>
+              <p className="text-2xl font-bold font-mono">{mudStats.total}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Concluídas</p>
+              <p className="text-2xl font-bold font-mono text-[hsl(142,71%,45%)]">
+                {mudStats.concluidas.length}
+                <span className="text-sm text-muted-foreground"> · {mudStats.total > 0 ? Math.round((mudStats.concluidas.length / mudStats.total) * 100) : 0}%</span>
+              </p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Pendentes</p>
+              <p className="text-2xl font-bold font-mono text-amber-500">{mudStats.pendentes.length}</p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Rejeitadas</p>
+              <p className="text-2xl font-bold font-mono text-red-500">{mudStats.rejeitadas}</p>
+            </div>
           </div>
-          <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Pendentes</p>
-            <p className={`${tv ? 'text-xl' : 'text-2xl'} font-bold font-mono text-amber-500`}>{mudStats.pendentes.length}</p>
-          </div>
-          <div className="rounded-lg border bg-muted/20 px-3 py-1.5">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Rejeitadas</p>
-            <p className={`${tv ? 'text-xl' : 'text-2xl'} font-bold font-mono text-red-500`}>{mudStats.rejeitadas}</p>
-          </div>
-        </div>
+        )}
 
         {amostra.length === 0 ? (
           <p className="text-sm text-muted-foreground py-3 text-center">Nenhuma mudança no período selecionado.</p>
@@ -297,38 +306,37 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   // ── Modo TV: layout aprovado em tela cheia — pipelines · incidentes|riscos · mudanças ──
   if (tvMode) {
     return (
-      <div className="h-full min-h-0 flex flex-col gap-3 overflow-hidden">
+      <div className="h-full min-h-0 flex flex-col gap-2.5 overflow-hidden">
         <div className="flex-none flex items-baseline gap-3">
-          <h2 className="text-xl font-bold">Visão Executiva</h2>
+          <h2 className="text-lg font-bold">Visão Executiva</h2>
           <p className="text-sm text-muted-foreground">Infraestrutura {periodLabel ? `· ${periodLabel}` : ''}</p>
         </div>
 
         {/* Meta pipelines (KPI+barra à esq · alvos + feito no trimestre à dir) */}
         <BlocoCard icon={GitBranch} titulo={`Meta · Pipelines ${pipelinesTri.trimestre}`} className="flex-none">
-          <div className="flex items-stretch gap-6">
-            <div className="w-[280px] flex-shrink-0 space-y-2">
+          <div className="flex items-stretch gap-5">
+            <div className="w-[260px] flex-shrink-0 space-y-1.5">
               <div>
-                <p className="text-5xl font-bold font-mono leading-none" style={{ color: corPipelines }}>
+                <p className="text-4xl font-bold font-mono leading-none" style={{ color: corPipelines }}>
                   {reposLoading ? '—' : pipelinesNovas}
-                  <span className="text-xl text-muted-foreground"> / {META_PIPELINES_TRIMESTRE}</span>
+                  <span className="text-lg text-muted-foreground"> / {META_PIPELINES_TRIMESTRE}</span>
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">pipelines novas no trimestre</p>
-                <div className="h-2 rounded-full bg-muted overflow-hidden mt-1.5">
+                <p className="text-xs text-muted-foreground mt-0.5">pipelines novas no trimestre</p>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
                   <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((pipelinesNovas / META_PIPELINES_TRIMESTRE) * 100, 100)}%`, backgroundColor: corPipelines }} />
                 </div>
               </div>
-              <div className="flex items-end justify-between border-t pt-1.5">
-                <span className="text-sm text-muted-foreground">cobertura CI/CD · meta {META_COBERTURA_PCT}%</span>
-                <span className="text-lg font-bold font-mono" style={{ color: corMetaHigh(coberturaPct) }}>{reposLoading ? '—' : `${coberturaPct}%`}</span>
+              <div className="flex items-end justify-between border-t pt-1">
+                <span className="text-xs text-muted-foreground">cobertura CI/CD · meta {META_COBERTURA_PCT}%</span>
+                <span className="text-base font-bold font-mono" style={{ color: corMetaHigh(coberturaPct) }}>{reposLoading ? '—' : `${coberturaPct}%`}</span>
               </div>
             </div>
-            <div className="flex-1 border-l pl-6 space-y-2">
-              <div className="grid grid-cols-3 gap-2">
+            <div className="flex-1 border-l pl-5 space-y-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 {TV_PIPELINE_ALVOS.map((a) => (
-                  <div key={a.nome} className="rounded-lg border bg-muted/30 px-3 py-2 flex flex-col justify-between gap-1">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Alvo</span>
-                    <span className="text-sm font-semibold text-foreground leading-tight">{a.nome}</span>
-                    <span className={`inline-flex items-center gap-1 text-[11px] font-medium rounded px-1.5 py-0.5 self-start ${
+                  <span key={a.nome} className="inline-flex items-center gap-1.5 rounded-lg border bg-muted/30 px-2.5 py-1 text-xs">
+                    <span className="font-semibold text-foreground">{a.nome}</span>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-medium rounded px-1 py-0.5 ${
                       a.status === 'Concluído' ? 'text-emerald-500 bg-emerald-500/10'
                         : a.status ? 'text-amber-500 bg-amber-500/10'
                         : 'text-sky-400 bg-sky-500/10'
@@ -336,7 +344,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                       {a.status === 'Concluído' && <CheckCircle2 className="h-3 w-3" />}
                       {a.status ?? 'Em andamento'}
                     </span>
-                  </div>
+                  </span>
                 ))}
               </div>
               {reposAtuados.length > 0 && (
