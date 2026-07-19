@@ -67,7 +67,8 @@ const adminItems: NavItem[] = [
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState(false);
+  // Sempre inicia minimizada (decisão 19/07) — o usuário expande na sessão se quiser.
+  const [collapsed, setCollapsed] = useState(true);
   // Seção Admin minimizada por padrão — itens só aparecem ao expandir.
   // Exceção: já abre expandida quando a rota atual é uma página de admin.
   const [adminOpen, setAdminOpen] = useState(
