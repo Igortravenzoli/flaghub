@@ -441,7 +441,11 @@ export function useFabricaKpis(
   // kpiItems: exclude Tasks/Bugs whose parent PBI is also in the view (count_in_kpi flag)
   // AND exclude collaborators that are unchecked in the filter
   // AND keep only countable KPI states (exclude Removed/other non-board states)
-  const kpiItems = filteredItems.filter(i => i.count_in_kpi !== false && isFabricaCountableState(i.state));
+  // AND only manager-like items (PBI/US/Bug) — régua única do gestor: Tasks
+  // avulsas (pai fora da fila) inflavam a Executiva/TV vs o "Itens no Escopo".
+  const kpiItems = filteredItems.filter(i =>
+    i.count_in_kpi !== false && isFabricaManagerItem(i.work_item_type) && isFabricaCountableState(i.state)
+  );
 
   const total      = kpiItems.length;
   const inProgress = kpiItems.filter(i => isFabricaInProgress(i.state)).length; // inclui "entregue"
