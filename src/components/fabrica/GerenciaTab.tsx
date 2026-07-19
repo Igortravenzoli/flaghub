@@ -1060,12 +1060,14 @@ export function GerenciaTab({
                       <th className="text-right px-3 py-2 font-medium w-20">Demandas</th>
                       <th className="text-left px-3 py-2 font-medium">Entregue</th>
                       <th className="text-left px-3 py-2 font-medium">Done</th>
+                      <th className="text-left px-3 py-2 font-medium">Concluído · Entregue + Done</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {sprintEntries.map((e) => {
                       const entreguePct = percentNum(e.entregue, e.total);
                       const donePct = percentNum(e.done, e.total);
+                      const conclPct = percentNum(e.entregue + e.done, e.total);
                       return (
                         <tr key={e.code}>
                           <td className="px-3 py-2">
@@ -1091,6 +1093,16 @@ export function GerenciaTab({
                                 <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, donePct)}%` }} />
                               </div>
                               <span className="w-24 text-right tabular-nums text-muted-foreground">{e.done}/{e.total} · {donePct}%</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              {/* Barra empilhada: Done (verde) + Entregue (azul) = Concluído */}
+                              <div className="flex h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, donePct)}%` }} />
+                                <div className="h-full bg-sky-500" style={{ width: `${Math.max(0, Math.min(100, conclPct) - Math.min(100, donePct))}%` }} />
+                              </div>
+                              <span className="w-28 text-right tabular-nums font-semibold text-foreground">{e.entregue + e.done}/{e.total} · {conclPct}%</span>
                             </div>
                           </td>
                         </tr>
