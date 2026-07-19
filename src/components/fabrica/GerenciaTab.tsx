@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useCallback } from 'react';
+﻿import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import type { FabricaItem } from '@/hooks/useFabricaKpis';
 import { isFabricaCountableState } from '@/hooks/useFabricaKpis';
 import type { SprintSnapshotRow, SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
@@ -238,6 +238,7 @@ function normalizedFabricas(snap: SprintSnapshotRow | null | undefined): Record<
 
 type DrilldownKey =
   | 'demandas'
+  | 'concluido'
   | 'priorizado'
   | 'nao_priorizado'
   | 'entregue'
@@ -281,6 +282,7 @@ function KpiCard({
   activeSubKey,
   onClick,
   onSubClick,
+  headerRight,
 }: {
   label: string;
   value: number;
@@ -294,6 +296,8 @@ function KpiCard({
   activeSubKey: DrilldownKey | null;
   onClick: (key: DrilldownKey) => void;
   onSubClick: (key: DrilldownKey) => void;
+  /** Controle extra no canto do card (ex.: alternador foto ⇄ ao vivo) */
+  headerRight?: React.ReactNode;
 }) {
   const pct = total > 0 ? `${((value / total) * 100).toFixed(1).replace('.', ',')}%` : '0,0%';
   return (
@@ -304,7 +308,10 @@ function KpiCard({
       onClick={() => onClick(drilldownKey)}
     >
       <CardContent className="p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">{label}</p>
+        <div className="flex items-start justify-between gap-1 mb-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+          {headerRight}
+        </div>
         <div className={`text-3xl font-bold leading-none ${valueColor}`}>
           {value}
           <span className="text-base font-semibold ml-2 text-muted-foreground">| {pct}</span>
@@ -415,12 +422,19 @@ export function GerenciaTab({
   }, [hasAllSprints, selectedSprintCodes]);
 
   // ── Modo fotografia: 1 sprint fechada selecionada + snapshot com breakdown ──
-  const photoSnapshot = useMemo(() => {
+  const photoDisponivel = useMemo(() => {
     if (!snapshots || !selectedSingleSprintCode) return null;
     if (!isSprintClosed(selectedSingleSprintCode)) return null;
     const snap = snapshots[selectedSingleSprintCode];
     return snap?.category_breakdown ? snap : null;
   }, [snapshots, selectedSingleSprintCode]);
+
+  // DE ⇄ PARA: com a foto selada disponível, o gestor pode alternar para o
+  // estado atual do DevOps ("ao vivo") sem perder a foto. Default = foto.
+  const [aoVivo, setAoVivo] = useState(false);
+  useEffect(() => { setAoVivo(false); }, [selectedSingleSprintCode]);
+
+  const photoSnapshot = aoVivo ? null : photoDisponivel;
 
   const photoFabricas = useMemo(() => normalizedFabricas(photoSnapshot), [photoSnapshot]);
 
@@ -691,6 +705,7 @@ export function GerenciaTab({
       const entregue = ENTREGUE_STATES.has(item.state || '');
       switch (key) {
         case 'demandas': return true;
+        case 'concluido': return done || entregue;
         case 'priorizado': return isPriorizadoBucket(bucket);
         case 'nao_priorizado': return !isPriorizadoBucket(bucket);
         case 'entregue': return entregue;
@@ -765,9 +780,14 @@ export function GerenciaTab({
                 Tempo real — estado atual do DevOps
               </Badge>
             )}
-            {selectedSingleSprintCode && isSprintClosed(selectedSingleSprintCode) && !isPhotoMode && (
+            {selectedSingleSprintCode && isSprintClosed(selectedSingleSprintCode) && !photoDisponivel && (
               <span className="text-[11px] text-muted-foreground">
                 Sprint encerrada sem fotografia disponível — exibindo estado atual.
+              </span>
+            )}
+            {aoVivo && photoDisponivel && (
+              <span className="text-[11px] text-muted-foreground">
+                DE ⇄ PARA: comparando com a fotografia selada — clique no ícone do card Demandas para voltar à foto.
               </span>
             )}
           </div>
@@ -805,6 +825,27 @@ export function GerenciaTab({
               activeSubKey={selectedDrilldown?.key ?? null}
               onClick={(k) => handleDrilldown(k, 'Demandas')}
               onSubClick={(k) => handleDrilldown(k, k)}
+              subItems={[
+                { key: 'concluido', label: 'Concluído · Done + Entregue', value: metrics.done + metrics.entregue, total: metrics.total, valueColor: 'text-emerald-600' },
+              ]}
+              headerRight={photoDisponivel ? (
+                <button
+                  type="button"
+                  title={aoVivo
+                    ? 'Vendo AO VIVO (estado atual do DevOps). Clique para voltar à fotografia selada — como a sprint fechou.'
+                    : 'Vendo a FOTOGRAFIA selada (como a sprint fechou). Clique para ver ao vivo — como está hoje.'}
+                  aria-label={aoVivo ? 'Voltar à fotografia' : 'Ver ao vivo'}
+                  onClick={(e) => { e.stopPropagation(); setAoVivo((v) => !v); setSelectedDrilldown(null); }}
+                  className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                    aoVivo
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                      : 'border-sky-300 bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800'
+                  }`}
+                >
+                  {aoVivo ? <Zap className="h-3 w-3 shrink-0" /> : <Camera className="h-3 w-3 shrink-0" />}
+                  {aoVivo ? 'ao vivo' : 'foto'}
+                </button>
+              ) : undefined}
             />
             <KpiCard
               label="Priorizado"

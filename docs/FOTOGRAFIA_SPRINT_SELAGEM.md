@@ -42,7 +42,12 @@ update public.sprint_indicator_snapshots
  where sprint_code = 'Sxx-2026';
 ```
 
+## Consistência do gerencial (Fase 2 — concluída 19/07/2026)
+
+- Auditoria: tendência de desempenho, ranking por fábrica e qualidade por fábrica **já leem exclusivamente das fotografias** (`sprint_indicator_snapshots`); com a selagem, ficaram imunes a drift. O fallback "ao vivo" da comparação por sprint só dispara para sprint aberta (toda fechada tem foto selada).
+- Card **Demandas** (aba Gerência) ganhou o subindicador **Concluído · Done + Entregue** (valor | % do escopo), clicável para drill-down.
+- **DE ⇄ PARA**: quando a sprint selecionada tem foto selada, o card Demandas exibe o alternador `📷 foto` ⇄ `⚡ ao vivo`. Default = foto (como fechou); um clique mostra o estado atual do DevOps (como está); outro clique volta. Os 5 cards de KPI alternam juntos.
+
 ## Backlog relacionado
 
 - Se exceções se tornarem recorrentes: botão administrativo **"Atualizar foto — Sprint X"** no HUB (executa o runbook acima com data escolhida, com auditoria).
-- **Consistência do gerencial**: telas históricas que hoje calculam sprints fechadas a partir do dado vivo (tendência de desempenho, ranking/qualidade por fábrica, fallback da comparação por sprint) devem passar a ler exclusivamente da foto selada; dado vivo só para a sprint corrente.
