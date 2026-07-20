@@ -30,7 +30,15 @@ type LogRow = {
   time_minutes: number | null;
   notes: string | null;
   ingested_at: string;
+  /** Versão do lançamento na extensão TimeLog: "1" = nunca editado; >1 = editado no DevOps. */
+  etag: string | null;
 };
+
+/** Versão numérica do lançamento (NaN-safe): 2+ = editado após a criação. */
+function versaoLancamento(row: LogRow): number {
+  const n = Number(row.etag);
+  return Number.isFinite(n) ? n : 1;
+}
 
 type ItemMeta = { id: number; title: string | null; work_item_type: string | null; web_url: string | null };
 
@@ -104,7 +112,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from('devops_time_logs')
-        .select('user_name, work_item_id, log_date, start_time, time_minutes, notes, ingested_at')
+        .select('user_name, work_item_id, log_date, start_time, time_minutes, notes, ingested_at, etag')
         .gte('log_date', fromStr)
         .lte('log_date', toStr)
         .limit(5000);
@@ -218,18 +226,19 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
     const itemById = itemsQuery.data;
     const totalMin = rows.reduce((s, r) => s + (r.time_minutes || 0), 0);
 
-    type Grupo = { id: number; minutes: number; rows: LogRow[]; minDia: string; maxDia: string; maxLag: number; posSprint: number };
+    type Grupo = { id: number; minutes: number; rows: LogRow[]; minDia: string; maxDia: string; maxLag: number; posSprint: number; editados: number };
     const grupos: Grupo[] = (() => {
       const m = new Map<number, Grupo>();
       for (const r of rows) {
         const g = m.get(r.work_item_id) ?? {
           id: r.work_item_id, minutes: 0, rows: [] as LogRow[],
-          minDia: r.log_date, maxDia: r.log_date, maxLag: 0, posSprint: 0,
+          minDia: r.log_date, maxDia: r.log_date, maxLag: 0, posSprint: 0, editados: 0,
         };
         g.minutes += r.time_minutes || 0;
         g.rows.push(r);
         if (r.log_date < g.minDia) g.minDia = r.log_date;
         if (r.log_date > g.maxDia) g.maxDia = r.log_date;
+        if (versaoLancamento(r) > 1) g.editados++;
         if (!semTrilha(r)) {
           const lag = lagDias(r);
           if (lag > g.maxLag) g.maxLag = lag;
@@ -276,6 +285,11 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                       <span className="font-mono shrink-0">#{g.id}</span>
                     )}
                     <span className="truncate flex-1 min-w-0" title={meta?.title ?? undefined}>{meta?.title ?? '—'}</span>
+                    {g.editados > 0 && (
+                      <span className="px-1 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-medium shrink-0" title="Lançamentos editados no DevOps após a criação">
+                        {g.editados} editado{g.editados === 1 ? '' : 's'}
+                      </span>
+                    )}
                     {g.posSprint > 0 && (
                       <span className="px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium shrink-0">
                         {g.posSprint} após a sprint
@@ -309,11 +323,22 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                           const lag = lagDias(r);
                           const posSprint = fimSprintMs != null && ing.getTime() > fimSprintMs;
                           const trilhaOk = !semTrilha(r);
+                          const versao = versaoLancamento(r);
                           return (
                             <tr key={`${r.log_date}-${i}`}>
                               <td className="pl-9 pr-2 py-1 tabular-nums whitespace-nowrap">{fmtDia(r.log_date)}</td>
                               <td className="px-2 py-1 tabular-nums text-muted-foreground">{r.start_time || '—'}</td>
-                              <td className="px-2 py-1 text-right font-mono tabular-nums">{fmtHM(r.time_minutes || 0)}</td>
+                              <td className="px-2 py-1 text-right font-mono tabular-nums whitespace-nowrap">
+                                {fmtHM(r.time_minutes || 0)}
+                                {versao > 1 && (
+                                  <span
+                                    className="ml-1 px-1 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-sans font-medium"
+                                    title={`Lançamento editado no DevOps após a criação (versão ${versao}). A versão anterior fica guardada na trilha de revisões do portal.`}
+                                  >
+                                    v{versao} · editado
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-2 py-1 whitespace-nowrap">
                                 {trilhaOk ? (
                                   <>
@@ -358,6 +383,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
           <span className="text-amber-700 dark:text-amber-300"> +Nd</span> = registrado N dias após o dia trabalhado declarado;
           <span className="text-rose-600 dark:text-rose-300"> após a sprint</span> = registrado depois do fim oficial (sexta 23:59).
           Lançamentos anteriores à recarga da coleta (17/07/2026 19:15) aparecem como "sem trilha" — o momento real do registro não ficou rastreado; a trilha é integral daí em diante.
+          <span className="text-violet-700 dark:text-violet-300"> vN · editado</span> = lançamento alterado no DevOps após a criação (a versão anterior fica guardada no portal).
         </p>
       </div>
     );

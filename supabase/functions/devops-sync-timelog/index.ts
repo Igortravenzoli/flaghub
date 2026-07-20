@@ -1,5 +1,11 @@
-// devops-sync-timelog v3.0 — Background processing via EdgeRuntime.waitUntil()
+// devops-sync-timelog v3.1 — Background processing via EdgeRuntime.waitUntil()
 // v3.0: Respond immediately, process in background to avoid CPU limits
+// v3.1: fix ext_entry_id — o caller passava entry.id como docId, anulando o
+//       teste `entry.id !== docId` e deixando TODAS as linhas sem id oficial
+//       (edição no DevOps virava linha nova/fantasma em vez de update).
+//       Agora o docId é a coleção/documento real; edições caem no UPSERT
+//       (Phase A) e a versão anterior é preservada por trigger
+//       (devops_time_log_revisions, migration 20260720100000).
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -131,7 +137,10 @@ async function processTimeLogs(pat: string) {
     'Accept': 'application/json',
   }
 
-  let rawEntries: TimeLogEntry[] = []
+  // Cada entrada carrega o docId REAL de onde veio (coleção ou documento) —
+  // nunca o próprio entry.id, senão o teste `entry.id !== docId` da
+  // normalização anula o ext_entry_id (bug corrigido na v3.1).
+  let rawPairs: Array<{ entry: TimeLogEntry; docId: string }> = []
   let usedCollection = ''
 
   for (const col of COLLECTIONS_TO_TRY) {
@@ -145,47 +154,53 @@ async function processTimeLogs(pat: string) {
     }
 
     const payload = await resp.json()
-    let entries: TimeLogEntry[] = []
+    const pairs: Array<{ entry: TimeLogEntry; docId: string }> = []
 
     if (Array.isArray(payload)) {
-      entries = payload
+      for (const e of payload) pairs.push({ entry: e as TimeLogEntry, docId: col })
     } else if (payload && typeof payload === 'object') {
       if (Array.isArray(payload.value)) {
         const firstVal = payload.value[0]
         if (firstVal && ('workItemId' in firstVal || 'user' in firstVal || 'date' in firstVal)) {
-          entries = payload.value
+          for (const e of payload.value) pairs.push({ entry: e as TimeLogEntry, docId: col })
         } else {
           for (const doc of payload.value) {
-            entries.push(...extractEntries(doc))
+            for (const e of extractEntries(doc)) pairs.push({ entry: e, docId: (doc as TimeLogDocument).id || col })
           }
         }
       } else {
         const numericKeys = Object.keys(payload).filter(k => /^\d+$/.test(k))
-        if (numericKeys.length > 0) {
-          entries = numericKeys.map(k => payload[k] as TimeLogEntry)
-        }
+        for (const k of numericKeys) pairs.push({ entry: payload[k] as TimeLogEntry, docId: col })
       }
     }
 
-    if (entries.length > 0) {
-      rawEntries = entries
+    if (pairs.length > 0) {
+      rawPairs = pairs
       usedCollection = col
-      console.log(`[timelog] Found ${entries.length} entries in collection '${col}'`)
+      console.log(`[timelog] Found ${pairs.length} entries in collection '${col}'`)
       break
     }
   }
 
-  console.log(`[timelog] Final: ${rawEntries.length} entries from collection '${usedCollection || 'none'}'`)
+  console.log(`[timelog] Final: ${rawPairs.length} entries from collection '${usedCollection || 'none'}'`)
 
   // ── Normalize & dedup in-memory ────────────────────────────────
   const allRows: NormalizedRow[] = []
   const seenKeys = new Set<string>()
+  const seenExtIds = new Set<string>()
   let skipped = 0
   let dedupSkipped = 0
 
-  for (const entry of rawEntries) {
-    const normalized = normalizeEntry(entry, entry.id || usedCollection)
+  for (const { entry, docId } of rawPairs) {
+    const normalized = normalizeEntry(entry, docId)
     if (!normalized) { skipped++; continue }
+
+    // id oficial repetido no payload → 2ª ocorrência cai no dedup por conteúdo
+    // (evita "ON CONFLICT cannot affect row a second time" no upsert em lote)
+    if (normalized.ext_entry_id) {
+      if (seenExtIds.has(normalized.ext_entry_id)) normalized.ext_entry_id = null
+      else seenExtIds.add(normalized.ext_entry_id)
+    }
 
     const key = dedupKey(normalized)
     if (seenKeys.has(key)) { dedupSkipped++; continue }
