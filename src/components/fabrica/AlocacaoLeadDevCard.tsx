@@ -301,7 +301,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                       </span>
                     )}
                     <span className="text-muted-foreground tabular-nums shrink-0 w-24 text-right">{periodo}</span>
-                    <span className="text-muted-foreground tabular-nums shrink-0 w-16 text-right">{g.rows.length} lançtos</span>
+                    <span className="text-muted-foreground tabular-nums shrink-0 w-16 text-right" title={`${g.rows.length} registros de horas nesta task`}>{g.rows.length} regs</span>
                     <span className="font-mono font-semibold tabular-nums shrink-0 w-14 text-right">{fmtHM(g.minutes)}</span>
                   </div>
 
