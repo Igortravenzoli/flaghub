@@ -57,6 +57,17 @@ function lagDias(row: LogRow): number {
 }
 
 /**
+ * Em 17/07/2026 ~19:15 BRT a tabela devops_time_logs foi recarregada do zero
+ * (reseed): TODOS os lançamentos existentes até ali ganharam esse ingested_at.
+ * Para essas linhas o momento real do registro é desconhecido — não exibimos
+ * badge de atraso nem "após a sprint". A trilha é confiável daí em diante.
+ */
+const RECARGA_ESPELHO_MS = Date.parse('2026-07-17T22:30:00Z'); // 19:30 BRT, folga sobre o lote de 19:15
+function semTrilha(row: LogRow): boolean {
+  return new Date(row.ingested_at).getTime() <= RECARGA_ESPELHO_MS;
+}
+
+/**
  * Visão de alocação Lead → desenvolvedores. Cada squad do roster fixo abre para
  * os seus devs; a barra de cada dev fica bicolor quando parte das horas foi para
  * OUTRA fábrica (uso cruzado), com o destino no chip.
@@ -219,9 +230,11 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
         g.rows.push(r);
         if (r.log_date < g.minDia) g.minDia = r.log_date;
         if (r.log_date > g.maxDia) g.maxDia = r.log_date;
-        const lag = lagDias(r);
-        if (lag > g.maxLag) g.maxLag = lag;
-        if (fimSprintMs != null && new Date(r.ingested_at).getTime() > fimSprintMs) g.posSprint++;
+        if (!semTrilha(r)) {
+          const lag = lagDias(r);
+          if (lag > g.maxLag) g.maxLag = lag;
+          if (fimSprintMs != null && new Date(r.ingested_at).getTime() > fimSprintMs) g.posSprint++;
+        }
         m.set(r.work_item_id, g);
       }
       return [...m.values()].sort((a, b) => b.minutes - a.minutes);
@@ -295,18 +308,30 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                           const ingStr = ing.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
                           const lag = lagDias(r);
                           const posSprint = fimSprintMs != null && ing.getTime() > fimSprintMs;
+                          const trilhaOk = !semTrilha(r);
                           return (
                             <tr key={`${r.log_date}-${i}`}>
                               <td className="pl-9 pr-2 py-1 tabular-nums whitespace-nowrap">{fmtDia(r.log_date)}</td>
                               <td className="px-2 py-1 tabular-nums text-muted-foreground">{r.start_time || '—'}</td>
                               <td className="px-2 py-1 text-right font-mono tabular-nums">{fmtHM(r.time_minutes || 0)}</td>
                               <td className="px-2 py-1 whitespace-nowrap">
-                                <span className="tabular-nums">{ingStr}</span>
-                                {posSprint && (
-                                  <span className="ml-1 px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium">após a sprint</span>
-                                )}
-                                {!posSprint && lag >= 2 && (
-                                  <span className="ml-1 px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium" title={`Registrado ${lag} dias depois do dia trabalhado`}>+{lag}d</span>
+                                {trilhaOk ? (
+                                  <>
+                                    <span className="tabular-nums">{ingStr}</span>
+                                    {posSprint && (
+                                      <span className="ml-1 px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium">após a sprint</span>
+                                    )}
+                                    {!posSprint && lag >= 2 && (
+                                      <span className="ml-1 px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium" title={`Registrado ${lag} dias depois do dia trabalhado`}>+{lag}d</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span
+                                    className="text-muted-foreground/70"
+                                    title="Lançamento anterior à recarga da coleta (17/07/2026 19:15) — o momento real do registro no DevOps não ficou rastreado. A trilha é confiável a partir daí."
+                                  >
+                                    sem trilha (≤ 17/07 19:15)
+                                  </span>
                                 )}
                               </td>
                               <td className="px-2 py-1 max-w-[320px]">
@@ -332,6 +357,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
           Clique na task para abrir os lançamentos. "Registrado em" = quando o lançamento chegou ao portal (coleta a cada ~15 min, horário de Brasília).
           <span className="text-amber-700 dark:text-amber-300"> +Nd</span> = registrado N dias após o dia trabalhado declarado;
           <span className="text-rose-600 dark:text-rose-300"> após a sprint</span> = registrado depois do fim oficial (sexta 23:59).
+          Lançamentos anteriores à recarga da coleta (17/07/2026 19:15) aparecem como "sem trilha" — o momento real do registro não ficou rastreado; a trilha é integral daí em diante.
         </p>
       </div>
     );
