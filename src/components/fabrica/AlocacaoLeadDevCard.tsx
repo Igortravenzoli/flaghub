@@ -50,25 +50,29 @@ function fmtDia(logDate: string): string {
   const [, m, d] = logDate.split('-');
   return `${d}/${m}`;
 }
+/** Dias entre o dia trabalhado (declarado) e o momento do registro no portal. */
+function lagDias(row: LogRow): number {
+  const [y, m, d] = row.log_date.split('-').map(Number);
+  return Math.floor((new Date(row.ingested_at).getTime() - Date.UTC(y, m - 1, d)) / 86400000);
+}
 
 /**
  * Visão de alocação Lead → desenvolvedores. Cada squad do roster fixo abre para
  * os seus devs; a barra de cada dev fica bicolor quando parte das horas foi para
  * OUTRA fábrica (uso cruzado), com o destino no chip.
  *
- * Clique no desenvolvedor abre o drill-down de lançamentos individuais (item,
- * dia trabalhado, horas em h:mm, quando o lançamento foi registrado e o
- * comentário) — permite ao gestor confrontar a planilha dele com o que o
- * portal coleta e enxergar quem registrou tarde ou depois do fim da sprint.
- * Este KPI não é congelado: reage ao que é lançado (decisão do gestor 19/07).
- *
- * O cabeçalho mostra o LEAD da squad quando ele está marcado no roster
- * (papel='lead'); enquanto não estiver, mostra o nome da squad.
+ * Drill-down em dois níveis: clique no desenvolvedor → tasks com total de
+ * horas; clique na task → lançamentos individuais (dia trabalhado, horas em
+ * h:mm, quando registrou e comentário). Permite ao gestor confrontar a
+ * planilha dele com o que o portal coleta e ver quem registra tarde ou depois
+ * do fim da sprint. Este KPI não é congelado: reage ao que é lançado
+ * (decisão do gestor 19/07).
  */
 export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoLeadDevCardProps) {
   const { data: roster = [], isLoading } = useFabricaRoster();
   const [aberta, setAberta] = useState<string | null>(null);
   const [devAberto, setDevAberto] = useState<string | null>(null);
+  const [taskAberta, setTaskAberta] = useState<string | null>(null);
 
   const businessDays = useMemo(
     () => (dateFrom && dateTo ? businessDaysBetween(dateFrom, dateTo) : null),
@@ -196,11 +200,33 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
   }, [roster, byCollab, businessDays]);
   const temCapacidade = !!businessDays;
 
+  // ── Nível 1 do drill: tasks do dev; nível 2: lançamentos da task ────────────
   const renderDetalhe = (devKey: string) => {
     const rows = detalhePorDev.get(devKey) ?? [];
     const carregando = logsQuery.isLoading || collabMapQuery.isLoading;
     const itemById = itemsQuery.data;
     const totalMin = rows.reduce((s, r) => s + (r.time_minutes || 0), 0);
+
+    type Grupo = { id: number; minutes: number; rows: LogRow[]; minDia: string; maxDia: string; maxLag: number; posSprint: number };
+    const grupos: Grupo[] = (() => {
+      const m = new Map<number, Grupo>();
+      for (const r of rows) {
+        const g = m.get(r.work_item_id) ?? {
+          id: r.work_item_id, minutes: 0, rows: [] as LogRow[],
+          minDia: r.log_date, maxDia: r.log_date, maxLag: 0, posSprint: 0,
+        };
+        g.minutes += r.time_minutes || 0;
+        g.rows.push(r);
+        if (r.log_date < g.minDia) g.minDia = r.log_date;
+        if (r.log_date > g.maxDia) g.maxDia = r.log_date;
+        const lag = lagDias(r);
+        if (lag > g.maxLag) g.maxLag = lag;
+        if (fimSprintMs != null && new Date(r.ingested_at).getTime() > fimSprintMs) g.posSprint++;
+        m.set(r.work_item_id, g);
+      }
+      return [...m.values()].sort((a, b) => b.minutes - a.minutes);
+    })();
+
     return (
       <div className="px-3 pb-3 pl-9 bg-muted/20">
         {carregando ? (
@@ -208,72 +234,103 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
         ) : rows.length === 0 ? (
           <p className="text-[11px] text-muted-foreground py-3">Sem lançamentos no período.</p>
         ) : (
-          <div className="border rounded-md overflow-x-auto bg-card">
-            <table className="w-full text-[11px]">
-              <thead className="bg-muted/40 text-muted-foreground">
-                <tr>
-                  <th className="text-left px-2 py-1.5 font-medium w-12">Dia</th>
-                  <th className="text-left px-2 py-1.5 font-medium">Item</th>
-                  <th className="text-left px-2 py-1.5 font-medium w-12">Início</th>
-                  <th className="text-right px-2 py-1.5 font-medium w-14">Horas</th>
-                  <th className="text-left px-2 py-1.5 font-medium w-40">Registrado em</th>
-                  <th className="text-left px-2 py-1.5 font-medium">Comentário</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {rows.map((r, i) => {
-                  const meta = itemById?.get(r.work_item_id);
-                  const ing = new Date(r.ingested_at);
-                  const ingStr = ing.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-                  const [y, m, d] = r.log_date.split('-').map(Number);
-                  const lagDias = Math.floor((ing.getTime() - Date.UTC(y, m - 1, d)) / 86400000);
-                  const posSprint = fimSprintMs != null && ing.getTime() > fimSprintMs;
-                  return (
-                    <tr key={`${r.log_date}-${r.work_item_id}-${i}`}>
-                      <td className="px-2 py-1.5 tabular-nums whitespace-nowrap">{fmtDia(r.log_date)}</td>
-                      <td className="px-2 py-1.5 max-w-[280px]">
-                        <span className="flex items-center gap-1 min-w-0">
-                          {meta?.web_url ? (
-                            <a href={meta.web_url} target="_blank" rel="noopener noreferrer" className="font-mono text-primary hover:underline shrink-0">#{r.work_item_id}</a>
-                          ) : (
-                            <span className="font-mono shrink-0">#{r.work_item_id}</span>
-                          )}
-                          <span className="truncate text-muted-foreground" title={meta?.title ?? undefined}>
-                            {meta?.title ?? '—'}
-                          </span>
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{r.start_time || '—'}</td>
-                      <td className="px-2 py-1.5 text-right font-mono font-semibold tabular-nums">{fmtHM(r.time_minutes || 0)}</td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
-                        <span className="tabular-nums">{ingStr}</span>
-                        {posSprint && (
-                          <span className="ml-1 px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium">após a sprint</span>
-                        )}
-                        {!posSprint && lagDias >= 2 && (
-                          <span className="ml-1 px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium" title={`Registrado ${lagDias} dias depois do dia trabalhado`}>+{lagDias}d</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 max-w-[320px]">
-                        <span className="block truncate text-muted-foreground" title={r.notes ?? undefined}>{r.notes || '—'}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="bg-muted/30">
-                <tr>
-                  <td colSpan={3} className="px-2 py-1.5 text-muted-foreground">{rows.length} lançamento{rows.length === 1 ? '' : 's'}</td>
-                  <td className="px-2 py-1.5 text-right font-mono font-bold tabular-nums">{fmtHM(totalMin)}</td>
-                  <td colSpan={2} className="px-2 py-1.5 text-muted-foreground">= {fmtH(totalMin)} em decimal (como o card exibe)</td>
-                </tr>
-              </tfoot>
-            </table>
+          <div className="border rounded-md overflow-hidden bg-card">
+            {grupos.map((g) => {
+              const meta = itemById?.get(g.id);
+              const tKey = `${devKey}|${g.id}`;
+              const isTaskAberta = taskAberta === tKey;
+              const periodo = g.minDia === g.maxDia ? fmtDia(g.minDia) : `${fmtDia(g.minDia)}–${fmtDia(g.maxDia)}`;
+              return (
+                <div key={g.id} className="border-b last:border-b-0 border-border/60">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/40 cursor-pointer select-none"
+                    title={isTaskAberta ? 'Fechar lançamentos da task' : 'Ver lançamentos individuais desta task'}
+                    onClick={() => setTaskAberta(isTaskAberta ? null : tKey)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTaskAberta(isTaskAberta ? null : tKey); } }}
+                  >
+                    {isTaskAberta
+                      ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                      : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+                    {meta?.web_url ? (
+                      <a
+                        href={meta.web_url} target="_blank" rel="noopener noreferrer"
+                        className="font-mono text-primary hover:underline shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >#{g.id}</a>
+                    ) : (
+                      <span className="font-mono shrink-0">#{g.id}</span>
+                    )}
+                    <span className="truncate flex-1 min-w-0" title={meta?.title ?? undefined}>{meta?.title ?? '—'}</span>
+                    {g.posSprint > 0 && (
+                      <span className="px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium shrink-0">
+                        {g.posSprint} após a sprint
+                      </span>
+                    )}
+                    {g.posSprint === 0 && g.maxLag >= 2 && (
+                      <span className="px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium shrink-0" title={`Maior atraso de registro: ${g.maxLag} dias`}>
+                        até +{g.maxLag}d
+                      </span>
+                    )}
+                    <span className="text-muted-foreground tabular-nums shrink-0 w-24 text-right">{periodo}</span>
+                    <span className="text-muted-foreground tabular-nums shrink-0 w-16 text-right">{g.rows.length} lançtos</span>
+                    <span className="font-mono font-semibold tabular-nums shrink-0 w-14 text-right">{fmtHM(g.minutes)}</span>
+                  </div>
+
+                  {isTaskAberta && (
+                    <table className="w-full text-[11px] bg-muted/10">
+                      <thead className="text-muted-foreground">
+                        <tr className="border-t border-border/40">
+                          <th className="text-left pl-9 pr-2 py-1 font-medium w-16">Dia</th>
+                          <th className="text-left px-2 py-1 font-medium w-14">Início</th>
+                          <th className="text-right px-2 py-1 font-medium w-14">Horas</th>
+                          <th className="text-left px-2 py-1 font-medium w-44">Registrado em</th>
+                          <th className="text-left px-2 py-1 font-medium">Comentário</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {g.rows.map((r, i) => {
+                          const ing = new Date(r.ingested_at);
+                          const ingStr = ing.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                          const lag = lagDias(r);
+                          const posSprint = fimSprintMs != null && ing.getTime() > fimSprintMs;
+                          return (
+                            <tr key={`${r.log_date}-${i}`}>
+                              <td className="pl-9 pr-2 py-1 tabular-nums whitespace-nowrap">{fmtDia(r.log_date)}</td>
+                              <td className="px-2 py-1 tabular-nums text-muted-foreground">{r.start_time || '—'}</td>
+                              <td className="px-2 py-1 text-right font-mono tabular-nums">{fmtHM(r.time_minutes || 0)}</td>
+                              <td className="px-2 py-1 whitespace-nowrap">
+                                <span className="tabular-nums">{ingStr}</span>
+                                {posSprint && (
+                                  <span className="ml-1 px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium">após a sprint</span>
+                                )}
+                                {!posSprint && lag >= 2 && (
+                                  <span className="ml-1 px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium" title={`Registrado ${lag} dias depois do dia trabalhado`}>+{lag}d</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-1 max-w-[320px]">
+                                <span className="block truncate text-muted-foreground" title={r.notes ?? undefined}>{r.notes || '—'}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
+            <div className="flex items-center gap-2 px-2 py-1.5 text-[11px] bg-muted/30">
+              <span className="text-muted-foreground">{rows.length} lançamento{rows.length === 1 ? '' : 's'} em {grupos.length} task{grupos.length === 1 ? '' : 's'}</span>
+              <span className="ml-auto font-mono font-bold tabular-nums">{fmtHM(totalMin)}</span>
+              <span className="text-muted-foreground">= {fmtH(totalMin)} em decimal (como o card exibe)</span>
+            </div>
           </div>
         )}
         <p className="text-[10px] text-muted-foreground mt-1">
-          "Registrado em" = quando o lançamento chegou ao portal (coleta a cada ~15 min, horário de Brasília).
-          <span className="text-amber-700 dark:text-amber-300"> +Nd</span> = registrado N dias após o dia trabalhado;
+          Clique na task para abrir os lançamentos. "Registrado em" = quando o lançamento chegou ao portal (coleta a cada ~15 min, horário de Brasília).
+          <span className="text-amber-700 dark:text-amber-300"> +Nd</span> = registrado N dias após o dia trabalhado declarado;
           <span className="text-rose-600 dark:text-rose-300"> após a sprint</span> = registrado depois do fim oficial (sexta 23:59).
         </p>
       </div>
@@ -306,7 +363,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                   <button
                     type="button"
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/40 transition-colors text-left"
-                    onClick={() => { setAberta(isOpen ? null : s.squad); setDevAberto(null); }}
+                    onClick={() => { setAberta(isOpen ? null : s.squad); setDevAberto(null); setTaskAberta(null); }}
                   >
                     {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                     <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: cor }} />
@@ -348,8 +405,8 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                             <button
                               type="button"
                               className={`w-full grid grid-cols-[1fr_150px_120px] items-center gap-3 px-3 py-2 pl-9 text-left transition-colors hover:bg-muted/40 ${isDevAberto ? 'bg-muted/30' : ''}`}
-                              title={isDevAberto ? 'Fechar lançamentos' : 'Ver lançamentos individuais (item, dia, horas, registro e comentário)'}
-                              onClick={() => setDevAberto(isDevAberto ? null : devKey)}
+                              title={isDevAberto ? 'Fechar lançamentos' : 'Ver as tasks e lançamentos do período'}
+                              onClick={() => { setDevAberto(isDevAberto ? null : devKey); setTaskAberta(null); }}
                             >
                               <span className="text-sm flex items-center gap-1.5 flex-wrap">
                                 {isDevAberto
@@ -397,9 +454,9 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
           </div>
         )}
         <p className="text-[11px] text-muted-foreground mt-2">
-          Clique na squad para abrir os desenvolvedores e <b>no desenvolvedor para ver os lançamentos individuais</b> (item,
-          dia, horas em h:mm, quando registrou e comentário). Segmento âmbar na barra = horas alocadas em
-          <b> outra fábrica</b> (uso cruzado). Este indicador não é congelado — reflete os lançamentos conforme chegam.
+          Clique na squad para abrir os desenvolvedores, <b>no desenvolvedor para ver as tasks</b> (com total em h:mm)
+          e <b>na task para ver cada lançamento</b> (dia, horas, quando registrou e comentário). Segmento âmbar na barra =
+          horas alocadas em <b>outra fábrica</b> (uso cruzado). Este indicador não é congelado — reflete os lançamentos conforme chegam.
         </p>
       </CardContent>
     </Card>
