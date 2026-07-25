@@ -594,6 +594,18 @@ export function PostarParaDevOps({ vdeskLogs, taskScopeIds }: { vdeskLogs: Vdesk
                           <RefreshCw className="h-3 w-3" />Retry
                         </Button>
                       )}
+                      {q?.status === 'rejected' && (
+                        <Button size="sm" variant="outline"
+                          className="h-6 text-[10px] px-2 gap-1 text-amber-700 border-amber-300 hover:bg-amber-50"
+                          disabled={reset.isPending}
+                          title="Volta o lançamento para 'Pendente', disponível para sincronização"
+                          onClick={() => reset.mutate(q.id, {
+                            onSuccess: () => toast.success('Reativado — disponível para sincronização'),
+                            onError: (err: any) => toast.error('Erro', { description: err?.message }),
+                          })}>
+                          <RefreshCw className="h-3 w-3" />Reativar
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
