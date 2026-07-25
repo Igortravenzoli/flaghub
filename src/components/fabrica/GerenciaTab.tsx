@@ -168,7 +168,11 @@ function isPriorizadoBucket(bucket: Bucket): boolean {
   return bucket === 'priorizacao' || bucket === 'priorizacao_transbordo';
 }
 
-/** Sprint já encerrou? (fim oficial — sexta 23:59 — anterior a hoje) */
+/**
+ * Sprint já encerrou? (fim oficial — sexta 23:59 — anterior a hoje)
+ * Nota: a FOTO da sprint corta sábado 23:59 e é selada domingo ~00:30 BRT
+ * (regra 24/07/2026); na janela sex→dom a sprint está encerrada SEM foto.
+ */
 function isSprintClosed(sprintCode: string): boolean {
   const range = getOfficialSprintRange(sprintCode);
   if (!range) return false;
@@ -323,7 +327,7 @@ function KpiCard({
                 key={h.code}
                 className="inline-flex items-center gap-1 rounded border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground/80"
                 title={h.isPhoto
-                  ? `${h.code} — fotografia de fim de sprint (23:59)`
+                  ? `${h.code} — fotografia de fim de sprint (foto selada)`
                   : `${h.code} — estado atual do DevOps`}
               >
                 {h.isPhoto && <Camera className="h-2.5 w-2.5 shrink-0" />}
@@ -782,7 +786,7 @@ export function GerenciaTab({
             )}
             {selectedSingleSprintCode && isSprintClosed(selectedSingleSprintCode) && !photoDisponivel && (
               <span className="text-[11px] text-muted-foreground">
-                Sprint encerrada sem fotografia disponível — exibindo estado atual.
+                Sprint encerrada — a fotografia (corte sábado 23:59) será selada no domingo de madrugada; exibindo estado atual.
               </span>
             )}
             {aoVivo && photoDisponivel && (

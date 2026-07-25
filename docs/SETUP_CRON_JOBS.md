@@ -138,14 +138,15 @@ SELECT cron.schedule(
   $$
 );
 
--- 7. Snapshot de Sprint — diário às 03:00 UTC
--- Captura automaticamente sprints encerradas que ainda não têm snapshot.
--- Idempotente: pula sprints abertas e sprints que já foram capturadas.
--- Garante que toda sprint seja congelada no dia seguinte ao seu encerramento.
+-- 7. Snapshot de Sprint — diário às 03:30 UTC (00:30 BRT)
+-- Reconstrói e SELA a foto de fim de sprint (corte SÁBADO 23:59 BRT desde
+-- 24/07/2026; antes, sexta). O guard interno só permite selar a partir de
+-- domingo (quando o corte de sábado já passou); fotos seladas/manuais nunca
+-- são regravadas. Ver docs/FOTOGRAFIA_SPRINT_SELAGEM.md.
 SELECT cron.schedule(
   'snapshot-sprint-end-daily',
-  '0 3 * * *',
-  'SELECT public.rpc_backfill_closed_sprint_snapshots(p_year => EXTRACT(YEAR FROM NOW())::int, p_force_reprocess => false, p_notes => ''auto_cron_sprint_end'') AS result;'
+  '30 3 * * *',
+  'SELECT public.rpc_backfill_reconstruct_closed_sprints();'
 );
 ```
 
@@ -158,7 +159,7 @@ Os jobs de retenção abaixo sao gerenciados por migration e nao precisam ser cr
 
 ## Observação (snapshot de sprint)
 
-O job `snapshot-sprint-end-daily` (item 7) roda direto em SQL, **sem Edge Function**. Não faz parte do `MANAGED_JOBS` em `manage-sync-schedules`. Para verificar capturas realizadas:
+O job `snapshot-sprint-end-daily` (item 7) roda direto em SQL, **sem Edge Function**. Não faz parte do `MANAGED_JOBS` em `manage-sync-schedules`. Para qualquer manutenção, localizar o job **pelo `jobname`** (nunca pelo `jobid` — muda entre ambientes). Para verificar capturas realizadas:
 
 ```sql
 SELECT sprint_code, total_demands, finalized_demands, snapshot_datetime, notes
