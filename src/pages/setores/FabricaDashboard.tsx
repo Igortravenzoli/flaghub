@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { useHubAreas } from '@/hooks/useHubAreas';
 import { PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
+import { LogsTab } from '@/components/fabrica/LogsTab';
 import { HoursRankingCard } from '@/components/timelog/HoursRankingCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
@@ -43,7 +44,7 @@ import {
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
   Clock, Clock3, Gauge, AlertTriangle, Timer, Package, Building2,
   TrendingUp, BarChart3, Zap, HeartPulse, Workflow, LayoutGrid, MoreHorizontal,
-  GitMerge, Loader2, ExternalLink, CheckCircle2, Check, Minus, SendHorizonal,
+  GitMerge, Loader2, ExternalLink, CheckCircle2, Check, Minus, SendHorizonal, ScrollText,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
@@ -1549,6 +1550,7 @@ export default function FabricaDashboard() {
       case 'uxui-fila': return 'Fila UX-UI';
       case 'qa-return': return 'Retorno QA';
       case 'gerencia': return 'Gerencial';
+      case 'logs': return 'Logs';
       default: return activeTab;
     }
   }, [activeTab]);
@@ -2140,12 +2142,12 @@ export default function FabricaDashboard() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md transition-colors flex-shrink-0 ml-auto
-                  ${['backlog-priorizar','uxui-fila'].includes(activeTab)
+                  ${['backlog-priorizar','uxui-fila','logs'].includes(activeTab)
                     ? 'bg-background shadow-sm text-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-background/60'}`}>
                   <MoreHorizontal className="h-3.5 w-3.5" />
                   Mais
-                  {['backlog-priorizar','uxui-fila'].includes(activeTab) && (
+                  {['backlog-priorizar','uxui-fila','logs'].includes(activeTab) && (
                     <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
                   )}
                 </button>
@@ -2157,6 +2159,11 @@ export default function FabricaDashboard() {
                 <DropdownMenuItem onClick={() => setActiveTab('uxui-fila')} className={`gap-2 text-xs ${activeTab === 'uxui-fila' ? 'font-medium text-primary' : ''}`}>
                   <TrendingUp className="h-3.5 w-3.5" />Fila Design / UX-UI
                 </DropdownMenuItem>
+                {canManageTimelog && (
+                  <DropdownMenuItem onClick={() => setActiveTab('logs')} className={`gap-2 text-xs ${activeTab === 'logs' ? 'font-medium text-primary' : ''}`}>
+                    <ScrollText className="h-3.5 w-3.5" />Logs
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -3047,6 +3054,13 @@ export default function FabricaDashboard() {
               </DraggableScrollArea>
             </Card>
           </TabsContent>
+
+          {/* ═══════ TAB: Logs (admin ou owner do setor) ═══════ */}
+          {canManageTimelog && (
+            <TabsContent value="logs" className="space-y-4 mt-0">
+              <LogsTab />
+            </TabsContent>
+          )}
 
           {/* ═══════ TAB: Retorno QA ═══════ */}
           <TabsContent value="qa-return" className="space-y-4 mt-0">
