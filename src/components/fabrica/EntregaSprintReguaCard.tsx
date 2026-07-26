@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { useSprintSnapshots } from '@/hooks/useSprintSnapshots';
 import { serieEntregaGeral, pctDe, type PontoEntrega } from '@/lib/fabricaTvSeries';
-import { META_ENTREGA_PCT, NOTA_BASE_META, TETO_BUG_PCT, TETO_RETORNO_QA_PCT } from '@/lib/fabricaMetas';
+import { META_ENTREGA_PCT, TETO_BUG_PCT, TETO_RETORNO_QA_PCT } from '@/lib/fabricaMetas';
 
 /** Dados ao vivo da sprint aberta — entra como última faixa, tracejada. */
 export type SprintAtualRegua = {
@@ -70,7 +70,6 @@ export function EntregaSprintReguaCard({ maxSprints = 3, atual = null }: Props) 
         </div>
         <div className="text-[11px] text-muted-foreground">
           marca tracejada = <span className="font-semibold text-foreground">meta {META_ENTREGA_PCT}%</span>
-          <span className="ml-2 text-[10px] opacity-70">{NOTA_BASE_META}</span>
         </div>
       </div>
 

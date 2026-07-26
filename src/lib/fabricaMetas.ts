@@ -6,19 +6,13 @@ import { businessDaysBetween } from '@/lib/sprintCalendar';
  * Vivem em código porque o setor ainda não tem tabela de metas; quando tiver,
  * estas constantes viram o fallback do hook — não o contrário.
  *
- * ATENÇÃO À BASE DE CÁLCULO: os 88% foram desenhados quando entrega era
- * `done ÷ escopo`. Desde 26/07/2026 o indicador conta `done + entregue`
- * (decisão do gestor: mesma régua do gerencial), então o mesmo trabalho marca
- * alguns pontos percentuais a mais. O valor precisa ser recalibrado com o
- * gestor depois que a série nova estiver visível — por isso as telas exibem a
- * base junto da meta.
+ * BASE: os 88% valem sobre **entregue + done** (confirmado por Igor em
+ * 26/07/2026) — a mesma régua do gerencial. Não é uma meta herdada de outra
+ * definição esperando recalibração: é a meta do gestor sobre este cálculo.
  */
 export const META_ENTREGA_PCT = 88;
 export const TETO_BUG_PCT = 30;
 export const TETO_RETORNO_QA_PCT = 30;
-
-/** Rodapé padrão das telas que mostram a meta — explicita a troca de base. */
-export const NOTA_BASE_META = `meta ${META_ENTREGA_PCT}% definida sobre "done"; base agora done + entregue`;
 
 /** Cor semântica do atingimento: dentro da meta, perto, ou longe. */
 export function corEntrega(pct: number): string {
