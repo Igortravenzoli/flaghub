@@ -7,7 +7,9 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    // 8080 é a porta de sempre; PORT permite subir um segundo dev server sem
+    // conflito (preview do agente, duas branches abertas ao mesmo tempo).
+    port: Number(process.env.PORT) || 8080,
     hmr: {
       overlay: false,
     },
