@@ -23,7 +23,9 @@ interface KioskConfigDialogProps {
 
 export default function KioskConfigDialog({ sectors, onStart, externalOpen, onExternalOpenChange }: KioskConfigDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const [rotateEnabled, setRotateEnabled] = useState(true);
+  // TV-1: rotação DESLIGADA por padrão — quem apresenta controla pela barra
+  // superior (Play e Avançar), em vez de correr atrás do telão girando sozinho.
+  const [rotateEnabled, setRotateEnabled] = useState(false);
   const [intervalSec, setIntervalSec] = useState('30');
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>(sectors.map((s) => s.slug));
 

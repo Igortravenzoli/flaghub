@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Monitor, Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Wifi, WifiOff, Server } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import KioskOverlay from '@/components/home/KioskOverlay';
+import { KioskRotationContext, type KioskRotationValue } from '@/contexts/KioskRotationContext';
 import KioskConfigDialog from '@/components/home/KioskConfigDialog';
 import { useComercialKpis } from '@/hooks/useComercialKpis';
 import { useComercialMovimentacao } from '@/hooks/useComercialMovimentacao';
@@ -50,6 +51,9 @@ export default function Home() {
   const [kioskPaused, setKioskPaused] = useState(false);
   // Incrementa a cada navegação manual para reiniciar o timer de rotação
   const [kioskTimerTick, setKioskTimerTick] = useState(0);
+  // TV-1: página interna do setor corrente e quantas ele tem (1 = sem páginas)
+  const [kioskPagina, setKioskPagina] = useState(0);
+  const [kioskPaginas, setKioskPaginas] = useState(1);
   const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
   const [showMonitorKioskPicker, setShowMonitorKioskPicker] = useState(false);
 
@@ -166,24 +170,51 @@ export default function Home() {
     setKioskTimerTick((t) => t + 1);
   }, [kioskSectorCount]);
 
-  const kioskGoNext = useCallback(() => {
-    if (kioskSectorCount === 0) return;
-    setKioskCurrentIndex((prev) => (prev + 1) % kioskSectorCount);
+  /**
+   * TV-1 — avanço da SEQUÊNCIA ÚNICA: página 1 → página 2 → próximo setor.
+   * O botão "Avançar" e o timer chamam esta mesma função; antes o timer mexia
+   * no índice direto e o botão chamava outra coisa, o que permitia divergirem.
+   */
+  const kioskAvancar = useCallback(() => {
+    setKioskPagina((paginaAtual) => {
+      if (paginaAtual < kioskPaginas - 1) return paginaAtual + 1;
+      // Última página do setor → próximo setor, voltando à página 1.
+      if (kioskSectorCount > 0) {
+        setKioskCurrentIndex((prev) => (prev + 1) % kioskSectorCount);
+      }
+      return 0;
+    });
     setKioskTimerTick((t) => t + 1);
-  }, [kioskSectorCount]);
+  }, [kioskPaginas, kioskSectorCount]);
+
+  const kioskGoNext = kioskAvancar;
 
   const kioskTogglePause = useCallback(() => {
     setKioskPaused((p) => !p);
   }, []);
 
-  // Rotation timer (kioskTimerTick reinicia o intervalo após navegação manual)
+  /**
+   * Relógio único da rotação (kioskTimerTick reinicia após navegação manual).
+   * Não exige mais múltiplos setores: um setor só com 2 páginas também gira.
+   */
   useEffect(() => {
-    if (!kioskActive || !kioskRotate || kioskPaused || activeSectors.length <= 1) return;
-    const interval = setInterval(() => {
-      setKioskCurrentIndex((prev) => (prev + 1) % activeSectors.length);
-    }, kioskInterval * 1000);
+    if (!kioskActive || !kioskRotate || kioskPaused) return;
+    if (activeSectors.length <= 1 && kioskPaginas <= 1) return;
+    const interval = setInterval(kioskAvancar, kioskInterval * 1000);
     return () => clearInterval(interval);
-  }, [kioskActive, kioskRotate, kioskPaused, kioskInterval, activeSectors.length, kioskTimerTick]);
+  }, [kioskActive, kioskRotate, kioskPaused, kioskInterval, activeSectors.length,
+      kioskPaginas, kioskTimerTick, kioskAvancar]);
+
+  // Trocar de setor manualmente sempre volta para a primeira página.
+  useEffect(() => { setKioskPagina(0); }, [kioskCurrentIndex]);
+
+  const kioskRotacao = useMemo<KioskRotationValue>(() => ({
+    pagina: kioskPagina,
+    paginas: kioskPaginas,
+    rotacaoLigada: kioskRotate,
+    pausado: kioskPaused,
+    registrarPaginas: setKioskPaginas,
+  }), [kioskPagina, kioskPaginas, kioskRotate, kioskPaused]);
 
   // ESC to exit
   useEffect(() => {
@@ -200,6 +231,7 @@ export default function Home() {
     setKioskRotate(config.rotateEnabled);
     setKioskInterval(config.intervalSec);
     setKioskCurrentIndex(0);
+    setKioskPagina(0);
     setKioskPaused(false);
     setKioskActive(true);
     document.documentElement.requestFullscreen?.().catch(() => {});
@@ -207,17 +239,21 @@ export default function Home() {
 
   if (kioskActive && activeSectors.length > 0) {
     return (
-      <KioskOverlay
-        activeSectors={activeSectors}
-        currentIndex={kioskCurrentIndex}
-        rotateEnabled={kioskRotate}
-        paused={kioskPaused}
-        onTogglePause={kioskTogglePause}
-        onPrev={kioskGoPrev}
-        onNext={kioskGoNext}
-        onGoTo={kioskGoTo}
-        onExit={exitKiosk}
-      />
+      <KioskRotationContext.Provider value={kioskRotacao}>
+        <KioskOverlay
+          activeSectors={activeSectors}
+          currentIndex={kioskCurrentIndex}
+          rotateEnabled={kioskRotate}
+          paused={kioskPaused}
+          pagina={kioskPagina}
+          paginas={kioskPaginas}
+          onTogglePause={kioskTogglePause}
+          onPrev={kioskGoPrev}
+          onNext={kioskGoNext}
+          onGoTo={kioskGoTo}
+          onExit={exitKiosk}
+        />
+      </KioskRotationContext.Provider>
     );
   }
 

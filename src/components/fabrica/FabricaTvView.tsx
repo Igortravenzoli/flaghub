@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { usePaginaKiosk } from '@/contexts/KioskRotationContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CalendarClock } from 'lucide-react';
 import { DesempenhoTrendChart } from '@/components/fabrica/DesempenhoTrendChart';
@@ -8,11 +9,10 @@ import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 
 /**
- * Rotação interna do TV da Fábrica. São 6 blocos densos — numa tela só nenhum
- * fica legível a distância. Alternando 2 páginas, cada bloco ganha ~2x a altura
- * e nada precisa sair do telão.
+ * São 6 blocos densos — numa tela só nenhum fica legível a distância.
+ * Alternando 2 páginas, cada bloco ganha ~2x a altura e nada sai do telão.
+ * O ritmo da troca vem do kiosk (sequência única), não daqui.
  */
-const PAGE_MS = 25_000;
 const PAGES = 2;
 
 /**
@@ -61,12 +61,13 @@ function Kpi({ valor, rotulo, cor }: { valor: number | string; rotulo: string; c
  * Sem Saúde dos itens / Itens saudáveis / Transbordo / Linha de base (saíram do TV).
  */
 export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }: FabricaTvViewProps) {
-  const [page, setPage] = useState(0);
-
-  useEffect(() => {
-    const t = window.setInterval(() => setPage((p) => (p + 1) % PAGES), PAGE_MS);
-    return () => window.clearInterval(t);
-  }, []);
+  /**
+   * TV-1 — a página vem da sequência única do kiosk. Esta view não tem mais
+   * relógio próprio: antes eram 25s fixos, invisíveis para a barra superior,
+   * que continuavam girando mesmo com a rotação desligada.
+   * Fora do modo TV (sem provider) fica parada na página 1.
+   */
+  const page = usePaginaKiosk(PAGES);
 
   const categoria = useMemo(() => {
     let bug = 0, retorno = 0, aviao = 0;

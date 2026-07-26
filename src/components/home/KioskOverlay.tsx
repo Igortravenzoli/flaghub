@@ -29,6 +29,9 @@ interface KioskOverlayProps {
   onNext: () => void;
   onGoTo: (index: number) => void;
   onExit: () => void;
+  /** Página interna do setor corrente e quantas ele tem (TV-1). */
+  pagina?: number;
+  paginas?: number;
 }
 
 /** Nome curto para as pílulas de navegação (primeira palavra do nome do setor) */
@@ -39,6 +42,8 @@ export default function KioskOverlay({
   currentIndex,
   rotateEnabled,
   paused,
+  pagina = 0,
+  paginas = 1,
   onTogglePause,
   onPrev,
   onNext,
@@ -48,6 +53,8 @@ export default function KioskOverlay({
   const safeIndex = activeSectors.length > 0 ? currentIndex % activeSectors.length : 0;
   const currentSector = activeSectors[safeIndex];
   const hasMultipleSectors = activeSectors.length > 1;
+  /** Setor corrente tem páginas internas (hoje só a Fábrica). */
+  const temPaginas = paginas > 1;
   const prevThemeRef = useRef<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [now, setNow] = useState(new Date());
@@ -79,14 +86,15 @@ export default function KioskOverlay({
     return () => clearInterval(interval);
   }, []);
 
-  // Teclado: setas navegam, espaço pausa/retoma (ESC continua tratado pelo Home)
+  // Teclado: setas navegam, espaço pausa/retoma (ESC continua tratado pelo Home).
+  // Vale também com um setor só, desde que ele tenha páginas internas.
   useEffect(() => {
-    if (!hasMultipleSectors) return;
+    if (!hasMultipleSectors && !temPaginas) return;
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       // Não interceptar quando o foco está em elemento interativo (evita toggle duplo no espaço)
       if (target && (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      if (e.key === 'ArrowLeft') {
+      if (e.key === 'ArrowLeft' && hasMultipleSectors) {
         e.preventDefault();
         onPrev();
       } else if (e.key === 'ArrowRight') {
@@ -99,7 +107,7 @@ export default function KioskOverlay({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [hasMultipleSectors, rotateEnabled, onPrev, onNext, onTogglePause]);
+  }, [hasMultipleSectors, temPaginas, rotateEnabled, onPrev, onNext, onTogglePause]);
 
   if (!currentSector) {
     return (
@@ -130,44 +138,65 @@ export default function KioskOverlay({
           )}
         </div>
 
-        {/* Center: navigation controls (hidden with a single sector) */}
-        {hasMultipleSectors && (
+        {/* Centro: controles da sequência única.
+            TV-1 — Play/Pause e Avançar ficam SEMPRE visíveis. Antes o cluster
+            inteiro sumia com um setor só e o Play dependia de rotateEnabled;
+            com a Fábrica girando páginas por conta própria, dava para ficar
+            preso numa tela que alternava sozinha sem nenhum botão para parar. */}
+        {(hasMultipleSectors || temPaginas) && (
           <div className="flex items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onPrev}
-              aria-label="Setor anterior"
-              title="Setor anterior"
-              className="text-slate-400 hover:text-white h-7 w-7 p-0"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            {rotateEnabled && (
+            {hasMultipleSectors && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={onTogglePause}
-                aria-label={paused ? 'Retomar rotação' : 'Pausar rotação'}
-                title={paused ? 'Retomar rotação' : 'Pausar rotação'}
+                onClick={onPrev}
+                aria-label="Setor anterior"
+                title="Setor anterior"
                 className="text-slate-400 hover:text-white h-7 w-7 p-0"
               >
-                {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+                <ChevronLeft className="h-4 w-4" />
               </Button>
             )}
             <Button
               variant="ghost"
               size="sm"
+              onClick={onTogglePause}
+              aria-label={paused ? 'Retomar rotação' : 'Pausar rotação'}
+              title={rotateEnabled
+                ? (paused ? 'Retomar rotação' : 'Pausar rotação')
+                : 'Rotação desligada — ligue em Modo TV para usar'}
+              disabled={!rotateEnabled}
+              className="text-slate-400 hover:text-white h-7 w-7 p-0 disabled:opacity-40"
+            >
+              {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onNext}
-              aria-label="Próximo setor"
-              title="Próximo setor"
+              aria-label="Avançar"
+              title={temPaginas ? 'Avançar (página / setor)' : 'Próximo setor'}
               className="text-slate-400 hover:text-white h-7 w-7 p-0"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
 
+            {/* Indicador de página do setor corrente (só quando há páginas) */}
+            {temPaginas && (
+              <div className="flex items-center gap-1 ml-1.5" aria-label={`Página ${pagina + 1} de ${paginas}`}>
+                {Array.from({ length: paginas }, (_, i) => (
+                  <span
+                    key={i}
+                    className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                      i === pagina ? 'bg-slate-200' : 'bg-slate-600'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
+
             {/* Pílulas de navegação direta */}
-            <div className="hidden md:flex items-center gap-1 ml-2">
+            <div className={`items-center gap-1 ml-2 ${hasMultipleSectors ? 'hidden md:flex' : 'hidden'}`}>
               {activeSectors.map((sector, i) => (
                 <button
                   key={sector.slug}
