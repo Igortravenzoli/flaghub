@@ -72,7 +72,7 @@ function isFabricaTodo(state: string | null | undefined): boolean {
   return FABRICA_TODO_STATES.has(normalizeFabricaState(state));
 }
 
-function isDone(state: string | null | undefined): boolean {
+export function isDone(state: string | null | undefined): boolean {
   return DONE_STATES.has(normalizeFabricaState(state));
 }
 

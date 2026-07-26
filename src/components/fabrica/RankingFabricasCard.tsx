@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSprintSnapshots, type SnapshotScopeBreakdown, type SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { SQUADS } from '@/lib/fabricaRoster';
+import { concluidoDoEscopo } from '@/lib/fabricaTvSeries';
 import { fabricaColor, medalColor } from '@/lib/chartColors';
 
 type RankingFabricasCardProps = {
@@ -17,7 +18,7 @@ type RankingFabricasCardProps = {
   fill?: boolean;
 };
 
-const RANKING_FORMULA = 'Ranking = Desempenho − (½·Bug + ½·Retorno QA), somando todas as sprints do período. Maior valor = melhor cruzamento de desempenho e qualidade.';
+const RANKING_FORMULA = 'Ranking = Desempenho − (½·Bug + ½·Retorno QA), somando todas as sprints do período. Desempenho = itens encerrados (done + entregue) ÷ escopo. Maior valor = melhor cruzamento de desempenho e qualidade.';
 
 function sprintNum(code: string): number {
   return Number(code.match(/\d+/)?.[0] ?? 0);
@@ -106,14 +107,18 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
         // reais (score negativo), invertendo o pódio.
         if (!SQUADS.includes(name)) continue;
         const agg = byFabrica.get(name) ?? { cells: [], done: 0, scope: 0, bug: 0, retorno: 0 };
+        // Concluído = done + entregue (regra do gerencial, 26/07/2026): o item
+        // em teste/aguardando deploy já saiu da mão do dev. Os dois conjuntos
+        // são disjuntos na fotografia, então somar não conta duas vezes.
+        const encerrados = concluidoDoEscopo(scope);
         agg.cells.push({
           sprint: sprintLabel,
-          desempenho: pct(scope.done.total, scope.total),
+          desempenho: pct(encerrados, scope.total),
           bug: pct(scope.cats.bug, scope.total),
           retorno: pct(scope.cats.retorno_qa, scope.total),
-          doneAbs: scope.done.total,
+          doneAbs: encerrados,
         });
-        agg.done += scope.done.total;
+        agg.done += encerrados;
         agg.scope += scope.total;
         agg.bug += scope.cats.bug;
         agg.retorno += scope.cats.retorno_qa;
