@@ -51,6 +51,12 @@ SELECT cron.schedule(
     url := 'https://PROJECT_REF.supabase.co/functions/v1/devops-sync-all',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      -- OBRIGATÓRIO: o gateway das Edge Functions exige Authorization mesmo
+      -- quando a função valida por x-cron-secret. Sem ele a chamada morre em
+      -- {"code":"UNAUTHORIZED_NO_AUTH_HEADER"} ANTES de entrar na função.
+      -- A anon key é pública (config.prod.toml / bundle do front); o segredo
+      -- de verdade é o x-cron-secret, que vem do Vault.
+      'Authorization', 'Bearer ANON_KEY_DO_AMBIENTE',
       'x-cron-secret', public.get_cron_secret()
     ),
     body := '{}'::jsonb
@@ -67,6 +73,12 @@ SELECT cron.schedule(
     url := 'https://PROJECT_REF.supabase.co/functions/v1/vdesk-sync-base-clientes',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      -- OBRIGATÓRIO: o gateway das Edge Functions exige Authorization mesmo
+      -- quando a função valida por x-cron-secret. Sem ele a chamada morre em
+      -- {"code":"UNAUTHORIZED_NO_AUTH_HEADER"} ANTES de entrar na função.
+      -- A anon key é pública (config.prod.toml / bundle do front); o segredo
+      -- de verdade é o x-cron-secret, que vem do Vault.
+      'Authorization', 'Bearer ANON_KEY_DO_AMBIENTE',
       'x-cron-secret', public.get_cron_secret()
     ),
     body := '{}'::jsonb
@@ -83,6 +95,12 @@ SELECT cron.schedule(
     url := 'https://PROJECT_REF.supabase.co/functions/v1/vdesk-sync-helpdesk',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      -- OBRIGATÓRIO: o gateway das Edge Functions exige Authorization mesmo
+      -- quando a função valida por x-cron-secret. Sem ele a chamada morre em
+      -- {"code":"UNAUTHORIZED_NO_AUTH_HEADER"} ANTES de entrar na função.
+      -- A anon key é pública (config.prod.toml / bundle do front); o segredo
+      -- de verdade é o x-cron-secret, que vem do Vault.
+      'Authorization', 'Bearer ANON_KEY_DO_AMBIENTE',
       'x-cron-secret', public.get_cron_secret()
     ),
     body := '{}'::jsonb
@@ -99,6 +117,12 @@ SELECT cron.schedule(
     url := 'https://PROJECT_REF.supabase.co/functions/v1/devops-sync-timelog',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      -- OBRIGATÓRIO: o gateway das Edge Functions exige Authorization mesmo
+      -- quando a função valida por x-cron-secret. Sem ele a chamada morre em
+      -- {"code":"UNAUTHORIZED_NO_AUTH_HEADER"} ANTES de entrar na função.
+      -- A anon key é pública (config.prod.toml / bundle do front); o segredo
+      -- de verdade é o x-cron-secret, que vem do Vault.
+      'Authorization', 'Bearer ANON_KEY_DO_AMBIENTE',
       'x-cron-secret', public.get_cron_secret()
     ),
     body := '{}'::jsonb
@@ -115,6 +139,12 @@ SELECT cron.schedule(
     url := 'https://PROJECT_REF.supabase.co/functions/v1/vdesk-sync-timelog',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      -- OBRIGATÓRIO: o gateway das Edge Functions exige Authorization mesmo
+      -- quando a função valida por x-cron-secret. Sem ele a chamada morre em
+      -- {"code":"UNAUTHORIZED_NO_AUTH_HEADER"} ANTES de entrar na função.
+      -- A anon key é pública (config.prod.toml / bundle do front); o segredo
+      -- de verdade é o x-cron-secret, que vem do Vault.
+      'Authorization', 'Bearer ANON_KEY_DO_AMBIENTE',
       'x-cron-secret', public.get_cron_secret()
     ),
     body := '{}'::jsonb
@@ -131,6 +161,12 @@ SELECT cron.schedule(
     url := 'https://PROJECT_REF.supabase.co/functions/v1/devops-sync-qualidade',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      -- OBRIGATÓRIO: o gateway das Edge Functions exige Authorization mesmo
+      -- quando a função valida por x-cron-secret. Sem ele a chamada morre em
+      -- {"code":"UNAUTHORIZED_NO_AUTH_HEADER"} ANTES de entrar na função.
+      -- A anon key é pública (config.prod.toml / bundle do front); o segredo
+      -- de verdade é o x-cron-secret, que vem do Vault.
+      'Authorization', 'Bearer ANON_KEY_DO_AMBIENTE',
       'x-cron-secret', public.get_cron_secret()
     ),
     body := '{}'::jsonb
