@@ -79,7 +79,11 @@ function LinhaItem({
         <span className="truncate block" title={item.title ?? ''}>{item.title ?? '—'}</span>
       </TableCell>
       <TableCell className="whitespace-nowrap">{item.state}</TableCell>
-      <TableCell className="text-right font-mono">{item.tasks_filhas}</TableCell>
+      <TableCell className="text-right font-mono">
+        {item.tasks_filhas === 0 ? (
+          <span className="text-amber-700" title="PBI sem tasks filhas — migra sozinho">0</span>
+        ) : item.tasks_filhas}
+      </TableCell>
       <TableCell className="text-right font-mono" title="Quantas vezes já foi empurrado de sprint">
         {item.migracoes}
       </TableCell>
@@ -280,20 +284,57 @@ export function TransbordoAcoesTab() {
       {/* ── 2. Aplicar transbordo ─────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2 pt-4">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 flex-wrap">
             <ArrowRightLeft className="h-4 w-4 text-primary" />
             2. Aplicar transbordo
+            <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+              {classificados.length} serão movidos
+            </Badge>
+            {classificados.some(i => i.tasks_filhas === 0) && (
+              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/30">
+                {classificados.filter(i => i.tasks_filhas === 0).length} sem tasks filhas
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            Move para <strong>{ctx.sprint_destino ?? 'a próxima sprint'}</strong> apenas os itens
-            classificados. As tasks filhas acompanham o item pai.
+            Itens já classificados (com a tag <strong>TRANSBORDO</strong>) que serão movidos para{' '}
+            <strong>{ctx.sprint_destino ?? 'a próxima sprint'}</strong>. As tasks filhas acompanham
+            o item pai.
           </p>
+
+          {elegiveisQ.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : classificados.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Nenhum item classificado. Use o passo 1 para marcar o que deve transbordar.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="text-xs">
+                    <TableHead>Item</TableHead>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Tasks</TableHead>
+                    <TableHead className="text-right">Migrações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {classificados.map(i => (
+                    <LinhaItem key={i.work_item_id} item={i} />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
           <Button
             size="sm"
             className="h-8 text-xs gap-1.5"
-            disabled={!liberado || acao.isPending || todos.length === 0}
+            disabled={!liberado || acao.isPending || classificados.length === 0}
             onClick={() => setDialogAberto(true)}
           >
             <ArrowRightLeft className="h-3.5 w-3.5" />
