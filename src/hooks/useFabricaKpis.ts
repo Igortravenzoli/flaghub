@@ -28,6 +28,26 @@ const FABRICA_COUNTABLE_STATES = new Set([
 /** Collaborators excluded by default from Fábrica KPI counts (belong to Design sector) */
 export const KPI_DEFAULT_EXCLUDED_COLLABORATORS = new Set(['ari']);
 
+/** Marcador de título usado pela Infra (a vw_infraestrutura_kpis consome estes itens). */
+const INFRA_PREFIX = '[INFRA]';
+
+/**
+ * Epics/PBIs guarda-chuva que NÃO são trabalho da Fábrica: o item e todos os
+ * filhos somem da listagem e dos KPIs do setor.
+ *   2700  — INFRA (consumido pela Infraestrutura via vw_infraestrutura_kpis)
+ *   16687 — PBI FlagDash · Painéis Gerenciais
+ *
+ * A exclusão é só de EXIBIÇÃO. As fotografias de sprint continuam contando
+ * estes itens de propósito (decisão de 25/07/2026): assim o esforço e as
+ * movimentações ficam preservados no histórico caso um dia se queira medi-los.
+ */
+export const EPICS_FORA_DA_FABRICA = new Set<number>([2700, 16687]);
+
+function isEpicForaDaFabrica(id?: number | null, parentId?: number | null): boolean {
+  return (id != null && EPICS_FORA_DA_FABRICA.has(id))
+      || (parentId != null && EPICS_FORA_DA_FABRICA.has(parentId));
+}
+
 export function isFabricaInProgress(state: string | null | undefined): boolean {
   return FABRICA_IN_PROGRESS_STATES.has(normalizeFabricaState(state));
 }
@@ -314,10 +334,8 @@ export function useFabricaKpis(
   });
 
   const allItems = query.data || [];
-  const INFRA_PREFIX = '[INFRA]';
-  const EXCLUDED_INFRA_PBI_ID = 2700;
   const nonInfraItems = allItems.filter((i) => {
-    if (i.id === EXCLUDED_INFRA_PBI_ID || i.parent_id === EXCLUDED_INFRA_PBI_ID) return false;
+    if (isEpicForaDaFabrica(i.id, i.parent_id)) return false;
     return !i.title?.startsWith(INFRA_PREFIX);
   });
 
@@ -326,7 +344,7 @@ export function useFabricaKpis(
     : nonInfraItems;
 
   const nonInfraWorkItems = (workItemsQuery.data || []).filter((wi) => {
-    if (wi.id === EXCLUDED_INFRA_PBI_ID || wi.parent_id === EXCLUDED_INFRA_PBI_ID) return false;
+    if (isEpicForaDaFabrica(wi.id, wi.parent_id)) return false;
     return !wi.title?.startsWith(INFRA_PREFIX);
   });
 

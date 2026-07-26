@@ -13,6 +13,7 @@ import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { useHubAreas } from '@/hooks/useHubAreas';
 import { PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
 import { LogsTab } from '@/components/fabrica/LogsTab';
+import { TransbordoAcoesTab } from '@/components/fabrica/TransbordoAcoesTab';
 import { HoursRankingCard } from '@/components/timelog/HoursRankingCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
@@ -45,6 +46,7 @@ import {
   Clock, Clock3, Gauge, AlertTriangle, Timer, Package, Building2,
   TrendingUp, BarChart3, Zap, HeartPulse, Workflow, LayoutGrid, MoreHorizontal,
   GitMerge, Loader2, ExternalLink, CheckCircle2, Check, Minus, SendHorizonal, ScrollText,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
@@ -1551,6 +1553,7 @@ export default function FabricaDashboard() {
       case 'qa-return': return 'Retorno QA';
       case 'gerencia': return 'Gerencial';
       case 'logs': return 'Logs';
+      case 'transbordo': return 'Transbordo';
       default: return activeTab;
     }
   }, [activeTab]);
@@ -2142,12 +2145,12 @@ export default function FabricaDashboard() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md transition-colors flex-shrink-0 ml-auto
-                  ${['backlog-priorizar','uxui-fila','logs'].includes(activeTab)
+                  ${['backlog-priorizar','uxui-fila','logs','transbordo'].includes(activeTab)
                     ? 'bg-background shadow-sm text-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-background/60'}`}>
                   <MoreHorizontal className="h-3.5 w-3.5" />
                   Mais
-                  {['backlog-priorizar','uxui-fila','logs'].includes(activeTab) && (
+                  {['backlog-priorizar','uxui-fila','logs','transbordo'].includes(activeTab) && (
                     <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
                   )}
                 </button>
@@ -2162,6 +2165,11 @@ export default function FabricaDashboard() {
                 {canManageTimelog && (
                   <DropdownMenuItem onClick={() => setActiveTab('logs')} className={`gap-2 text-xs ${activeTab === 'logs' ? 'font-medium text-primary' : ''}`}>
                     <ScrollText className="h-3.5 w-3.5" />Logs
+                  </DropdownMenuItem>
+                )}
+                {canManageTimelog && (
+                  <DropdownMenuItem onClick={() => setActiveTab('transbordo')} className={`gap-2 text-xs ${activeTab === 'transbordo' ? 'font-medium text-primary' : ''}`}>
+                    <ArrowRightLeft className="h-3.5 w-3.5" />Transbordo
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -3059,6 +3067,13 @@ export default function FabricaDashboard() {
           {canManageTimelog && (
             <TabsContent value="logs" className="space-y-4 mt-0">
               <LogsTab />
+            </TabsContent>
+          )}
+
+          {/* ═══════ TAB: Transbordo (admin ou owner do setor) ═══════ */}
+          {canManageTimelog && (
+            <TabsContent value="transbordo" className="space-y-4 mt-0">
+              <TransbordoAcoesTab />
             </TabsContent>
           )}
 
