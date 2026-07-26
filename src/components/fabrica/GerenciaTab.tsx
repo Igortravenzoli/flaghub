@@ -170,8 +170,8 @@ function isPriorizadoBucket(bucket: Bucket): boolean {
 
 /**
  * Sprint já encerrou? (fim oficial — sexta 23:59 — anterior a hoje)
- * Nota: a FOTO da sprint corta sábado 23:59 e é selada domingo ~00:30 BRT
- * (regra 24/07/2026); na janela sex→dom a sprint está encerrada SEM foto.
+ * Nota: a FOTO da sprint corta domingo 22:00 e é selada segunda ~00:30 BRT
+ * (regra 25/07/2026); na janela sex→seg a sprint está encerrada SEM foto.
  */
 function isSprintClosed(sprintCode: string): boolean {
   const range = getOfficialSprintRange(sprintCode);
@@ -786,7 +786,7 @@ export function GerenciaTab({
             )}
             {selectedSingleSprintCode && isSprintClosed(selectedSingleSprintCode) && !photoDisponivel && (
               <span className="text-[11px] text-muted-foreground">
-                Sprint encerrada — a fotografia (corte sábado 23:59) será selada no domingo de madrugada; exibindo estado atual.
+                Sprint encerrada — a fotografia (corte domingo 22:00) será selada na madrugada de segunda; exibindo estado atual.
               </span>
             )}
             {aoVivo && photoDisponivel && (
