@@ -29,7 +29,7 @@ import {
   filtrarLancamentos, alertaSemAviso,
   LOG_PERIOD_OPTIONS, type LogPeriodDays, type QaAlertStatus,
 } from '@/hooks/useFabricaLogs';
-import { useTransbordoHistorico } from '@/hooks/useTransbordo';
+import { TransbordoAcoesTab } from '@/components/fabrica/TransbordoAcoesTab';
 
 // ─── Formatação ──────────────────────────────────────────────────────────────
 
@@ -195,7 +195,6 @@ export function LogsTab({ abaInicial = 'retornos' }: { abaInicial?: LogAba }) {
   const runs = useVdeskSyncRunLog(30);
   const posts = useTimelogPostLog(dias);
   const semEmail = useApontamentosSemEmail(dias);
-  const transbordo = useTransbordoHistorico(dias);
 
   // Contadores do cabeçalho sempre sobre o PERÍODO — nunca sobre a visão
   // filtrada, senão o resumo muda de sentido quando o usuário clica num filtro.
@@ -628,66 +627,9 @@ export function LogsTab({ abaInicial = 'retornos' }: { abaInicial?: LogAba }) {
       )}
 
       {/* ── Transbordo ────────────────────────────────────────────────────── */}
-      {aba === 'transbordo' && (
-        <div className="space-y-3">
-          <TituloBloco>
-            <ArrowRightLeft className="h-3.5 w-3.5 text-sky-500" />Movimentações de sprint
-          </TituloBloco>
-          <p className="text-[11px] text-muted-foreground">
-            Cada clique em <strong>Classificar</strong> ou <strong>Aplicar transbordo</strong> gera
-            um lote. A sprint de origem de cada item fica gravada — é o insumo de uma eventual
-            reversão.
-          </p>
-
-          {transbordo.isError ? (
-            <EstadoErro erro={transbordo.error} />
-          ) : transbordo.isLoading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : (transbordo.data ?? []).length === 0 ? (
-            <EstadoVazio mensagem="Nenhuma classificação ou transbordo registrado no período." />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="text-xs">
-                    <TableHead>Quando</TableHead>
-                    <TableHead>Ação</TableHead>
-                    <TableHead>Sprint</TableHead>
-                    <TableHead>Executado por</TableHead>
-                    <TableHead className="text-right">Itens</TableHead>
-                    <TableHead className="text-right">Sucesso</TableHead>
-                    <TableHead className="text-right">Falha</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(transbordo.data ?? []).map((l) => (
-                    <TableRow key={l.batch_id} className="text-xs">
-                      <TableCell className="whitespace-nowrap">{fmtDataHora(l.executed_at)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px]">
-                          {l.tipo === 'classificacao' ? 'Classificação' : 'Transbordo'}
-                        </Badge>
-                        {l.dry_run && (
-                          <Badge variant="outline" className={`text-[10px] ml-1 ${NEUTRO}`}>simulação</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {l.sprint_origem}{l.sprint_destino ? ` → ${l.sprint_destino}` : ''}
-                      </TableCell>
-                      <TableCell>{l.executor ?? '—'}</TableCell>
-                      <TableCell className="text-right font-mono">{l.total_itens}</TableCell>
-                      <TableCell className="text-right font-mono text-emerald-700">{l.total_sucesso}</TableCell>
-                      <TableCell className={`text-right font-mono ${l.total_falha > 0 ? 'text-red-700' : ''}`}>
-                        {l.total_falha}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
-      )}
+      {/* A tela completa (trava, Classificar, Aplicar e histórico) vive aqui —
+          não há mais menu isolado. O histórico segue o período selecionado. */}
+      {aba === 'transbordo' && <TransbordoAcoesTab dias={dias} />}
         </div>
       </div>
     </div>

@@ -91,11 +91,11 @@ function LinhaItem({
   );
 }
 
-export function TransbordoAcoesTab() {
+export function TransbordoAcoesTab({ dias = 90 }: { dias?: number }) {
   const ctxQ = useTransbordoContexto();
   const ctx = ctxQ.data ?? null;
   const elegiveisQ = useTransbordoElegiveis(ctx?.sprint_origem);
-  const historicoQ = useTransbordoHistorico(90);
+  const historicoQ = useTransbordoHistorico(dias);
   const acao = useTransbordoAcao();
 
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
@@ -428,7 +428,7 @@ export function TransbordoAcoesTab() {
         <CardHeader className="pb-2 pt-4">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <History className="h-4 w-4 text-muted-foreground" />
-            Histórico (90 dias)
+            Histórico ({dias} dias)
           </CardTitle>
         </CardHeader>
         <CardContent>
