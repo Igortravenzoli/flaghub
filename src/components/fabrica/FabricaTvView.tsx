@@ -15,6 +15,15 @@ import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 const PAGE_MS = 25_000;
 const PAGES = 2;
 
+/**
+ * TV-2 — no telão só as 3 últimas sprints.
+ * A distância, 8 pontos na tendência e 6 sprints × 4 fábricas na qualidade
+ * viram um emaranhado ilegível. A aba Executiva (uso de perto, com scroll)
+ * mantém a janela maior — por isso o valor é passado aqui, não no default do
+ * componente.
+ */
+const TV_MAX_SPRINTS = 3;
+
 type FabKpisTv = {
   total: number;
   done: number;
@@ -127,19 +136,19 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
             </CardHeader>
             <CardContent className="flex-1 min-h-0 pb-3">
               {/* tv: barras largas, fontes maiores e média de entrega rotulada */}
-              <DesempenhoTrendChart height="100%" maxSprints={8} showValues tv />
+              <DesempenhoTrendChart height="100%" maxSprints={TV_MAX_SPRINTS} showValues tv />
             </CardContent>
           </Card>
 
           <div className="flex-[1.25] min-h-0">
-            <RankingFabricasCard maxSprints={3} columns={4} fill />
+            <RankingFabricasCard maxSprints={TV_MAX_SPRINTS} columns={4} fill />
           </div>
         </>
       ) : (
         <>
           {/* ─── Página 2 — Qualidade & capacidade ─── */}
           <div className="flex-1 min-h-0">
-            <QualidadePorFabricaCharts maxSprints={6} fill />
+            <QualidadePorFabricaCharts maxSprints={TV_MAX_SPRINTS} fill />
           </div>
 
           <div className="grid grid-cols-12 gap-2.5 flex-1 min-h-0">
