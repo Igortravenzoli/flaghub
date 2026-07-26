@@ -8,6 +8,7 @@ import { fabricaColor } from '@/lib/chartColors';
 import { normName, SQUADS } from '@/lib/fabricaRoster';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { businessDaysBetween } from '@/lib/sprintCalendar';
+import { horasHM, horasHMComSinal } from '@/lib/formatHoras';
 
 type FabricaScopeRow = {
   key: string;
@@ -42,17 +43,7 @@ function versaoLancamento(row: LogRow): number {
 
 type ItemMeta = { id: number; title: string | null; work_item_type: string | null; web_url: string | null };
 
-function fmtH(minutes: number): string {
-  return `${Math.round((minutes / 60) * 10) / 10}h`;
-}
-function fmtDelta(minutes: number): string {
-  return `${minutes >= 0 ? '+' : '−'}${fmtH(Math.abs(minutes))}`;
-}
-/** Minutos → "84:22" (formato da planilha do gestor). */
-function fmtHM(minutes: number): string {
-  const m = Math.max(0, Math.round(minutes));
-  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
-}
+// Horas em h:mm (mesma língua do DevOps e da planilha do gestor) — src/lib/formatHoras.ts.
 /** "2026-07-17" → "17/07" sem passar por new Date (evita o -1 dia do fuso). */
 function fmtDia(logDate: string): string {
   const [, m, d] = logDate.split('-');
@@ -302,7 +293,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                     )}
                     <span className="text-muted-foreground tabular-nums shrink-0 w-24 text-right">{periodo}</span>
                     <span className="text-muted-foreground tabular-nums shrink-0 w-16 text-right" title={`${g.rows.length} registros de horas nesta task`}>{g.rows.length} regs</span>
-                    <span className="font-mono font-semibold tabular-nums shrink-0 w-14 text-right">{fmtHM(g.minutes)}</span>
+                    <span className="font-mono font-semibold tabular-nums shrink-0 w-14 text-right">{horasHM(g.minutes)}</span>
                   </div>
 
                   {isTaskAberta && (
@@ -329,7 +320,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                               <td className="pl-9 pr-2 py-1 tabular-nums whitespace-nowrap">{fmtDia(r.log_date)}</td>
                               <td className="px-2 py-1 tabular-nums text-muted-foreground">{r.start_time || '—'}</td>
                               <td className="px-2 py-1 text-right font-mono tabular-nums whitespace-nowrap">
-                                {fmtHM(r.time_minutes || 0)}
+                                {horasHM(r.time_minutes || 0)}
                                 {versao > 1 && (
                                   <span
                                     className="ml-1 px-1 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-sans font-medium"
@@ -373,8 +364,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
             })}
             <div className="flex items-center gap-2 px-2 py-1.5 text-[11px] bg-muted/30">
               <span className="text-muted-foreground">{rows.length} lançamento{rows.length === 1 ? '' : 's'} em {grupos.length} task{grupos.length === 1 ? '' : 's'}</span>
-              <span className="ml-auto font-mono font-bold tabular-nums">{fmtHM(totalMin)}</span>
-              <span className="text-muted-foreground">= {fmtH(totalMin)} em decimal (como o card exibe)</span>
+              <span className="ml-auto font-mono font-bold tabular-nums">{horasHM(totalMin)}</span>
             </div>
           </div>
         )}
@@ -431,12 +421,12 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                       {temCapacidade && s.cap > 0 ? (
                         <>
                           <span className="font-mono font-semibold">{Math.round((s.total / s.cap) * 100)}%</span>
-                          <span className="text-muted-foreground"> · {fmtH(s.total)}/{fmtH(s.cap)} </span>
-                          <span className={s.total - s.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-destructive font-medium'}>{fmtDelta(s.total - s.cap)}</span>
+                          <span className="text-muted-foreground"> · {horasHM(s.total)}/{horasHM(s.cap)} </span>
+                          <span className={s.total - s.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-destructive font-medium'}>{horasHMComSinal(s.total - s.cap)}</span>
                         </>
                       ) : (
                         <>
-                          <span className="font-mono font-semibold">{fmtH(s.total)}</span>
+                          <span className="font-mono font-semibold">{horasHM(s.total)}</span>
                           {s.cross > 0 && <span className="text-amber-600 dark:text-amber-400"> · {crossPct}% cruzado</span>}
                         </>
                       )}
@@ -470,7 +460,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                                 )}
                                 {d.crossDests.map(([dest, min]) => (
                                   <span key={dest} className="text-[10px] px-1.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium">
-                                    {fmtH(min)} → {dest}
+                                    {horasHM(min)} → {dest}
                                   </span>
                                 ))}
                                 {d.total === 0 && d.cap === 0 && (
@@ -479,17 +469,17 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                               </span>
                               <span className="text-xs text-right font-mono tabular-nums">
                                 {showCap ? (
-                                  <>{fmtH(d.total)}<span className="text-muted-foreground">/{fmtH(d.cap)}</span> <span className={d.total - d.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}>{fmtDelta(d.total - d.cap)}</span></>
-                                ) : fmtH(d.total)}
+                                  <>{horasHM(d.total)}<span className="text-muted-foreground">/{horasHM(d.cap)}</span> <span className={d.total - d.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}>{horasHMComSinal(d.total - d.cap)}</span></>
+                                ) : horasHM(d.total)}
                               </span>
                               <div
                                 className="relative h-2.5 w-full overflow-hidden rounded-full"
                                 style={{ background: showCap ? 'repeating-linear-gradient(90deg, hsl(var(--muted)), hsl(var(--muted)) 4px, hsl(var(--border)) 4px, hsl(var(--border)) 5px)' : 'hsl(var(--muted))' }}
-                                title={showCap ? `capacidade ${fmtH(d.cap)} · realizado ${fmtH(d.total)}` : undefined}
+                                title={showCap ? `capacidade ${horasHM(d.cap)} · realizado ${horasHM(d.total)}` : undefined}
                               >
                                 <div className="absolute inset-y-0 left-0 flex" style={{ width: `${capFillPct}%` }}>
-                                  <div style={{ width: `${ownPct}%`, background: cor }} title={`própria fábrica: ${fmtH(d.own)}`} />
-                                  <div style={{ width: `${crossPctDev}%`, background: 'hsl(28,92%,55%)' }} title={`outras fábricas: ${fmtH(d.cross)}`} />
+                                  <div style={{ width: `${ownPct}%`, background: cor }} title={`própria fábrica: ${horasHM(d.own)}`} />
+                                  <div style={{ width: `${crossPctDev}%`, background: 'hsl(28,92%,55%)' }} title={`outras fábricas: ${horasHM(d.cross)}`} />
                                 </div>
                                 {showCap && <div className="absolute inset-y-0 right-0 w-px bg-foreground/50" />}
                               </div>

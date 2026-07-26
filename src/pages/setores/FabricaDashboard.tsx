@@ -51,6 +51,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
+import { horasHM } from '@/lib/formatHoras';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'entregue' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
 type SemTaskContextFilter = 'all' | 'stc' | 'ctc';
@@ -128,13 +129,13 @@ function matchesCollaboratorSelection(item: FabricaItem, collaboratorName: strin
   return shortName === collaboratorName || display === collaboratorName;
 }
 
+/**
+ * Coluna NUMÉRICA do export (CSV/Excel) — segue em decimal de propósito: ali o
+ * número é dado para o gestor somar na planilha dele, e texto "84:22" não soma.
+ * Toda EXIBIÇÃO de hora usa h:mm (`horasHM`).
+ */
 function formatHoursFromMinutes(minutes: number): number {
   return Math.round((minutes / 60) * 10) / 10;
-}
-
-function formatMinutesAsHoursLabel(minutes: number): string {
-  const hours = formatHoursFromMinutes(minutes);
-  return `${hours.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}h`;
 }
 
 function formatShortDateTime(value: Date): string {
@@ -648,8 +649,8 @@ export default function FabricaDashboard() {
     return map;
   }, [fabricaRows]);
 
-  const fabricaTotalHoras = useMemo(
-    () => fabricaRows.reduce((s, r) => s + r.minutes, 0) / 60,
+  const fabricaTotalMinutos = useMemo(
+    () => fabricaRows.reduce((s, r) => s + r.minutes, 0),
     [fabricaRows]
   );
 
@@ -714,20 +715,22 @@ export default function FabricaDashboard() {
     }, { devopsMinutes: 0, vdeskMinutes: 0, gapMinutes: 0 });
   }, [filteredReconEntries]);
 
-  // Merge VDESK + DevOps collaborators by canonical name
+  // Merge VDESK + DevOps collaborators by canonical name.
+  // As barras carregam horas SEM arredondar (minutos ÷ 60) para o tooltip poder
+  // voltar ao minuto exato e imprimir h:mm fiel ao DevOps.
   const mergedCollaboradores = useMemo(() => {
     const map = new Map<string, { name: string; vdesk: number; devops: number }>();
     if (showVdesk) {
       for (const c of fab.horasVdeskPorColaborador) {
         const e = map.get(c.name) ?? { name: c.name, vdesk: 0, devops: 0 };
-        e.vdesk += c.hours;
+        e.vdesk += c.minutes / 60;
         map.set(c.name, e);
       }
     }
     if (showDevops) {
       for (const c of fab.horasPorColaborador) {
         const e = map.get(c.name) ?? { name: c.name, vdesk: 0, devops: 0 };
-        e.devops += c.hours;
+        e.devops += c.minutes / 60;
         map.set(c.name, e);
       }
     }
@@ -1632,9 +1635,9 @@ export default function FabricaDashboard() {
         rows: timelogExportRows,
         kpis: [
           { label: 'Tasks no escopo', value: timelogExportRows.length },
-          { label: 'Horas DevOps', value: formatMinutesAsHoursLabel(timelogTotals.devopsMinutes) },
-          { label: 'Horas Vdesk', value: formatMinutesAsHoursLabel(timelogTotals.vdeskMinutes) },
-          { label: 'Gap absoluto', value: formatMinutesAsHoursLabel(timelogTotals.gapMinutes) },
+          { label: 'Horas DevOps', value: horasHM(timelogTotals.devopsMinutes) },
+          { label: 'Horas Vdesk', value: horasHM(timelogTotals.vdeskMinutes) },
+          { label: 'Gap absoluto', value: horasHM(timelogTotals.gapMinutes) },
         ],
       };
     }
@@ -2609,8 +2612,9 @@ export default function FabricaDashboard() {
                 isLoading={fab.isLoading}
                 emptyMessage="Nenhuma fábrica identificada"
                 delay={500}
+                formatValue={(item) => horasHM(item.minutes)}
                 summaryBadge={horasPorFabricaData.length > 0
-                  ? `${Math.round(fabricaTotalHoras)}h ${fabricaScopeMode === 'full' ? 'no período' : 'na fila'}`
+                  ? `${horasHM(fabricaTotalMinutos)} ${fabricaScopeMode === 'full' ? 'no período' : 'na fila'}`
                   : undefined}
                 headerRight={(
                   <div className="flex items-center rounded-md border border-border/60 p-0.5 text-[10px]">
@@ -2696,9 +2700,9 @@ export default function FabricaDashboard() {
                             <td className="px-2 py-1.5">{row.assigned_to_display ?? '—'}</td>
                             <td className="px-2 py-1.5">{row.state ?? '—'}</td>
                             <td className="px-2 py-1.5 text-right">{row.taskCount}</td>
-                            <td className="px-2 py-1.5 text-right">{formatMinutesAsHoursLabel(row.devopsMinutes)}</td>
-                            <td className="px-2 py-1.5 text-right">{formatMinutesAsHoursLabel(row.vdeskMinutes)}</td>
-                            <td className="px-2 py-1.5 text-right font-semibold">{formatMinutesAsHoursLabel(row.totalMinutes)}</td>
+                            <td className="px-2 py-1.5 text-right">{horasHM(row.devopsMinutes)}</td>
+                            <td className="px-2 py-1.5 text-right">{horasHM(row.vdeskMinutes)}</td>
+                            <td className="px-2 py-1.5 text-right font-semibold">{horasHM(row.totalMinutes)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2896,11 +2900,12 @@ export default function FabricaDashboard() {
                     <ResponsiveContainer width="100%" height={Math.min(320, Math.max(180, mergedCollaboradores.slice(0, 8).length * 32))}>
                       <BarChart data={mergedCollaboradores.slice(0, 8)} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 0 }} style={{ cursor: 'pointer' }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                        <XAxis type="number" fontSize={10} stroke="hsl(var(--muted-foreground))" unit="h" />
+                        {/* Eixo = escala (hora cheia); o número confrontável sai em h:mm no tooltip. */}
+                        <XAxis type="number" fontSize={10} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: number) => `${Math.round(v)}h`} />
                         <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={110} />
                         <RechartsTooltip
                           contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '11px' }}
-                          formatter={(value: number, name: string) => [`${value}h`, name === 'vdesk' ? 'Vdesk' : 'Devops']}
+                          formatter={(value: number, name: string) => [horasHM(Math.round(value * 60)), name === 'vdesk' ? 'Vdesk' : 'Devops']}
                         />
                         {showVdesk && (
                           <Bar

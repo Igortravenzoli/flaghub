@@ -30,6 +30,7 @@ import {
   LOG_PERIOD_OPTIONS, type LogPeriodDays, type QaAlertStatus,
 } from '@/hooks/useFabricaLogs';
 import { TransbordoAcoesTab } from '@/components/fabrica/TransbordoAcoesTab';
+import { horasHM } from '@/lib/formatHoras';
 
 // ─── Formatação ──────────────────────────────────────────────────────────────
 
@@ -50,12 +51,6 @@ function fmtData(logDate: string | null): string {
   if (!logDate) return '—';
   const [y, m, d] = logDate.split('-');
   return `${d}/${m}/${y}`;
-}
-
-/** Minutos → "84:22" (formato da planilha do gestor). */
-function fmtHM(minutes: number): string {
-  const m = Math.max(0, Math.round(minutes));
-  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
 }
 
 function fmtDuracao(ms: number | null): string {
@@ -556,7 +551,7 @@ export function LogsTab({ abaInicial = 'retornos' }: { abaInicial?: LogAba }) {
                             )}
                           </TableCell>
                           <TableCell className="font-mono">#{r.task_devops}</TableCell>
-                          <TableCell className="text-right font-mono">{fmtHM(r.time_minutes)}</TableCell>
+                          <TableCell className="text-right font-mono">{horasHM(r.time_minutes)}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={`text-[10px] ${cfg.className}`} title={r.error_message ?? ''}>
                               {cfg.label}
@@ -613,7 +608,7 @@ export function LogsTab({ abaInicial = 'retornos' }: { abaInicial?: LogAba }) {
                       <TableRow key={r.usuario_vdesk} className="text-xs">
                         <TableCell className="font-medium text-amber-700">{r.usuario_vdesk}</TableCell>
                         <TableCell className="text-right font-mono">{r.apontamentos}</TableCell>
-                        <TableCell className="text-right font-mono">{fmtHM(r.minutos)}</TableCell>
+                        <TableCell className="text-right font-mono">{horasHM(r.minutos)}</TableCell>
                         <TableCell className="whitespace-nowrap">{fmtData(r.primeira_data)}</TableCell>
                         <TableCell className="whitespace-nowrap">{fmtData(r.ultima_data)}</TableCell>
                       </TableRow>

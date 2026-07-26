@@ -8,7 +8,7 @@ import type { TimelogAggregation } from '@/hooks/useFabricaKpis';
 
 // Ranking de horas apontadas (TimeLog) — extraído do FabricaDashboard para
 // reuso entre setores (Fábrica e Infraestrutura).
-export function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, delay = 0, onItemClick, activeItemName, summaryBadge, subItemsByName, headerRight }: {
+export function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMessage, delay = 0, onItemClick, activeItemName, summaryBadge, subItemsByName, headerRight, formatValue = (item) => `${item.hours}h` }: {
   title: string; icon: React.ComponentType<{ className?: string }>;
   data: TimelogAggregation[]; isLoading: boolean; emptyMessage: string; delay?: number;
   onItemClick?: (item: TimelogAggregation) => void;
@@ -18,6 +18,12 @@ export function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMess
   subItemsByName?: Record<string, TimelogAggregation[]>;
   /** Conteúdo extra no cabeçalho (ex.: toggle de modo), à esquerda do badge */
   headerRight?: React.ReactNode;
+  /**
+   * Como escrever a hora ao lado da barra. Default = decimal ("34.7h").
+   * A Fábrica passa h:mm (`horasHM(item.minutes)`) — decisão de 26/07/2026;
+   * a Infra segue no decimal até decidir o mesmo.
+   */
+  formatValue?: (item: TimelogAggregation) => string;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = (name: string) => setExpanded((prev) => {
@@ -91,7 +97,7 @@ export function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMess
                 >
                   <div className="flex items-center justify-between gap-2 min-w-0 text-sm mb-1">
                     <span className="text-foreground font-medium truncate min-w-0">{item.name}</span>
-                    <span className="text-muted-foreground font-mono text-xs shrink-0">{item.hours}h</span>
+                    <span className="text-muted-foreground font-mono tabular-nums text-xs shrink-0">{formatValue(item)}</span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
                     <div
@@ -120,7 +126,7 @@ export function HoursRankingCard({ title, icon: Icon, data, isLoading, emptyMess
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                         <div className="h-full rounded-full" style={{ width: `${Math.max(3, (s.hours / subMax) * 100)}%`, background: color, opacity: 0.7 }} />
                       </div>
-                      <span className="w-12 text-right font-mono text-muted-foreground">{s.hours}h</span>
+                      <span className="w-12 text-right font-mono tabular-nums text-muted-foreground">{formatValue(s)}</span>
                     </div>
                   ))}
                 </div>

@@ -4,6 +4,7 @@ import { isFabricaCountableState } from '@/hooks/useFabricaKpis';
 import type { SprintSnapshotRow, SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { cleanFabricaName } from '@/lib/fabricaNames';
+import { horasHMdeDecimal } from '@/lib/formatHoras';
 import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
 import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabricaCharts';
 import type { FeaturePbiSummaryRow, PbiBottleneckRow } from '@/types/pbi';
@@ -1215,9 +1216,14 @@ export function GerenciaTab({
                         </p>
                       </div>
                     </div>
-                    <span className="text-2xl font-bold">
-                      {performance.leadTimeMedio != null ? performance.leadTimeMedio : <span className="text-muted-foreground text-base">—</span>}
-                      {performance.leadTimeMedio != null && <span className="text-xs text-muted-foreground ml-1">{performance.leadTimeSource === 'timelog' ? 'h' : 'pts'}</span>}
+                    <span className="text-2xl font-bold tabular-nums">
+                      {performance.leadTimeMedio == null ? (
+                        <span className="text-muted-foreground text-base">—</span>
+                      ) : performance.leadTimeSource === 'timelog' ? (
+                        horasHMdeDecimal(performance.leadTimeMedio)
+                      ) : (
+                        <>{performance.leadTimeMedio}<span className="text-xs text-muted-foreground ml-1">pts</span></>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center justify-between py-2.5">
@@ -1230,9 +1236,14 @@ export function GerenciaTab({
                         </p>
                       </div>
                     </div>
-                    <span className="text-2xl font-bold">
-                      {performance.velocidadeMedia != null ? performance.velocidadeMedia : <span className="text-muted-foreground text-base">—</span>}
-                      {performance.velocidadeMedia != null && <span className="text-xs text-muted-foreground ml-1">{performance.velocidadeSource === 'timelog' ? 'h' : 'pts'}</span>}
+                    <span className="text-2xl font-bold tabular-nums">
+                      {performance.velocidadeMedia == null ? (
+                        <span className="text-muted-foreground text-base">—</span>
+                      ) : performance.velocidadeSource === 'timelog' ? (
+                        horasHMdeDecimal(performance.velocidadeMedia)
+                      ) : (
+                        <>{performance.velocidadeMedia}<span className="text-xs text-muted-foreground ml-1">pts</span></>
+                      )}
                     </span>
                   </div>
                 </div>

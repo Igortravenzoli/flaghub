@@ -6,6 +6,7 @@ import { fabricaColor } from '@/lib/chartColors';
 import { buildHomeSquadMap, buildNaoContaSet, homeSquadOf, normName, SQUADS } from '@/lib/fabricaRoster';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { businessDaysBetween } from '@/lib/sprintCalendar';
+import { horasHM, horasHMComSinal } from '@/lib/formatHoras';
 
 type FabricaScopeRow = {
   key: string;
@@ -28,12 +29,7 @@ const SEM_SQUAD = 'Sem squad';
 const OUTRAS = 'Outras';
 const COR_CRUZADO = 'hsl(28,92%,55%)';
 
-function fmtH(minutes: number): string {
-  return `${Math.round((minutes / 60) * 10) / 10}h`;
-}
-function fmtDelta(minutes: number): string {
-  return `${minutes >= 0 ? '+' : '−'}${fmtH(Math.abs(minutes))}`;
-}
+// Horas em h:mm (mesma língua do DevOps e da planilha do gestor) — src/lib/formatHoras.ts.
 
 /**
  * Capacidade × Realizado por squad (regra do gestor): capacidade = Σ h/dia dos
@@ -141,14 +137,14 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                       <span className="flex items-center gap-1.5 text-sm font-semibold">
                         <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: cor }} />{home}
                       </span>
-                      <div className="relative" title={`capacidade ${fmtH(cap)} · realizado ${fmtH(real)}`}>
+                      <div className="relative" title={`capacidade ${horasHM(cap)} · realizado ${horasHM(real)}`}>
                         <div className="relative h-5 rounded overflow-hidden bg-[hsl(var(--muted))]" style={{ width: `${trackPct}%` }}>
                           {/* ociosa (hachura) */}
                           <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 5px, hsl(var(--border)) 5px, hsl(var(--border)) 6px)' }} />
                           {/* realizado: própria + cruzado */}
                           <div className="absolute inset-y-0 left-0 flex" style={{ width: `${fillPct}%` }}>
                             <div style={{ width: `${ownPct}%`, background: cor }} />
-                            <div style={{ width: `${crossPct}%`, background: COR_CRUZADO }} title={`uso cruzado ${fmtH(cross)}`} />
+                            <div style={{ width: `${crossPct}%`, background: COR_CRUZADO }} title={`uso cruzado ${horasHM(cross)}`} />
                           </div>
                           {/* traço de 100% da capacidade (borda direita do track) */}
                           <div className="absolute inset-y-[-2px] right-0 w-0.5 bg-foreground/60" />
@@ -156,8 +152,8 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                       </div>
                       <span className="text-xs text-right tabular-nums">
                         <span className="font-mono font-semibold">{util}%</span>
-                        <span className="text-muted-foreground"> · {fmtH(real)}/{fmtH(cap)} </span>
-                        <span className={delta >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-destructive font-medium'}>{fmtDelta(delta)}</span>
+                        <span className="text-muted-foreground"> · {horasHM(real)}/{horasHM(cap)} </span>
+                        <span className={delta >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-destructive font-medium'}>{horasHMComSinal(delta)}</span>
                       </span>
                     </div>
                   );
@@ -175,7 +171,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                       <div style={{ width: `${real > 0 ? (cross / real) * 100 : 0}%`, background: COR_CRUZADO }} />
                     </div>
                     <span className="text-xs text-right tabular-nums">
-                      <span className="font-mono font-semibold">{fmtH(real)}</span>
+                      <span className="font-mono font-semibold">{horasHM(real)}</span>
                       {cross > 0 && <span className="text-amber-600 dark:text-amber-400"> · {crossPctReal}% cruzado</span>}
                     </span>
                   </div>
@@ -212,11 +208,11 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                               className={`text-center px-2 font-mono tabular-nums ${isCross ? 'text-amber-700 dark:text-amber-300 font-semibold' : min > 0 ? '' : 'text-muted-foreground/40'}`}
                               style={isCross ? { background: 'hsl(28,92%,55%,0.12)' } : undefined}
                             >
-                              {min > 0 ? fmtH(min) : '—'}
+                              {min > 0 ? horasHM(min) : '—'}
                             </td>
                           );
                         })}
-                        <td className="text-right pl-2 font-mono font-semibold tabular-nums">{fmtH(total)}</td>
+                        <td className="text-right pl-2 font-mono font-semibold tabular-nums">{horasHM(total)}</td>
                       </tr>
                     );
                   })}
@@ -228,7 +224,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
               {temCapacidade
                 ? <>Barra até o traço = 100% da capacidade (Σ h/dia × {businessDays} dias úteis; <b>lead só gestor não conta</b>). Preenchida = realizado; <b style={{ color: COR_CRUZADO }}>âmbar</b> = uso cruzado; hachura = ociosa.</>
                 : <>Realizado por squad; <b style={{ color: COR_CRUZADO }}>âmbar</b> = uso cruzado. (Selecione uma sprint para ver a capacidade.)</>}
-              {semSquadMin > 0 && ` "${SEM_SQUAD}" = ${fmtH(semSquadMin)} de quem não está no roster.`}
+              {semSquadMin > 0 && ` "${SEM_SQUAD}" = ${horasHM(semSquadMin)} de quem não está no roster.`}
             </p>
           </>
         )}
