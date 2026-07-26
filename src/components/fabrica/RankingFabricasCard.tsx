@@ -34,8 +34,28 @@ function normalizedFabricas(snap: SprintSnapshotRow): Record<string, SnapshotSco
   return out;
 }
 
-type SprintCell = { sprint: string; desempenho: number; bug: number; retorno: number };
+type SprintCell = {
+  sprint: string;
+  desempenho: number;
+  bug: number;
+  retorno: number;
+  /** Contagem ABSOLUTA de PBIs encerrados — é o que dimensiona a caixinha no TV. */
+  doneAbs: number;
+};
 type FabricaRank = { name: string; score: number; desempenho: number; cells: SprintCell[] };
+
+/**
+ * TV-3 — verde proporcional aos PBIs encerrados.
+ * Fundo com alfa crescente (não lightness): sobre o tema escuro do kiosk o texto
+ * continua legível em qualquer intensidade, sem precisar inverter a cor.
+ */
+function verdeProporcional(ratio: number): { fundo: string; borda: string } {
+  const r = Math.max(0, Math.min(1, ratio));
+  return {
+    fundo: `hsl(152 62% 42% / ${(0.10 + r * 0.34).toFixed(3)})`,
+    borda: `hsl(152 62% 45% / ${(0.35 + r * 0.45).toFixed(3)})`,
+  };
+}
 
 // Geometria do gráfico aninhado (coordenadas do viewBox).
 const CHART_TOP = 10;
@@ -48,6 +68,22 @@ const GEO_PANEL = { GROUP_W: 62, OUTER_W: 40, INNER_W: 13 };
 
 function y(value: number): number {
   return CHART_BOTTOM - (Math.max(0, Math.min(100, value)) / 100) * CHART_H;
+}
+
+/** Barra fina de qualidade, com rótulo e valor sempre visíveis (regra de TV: sem hover). */
+function BarraQualidade({ rotulo, valor, cor }: { rotulo: string; valor: number; cor: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="text-muted-foreground w-[74px] shrink-0">{rotulo}</span>
+      <span className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden min-w-0">
+        <span
+          className="block h-full rounded-full"
+          style={{ width: `${Math.max(0, Math.min(100, valor))}%`, background: cor }}
+        />
+      </span>
+      <span className="font-mono font-semibold w-10 text-right shrink-0">{valor}%</span>
+    </div>
+  );
 }
 
 export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 126, fill = false }: RankingFabricasCardProps) {
@@ -75,6 +111,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
           desempenho: pct(scope.done.total, scope.total),
           bug: pct(scope.cats.bug, scope.total),
           retorno: pct(scope.cats.retorno_qa, scope.total),
+          doneAbs: scope.done.total,
         });
         agg.done += scope.done.total;
         agg.scope += scope.total;
@@ -98,6 +135,32 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
       .sort((x, y2) => y2.score - x.score);
   }, [snapshots, anoVigente, maxSprints]);
 
+  /**
+   * TV-3 — ranking DA SPRINT corrente, pela contagem absoluta de PBIs
+   * encerrados (não pelo score do período). O tamanho e o verde saem da razão
+   * com o 1º lugar.
+   *
+   * `flex` vai de 1 a 2: a maior caixinha fica no máximo 2× a menor. Sem esse
+   * teto, uma fábrica com 1 PBI ao lado de outra com 20 ficaria estreita demais
+   * para caber o nome — e o nome é o que identifica a caixinha.
+   */
+  const rankingTv = useMemo(() => {
+    const ultimos = ranking
+      .map((f) => {
+        const c = f.cells[f.cells.length - 1];
+        return c
+          ? { name: f.name, doneAbs: c.doneAbs, bug: c.bug, retorno: c.retorno }
+          : { name: f.name, doneAbs: 0, bug: 0, retorno: 0 };
+      })
+      .sort((a, b) => b.doneAbs - a.doneAbs);
+
+    const maior = ultimos[0]?.doneAbs ?? 0;
+    return ultimos.map((f) => {
+      const ratio = maior > 0 ? f.doneAbs / maior : 0;
+      return { ...f, ratio, flex: 1 + ratio };
+    });
+  }, [ranking]);
+
   return (
     <Card className={fill ? 'h-full flex flex-col' : undefined}>
       {/* Barras "crescem" da base ao montar (e a cada rotação do TV, que remonta o card). */}
@@ -109,7 +172,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-sm font-medium flex items-center gap-1.5">
-            Desempenho por Fábrica — ranking
+            {fill ? 'Desempenho por Fábrica — ranking da sprint' : 'Desempenho por Fábrica — ranking'}
             <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" aria-label={RANKING_FORMULA}>
               <title>{RANKING_FORMULA}</title>
             </Info>
@@ -125,8 +188,48 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
           <p className="text-xs text-muted-foreground text-center py-8">Carregando fotografias de sprint…</p>
         ) : ranking.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-8">Sem fotografias de sprint para o ranking por fábrica.</p>
+        ) : fill ? (
+          /* ── TV-3 · caixinha maior e mais verde = mais PBIs encerrados ──────
+             No telão o gráfico aninhado de 3 sprints × 4 fábricas fica ilegível
+             a distância. Aqui o ranking é da SPRINT corrente e a leitura é
+             pré-atentiva: quem encerrou mais ocupa mais espaço e puxa mais
+             verde. Qualidade continua presente, em linha compacta. */
+          <div className="flex-1 min-h-0 flex items-stretch gap-3">
+            {rankingTv.map((f, idx) => {
+              const { fundo, borda } = verdeProporcional(f.ratio);
+              return (
+                <div
+                  key={f.name}
+                  className="rounded-xl border-2 p-4 flex flex-col justify-between min-w-0 transition-all"
+                  style={{ flex: `${f.flex} 1 0%`, background: fundo, borderColor: borda }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className="inline-grid place-items-center w-7 h-7 rounded-full text-white font-mono font-bold text-sm shrink-0"
+                      style={{ background: medalColor(idx) }}
+                    >
+                      {idx + 1}
+                    </span>
+                    {/* Nome nunca trunca: é o rótulo que identifica a caixinha */}
+                    <span className="font-bold text-lg leading-tight whitespace-nowrap">{f.name}</span>
+                  </div>
+
+                  <div className="text-center py-1">
+                    <p className="font-mono font-extrabold leading-none text-6xl">{f.doneAbs}</p>
+                    <p className="text-xs text-muted-foreground mt-1.5">PBIs encerrados</p>
+                  </div>
+
+                  {/* Qualidade em linha única compacta (mantém Bug e Retorno QA) */}
+                  <div className="space-y-1.5">
+                    <BarraQualidade rotulo="Retorno QA" valor={f.retorno} cor="hsl(38,92%,50%)" />
+                    <BarraQualidade rotulo="Bug" valor={f.bug} cor="hsl(0,72%,55%)" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <div className={`grid gap-3 ${fill ? 'flex-1 min-h-0' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
             {ranking.map((f, idx) => {
               const color = fabricaColor(f.name, idx);
               const { GROUP_W, OUTER_W, INNER_W } = fill ? GEO_TV : GEO_PANEL;
@@ -186,7 +289,9 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
           </div>
         )}
         <p className="text-[11px] text-muted-foreground mt-2">
-          Barra maior = Desempenho (% concluído do escopo). Barras finas dentro = Qualidade (Bug e Retorno QA, quanto menor melhor). Medalha cruza os dois. Últimas {maxSprints} sprints.
+          {fill
+            ? 'Caixinha maior e mais verde = mais PBIs encerrados na sprint. Barras finas = Qualidade (Retorno QA e Bug, quanto menor melhor).'
+            : `Barra maior = Desempenho (% concluído do escopo). Barras finas dentro = Qualidade (Bug e Retorno QA, quanto menor melhor). Medalha cruza os dois. Últimas ${maxSprints} sprints.`}
         </p>
       </CardContent>
     </Card>
