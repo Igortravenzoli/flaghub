@@ -297,7 +297,12 @@ function useEmailMap() {
   }, [mapRows]);
 }
 
-export function PostarParaDevOps({ vdeskLogs, taskScopeIds }: { vdeskLogs: VdeskLogEntry[]; taskScopeIds?: number[] }) {
+export function PostarParaDevOps({ vdeskLogs, taskScopeIds, onIrParaLogsVdesk }: {
+  vdeskLogs: VdeskLogEntry[];
+  taskScopeIds?: number[];
+  /** Leva para a aba Logs › Vdesk. Ausente = o aviso mostra o caminho sem link. */
+  onIrParaLogsVdesk?: () => void;
+}) {
   const { data: queueRows = [], isLoading: queueLoading } = useTimelogQueue();
   const queuePost    = useTimelogQueuePost();
   const approve      = useTimelogQueueApprove();
@@ -344,14 +349,53 @@ export function PostarParaDevOps({ vdeskLogs, taskScopeIds }: { vdeskLogs: Vdesk
     });
   };
 
-  if (vdeskLogs.length === 0) return (
-    <p className="text-xs text-muted-foreground text-center py-4">Sem entradas VDESK para o período.</p>
-  );
-
   const approvedCount = scopedQueueRows.filter(q => q.status === 'approved').length;
   const pendingCount  = scopedQueueRows.filter(q => q.status === 'pending').length;
   const postedCount   = scopedQueueRows.filter(q => q.status === 'posted').length;
   const errorCount    = scopedQueueRows.filter(q => q.status === 'error').length;
+
+  // O aviso de descontinuação precisa aparecer mesmo sem entradas no período —
+  // é justamente quem não tem nada pendente que pode parar de usar a tela.
+  const avisoDescontinuacao = (
+    <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 space-y-1.5">
+      <p className="text-xs font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+        Esta função foi automatizada
+      </p>
+      <p className="text-[11px] text-amber-800/90 dark:text-amber-200/90">
+        O lançamento de horas do VDESK no DevOps agora acontece sozinho — nada deixa de ser
+        feito. Esta tela será migrada para{' '}
+        {onIrParaLogsVdesk ? (
+          <button
+            type="button"
+            onClick={onIrParaLogsVdesk}
+            className="font-semibold underline underline-offset-2 hover:no-underline"
+          >
+            Logs › Vdesk
+          </button>
+        ) : (
+          <strong>Logs › Vdesk</strong>
+        )}
+        , onde fica o acompanhamento.
+      </p>
+      <p className="text-[11px] text-amber-800/90 dark:text-amber-200/90">
+        <strong>Envie as últimas sincronizações pendentes.</strong>
+        {(pendingCount + approvedCount) > 0
+          ? ` Ainda há ${pendingCount + approvedCount} lançamento(s) aguardando envio no escopo atual.`
+          : ' Nada pendente no escopo atual.'}
+      </p>
+      <p className="text-[11px] font-semibold text-amber-900 dark:text-amber-100">
+        Data de inativação: 31/07
+      </p>
+    </div>
+  );
+
+  if (vdeskLogs.length === 0) return (
+    <div className="space-y-3">
+      {avisoDescontinuacao}
+      <p className="text-xs text-muted-foreground text-center py-4">Sem entradas VDESK para o período.</p>
+    </div>
+  );
 
   const handleProbe = () => {
     setProbeResult(null);
@@ -395,6 +439,8 @@ export function PostarParaDevOps({ vdeskLogs, taskScopeIds }: { vdeskLogs: Vdesk
 
   return (
     <div className="space-y-3">
+      {avisoDescontinuacao}
+
       {/* ── Control panel ─────────────────────────────────────────────────── */}
       <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
         {/* Queue stats */}

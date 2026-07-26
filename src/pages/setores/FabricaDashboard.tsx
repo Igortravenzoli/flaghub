@@ -12,7 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { useHubAreas } from '@/hooks/useHubAreas';
 import { PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
-import { LogsTab } from '@/components/fabrica/LogsTab';
+import { LogsTab, type LogAba } from '@/components/fabrica/LogsTab';
 import { TransbordoAcoesTab } from '@/components/fabrica/TransbordoAcoesTab';
 import { HoursRankingCard } from '@/components/timelog/HoursRankingCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
@@ -427,6 +427,8 @@ export default function FabricaDashboard() {
   const [searchAutoSwitched, setSearchAutoSwitched] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [activeTab, setActiveTab] = useState('executivo');
+  /** Sub-aba com que a tela de Logs abre (o aviso do Nivelamento aponta p/ Vdesk). */
+  const [logsAbaInicial, setLogsAbaInicial] = useState<LogAba>('retornos');
   const [collaboratorViewMode, setCollaboratorViewMode] = useState<CollaboratorViewMode>('gestor');
   const [previstoFilter, setPrevistoFilter] = useState<PrevistoFilter | null>(null);
   const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
@@ -2969,7 +2971,11 @@ export default function FabricaDashboard() {
                 </CardHeader>
                 {nivelamentoOpen && (
                   <CardContent>
-                    <PostarParaDevOps vdeskLogs={fab.scopedVdeskLogs} taskScopeIds={timelogScopeTaskIds} />
+                    <PostarParaDevOps
+                      vdeskLogs={fab.scopedVdeskLogs}
+                      taskScopeIds={timelogScopeTaskIds}
+                      onIrParaLogsVdesk={() => { setLogsAbaInicial('vdesk'); setActiveTab('logs'); }}
+                    />
                   </CardContent>
                 )}
               </Card>
@@ -3066,7 +3072,8 @@ export default function FabricaDashboard() {
           {/* ═══════ TAB: Logs (admin ou owner do setor) ═══════ */}
           {canManageTimelog && (
             <TabsContent value="logs" className="space-y-4 mt-0">
-              <LogsTab />
+              {/* key: remonta ao vir do atalho do Nivelamento, para a sub-aba trocar */}
+              <LogsTab key={logsAbaInicial} abaInicial={logsAbaInicial} />
             </TabsContent>
           )}
 

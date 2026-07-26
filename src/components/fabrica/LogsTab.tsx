@@ -15,14 +15,13 @@
  * cada bloco distingue erro, vazio e lista truncada.
  */
 import { useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  AlertTriangle, ChevronRight, ExternalLink, RefreshCw, SendHorizonal,
+  AlertTriangle, ExternalLink, RefreshCw, SendHorizonal,
   ShieldAlert, Timer, ArrowRightLeft, XCircle,
 } from 'lucide-react';
 import {
@@ -30,6 +29,7 @@ import {
   filtrarLancamentos, alertaSemAviso,
   LOG_PERIOD_OPTIONS, type LogPeriodDays, type QaAlertStatus,
 } from '@/hooks/useFabricaLogs';
+import { useTransbordoHistorico } from '@/hooks/useTransbordo';
 
 // ─── Formatação ──────────────────────────────────────────────────────────────
 
@@ -138,38 +138,54 @@ function AvisoTruncado({ total }: { total: number }) {
   );
 }
 
-// ─── Casca de seção recolhível ───────────────────────────────────────────────
+// ─── Abas laterais ───────────────────────────────────────────────────────────
 
-function SecaoLog({
-  titulo, icone, resumo, aberta, onToggle, children,
+export type LogAba = 'retornos' | 'vdesk' | 'transbordo';
+
+/**
+ * Botão de aba lateral. O contador fica no próprio rótulo para o problema
+ * aparecer sem precisar entrar na aba — é o que compensa ver um bloco por vez.
+ */
+function AbaLateral({
+  ativa, onClick, icone, rotulo, contador,
 }: {
-  titulo: string;
+  ativa: boolean;
+  onClick: () => void;
   icone: React.ReactNode;
-  resumo?: React.ReactNode;
-  aberta: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
+  rotulo: string;
+  contador?: React.ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader className="pb-2 pt-4 cursor-pointer select-none" onClick={onToggle}>
-        <CardTitle className="text-sm font-semibold flex items-center gap-2 flex-wrap">
-          {icone}
-          {titulo}
-          <div className="flex flex-wrap items-center gap-1.5 ml-1">{resumo}</div>
-          <ChevronRight className={`h-4 w-4 ml-auto text-muted-foreground transition-transform ${aberta ? 'rotate-90' : ''}`} />
-        </CardTitle>
-      </CardHeader>
-      {aberta && <CardContent className="pt-0">{children}</CardContent>}
-    </Card>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={ativa ? 'page' : undefined}
+      className={`w-full text-left flex items-center gap-2 rounded-md px-2.5 py-2 text-xs transition-colors border ${
+        ativa
+          ? 'bg-background border-border shadow-sm font-semibold text-foreground'
+          : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-background/60'
+      }`}
+    >
+      {icone}
+      <span className="flex-1 truncate">{rotulo}</span>
+      {contador}
+    </button>
+  );
+}
+
+function TituloBloco({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+      {children}
+    </h3>
   );
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
 
-export function LogsTab() {
+export function LogsTab({ abaInicial = 'retornos' }: { abaInicial?: LogAba }) {
   const [dias, setDias] = useState<LogPeriodDays>(30);
-  const [secao, setSecao] = useState<'qa' | 'timelog' | 'transbordo' | null>('qa');
+  const [aba, setAba] = useState<LogAba>(abaInicial);
 
   const [qaSoProblema, setQaSoProblema] = useState(false);
   const [postStatus, setPostStatus] = useState<string>('');
@@ -179,8 +195,7 @@ export function LogsTab() {
   const runs = useVdeskSyncRunLog(30);
   const posts = useTimelogPostLog(dias);
   const semEmail = useApontamentosSemEmail(dias);
-
-  const alternar = (s: 'qa' | 'timelog' | 'transbordo') => setSecao((atual) => (atual === s ? null : s));
+  const transbordo = useTransbordoHistorico(dias);
 
   // Contadores do cabeçalho sempre sobre o PERÍODO — nunca sobre a visão
   // filtrada, senão o resumo muda de sentido quando o usuário clica num filtro.
@@ -220,33 +235,69 @@ export function LogsTab() {
         </span>
       </div>
 
-      {/* ── 1. Alertas de Retorno QA ──────────────────────────────────────── */}
-      <SecaoLog
-        titulo="Alertas de Retorno QA"
-        icone={<AlertTriangle className="h-4 w-4 text-amber-500" />}
-        aberta={secao === 'qa'}
-        onToggle={() => alternar('qa')}
-        resumo={
-          qa.isError ? (
-            <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
-              falha ao carregar
-            </Badge>
-          ) : qa.isLoading ? null : (
-            <>
-              <Badge variant="outline" className="text-[10px]">{qaTodos.length} detectados</Badge>
-              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
-                {qaAvisados} avisados
-              </Badge>
-              {qaSemAviso > 0 && (
-                <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
-                  {qaSemAviso} sem aviso
-                </Badge>
-              )}
-            </>
-          )
-        }
-      >
+      {/* ── Abas laterais + conteúdo ──────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start">
+        <nav className="w-full sm:w-48 shrink-0 space-y-1 rounded-lg bg-muted/50 p-1.5">
+          <AbaLateral
+            ativa={aba === 'retornos'}
+            onClick={() => setAba('retornos')}
+            icone={<AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+            rotulo="Retornos"
+            contador={
+              qa.isError ? (
+                <Badge variant="outline" className="text-[9px] bg-red-500/10 text-red-700 border-red-500/30">erro</Badge>
+              ) : qaSemAviso > 0 ? (
+                <Badge variant="outline" className="text-[9px] bg-red-500/10 text-red-700 border-red-500/30">{qaSemAviso}</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[9px]">{qaTodos.length}</Badge>
+              )
+            }
+          />
+          <AbaLateral
+            ativa={aba === 'vdesk'}
+            onClick={() => setAba('vdesk')}
+            icone={<SendHorizonal className="h-3.5 w-3.5 text-orange-500 shrink-0" />}
+            rotulo="Vdesk"
+            contador={
+              posts.isError ? (
+                <Badge variant="outline" className="text-[9px] bg-red-500/10 text-red-700 border-red-500/30">erro</Badge>
+              ) : postErros > 0 ? (
+                <Badge variant="outline" className="text-[9px] bg-red-500/10 text-red-700 border-red-500/30">{postErros}</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">{postLancados}</Badge>
+              )
+            }
+          />
+          <AbaLateral
+            ativa={aba === 'transbordo'}
+            onClick={() => setAba('transbordo')}
+            icone={<ArrowRightLeft className="h-3.5 w-3.5 text-sky-500 shrink-0" />}
+            rotulo="Transbordo"
+          />
+        </nav>
+
+        <div className="flex-1 min-w-0 w-full">
+      {/* ── Retornos ──────────────────────────────────────────────────────── */}
+      {aba === 'retornos' && (
         <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <TituloBloco>
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />Alertas de Retorno QA
+            </TituloBloco>
+            {!qa.isError && !qa.isLoading && (
+              <>
+                <Badge variant="outline" className="text-[10px]">{qaTodos.length} detectados</Badge>
+                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                  {qaAvisados} avisados
+                </Badge>
+                {qaSemAviso > 0 && (
+                  <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
+                    {qaSemAviso} sem aviso
+                  </Badge>
+                )}
+              </>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
@@ -351,39 +402,33 @@ export function LogsTab() {
             </div>
           )}
         </div>
-      </SecaoLog>
+      )}
 
-      {/* ── 2. Sincronização VDESK → DevOps ───────────────────────────────── */}
-      <SecaoLog
-        titulo="Sincronização VDESK → DevOps"
-        icone={<SendHorizonal className="h-4 w-4 text-orange-500" />}
-        aberta={secao === 'timelog'}
-        onToggle={() => alternar('timelog')}
-        resumo={
-          posts.isError || semEmail.isError ? (
-            <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
-              falha ao carregar
-            </Badge>
-          ) : posts.isLoading ? null : (
-            <>
-              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
-                {postLancados} lançados
-              </Badge>
-              {postErros > 0 && (
-                <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
-                  {postErros} com erro
-                </Badge>
-              )}
-              {semEmailRows.length > 0 && (
-                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/30">
-                  {semEmailRows.length} sem e-mail
-                </Badge>
-              )}
-            </>
-          )
-        }
-      >
+      {/* ── Vdesk ─────────────────────────────────────────────────────────── */}
+      {aba === 'vdesk' && (
         <div className="space-y-6">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <TituloBloco>
+              <SendHorizonal className="h-3.5 w-3.5 text-orange-500" />Sincronização VDESK → DevOps
+            </TituloBloco>
+            {!posts.isError && !posts.isLoading && (
+              <>
+                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
+                  {postLancados} lançados
+                </Badge>
+                {postErros > 0 && (
+                  <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-700 border-red-500/30">
+                    {postErros} com erro
+                  </Badge>
+                )}
+                {semEmailRows.length > 0 && (
+                  <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/30">
+                    {semEmailRows.length} sem e-mail
+                  </Badge>
+                )}
+              </>
+            )}
+          </div>
           {/* 2a. Execuções do sync */}
           <div className="space-y-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
@@ -580,28 +625,71 @@ export function LogsTab() {
             )}
           </div>
         </div>
-      </SecaoLog>
+      )}
 
-      {/* ── 3. Transbordo ─────────────────────────────────────────────────── */}
-      <SecaoLog
-        titulo="Transbordo de sprint"
-        icone={<ArrowRightLeft className="h-4 w-4 text-sky-500" />}
-        aberta={secao === 'transbordo'}
-        onToggle={() => alternar('transbordo')}
-        resumo={<Badge variant="outline" className={`text-[10px] ${NEUTRO}`}>aguardando implantação</Badge>}
-      >
-        <div className="rounded border border-dashed bg-muted/20 p-4 space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Hoje a movimentação de PBIs e Bugs para a próxima sprint é feita direto no Azure
-            DevOps e não deixa rastro no FlagHub — por isso não há o que exibir aqui.
+      {/* ── Transbordo ────────────────────────────────────────────────────── */}
+      {aba === 'transbordo' && (
+        <div className="space-y-3">
+          <TituloBloco>
+            <ArrowRightLeft className="h-3.5 w-3.5 text-sky-500" />Movimentações de sprint
+          </TituloBloco>
+          <p className="text-[11px] text-muted-foreground">
+            Cada clique em <strong>Classificar</strong> ou <strong>Aplicar transbordo</strong> gera
+            um lote. A sprint de origem de cada item fica gravada — é o insumo de uma eventual
+            reversão.
           </p>
-          <p className="text-xs text-muted-foreground">
-            Quando o botão <strong>Migrar PBI/Bugs</strong> entrar, cada movimentação passa a
-            registrar quem executou, quando, os itens migrados (com a sprint de origem, insumo da
-            reversão) e o resultado de cada um — e este bloco passa a mostrar esse histórico.
-          </p>
+
+          {transbordo.isError ? (
+            <EstadoErro erro={transbordo.error} />
+          ) : transbordo.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (transbordo.data ?? []).length === 0 ? (
+            <EstadoVazio mensagem="Nenhuma classificação ou transbordo registrado no período." />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="text-xs">
+                    <TableHead>Quando</TableHead>
+                    <TableHead>Ação</TableHead>
+                    <TableHead>Sprint</TableHead>
+                    <TableHead>Executado por</TableHead>
+                    <TableHead className="text-right">Itens</TableHead>
+                    <TableHead className="text-right">Sucesso</TableHead>
+                    <TableHead className="text-right">Falha</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(transbordo.data ?? []).map((l) => (
+                    <TableRow key={l.batch_id} className="text-xs">
+                      <TableCell className="whitespace-nowrap">{fmtDataHora(l.executed_at)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {l.tipo === 'classificacao' ? 'Classificação' : 'Transbordo'}
+                        </Badge>
+                        {l.dry_run && (
+                          <Badge variant="outline" className={`text-[10px] ml-1 ${NEUTRO}`}>simulação</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {l.sprint_origem}{l.sprint_destino ? ` → ${l.sprint_destino}` : ''}
+                      </TableCell>
+                      <TableCell>{l.executor ?? '—'}</TableCell>
+                      <TableCell className="text-right font-mono">{l.total_itens}</TableCell>
+                      <TableCell className="text-right font-mono text-emerald-700">{l.total_sucesso}</TableCell>
+                      <TableCell className={`text-right font-mono ${l.total_falha > 0 ? 'text-red-700' : ''}`}>
+                        {l.total_falha}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
-      </SecaoLog>
+      )}
+        </div>
+      </div>
     </div>
   );
 }
