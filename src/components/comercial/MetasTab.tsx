@@ -21,11 +21,13 @@ import {
   type VendaFormData,
 } from "@/hooks/useComercialVendas";
 import { useComercialMovimentacaoManual } from "@/hooks/useComercialMovimentacaoManual";
+import { useComercialProdutos } from "@/hooks/useComercialProdutos";
+import { metaFinanceiraPorMes } from "@/lib/comercialMetaFinanceira";
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine, AreaChart, Area,
 } from "recharts";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Filter } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Filter, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -50,7 +52,6 @@ const STATUS_COLORS: Record<MetaFormData["status"], string> = {
   nao_batido: "#ef4444",
 };
 
-const META_MENSAL_DEFAULT = 110_000;
 const PT_MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 function brl(value: number, show: boolean): React.ReactNode {
@@ -300,8 +301,14 @@ const MetasTab: React.FC<MetasTabProps> = ({
   const [filtroMeses, setFiltroMeses] = useState<Set<string>>(new Set());
   const [filtroStatus, setFiltroStatus] = useState<Set<string>>(new Set());
 
+  // ── Catálogo de produtos: nome editável + ordenação manual ───
+  const [renameDe, setRenameDe] = useState<string | null>(null);
+  const [renamePara, setRenamePara] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
+
   const { data: metas = [], isLoading, isError, refetch } = useComercialMetas();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
+  const { produtos: catalogo, compararPorOrdem, renomear, reordenar } = useComercialProdutos();
   const createMeta = useCreateMetaComercial();
   const updateMeta = useUpdateMetaComercial();
   const deleteMeta = useDeleteMetaComercial();
@@ -385,8 +392,22 @@ const MetasTab: React.FC<MetasTabProps> = ({
   const produtosMeta = useMemo(() => {
     const set = new Set<string>();
     for (const m of metas) if (m.tipo !== "faturamento") set.add(m.nome_indicador);
-    return [...set].sort();
-  }, [metas]);
+    return [...set].sort(compararPorOrdem);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metas, catalogo]);
+
+  /** Unitário cadastrado na meta do produto no mês (YYYY-MM) — pré-preenche a venda. */
+  const valorUnitarioDe = (produto: string, ym: string): number | null => {
+    for (const m of metas) {
+      if (m.tipo === "faturamento" || m.nome_indicador !== produto) continue;
+      const d = getMesDate(m.mes);
+      if (!d) continue;
+      if (`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` !== ym) continue;
+      const vu = parseFloat(m.valor_unitario);
+      return Number.isFinite(vu) && vu > 0 ? vu : null;
+    }
+    return null;
+  };
 
   const metaMesSet = useMemo(() => {
     const s = new Set<string>();
@@ -401,41 +422,22 @@ const MetasTab: React.FC<MetasTabProps> = ({
 
   // ── Pillar 1: Meta de Faturamento (combined) ─────────────────
   const faturamentoStats = useMemo(() => {
-    const parseValor = (raw0: string) => {
-      const raw = raw0.trim().toLowerCase();
-      const v = raw.endsWith("k")
-        ? parseFloat(raw.slice(0, -1)) * 1000
-        : parseFloat(raw.replace(",", ".")) || 0;
-      return Number.isFinite(v) ? v : 0;
-    };
-
-    // Meta de faturamento cadastrada POR mês (YYYY-MM)
-    const fatPorMes = new Map<string, number>();
-    for (const m of metasFaturamento) {
-      const d = getMesDate(m.mes);
-      if (!d) continue;
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      fatPorMes.set(k, (fatPorMes.get(k) ?? 0) + parseValor(m.valor));
-    }
-    const targetCadastrado = [...fatPorMes.values()].reduce((s, v) => s + v, 0);
+    // Régua única (MET-1): meta do mês = faturamento cadastrado quando existir,
+    // senão a SOMA das metas de produto. Sem default de 110k.
+    const metaPorMes = metaFinanceiraPorMes(metasFiltradas);
+    const fatPorMes = new Map<string, number>(
+      [...metaPorMes.entries()].map(([ym, v]) => [ym, v.efetiva])
+    );
+    const targetCadastrado = [...metaPorMes.values()].reduce((s, v) => s + v.cadastrada, 0);
 
     // Conjunto de meses no escopo (metas de produto + faturamento + vendas filtradas)
-    const mesesEscopo = new Set<string>();
-    for (const m of metasProduto) {
-      const d = getMesDate(m.mes);
-      if (d) mesesEscopo.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-    }
-    for (const k of fatPorMes.keys()) mesesEscopo.add(k);
+    const mesesEscopo = new Set<string>(metaPorMes.keys());
     for (const v of vendasFiltradas) {
       const pm = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
       if (pm) mesesEscopo.add(pm);
     }
-    const mesesNoEscopo = Math.max(1, mesesEscopo.size);
 
-    // Target = soma por mês (meta cadastrada do mês, ou default mensal)
-    const target =
-      [...mesesEscopo].reduce((s, k) => s + (fatPorMes.get(k) ?? META_MENSAL_DEFAULT), 0) ||
-      META_MENSAL_DEFAULT * mesesNoEscopo;
+    const target = [...mesesEscopo].reduce((s, k) => s + (fatPorMes.get(k) ?? 0), 0);
 
     // Contribuição financeira dos produtos:
     // - "manual" (realizado digitado na meta) SOMA no total
@@ -473,11 +475,13 @@ const MetasTab: React.FC<MetasTabProps> = ({
       if (contrib > 0) mesMap.set(pm, (mesMap.get(pm) ?? 0) + contrib);
     }
 
-    // % mensal: cada mês contra sua própria meta (cadastrada ou default)
+    // % mensal: cada mês contra sua própria meta (cadastrada ou soma dos produtos).
+    // Mês sem meta definida fica com 0% e é filtrado — melhor omitir do que
+    // dividir por um número inventado.
     const comDados = [...mesMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([ym, val]) => {
-        const metaDoMes = fatPorMes.get(ym) ?? META_MENSAL_DEFAULT;
+        const metaDoMes = fatPorMes.get(ym) ?? 0;
         const p = metaDoMes > 0 ? Math.round((val / metaDoMes) * 1000) / 10 : 0;
         return { mes: formatYM(ym), pct: p, atingiu: p >= 100 };
       })
@@ -507,18 +511,15 @@ const MetasTab: React.FC<MetasTabProps> = ({
       total: comDados.length,
       media,
       hasCadastrado: targetCadastrado > 0,
+      /** Nenhuma meta (nem cadastrada, nem por produto) no período. */
+      semMeta: target <= 0,
     };
-  }, [metasFaturamento, metasProduto, vendasFiltradas, vendaQtyMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metasFiltradas, metasProduto, vendasFiltradas, vendaQtyMap]);
 
   // ── Histograma de ondas: atingimento Produtos × Financeiro ───
   const waveData = useMemo(() => {
-    const parseFat = (raw0: string) => {
-      const raw = raw0.trim().toLowerCase();
-      const v = raw.endsWith("k")
-        ? parseFloat(raw.slice(0, -1)) * 1000
-        : parseFloat(raw.replace(",", ".")) || 0;
-      return Number.isFinite(v) ? v : 0;
-    };
+    const metaPorMes = metaFinanceiraPorMes(metasFiltradas);
 
     type Acc = { metaQty: number; realQty: number; finMeta: number; finReal: number };
     const map = new Map<string, Acc>();
@@ -542,22 +543,15 @@ const MetasTab: React.FC<MetasTabProps> = ({
       // Financeiro: só o manual soma (itens de venda já estão no deal_value)
       a.finReal += manualQty * (parseFloat(m.valor_unitario) || 0);
     }
-    // Metas de faturamento cadastradas → target financeiro do mês
-    for (const m of metasFaturamento) {
-      const d = getMesDate(m.mes);
-      if (!d) continue;
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      ensure(k).finMeta += parseFat(m.valor);
+    // Meta financeira do mês: cadastrada quando existir, senão soma dos produtos
+    for (const [ym, v] of metaPorMes) {
+      ensure(ym).finMeta += v.efetiva;
     }
     // Vendas → realizado financeiro do mês
     for (const v of vendasFiltradas) {
       const pm = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
       if (!pm) continue;
       ensure(pm).finReal += v.deal_value ?? 0;
-    }
-    // Default mensal quando não há meta de faturamento cadastrada
-    for (const a of map.values()) {
-      if (a.finMeta <= 0) a.finMeta = META_MENSAL_DEFAULT;
     }
 
     const months = [...map.keys()].sort();
@@ -598,7 +592,8 @@ const MetasTab: React.FC<MetasTabProps> = ({
         financeiro: pctOf(a.finReal, a.finMeta),
       };
     });
-  }, [metasProduto, metasFaturamento, vendasFiltradas, vendaQtyMap, waveView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metasProduto, metasFiltradas, vendasFiltradas, vendaQtyMap, waveView]);
 
   // ── Pillar 2: Meta Produtos KPIs (manual + vendas) ───────────
   const kpisProdutos = useMemo(() => {
@@ -667,16 +662,57 @@ const MetasTab: React.FC<MetasTabProps> = ({
         realizadoQty: c.manualQty + c.vendaQty,
         vuUniforme: c.vus.size === 1 ? [...c.vus][0] : null,
       }))
-      .sort((a, b) => a.produto.localeCompare(b.produto));
+      // Ordem definida pelo gestor no catálogo — não mais alfabética.
+      .sort((a, b) => compararPorOrdem(a.produto, b.produto));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metasTabela, vendaQtyMap]);
+  }, [metasTabela, vendaQtyMap, catalogo]);
+
+  // ── Reordenação: move o produto uma posição entre os VISÍVEIS e regrava a
+  // ordem do catálogo inteiro (mandar só os visíveis embaralharia o resto).
+  async function moverProduto(produto: string, dir: -1 | 1) {
+    const visiveis = metasConsolidadas.map((c) => c.produto);
+    const i = visiveis.indexOf(produto);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= visiveis.length) return;
+    const novaOrdemVisivel = [...visiveis];
+    [novaOrdemVisivel[i], novaOrdemVisivel[j]] = [novaOrdemVisivel[j], novaOrdemVisivel[i]];
+
+    // Reconstrói a lista completa mantendo as posições de quem não está na tela.
+    const nomesCatalogo = catalogo.map((p) => p.nome);
+    const slots = nomesCatalogo.map((n, idx) => (visiveis.includes(n) ? idx : -1)).filter((idx) => idx >= 0);
+    const completa = [...nomesCatalogo];
+    slots.forEach((slot, k) => { completa[slot] = novaOrdemVisivel[k]; });
+
+    try {
+      await reordenar.mutateAsync(completa);
+    } catch (err) {
+      toast.error(`Falha ao reordenar: ${(err as Error).message}`);
+    }
+  }
+
+  async function handleRename() {
+    if (!renameDe) return;
+    const para = renamePara.trim();
+    if (!para || para === renameDe) { setRenameDe(null); return; }
+    setRenameLoading(true);
+    try {
+      const r = await renomear.mutateAsync({ de: renameDe, para });
+      toast.success(`Produto renomeado para "${para}" — ${r.metas} meta(s) e ${r.itens} item(ns) de venda atualizados.`);
+      setRenameDe(null);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setRenameLoading(false);
+    }
+  }
 
   const filtrosAtivos = filtroProdutos.size + filtroMeses.size + filtroStatus.size;
 
   // Opções dos filtros (a partir do período corrente, ordenadas)
   const opcoesProduto = useMemo(
-    () => [...new Set(metasProduto.map((m) => m.nome_indicador))].sort().map((v) => ({ value: v })),
-    [metasProduto]
+    () => [...new Set(metasProduto.map((m) => m.nome_indicador))].sort(compararPorOrdem).map((v) => ({ value: v })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [metasProduto, catalogo]
   );
   const opcoesMes = useMemo(() => {
     const set = [...new Set(metasProduto.map((m) => m.mes))];
@@ -809,6 +845,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
           valor: meta.valor,
           realizado: "",
           valor_unitario: meta.valor_unitario,
+          meta_valor_total: meta.meta_valor_total,
           observacao: meta.observacao,
           data_inicio_meta: "",
           data_fim_meta: "",
@@ -912,7 +949,12 @@ const MetasTab: React.FC<MetasTabProps> = ({
       closed_date: v.closed_date ? v.closed_date.slice(0, 10) : "",
       period_month: v.period_month ? v.period_month.slice(0, 10) : "",
       source_sheet: v.source_sheet ?? "Venda_Produtos",
-      itens: (v.itens ?? []).map((i) => ({ produto: i.produto, quantidade: String(i.quantidade) })),
+      itens: (v.itens ?? []).map((i) => ({
+        produto: i.produto,
+        quantidade: String(i.quantidade),
+        valor_unitario: i.valor_unitario != null ? String(i.valor_unitario) : "",
+        valor_total: i.valor_total != null ? String(i.valor_total) : "",
+      })),
     };
   }
 
@@ -1483,7 +1525,7 @@ const MetasTab: React.FC<MetasTabProps> = ({
                     </td>
                   </tr>
                 )}
-                {metaView === "consolidado" && metasConsolidadas.map((c) => {
+                {metaView === "consolidado" && metasConsolidadas.map((c, idxProduto) => {
                   const p = pct(c.realizadoQty, c.metaQty);
                   const isExpanded = expandedProduto === c.produto;
                   const metasDoProduto = isExpanded
@@ -1494,20 +1536,54 @@ const MetasTab: React.FC<MetasTabProps> = ({
                   return (
                     <React.Fragment key={c.produto}>
                     <tr className="border-b hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-2 font-medium max-w-[220px]">
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 w-full text-left hover:text-primary transition-colors"
-                          onClick={() => setExpandedProduto(isExpanded ? null : c.produto)}
-                          title={canViewValues ? "Expandir para editar as metas de cada mês" : c.produto}
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                      <td className="px-3 py-2 font-medium max-w-[260px]">
+                        <div className="flex items-center gap-1">
+                          {canViewValues && (
+                            <div className="flex flex-col flex-shrink-0">
+                              <button
+                                type="button"
+                                title="Subir na ordem de apresentação"
+                                disabled={idxProduto === 0 || reordenar.isPending}
+                                onClick={() => moverProduto(c.produto, -1)}
+                                className="h-3.5 w-4 flex items-center justify-center text-muted-foreground hover:text-primary disabled:opacity-25 disabled:hover:text-muted-foreground"
+                              >
+                                <ChevronUp className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Descer na ordem de apresentação"
+                                disabled={idxProduto === metasConsolidadas.length - 1 || reordenar.isPending}
+                                onClick={() => moverProduto(c.produto, 1)}
+                                className="h-3.5 w-4 flex items-center justify-center text-muted-foreground hover:text-primary disabled:opacity-25 disabled:hover:text-muted-foreground"
+                              >
+                                <ChevronDown className="h-3 w-3" />
+                              </button>
+                            </div>
                           )}
-                          <span className="block truncate">{c.produto}</span>
-                        </button>
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 flex-1 min-w-0 text-left hover:text-primary transition-colors"
+                            onClick={() => setExpandedProduto(isExpanded ? null : c.produto)}
+                            title={canViewValues ? "Expandir para editar as metas de cada mês" : c.produto}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                            )}
+                            <span className="block truncate">{c.produto}</span>
+                          </button>
+                          {canViewValues && (
+                            <button
+                              type="button"
+                              title="Renomear produto (atualiza metas e itens de venda)"
+                              onClick={() => { setRenameDe(c.produto); setRenamePara(c.produto); }}
+                              className="h-5 w-5 flex items-center justify-center flex-shrink-0 text-muted-foreground hover:text-primary"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground font-mono whitespace-nowrap">
                         <span title={c.meses.join(", ")}>
@@ -2011,7 +2087,44 @@ const MetasTab: React.FC<MetasTabProps> = ({
         mode={editingVendaId ? "edit" : "create"}
         produtosDisponiveis={produtosMeta}
         hasMetaFor={(produto, ym) => metaMesSet.has(`${produto}|${ym}`)}
+        valorUnitarioDe={valorUnitarioDe}
       />
+
+      {/* ── Dialog: renomear produto (transacional) ───────────── */}
+      <Dialog open={!!renameDe} onOpenChange={(o) => !o && setRenameDe(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Renomear produto</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1">Nome atual</label>
+              <p className="text-sm font-mono text-muted-foreground break-words">{renameDe}</p>
+            </div>
+            <div>
+              <label htmlFor="rename-produto" className="block text-xs font-semibold mb-1">Novo nome</label>
+              <Input
+                id="rename-produto"
+                value={renamePara}
+                onChange={(e) => setRenamePara(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              O nome é a chave que liga a meta ao realizado. A troca é feita numa transação e
+              atualiza <strong>todas</strong> as metas mensais e os itens de venda desse produto —
+              nenhum realizado se perde. Se já existir meta com o novo nome no mesmo mês, a
+              operação é recusada com a lista dos meses em conflito.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="secondary" onClick={() => setRenameDe(null)}>Cancelar</Button>
+            <Button type="button" onClick={handleRename} disabled={renameLoading || !renamePara.trim()}>
+              {renameLoading ? "Renomeando…" : "Renomear"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

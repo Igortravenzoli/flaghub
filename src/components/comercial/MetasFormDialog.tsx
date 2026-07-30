@@ -98,6 +98,9 @@ export const MetasFormDialog: React.FC<MetasFormDialogProps> = ({
       valor: initialData?.valor ?? "",
       realizado: initialData?.realizado ?? "",
       valor_unitario: initialData?.valor_unitario ?? "",
+      // Sem esta linha, editar uma meta com meta monetária direta apagava o
+      // valor ao salvar (o reset não copiava o campo).
+      meta_valor_total: initialData?.meta_valor_total ?? "",
       observacao: initialData?.observacao ?? "",
       data_inicio_meta: initialData?.data_inicio_meta ?? "",
       data_fim_meta: initialData?.data_fim_meta ?? "",

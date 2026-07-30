@@ -1,11 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useMemo } from 'react';
 
 export interface VendaItem {
   id?: string;
   produto: string;
   quantidade: number;
+  /** Preço unitário do item (null quando não informado). */
+  valor_unitario: number | null;
+  /** Override manual do total — quando null, vale quantidade × valor_unitario. */
+  valor_total: number | null;
+}
+
+/** Valor efetivo do item: override manual, ou quantidade × unitário. */
+export function valorDoItem(i: Pick<VendaItem, 'quantidade' | 'valor_unitario' | 'valor_total'>): number | null {
+  if (i.valor_total != null) return i.valor_total;
+  if (i.valor_unitario == null) return null;
+  return i.quantidade * i.valor_unitario;
 }
 
 export interface ComercialVenda {
@@ -28,7 +38,7 @@ export function useComercialVendas() {
       const db = supabase as any;
       const { data, error } = await db
         .from('comercial_vendas')
-        .select('*, comercial_venda_itens(id, produto, quantidade)')
+        .select('*, comercial_venda_itens(id, produto, quantidade, valor_unitario, valor_total)')
         .order('closed_date', { ascending: false });
       if (error) throw error;
       return ((data ?? []) as any[]).map((row) => ({
@@ -37,6 +47,8 @@ export function useComercialVendas() {
           id: i.id,
           produto: i.produto,
           quantidade: i.quantidade ?? 0,
+          valor_unitario: i.valor_unitario == null ? null : Number(i.valor_unitario),
+          valor_total: i.valor_total == null ? null : Number(i.valor_total),
         })),
       })) as ComercialVenda[];
     },
@@ -45,65 +57,20 @@ export function useComercialVendas() {
 
   const items = query.data ?? [];
 
-  const stats = useMemo(() => {
-    if (items.length === 0)
-      return {
-        totalDeals: 0,
-        vendasPorOrg: [] as { bandeira: string; percentual: number }[],
-        vendasPorMes: [] as { mes: string; percentualMeta: number; atingiuMeta: boolean }[],
-        orgs: [] as string[],
-      };
+  // `stats` foi removido em 30/07/2026: era código morto (nenhum consumidor o
+  // usava — PipeDriveTab calcula os seus próprios) e carregava a terceira cópia
+  // do default de R$ 110k/mês. A meta agora vem de @/lib/comercialMetaFinanceira.
 
-    const totalValue = items.reduce((s, i) => s + (i.deal_value ?? 0), 0);
-
-    // Group by organization -> % distribution
-    const orgMap = new Map<string, number>();
-    for (const item of items) {
-      const org = item.organization || 'Outros';
-      orgMap.set(org, (orgMap.get(org) ?? 0) + (item.deal_value ?? 0));
-    }
-    const vendasPorOrg = [...orgMap.entries()]
-      .map(([bandeira, val]) => ({
-        bandeira,
-        percentual: totalValue > 0 ? Math.round((val / totalValue) * 1000) / 10 : 0,
-      }))
-      .sort((a, b) => b.percentual - a.percentual);
-
-    // Group by period_month -> % of meta (fixed monthly target)
-    const META_MENSAL = 110_000; // Meta mensal fixa de vendas (R$ 110K)
-    const mesMap = new Map<string, number>();
-    for (const item of items) {
-      const pm = item.period_month?.slice(0, 7) || 'unknown';
-      mesMap.set(pm, (mesMap.get(pm) ?? 0) + (item.deal_value ?? 0));
-    }
-
-    const vendasPorMes = [...mesMap.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([mes, val]) => {
-        const pct = META_MENSAL > 0 ? Math.round((val / META_MENSAL) * 1000) / 10 : 0;
-        return {
-          mes: formatMonth(mes),
-          percentualMeta: pct,
-          atingiuMeta: pct >= 100,
-        };
-      });
-
-    return {
-      totalDeals: items.length,
-      vendasPorOrg,
-      vendasPorMes,
-      orgs: vendasPorOrg.map((v) => v.bandeira),
-    };
-  }, [items]);
-
-  return { items, stats, isLoading: query.isLoading, isError: query.isError, refetch: query.refetch };
+  return { items, isLoading: query.isLoading, isError: query.isError, refetch: query.refetch };
 }
 
 // ── CRUD payload ──────────────────────────────────────────────────────────────
 
 export interface VendaItemForm {
   produto: string;
-  quantidade: string; // string no form → parsed to int
+  quantidade: string;      // string no form → parsed to int
+  valor_unitario: string;  // string no form → parsed to numeric (vazio = null)
+  valor_total: string;     // override manual (vazio = derivado de qtd × unitário)
 }
 
 export interface VendaFormData {
@@ -117,9 +84,21 @@ export interface VendaFormData {
   itens: VendaItemForm[]; // produtos vendidos — alimentam Meta Produtos
 }
 
+function parseDecimal(raw?: string): number | null {
+  const v = (raw ?? '').trim().replace(/\./g, '').replace(',', '.');
+  if (!v) return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function parseItens(data: VendaFormData) {
   return (data.itens ?? [])
-    .map((i) => ({ produto: i.produto.trim(), quantidade: parseInt(i.quantidade, 10) || 0 }))
+    .map((i) => ({
+      produto: i.produto.trim(),
+      quantidade: parseInt(i.quantidade, 10) || 0,
+      valor_unitario: parseDecimal(i.valor_unitario),
+      valor_total: parseDecimal(i.valor_total),
+    }))
     .filter((i) => i.produto && i.quantidade > 0);
 }
 
@@ -205,10 +184,4 @@ export function useDeleteVenda() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['comercial', 'vendas'] }),
   });
-}
-
-function formatMonth(ym: string) {
-  const [y, m] = ym.split('-');
-  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-  return `${months[parseInt(m, 10) - 1] ?? m} ${y}`;
 }

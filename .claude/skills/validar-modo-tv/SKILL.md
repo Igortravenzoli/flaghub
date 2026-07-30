@@ -54,7 +54,7 @@ Para validar no navegador use a skill **webapp-testing** (Playwright) ou as ferr
 - [ ] Sem erros no console durante ciclo completo de rotação + refresh
 
 ### Regras por setor (escopo temporal e filtros)
-- [ ] **Comercial**: ano vigente; `tvMode=true`, `canViewValues=false`, `showValues=false` — **NUNCA exibir valores monetários em TV**, só percentuais; clientes ativos = `max(0, ativos - ativosInternos)` (internos subtraídos)
+- [ ] **Comercial**: **trimestre vigente** (`trimestreVigente()` de `src/lib/comercialPeriodo.ts`) — rótulo `Q3 2026 · jul–set` visível em badge no topo, e **todos** os cards no mesmo recorte (movimentação, produtos, funis); `tvMode=true`, `canViewValues=false`, `showValues=false` — **NUNCA exibir valores monetários em TV**, só percentuais; clientes ativos = `max(0, ativos - ativosInternos)` (internos subtraídos), com selo "base atual" porque é foto do ERP e não responde ao período
 - [ ] **Helpdesk**: mês atual (dia 1 até hoje)
 - [ ] **Fábrica**: sprint oficial atual (`getCurrentOfficialSprintCode()`)
 - [ ] **Qualidade**: sprint selecionada (fallback `all`)

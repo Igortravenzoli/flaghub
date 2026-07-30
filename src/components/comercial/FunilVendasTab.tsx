@@ -5,14 +5,17 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import {
-  Filter, Pencil, Trash2, Plus, Loader2,
+  Filter, Pencil, Trash2, Plus, Loader2, BarChart3, Info,
   Target, Search, UserCheck, PhoneCall, MessageSquare, BadgeCheck, ArrowRightLeft,
   Inbox, ClipboardList, MonitorPlay, FileText, Handshake, Trophy, CircleDot,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useComercialFunil, FunilEtapa, FunilKey, ymNow, ymLabel } from '@/hooks/useComercialFunil';
+import { useComercialFunil, FunilEtapa, FunilKey } from '@/hooks/useComercialFunil';
+import { mesesDoTrimestre, qKeyDoMes, qLabel, ymLabel, ymNow } from '@/lib/comercialPeriodo';
 
 /** Registro de ícones profissionais por chave (persistida em comercial_funil.icone). */
 export const FUNIL_ICONS: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string }> = {
@@ -171,14 +174,35 @@ interface Props {
   canEdit?: boolean;
 }
 
+type FunilView = 'mes' | 'trimestre';
+type HistView = 'mensal' | 'trimestral' | 'acumulado';
+
 export default function FunilVendasTab({ canEdit = false }: Props) {
+  const [view, setView] = useState<FunilView>('mes');
   const [mesSel, setMesSel] = useState<string>(ymNow());
-  const { sdr, comercial, isLoading, isError, refetch, createEtapa, updateEtapa, deleteEtapa, upsertLancamento } = useComercialFunil(mesSel);
+  // Trimestre acompanha o mês selecionado — trocar de visão nunca "pula" de período.
+  const qSel = qKeyDoMes(mesSel);
+  const escopo = view === 'mes' ? [mesSel] : mesesDoTrimestre(qSel);
+  const escopoLabel = view === 'mes' ? ymLabel(mesSel) : qLabel(qSel);
+
+  const {
+    sdr, comercial, historico, historicoTrimestral,
+    isLoading, isError, refetch, createEtapa, updateEtapa, deleteEtapa, upsertLancamento,
+  } = useComercialFunil(escopo);
   const [managing, setManaging] = useState<FunilKey | null>(null);
   const [form, setForm] = useState<EtapaFormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [histView, setHistView] = useState<HistView>('mensal');
 
   const byFunil = useMemo(() => ({ sdr, comercial }), [sdr, comercial]);
+
+  const histData = useMemo(() => {
+    if (histView === 'trimestral') return historicoTrimestral;
+    if (histView === 'acumulado') {
+      return historico.map(h => ({ ...h, sdr: h.sdrAcum, comercial: h.comercialAcum }));
+    }
+    return historico;
+  }, [histView, historico, historicoTrimestral]);
 
   const openCreate = (funil: FunilKey) => {
     const list = byFunil[funil];
@@ -251,22 +275,41 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
         <div>
           <h2 className="text-xl font-bold">Funil de Vendas</h2>
           <p className="text-sm text-muted-foreground">
-            Lançamento mensal por etapa — selecione o mês para visualizar ou lançar quantitativos.
+            Lançamento sempre mensal — o trimestre é a <strong>soma</strong> dos meses, não um lançamento à parte.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="funil-mes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Mês
-          </label>
-          <Input
-            id="funil-mes"
-            type="month"
-            value={mesSel}
-            onChange={(e) => e.target.value && setMesSel(e.target.value)}
-            className="h-8 w-40 text-xs"
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <ToggleGroup
+            type="single"
+            value={view}
+            onValueChange={(v) => v && setView(v as FunilView)}
+            className="bg-muted/50 rounded-md p-0.5"
+          >
+            <ToggleGroupItem value="mes" className="h-7 px-3 text-xs">Mês</ToggleGroupItem>
+            <ToggleGroupItem value="trimestre" className="h-7 px-3 text-xs">Trimestre</ToggleGroupItem>
+          </ToggleGroup>
+          <div className="flex items-center gap-2">
+            <label htmlFor="funil-mes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {view === 'mes' ? 'Mês' : 'Trimestre'}
+            </label>
+            <Input
+              id="funil-mes"
+              type="month"
+              value={mesSel}
+              onChange={(e) => e.target.value && setMesSel(e.target.value)}
+              className="h-8 w-40 text-xs"
+            />
+          </div>
         </div>
       </div>
+
+      {view === 'trimestre' && (
+        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Info className="h-3.5 w-3.5 flex-shrink-0" />
+          {qLabel(qSel)} — soma de {mesesDoTrimestre(qSel).map(ymLabel).join(' + ')}.
+          Para lançar quantitativos, volte para a visão <strong>Mês</strong>.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {FUNIS.map(({ key, titulo, subtitulo }) => {
@@ -290,14 +333,14 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="text-[10px] whitespace-nowrap font-mono">
-                    {ymLabel(mesSel)}
+                    {escopoLabel}
                   </Badge>
                   {conversao !== null && (
                     <Badge variant="outline" className="text-[10px] whitespace-nowrap">
                       conversão {conversao}%
                     </Badge>
                   )}
-                  {canEdit && (
+                  {canEdit && view === 'mes' && (
                     <Button
                       size="sm"
                       variant={isManaging ? 'default' : 'outline'}
@@ -321,7 +364,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                 </div>
               )}
 
-              {canEdit && isManaging && (
+              {canEdit && isManaging && view === 'mes' && (
                 <div className="border-t pt-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -365,6 +408,62 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
           );
         })}
       </div>
+
+      <Card className="p-5 border flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border bg-muted/40">
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold">Histórico dos funis</h3>
+              <p className="text-xs text-muted-foreground">
+                {histView === 'acumulado'
+                  ? 'Acumulado no ano — reinicia em janeiro'
+                  : histView === 'trimestral'
+                    ? 'Soma dos lançamentos de cada trimestre'
+                    : 'Total lançado em cada mês'}
+              </p>
+            </div>
+          </div>
+          <ToggleGroup
+            type="single"
+            value={histView}
+            onValueChange={(v) => v && setHistView(v as HistView)}
+            className="bg-muted/50 rounded-md p-0.5"
+          >
+            <ToggleGroupItem value="mensal" className="h-7 px-3 text-xs">Mensal</ToggleGroupItem>
+            <ToggleGroupItem value="trimestral" className="h-7 px-3 text-xs">Trimestral</ToggleGroupItem>
+            <ToggleGroupItem value="acumulado" className="h-7 px-3 text-xs">Acumulado</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-10 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : histData.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            Sem lançamentos ainda — lance quantitativos na visão Mês para o histórico aparecer.
+          </p>
+        ) : (
+          <div className="h-[220px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={histData} margin={{ top: 4, right: 8, bottom: 0, left: -18 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{ fontSize: 12, borderRadius: 8, background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}
+                  labelStyle={{ fontWeight: 600 }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="sdr" name="SDR" fill="#0284c7" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="comercial" name="Comercial" fill="#9333ea" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Card>
 
       <Dialog open={!!form} onOpenChange={(open) => !open && setForm(null)}>
         <DialogContent className="max-w-md">

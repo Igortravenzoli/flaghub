@@ -8,7 +8,9 @@ import { useComercialMovimentacao } from '@/hooks/useComercialMovimentacao';
 import { useComercialMetas } from '@/hooks/useComercialMetas';
 import { useComercialVendas } from '@/hooks/useComercialVendas';
 import { useSurveyResponses, useSurveyAggregates } from '@/hooks/useSurveyImport';
-import { useComercialFunil, ymLabel } from '@/hooks/useComercialFunil';
+import { useComercialFunil } from '@/hooks/useComercialFunil';
+import { useComercialProdutos } from '@/hooks/useComercialProdutos';
+import { resolvePeriodo, ymLabel } from '@/lib/comercialPeriodo';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { FunnelViz } from '@/components/comercial/FunilVendasTab';
 
@@ -37,19 +39,19 @@ function classifyNps(avg: number | null): 'promoter' | 'neutral' | 'detractor' |
 
 const corPct = (p: number) => (p >= 100 ? '#16a34a' : p >= 70 ? '#f59e0b' : '#ef4444');
 
-// MOCK temporário (02/07/2026): o gestor definiu 215 como a contagem oficial de
-// clientes ativos do card "Carteira e Movimento" enquanto a regra de leitura no
-// banco não é fechada. Ao implementar a leitura, voltar a usar a prop
-// `clientesAtivos` no lugar desta constante.
-const CLIENTES_ATIVOS_MOCK = 215;
-
 function BlocoCard({
   icon: Icon,
   titulo,
+  periodo,
+  escopoFixo,
   children,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   titulo: string;
+  /** Janela do dado — exibida ao lado do título (PER-3: nenhum número sem janela). */
+  periodo?: string;
+  /** Card que NÃO responde ao filtro (foto do estado atual) — ganha selo próprio. */
+  escopoFixo?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -59,6 +61,19 @@ function BlocoCard({
           <Icon className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{titulo}</p>
+        {periodo && (
+          <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded border bg-muted/40 text-muted-foreground whitespace-nowrap">
+            {periodo}
+          </span>
+        )}
+        {!periodo && escopoFixo && (
+          <span
+            className="ml-auto text-[10px] px-1.5 py-0.5 rounded border bg-muted/40 text-muted-foreground whitespace-nowrap"
+            title={escopoFixo}
+          >
+            base atual
+          </span>
+        )}
       </div>
       <div className="flex-1 flex flex-col justify-evenly gap-3">
         {children}
@@ -92,11 +107,31 @@ export function ExecutivoTab({
   tvMode = false,
 }: ExecutivoTabProps) {
   const { items: movItems, isLoading: movLoading } = useComercialMovimentacao('todos', dateFrom, dateTo);
-  // Executiva mostra o último mês com lançamentos (fallback: mês corrente)
-  const { ultimoMesComDados } = useComercialFunil();
-  const { sdr: funilSdr, comercial: funilComercial, historico: funilHistorico, isLoading: funilLoading } = useComercialFunil(ultimoMesComDados);
-  const funilMesLabel = ymLabel(ultimoMesComDados);
+
+  // Período é resolvido num lugar só — todo card daqui pra baixo usa este recorte.
+  const periodo = useMemo(() => resolvePeriodo(dateFrom, dateTo), [dateFrom, dateTo]);
+  // Mês e trimestre usam o rótulo explícito ("Q3 2026 · jul–set") — foi o pedido
+  // do Miller: o preset da página diz "3º Trimestre" e não mostra quais meses são.
+  // Recortes irregulares (90 dias, personalizado) mantêm o nome do preset.
+  const periodoTitulo = periodo.granularidade === 'multi' ? (periodLabel ?? periodo.label) : periodo.label;
+
+  // PER-2: o funil obedece ao período selecionado. Quando o período não tem
+  // nenhum lançamento, o hook cai para o último mês com dados e devolve
+  // `fallbackDe` — que a tela avisa em vez de trocar o dado em silêncio.
+  const {
+    sdr: funilSdr,
+    comercial: funilComercial,
+    historico: funilHistoricoMensal,
+    historicoTrimestral: funilHistoricoTrimestral,
+    meses: funilMeses,
+    fallbackDe: funilFallbackDe,
+    isLoading: funilLoading,
+  } = useComercialFunil(periodo.meses);
+  const funilMesLabel = funilFallbackDe ? ymLabel(funilMeses[0]) : periodo.labelCurto;
+  const funilHistorico = periodo.granularidade === 'mes' ? funilHistoricoMensal : funilHistoricoTrimestral;
   const { data: metas = [], isLoading: metasLoading } = useComercialMetas();
+  // Ordem de apresentação dos produtos: a mesma definida pelo gestor na aba Metas.
+  const { produtos: catalogoProdutos, compararPorOrdem } = useComercialProdutos();
   const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
   const { data: responses = [] } = useSurveyResponses();
   const { data: aggregates = [] } = useSurveyAggregates();
@@ -163,9 +198,9 @@ export function ExecutivoTab({
         realQty: a.realQty,
         pct: a.metaQty > 0 ? Math.round((a.realQty / a.metaQty) * 1000) / 10 : 0,
       }))
-      .sort((a, b) => b.metaQty - a.metaQty);
+      .sort((a, b) => compararPorOrdem(a.nome, b.nome));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metas, vendasPeriodo, fromYm, toYm]);
+  }, [metas, vendasPeriodo, fromYm, toYm, catalogoProdutos]);
 
   // ── Satisfação (última pesquisa) ──────────────────────────────
   const satisfacao = useMemo(() => {
@@ -215,11 +250,13 @@ export function ExecutivoTab({
 
   // ── Cards (compostos por modo: padrão × TV) ───────────────────
   const carteiraMovimentoCard = (
-    <BlocoCard icon={Briefcase} titulo="Carteira e Movimento">
+    <BlocoCard icon={Briefcase} titulo="Carteira e Movimento" periodo={periodo.labelCurto}>
       <div className="flex items-end justify-between">
         <div>
-          <p className="text-3xl font-bold font-mono">{isLoadingClientes ? '—' : CLIENTES_ATIVOS_MOCK}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">clientes ativos</p>
+          <p className="text-3xl font-bold font-mono">{isLoadingClientes ? '—' : clientesAtivos}</p>
+          <p className="text-xs text-muted-foreground mt-0.5" title="Foto da base VDesk — não responde ao filtro de período">
+            clientes ativos <span className="opacity-60">· base atual</span>
+          </p>
         </div>
         <div className="text-right">
           <p className="text-lg font-semibold font-mono text-destructive">{isLoadingClientes ? '—' : clientesBloqueados}</p>
@@ -254,7 +291,7 @@ export function ExecutivoTab({
   );
 
   const receitaCard = (
-    <BlocoCard icon={Wallet} titulo="Receita realizada">
+    <BlocoCard icon={Wallet} titulo="Receita realizada" periodo={periodo.labelCurto}>
       <div>
         <p className="text-3xl font-bold">
           {loading ? '—' : canViewValues ? brl(receita.total, showValues) : '—'}
@@ -270,7 +307,7 @@ export function ExecutivoTab({
   );
 
   const produtosCard = (
-    <BlocoCard icon={Package} titulo="Produtos · meta × realizado">
+    <BlocoCard icon={Package} titulo="Produtos · meta × realizado" periodo={periodo.labelCurto}>
       {loading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : produtos.filter((p) => p.metaQty > 0).length === 0 ? (
@@ -299,7 +336,7 @@ export function ExecutivoTab({
   );
 
   const satisfacaoCard = (
-    <BlocoCard icon={Smile} titulo="Satisfação">
+    <BlocoCard icon={Smile} titulo="Satisfação" escopoFixo="Última pesquisa importada — não responde ao filtro de período">
       <div className="grid grid-cols-3 gap-2">
         <div>
           <p className="text-2xl font-bold font-mono">
@@ -329,28 +366,45 @@ export function ExecutivoTab({
     </BlocoCard>
   );
 
+  // Aviso de fallback: o período pedido não tem lançamento e a tela está
+  // mostrando outro mês. Antes isso acontecia sem nenhum sinal.
+  const funilFallbackNota = funilFallbackDe ? (
+    <p className="text-[11px] text-amber-600 leading-snug">
+      Sem lançamento em {funilFallbackDe.map(ymLabel).join(', ')} — exibindo {funilMesLabel}.
+    </p>
+  ) : null;
+
   const funilSdrCard = (
-    <BlocoCard icon={FilterIcon} titulo={`Funil SDR (Geral) · ${funilMesLabel}`}>
+    <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)" periodo={funilMesLabel}>
       {funilLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : (
-        <FunnelViz etapas={funilSdr} compact />
+        <>
+          {funilFallbackNota}
+          <FunnelViz etapas={funilSdr} compact />
+        </>
       )}
     </BlocoCard>
   );
 
   const funilComercialCard = (
-    <BlocoCard icon={FilterIcon} titulo={`Funil Comercial (Geral) · ${funilMesLabel}`}>
+    <BlocoCard icon={FilterIcon} titulo="Funil Comercial (Geral)" periodo={funilMesLabel}>
       {funilLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : (
-        <FunnelViz etapas={funilComercial} compact />
+        <>
+          {funilFallbackNota}
+          <FunnelViz etapas={funilComercial} compact />
+        </>
       )}
     </BlocoCard>
   );
 
   const funilHistogramaCard = (
-    <BlocoCard icon={BarChart3} titulo="Funis · histórico mensal">
+    <BlocoCard
+      icon={BarChart3}
+      titulo={`Funis · histórico ${periodo.granularidade === 'mes' ? 'mensal' : 'trimestral'}`}
+    >
       {funilLoading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : funilHistorico.length === 0 ? (
@@ -377,7 +431,7 @@ export function ExecutivoTab({
   );
 
   const alertasCard = (
-    <BlocoCard icon={AlertTriangle} titulo="Alertas">
+    <BlocoCard icon={AlertTriangle} titulo="Alertas" periodo={periodo.labelCurto}>
       {loading ? (
         <p className="text-sm text-muted-foreground">Carregando…</p>
       ) : alertas.length === 0 ? (
@@ -404,10 +458,21 @@ export function ExecutivoTab({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold">Visão Executiva</h2>
-        <p className="text-sm text-muted-foreground">Resumo do comercial · {periodLabel ?? 'período selecionado'}</p>
-      </div>
+      {/* TV-2: no telão o período vira badge de destaque — a 3–5 m um <p> de
+          text-sm é ilegível, e o telão não tem quem pergunte "de que mês é isso?". */}
+      {tvMode ? (
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-2xl font-bold">Visão Executiva · Comercial</h2>
+          <span className="text-xl font-bold font-mono px-4 py-1.5 rounded-lg border-2 border-primary/60 bg-primary/10 text-primary whitespace-nowrap">
+            {periodoTitulo}
+          </span>
+        </div>
+      ) : (
+        <div>
+          <h2 className="text-xl font-bold">Visão Executiva</h2>
+          <p className="text-sm text-muted-foreground">Resumo do comercial · {periodoTitulo}</p>
+        </div>
+      )}
 
       {tvMode ? (
         // Modo TV: sem Receita realizada · grade nivelada 3 colunas — o card
@@ -422,11 +487,12 @@ export function ExecutivoTab({
             {satisfacaoCard}
             {alertasCard}
           </div>
-          <BlocoCard icon={FilterIcon} titulo={`Funil SDR (Geral) · ${funilMesLabel}`}>
+          <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)" periodo={funilMesLabel}>
             {funilLoading ? (
               <p className="text-sm text-muted-foreground">Carregando…</p>
             ) : (
               <>
+                {funilFallbackNota}
                 <div className="px-1">
                   <FunnelViz etapas={funilSdr} compact />
                 </div>

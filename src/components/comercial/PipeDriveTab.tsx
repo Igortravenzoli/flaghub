@@ -6,6 +6,8 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { TrendingUp, TrendingDown, Target, BarChart3, FileText, Activity, Building2 } from 'lucide-react';
 import { useComercialVendas, ComercialVenda } from '@/hooks/useComercialVendas';
+import { useComercialMetas } from '@/hooks/useComercialMetas';
+import { metaFinanceiraPorMes } from '@/lib/comercialMetaFinanceira';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   CartesianGrid, ReferenceLine, PieChart, Pie,
@@ -38,8 +40,6 @@ const columns: DataTableColumn<ComercialVenda>[] = [
     render: (r) => r.closed_date ? new Date(r.closed_date).toLocaleDateString('pt-BR') : '—',
   },
 ];
-
-const META_MENSAL = 110_000; // referência 100% — exibição apenas percentual
 
 function formatMonthYm(ym: string) {
   const [y, m] = ym.split('-');
@@ -101,6 +101,10 @@ export function PipeDriveTab({
   periodLabel,
 }: PipeDriveTabProps) {
   const { items, isLoading, isError, refetch } = useComercialVendas();
+  // Meta do mês vem das metas cadastradas (soma dos produtos ou faturamento
+  // cadastrado) — antes era uma constante de R$ 110k neste arquivo.
+  const { data: metas = [] } = useComercialMetas();
+  const metaPorMes = useMemo(() => metaFinanceiraPorMes(metas), [metas]);
   const [selectedBandeira, setSelectedBandeira] = useState<string | null>(null);
   const [drawerItem, setDrawerItem] = useState<ComercialVenda | null>(null);
 
@@ -161,8 +165,10 @@ export function PipeDriveTab({
     const vendasPorMes = [...mesMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([ym, val]) => {
-        const pct = Math.round((val / META_MENSAL) * 1000) / 10;
-        return { mes: formatMonthYm(ym), percentualMeta: pct, atingiuMeta: pct >= 100 };
+        const meta = metaPorMes.get(ym)?.efetiva ?? 0;
+        // Mês sem meta cadastrada fica em 0% — antes dividia por 110k fixo.
+        const pct = meta > 0 ? Math.round((val / meta) * 1000) / 10 : 0;
+        return { mes: formatMonthYm(ym), percentualMeta: pct, atingiuMeta: pct >= 100, semMeta: meta <= 0 };
       });
 
     return {
@@ -171,7 +177,7 @@ export function PipeDriveTab({
       vendasPorMes,
       orgs: vendasPorOrg.map((v) => v.bandeira),
     };
-  }, [itemsFiltrados, dateFrom, dateTo]);
+  }, [itemsFiltrados, dateFrom, dateTo, metaPorMes]);
 
   const mesesComDados = stats.vendasPorMes.filter((m) => m.percentualMeta > 0);
   const mediaAtingimento = mesesComDados.length > 0

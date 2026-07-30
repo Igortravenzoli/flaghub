@@ -16,6 +16,8 @@ interface VendaFormDialogProps {
   produtosDisponiveis?: string[];
   /** Verifica se existe meta do produto no mês (YYYY-MM) — para o aviso */
   hasMetaFor?: (produto: string, ym: string) => boolean;
+  /** Preço unitário cadastrado na meta do produto no mês — pré-preenche o item */
+  valorUnitarioDe?: (produto: string, ym: string) => number | null;
 }
 
 function today(): string {
@@ -39,6 +41,24 @@ interface ItemRow extends VendaItemForm {
   livre: boolean; // produto digitado manualmente (fora da lista de metas)
 }
 
+function num(raw: string): number | null {
+  const v = (raw ?? "").trim().replace(/\./g, "").replace(",", ".");
+  if (!v) return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Valor efetivo da linha: override manual, ou qtd × unitário. */
+function valorLinha(it: ItemRow): number | null {
+  const total = num(it.valor_total);
+  if (total != null) return total;
+  const vu = num(it.valor_unitario);
+  if (vu == null) return null;
+  return (parseInt(it.quantidade, 10) || 0) * vu;
+}
+
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
 export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
   open,
   onClose,
@@ -47,6 +67,7 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
   mode = "create",
   produtosDisponiveis = [],
   hasMetaFor,
+  valorUnitarioDe,
 }) => {
   const [form, setForm] = useState<VendaFormData>({ ...DEFAULT, ...initialData });
   const [itens, setItens] = useState<ItemRow[]>([]);
@@ -56,6 +77,8 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
     setItens(
       (initialData?.itens ?? []).map((i) => ({
         ...i,
+        valor_unitario: i.valor_unitario ?? "",
+        valor_total: i.valor_total ?? "",
         livre: produtosDisponiveis.length > 0 && !produtosDisponiveis.includes(i.produto),
       }))
     );
@@ -72,7 +95,10 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
   }
 
   function addItem() {
-    setItens((prev) => [...prev, { produto: "", quantidade: "1", livre: produtosDisponiveis.length === 0 }]);
+    setItens((prev) => [
+      ...prev,
+      { produto: "", quantidade: "1", valor_unitario: "", valor_total: "", livre: produtosDisponiveis.length === 0 },
+    ]);
   }
 
   function removeItem(idx: number) {
@@ -81,6 +107,26 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
 
   // Mês de referência efetivo (YYYY-MM) para o aviso de meta ausente
   const ymRef = (form.period_month || form.closed_date || "").slice(0, 7);
+
+  /** Troca de produto: puxa o unitário da meta do mês (o usuário só confirma). */
+  function escolherProduto(idx: number, produto: string) {
+    const atual = itens[idx];
+    const sugerido = valorUnitarioDe?.(produto, ymRef);
+    const patch: Partial<ItemRow> = { produto };
+    // Só sugere quando o campo está vazio — nunca sobrescreve número digitado.
+    if (!atual?.valor_unitario && sugerido != null) patch.valor_unitario = String(sugerido);
+    setItem(idx, patch);
+  }
+
+  const subtotalItens = itens.reduce((s, it) => s + (valorLinha(it) ?? 0), 0);
+  const itensSemValor = itens.filter((it) => it.produto && valorLinha(it) == null).length;
+  const dealValue = num(form.deal_value);
+  // Divergência é EXIBIDA, nunca corrigida sozinha: deal_value é o valor do
+  // contrato (fonte do faturamento) e os itens são a conferência.
+  const divergencia =
+    dealValue != null && subtotalItens > 0 && Math.abs(dealValue - subtotalItens) >= 0.01
+      ? dealValue - subtotalItens
+      : null;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -177,7 +223,8 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
               <div>
                 <p className="text-xs font-semibold">Produtos vendidos neste contrato</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Alimenta automaticamente a Qtd Realizada em Meta Produtos — sem digitar duas vezes.
+                  Alimenta a Qtd Realizada em Meta Produtos. O valor é calculado
+                  (qtd × unitário) e pode ser corrigido à mão.
                 </p>
               </div>
               <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={addItem}>
@@ -191,12 +238,24 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
               </p>
             )}
 
+            {itens.length > 0 && (
+              <div className="flex gap-2 items-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="flex-1 min-w-0">Produto</span>
+                <span className="w-16 text-center">Qtd</span>
+                <span className="w-24 text-center">Vlr unit.</span>
+                <span className="w-28 text-center">Valor</span>
+                <span className="w-8" />
+              </div>
+            )}
+
             {itens.map((item, idx) => {
               const semMeta =
                 !!item.produto &&
                 !!ymRef &&
                 !!hasMetaFor &&
                 !hasMetaFor(item.produto, ymRef);
+              const calculado = valorLinha(item);
+              const manual = num(item.valor_total) != null;
               return (
                 <div key={idx} className="space-y-1">
                   <div className="flex gap-2 items-center">
@@ -206,7 +265,7 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
                           value={item.produto || ""}
                           onValueChange={(v) => {
                             if (v === OUTRO) setItem(idx, { livre: true, produto: "" });
-                            else setItem(idx, { produto: v });
+                            else escolherProduto(idx, v);
                           }}
                         >
                           <SelectTrigger className="h-8 text-xs">
@@ -229,12 +288,27 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
                       )}
                     </div>
                     <Input
-                      className="h-8 text-xs w-20 text-center"
+                      className="h-8 text-xs w-16 text-center"
                       type="number"
                       min={1}
                       placeholder="Qtd"
                       value={item.quantidade}
                       onChange={(e) => setItem(idx, { quantidade: e.target.value })}
+                    />
+                    <Input
+                      className="h-8 text-xs w-24 text-right font-mono"
+                      inputMode="decimal"
+                      placeholder="unit."
+                      value={item.valor_unitario}
+                      onChange={(e) => setItem(idx, { valor_unitario: e.target.value })}
+                    />
+                    <Input
+                      className={`h-8 text-xs w-28 text-right font-mono ${manual ? "" : "text-muted-foreground"}`}
+                      inputMode="decimal"
+                      title={manual ? "Valor corrigido à mão — limpe o campo para voltar ao cálculo" : "Calculado: qtd × unitário"}
+                      placeholder={calculado != null ? calculado.toFixed(2) : "—"}
+                      value={item.valor_total}
+                      onChange={(e) => setItem(idx, { valor_total: e.target.value })}
                     />
                     <Button
                       type="button"
@@ -256,6 +330,28 @@ export const VendaFormDialog: React.FC<VendaFormDialogProps> = ({
                 </div>
               );
             })}
+
+            {itens.length > 0 && (
+              <div className="border-t pt-2 space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold">Subtotal dos itens</span>
+                  <span className="font-mono font-semibold">{brl(subtotalItens)}</span>
+                </div>
+                {itensSemValor > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {itensSemValor} {itensSemValor === 1 ? "item sem valor" : "itens sem valor"} — não entram no subtotal.
+                  </p>
+                )}
+                {divergencia !== null && (
+                  <p className="flex items-center gap-1 text-[11px] text-amber-600">
+                    <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                    Valor do negócio difere do subtotal em {brl(Math.abs(divergencia))}
+                    {divergencia > 0 ? " (negócio maior)" : " (itens maiores)"} — confira se falta item
+                    ou se o contrato inclui algo fora da lista. O faturamento continua usando o Valor do Negócio.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Observação */}
