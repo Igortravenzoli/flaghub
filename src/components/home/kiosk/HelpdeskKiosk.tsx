@@ -9,7 +9,7 @@ export default function HelpdeskKiosk() {
   return (
     <HelpdeskExecutivoTab
       totalRegistros={k.totalRegistros}
-      totalHoras={k.totalHoras}
+      totalMinutos={k.totalMinutos}
       consultoresAtivos={k.totalConsultores}
       registrosPorConsultor={k.registrosPorConsultor}
       tipoChamadoTempoMedio={k.tipoChamadoTempoMedio}

@@ -1,6 +1,22 @@
-import { useQuery } from '@tanstack/react-query';
+﻿import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import {
+  DASH, countBy, isNao, isSim, num, recentes, simNaoOf, statusMatches, str,
+  type NameValue, type SgsiRawItem, type SimNao,
+} from '@/lib/sgsiFields';
+
+// ── Re-exports de compatibilidade (INC-1) ───────────────────────────────
+// Os helpers e tipos puros migraram para `@/lib/sgsiFields` para que o card de
+// Customer Service (`useCsIncidentesDeclarados`) não precise arrastar a
+// paginação do espelho inteiro. Estes re-exports mantêm os call sites intactos:
+//   • src/test/sgsiBuild.test.ts        → countBy, simNaoOf, SgsiRawItem
+//   • src/components/infraestrutura/BIInfraSgsiPanel.tsx → NameValue, SimNao
+//   • src/test/infraExecutivoTv.test.tsx → spread do namespace (precisa dos VALORES)
+// `export { countBy, simNaoOf }` tem de ser re-export de VALOR: com `export type`
+// as funções sairiam do namespace e os testes acima quebrariam.
+export { countBy, simNaoOf };
+export type { NameValue, SgsiRawItem, SimNao };
 
 // ── BI Infra / SGSI ────────────────────────────────────────────────────
 // Espelho das listas SharePoint do site PORTALSGSI (mesma fonte do Power BI
@@ -15,15 +31,7 @@ import { fetchAllRows } from '@/lib/fetchAllRows';
 // Os agregados (8 páginas do PBIX → 5 visões) são calculados aqui, a partir
 // dos campos jsonb chaveados pelo displayName das colunas.
 
-export interface NameValue {
-  name: string;
-  value: number;
-}
-
-export interface SimNao {
-  sim: number;
-  nao: number;
-}
+// `NameValue` e `SimNao` vivem em `@/lib/sgsiFields` e são re-exportados acima.
 
 // SG-LST-010 — Mudanças e atualizações
 export interface SgMudancaItem {
@@ -220,100 +228,10 @@ export interface BIInfraSgsiResponse {
   acessos: SgAcessosBloco;
 }
 
-// ── Linhas cruas do espelho (sgsi_items) ───────────────────────────────
-
-export interface SgsiRawItem {
-  list_key: string; // '010' | '011' | '012' | '014' | '017' | '018'
-  item_id: number;
-  fields: Record<string, unknown>;
-  created_sp: string | null;
-  modified_sp: string | null;
-}
-
-// ── Helpers puros (testáveis) ──────────────────────────────────────────
-
-/** Valores de um campo: colunas multi-escolha do SharePoint chegam como array
- *  — ou como STRING JSON de array ('["Froneri"]'), que também expandimos. */
-function valuesOf(item: SgsiRawItem, ...names: string[]): string[] {
-  for (const name of names) {
-    const v = item.fields[name];
-    if (v === null || v === undefined || v === '') continue;
-    if (Array.isArray(v)) {
-      const arr = v.map((x) => String(x)).filter(Boolean);
-      if (arr.length > 0) return arr;
-      continue;
-    }
-    if (typeof v === 'string') {
-      const s = v.trim();
-      if (s.startsWith('[') && s.endsWith(']')) {
-        try {
-          const arr = JSON.parse(s);
-          if (Array.isArray(arr)) {
-            const out = arr.map((x) => String(x)).filter(Boolean);
-            if (out.length > 0) return out;
-            continue;
-          }
-        } catch { /* texto normal que começa com colchete */ }
-      }
-      return [v];
-    }
-    if (typeof v === 'number' || typeof v === 'boolean') return [String(v)];
-  }
-  return [];
-}
-
-function str(item: SgsiRawItem, ...names: string[]): string {
-  return valuesOf(item, ...names).join(', ');
-}
-
-function num(item: SgsiRawItem, ...names: string[]): number {
-  const raw = str(item, ...names).replace(',', '.');
-  const n = parseFloat(raw);
-  return Number.isFinite(n) ? n : 0;
-}
-
-/** Campos Sim/Não do SharePoint chegam como boolean ou texto ("Sim"/"Yes"). */
-function isSim(value: unknown): boolean {
-  if (value === true) return true;
-  if (typeof value === 'string') return /^(s|y|true)/i.test(value.trim());
-  return false;
-}
-
-function isNao(value: unknown): boolean {
-  if (value === false) return true;
-  if (typeof value === 'string') return /^(n|false)/i.test(value.trim());
-  return false;
-}
-
-export function countBy(items: SgsiRawItem[], ...fieldNames: string[]): NameValue[] {
-  const map = new Map<string, number>();
-  for (const item of items) {
-    for (const v of valuesOf(item, ...fieldNames)) {
-      map.set(v, (map.get(v) ?? 0) + 1);
-    }
-  }
-  return [...map.entries()]
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-}
-
-export function simNaoOf(items: SgsiRawItem[], ...fieldNames: string[]): SimNao {
-  let sim = 0, nao = 0;
-  for (const item of items) {
-    for (const name of fieldNames) {
-      const v = item.fields[name];
-      if (v === null || v === undefined || v === '') continue;
-      if (isSim(v)) sim++;
-      else if (isNao(v)) nao++;
-      break;
-    }
-  }
-  return { sim, nao };
-}
-
-function statusMatches(item: SgsiRawItem, fieldNames: string[], pattern: RegExp): boolean {
-  return pattern.test(str(item, ...fieldNames));
-}
+// Linhas cruas do espelho (`SgsiRawItem`), parsing de campos (`valuesOf`/`str`/
+// `num`/`isSim`/`isNao`/`countBy`/`simNaoOf`/`statusMatches`/`recentes`) e `DASH`
+// vivem em `@/lib/sgsiFields` e sao re-exportados no topo deste arquivo.
+// Abaixo ficam so os helpers exclusivos desta visao (contadores "dias sem").
 
 function daysSince(iso: string | null | undefined, now: Date): number | null {
   if (!iso) return null;
@@ -330,14 +248,6 @@ function maxDate(items: SgsiRawItem[], pick: (i: SgsiRawItem) => string | null):
   }
   return max;
 }
-
-function recentes(items: SgsiRawItem[], limit: number): SgsiRawItem[] {
-  return [...items]
-    .sort((a, b) => (b.modified_sp ?? b.created_sp ?? '').localeCompare(a.modified_sp ?? a.created_sp ?? ''))
-    .slice(0, limit);
-}
-
-const DASH = '—';
 
 /** Monta a resposta SGSI completa a partir das linhas espelhadas do SharePoint.
  *  `range` (sprint/período do dashboard) filtra os blocos por data de criação

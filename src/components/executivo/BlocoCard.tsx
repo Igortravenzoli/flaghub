@@ -1,4 +1,6 @@
+import { CalendarClock } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 /**
  * Card padrão das Visões Executivas dos setores (ícone + título + conteúdo).
@@ -40,6 +42,32 @@ export function BlocoCard({
       </div>
       {children}
     </Card>
+  );
+}
+
+/**
+ * Selo de "resultado calculado" (SLA-8) — para o `headerRight` de cards cujo
+ * número vem de uma janela de CALENDÁRIO fixa e portanto **não responde ao
+ * filtro de período da tela**.
+ *
+ * Regra do modo TV respeitada porque o `texto` é sempre visível e a janela
+ * detalhada também aparece em texto no rodapé do card: o `title` é redundância,
+ * nunca a única fonte.
+ */
+export function SeloCalculado({ texto = 'resultado calculado', janela }: {
+  texto?: string;
+  /** Detalhe da janela (multilinha ok) — vai para o `title`, como redundância. */
+  janela: string;
+}) {
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1 shrink-0 text-[10px] font-medium text-muted-foreground"
+      title={janela}
+    >
+      <CalendarClock className="h-3 w-3 shrink-0" aria-hidden />
+      {texto}
+    </Badge>
   );
 }
 

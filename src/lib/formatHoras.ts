@@ -36,3 +36,20 @@ export function horasHMComSinal(minutos: number): string {
 export function horasHMdeDecimal(horas: number): string {
   return horasHM(Math.round(horas * 60));
 }
+
+/**
+ * TMA (tempo médio de atendimento): "23min" abaixo de 1h, "1:45" a partir dela.
+ *
+ * Recebe MINUTOS BRUTOS e a contagem de registros — dividir `totalHoras` (que já
+ * chega arredondado a 1 decimal de `useHelpdeskKpis`) degrada o resultado.
+ * Sem registros → '—' (nunca "0min", nunca "NaN"): ausência de base não é zero.
+ * O arredondamento vem ANTES da escolha do formato, senão 59,6 min sairia como
+ * "60min" em vez de "1:00".
+ */
+export function tmaCurto(totalMinutos: number, totalRegistros: number): string {
+  if (!totalRegistros || !Number.isFinite(totalMinutos) || !Number.isFinite(totalRegistros)) {
+    return '—';
+  }
+  const m = Math.round(totalMinutos / totalRegistros);
+  return m < 60 ? `${m}min` : horasHM(m);
+}

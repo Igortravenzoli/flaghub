@@ -279,7 +279,7 @@ export default function HelpdeskDashboard() {
       content: (
         <HelpdeskExecutivoTab
           totalRegistros={filteredTotalRegistros}
-          totalHoras={filteredTotalHoras}
+          totalMinutos={filteredTotalMinutos}
           consultoresAtivos={selectedConsultants.length || totalConsultores}
           registrosPorConsultor={registrosPorConsultor}
           tipoChamadoTempoMedio={tipoChamadoTempoMedio}

@@ -1,228 +1,30 @@
-import { useMemo, type ReactNode } from 'react';
+﻿import { useMemo, useState, type ReactNode } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, LabelList,
 } from 'recharts';
 import {
-  Headphones, Users, Clock, CalendarClock, Monitor, ShieldCheck, Gauge,
-  TrendingUp, TrendingDown, Minus, AlertOctagon, Globe, Crosshair,
+  Users, Clock, CalendarClock, Monitor,
 } from 'lucide-react';
-import { BlocoCard, SecHeader } from '@/components/executivo/BlocoCard';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { BlocoCard, SecHeader, SeloCalculado } from '@/components/executivo/BlocoCard';
 import type { ConsultorKpi, TipoChamadoKpi, RegistroPorGrupo, HistoricoEntry } from '@/hooks/useHelpdeskKpis';
+import { useGestaoSlaMensal } from '@/hooks/useGestaoKpis';
 import {
-  useGestaoSlaNestle, useGestaoSlaHeineken, useGestaoSlaFlag, type GestaoSlaResponse,
-} from '@/hooks/useGestaoKpis';
-import { useTechLeadPorDia, type PorDiaItem } from '@/hooks/useTechLeadKpis';
-
-// Metas fixas de SLA (fallback; o gateway Gestão retorna as metas por segmento)
-const META_TTR_DIAS = 3.9;
-const META_24H_PCT = 48;
+  SlaSegmentoCard, SlaIncDetalheSheet, type SlaIncDrillAlvo,
+} from '@/components/helpdesk/SlaSegmentoCard';
+import { PanoramaAtendimentoCard } from '@/components/helpdesk/PanoramaAtendimentoCard';
+import { ProdutividadeConsultoresCard } from '@/components/helpdesk/ProdutividadeConsultoresCard';
+import { IncidentesDeclaradosCard } from '@/components/helpdesk/IncidentesDeclaradosCard';
 
 // Consultores de atendimento (CS) — escopo do Wilker
 const CONSULTORES_CS = ['ailton', 'italo', 'leandro', 'vagner', 'guimaraes', 'ricardo', 'wilker', 'bruna', 'ronaldo'];
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const isConsultorCS = (nome: string) => { const n = norm(nome); return CONSULTORES_CS.some((t) => n.includes(t)); };
 
-const MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-/** 'YYYY-MM' → 'mmm/aa'. */
-const fmtMes = (ym: string) => {
-  const [y, m] = ym.split('-');
-  return `${MESES_ABREV[Number(m) - 1] ?? m}/${(y ?? '').slice(2)}`;
-};
-
-// ── Incidentes com PARADA (estrutura de priorização) ──────────────────────
-// Origem de dados ainda a definir (VDesk/Automate) — mapeamento provisório dos
-// incidentes que futuramente terão origem automática. Peso: Global = impacto
-// máximo (todos os clientes); Pontual = proporcional (clientes afetados ÷ base).
-type IncidenteParadaEscopo = 'global' | 'pontual';
-interface IncidenteParada {
-  nome: string;
-  sistema: string;
-  escopo: IncidenteParadaEscopo;
-  /** Apenas para escopo pontual: nº de clientes afetados. */
-  clientesAfetados?: number;
-}
-const INCIDENTES_PARADA_SEED: IncidenteParada[] = [
-  { nome: 'Trava versão app Merchan', sistema: 'ConnectMerchan', escopo: 'global' },
-  { nome: 'Trava versão banco Merchan', sistema: 'ConnectMerchan', escopo: 'global' },
-  { nome: 'Lentidão digitação de pedidos', sistema: 'Flexx', escopo: 'global' },
-  { nome: 'Erro componente NFE', sistema: 'Flexx', escopo: 'pontual', clientesAfetados: 3 },
-];
-
-const corOk = (ok: boolean | null) => (ok == null ? undefined : ok ? '#16a34a' : '#ef4444');
-const okLow = (v?: number | null, m?: number | null) => (v == null || m == null ? null : v <= m);
-const okHigh = (v?: number | null, m?: number | null) => (v == null || m == null ? null : v >= m);
-const fmtMeta = (m?: number | null, suf = '') => (m == null ? '—' : suf === 'd' ? `${m.toFixed(2)}d` : suf === '%' ? `${Math.round(m)}%` : `${m}`);
-
-function MetricaSla({ label, valor, sufixo, ok, meta }: {
-  label: string; valor?: number | null; sufixo: 'd' | '%' | ''; ok: boolean | null; meta: string;
-}) {
-  const fmt = valor == null ? '—' : sufixo === 'd' ? `${valor.toFixed(2)}d` : sufixo === '%' ? `${Math.round(valor)}%` : `${valor}`;
-  return (
-    <div>
-      <p className="text-lg font-bold font-mono leading-tight" style={{ color: corOk(ok) }}>{fmt}</p>
-      <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
-      <p className="text-[9px] text-muted-foreground/80 leading-tight">{meta}</p>
-    </div>
-  );
-}
-
-/** Card SLA executivo por segmento (Nestlé/Heineken/Flag) — fonte: gateway Gestão. */
-function SlaExecCard({ titulo, data }: { titulo: string; data?: GestaoSlaResponse }) {
-  const k = data?.kpis;
-  const metaTtr = data?.metas?.metaTTRDias ?? META_TTR_DIAS;
-  const metaPct = data?.metas?.metaTTR24hPct ?? META_24H_PCT;
-  const okTtr = data?.status?.ttr ? data.status.ttr === 'OK' : okLow(k?.ttrMedioFechadoDias, metaTtr);
-  const okPct = data?.status?.pct24h ? data.status.pct24h === 'OK' : okHigh(k?.pctEncerrados24h, metaPct);
-
-  return (
-    <BlocoCard icon={ShieldCheck} titulo={`SLA ${titulo}`}>
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <MetricaSla label="TTR (fechadas)" valor={k?.ttrMedioFechadoDias} sufixo="d" ok={okTtr} meta={`≤ ${fmtMeta(metaTtr, 'd')}`} />
-        <MetricaSla label="≤24h" valor={k?.pctEncerrados24h} sufixo="%" ok={okPct} meta={`≥ ${fmtMeta(metaPct, '%')}`} />
-        <MetricaSla label="OS abertas" valor={k?.totalAbertos} sufixo="" ok={null} meta={`> 30d: ${k?.abertos30Dias ?? '—'}`} />
-      </div>
-      <p className="text-[10px] text-muted-foreground/80 border-t pt-1.5">
-        TTR médio das fechadas (60d) · {k?.totalFechados60Dias ?? '—'} fechadas no período.
-      </p>
-    </BlocoCard>
-  );
-}
-
-// Faixa de produtividade: verde ≥ 80% · âmbar ≥ 50% · vermelho < 50%
-const faixaCor = (p: number) => (p >= 80 ? 'hsl(142,71%,45%)' : p >= 50 ? 'hsl(43,85%,46%)' : 'hsl(0,84%,60%)');
-
-/** Heatmap consultor × dia (produtividade diária, campo produtividadeDia do TechLead). */
-function ProdutividadeHeatmap({ registros, isLoading }: { registros: PorDiaItem[]; isLoading: boolean }) {
-  const { dias, linhas } = useMemo(() => {
-    const diasSet = new Set<string>();
-    const porConsultor = new Map<string, Map<string, number>>();
-    for (const r of registros) {
-      const dia = r.dataRegistro?.slice(0, 10);
-      if (!dia) continue;
-      diasSet.add(dia);
-      if (!porConsultor.has(r.consultor)) porConsultor.set(r.consultor, new Map());
-      porConsultor.get(r.consultor)!.set(dia, r.produtividadeDia);
-    }
-    const dias = [...diasSet].sort();
-    const linhas = [...porConsultor.entries()]
-      .map(([consultor, mapa]) => {
-        const vals = [...mapa.values()];
-        const media = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
-        return { consultor, mapa, media };
-      })
-      .sort((a, b) => (b.media ?? 0) - (a.media ?? 0));
-    return { dias, linhas };
-  }, [registros]);
-
-  if (isLoading) return <Skeleton className="h-48 w-full" />;
-  if (!linhas.length) return <p className="text-sm text-muted-foreground py-8 text-center">Sem dados de produtividade no período.</p>;
-
-  const fmtDia = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit' });
-
-  return (
-    <div>
-      <div className="overflow-x-auto">
-        <table className="border-separate" style={{ borderSpacing: 2 }}>
-          <thead>
-            <tr>
-              <th className="sticky left-0 bg-background z-10" />
-              {dias.map((d) => (
-                <th key={d} className="text-[9px] text-muted-foreground font-medium px-0.5" title={d}>{fmtDia(d)}</th>
-              ))}
-              <th className="text-[9px] text-muted-foreground font-medium pl-2">Média</th>
-            </tr>
-          </thead>
-          <tbody>
-            {linhas.map(({ consultor, mapa, media }) => (
-              <tr key={consultor}>
-                <td className="sticky left-0 bg-background z-10 pr-2 text-[11px] font-medium whitespace-nowrap">{consultor}</td>
-                {dias.map((d) => {
-                  const v = mapa.get(d);
-                  return (
-                    <td key={d} className="p-0">
-                      <div
-                        className="w-4 h-4 rounded-sm mx-auto"
-                        style={{ backgroundColor: v == null ? 'hsl(var(--muted))' : faixaCor(v) }}
-                        title={v == null ? `${consultor} · ${d}: sem registro` : `${consultor} · ${d}: ${Math.round(v)}%`}
-                      />
-                    </td>
-                  );
-                })}
-                <td className="pl-2 text-[11px] font-bold font-mono" style={{ color: media == null ? undefined : faixaCor(media) }}>
-                  {media == null ? '—' : `${Math.round(media)}%`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex items-center gap-3 border-t pt-2 mt-2 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: 'hsl(142,71%,45%)' }} /> ≥ 80%</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: 'hsl(43,85%,46%)' }} /> ≥ 50%</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: 'hsl(0,84%,60%)' }} /> &lt; 50%</span>
-        <span className="ml-auto">Produtividade por consultor × dia (TechLead)</span>
-      </div>
-    </div>
-  );
-}
-
-/** Delta mês-a-mês estilo Nestlé (▲ verde / ▼ vermelho / — neutro). */
-function DeltaBadge({ atual, anterior }: { atual: number; anterior: number }) {
-  if (anterior <= 0) return <span className="text-[11px] text-muted-foreground">—</span>;
-  const pct = Math.round(((atual - anterior) / anterior) * 100);
-  const Icon = pct > 0 ? TrendingUp : pct < 0 ? TrendingDown : Minus;
-  const cor = pct > 0 ? '#16a34a' : pct < 0 ? '#ef4444' : '#64748b';
-  return (
-    <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: cor }}>
-      <Icon className="h-3 w-3" />{pct > 0 ? '+' : ''}{pct}%
-    </span>
-  );
-}
-
-/** Priorização de incidentes com parada por escopo (Global × Pontual). Estrutura
- *  provisória — origem de dados a definir (VDesk/Automate). */
-function IncidentesComParadaCard({ base }: { base: number }) {
-  const peso = (i: IncidenteParada): { pct: number | null; label: string } => {
-    if (i.escopo === 'global') return { pct: 100, label: 'todos os clientes' };
-    const n = i.clientesAfetados ?? 0;
-    return { pct: base > 0 ? Math.round((n / base) * 100) : null, label: `${n} cliente${n > 1 ? 's' : ''}` };
-  };
-  return (
-    <BlocoCard icon={AlertOctagon} titulo="Incidentes com parada · priorização" className="lg:col-span-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        {INCIDENTES_PARADA_SEED.map((i) => {
-          const p = peso(i);
-          const global = i.escopo === 'global';
-          return (
-            <div key={i.nome} className="flex items-center gap-2 rounded-lg border p-2">
-              {global ? <Globe className="h-4 w-4 text-red-500 shrink-0" /> : <Crosshair className="h-4 w-4 text-amber-500 shrink-0" />}
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-foreground truncate" title={i.nome}>{i.nome}</p>
-                <p className="text-[10px] text-muted-foreground">{i.sistema} · {p.label}</p>
-              </div>
-              <div className="text-right shrink-0">
-                <Badge variant={global ? 'destructive' : 'outline'} className="text-[10px]">{global ? 'Global' : 'Pontual'}</Badge>
-                <p className="text-xs font-bold font-mono mt-0.5" style={{ color: global ? '#ef4444' : '#f59e0b' }}>
-                  {p.pct != null ? `${p.pct}%` : '—'}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <p className="text-[10px] text-muted-foreground/80 border-t pt-2">
-        Estrutura provisória — origem a definir (VDesk/Automate). Peso: <b>Global</b> = impacto máximo (todos os clientes);{' '}
-        <b>Pontual</b> = proporcional (afetados ÷ {base > 0 ? `${base} clientes do período` : 'base de clientes'}).
-      </p>
-    </BlocoCard>
-  );
-}
-
 interface HelpdeskExecutivoTabProps {
   totalRegistros: number;
-  totalHoras: number;
+  /** MINUTOS BRUTOS (não `totalHoras`): o TMA e o h:mm são calculados aqui.
+   *  Dividir o decimal já arredondado da origem degradaria os dois. */
+  totalMinutos: number;
   consultoresAtivos: number;
   registrosPorConsultor: ConsultorKpi[];
   tipoChamadoTempoMedio: TipoChamadoKpi[];
@@ -231,7 +33,8 @@ interface HelpdeskExecutivoTabProps {
   registrosPorCliente: RegistroPorGrupo[];
   historico: HistoricoEntry[];
   periodLabel?: string;
-  /** Range para o heatmap de produtividade (TechLead por-dia). Default: mês atual. */
+  /** Período dos cards que consultam o backend por range (produtividade dias-úteis
+   *  e incidentes declarados). Default: mês atual. */
   dataInicio?: Date;
   dataFim?: Date;
   /** Filtro de período (renderizado no topo). Omitido no kiosk/TV. */
@@ -239,19 +42,23 @@ interface HelpdeskExecutivoTabProps {
 }
 
 export function HelpdeskExecutivoTab({
-  totalRegistros, totalHoras, consultoresAtivos,
+  totalRegistros, totalMinutos, consultoresAtivos,
   registrosPorConsultor, tipoChamadoTempoMedio,
   registrosPorSistema, registrosPorBandeira, registrosPorCliente,
   historico, periodLabel, dataInicio, dataFim, filterBar,
 }: HelpdeskExecutivoTabProps) {
-  const { data: slaNestle } = useGestaoSlaNestle();
-  const { data: slaHeineken } = useGestaoSlaHeineken();
-  const { data: slaFlag } = useGestaoSlaFlag();
+  // SLA-1: um hook por segmento, janela de CALENDÁRIO (não recebe o filtro).
+  const slaNestle = useGestaoSlaMensal('nestle');
+  const slaHeineken = useGestaoSlaMensal('heineken');
+  const slaOutras = useGestaoSlaMensal('outros');
+
+  const [incDrill, setIncDrill] = useState<SlaIncDrillAlvo | null>(null);
+  // O modo TV (HelpdeskKiosk) não passa filterBar → rodapé sem clique lá.
+  const drillInc = filterBar ? setIncDrill : undefined;
 
   const now = new Date();
-  const heatIni = dataInicio ?? new Date(now.getFullYear(), now.getMonth(), 1);
-  const heatFim = dataFim ?? now;
-  const porDia = useTechLeadPorDia(heatIni, heatFim);
+  const periodoIni = dataInicio ?? new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodoFim = dataFim ?? now;
 
   // Volume por consultor — filtra os 9 do CS e DEDUPLICA por nome (corrige "duas barrinhas")
   const consultoresData = useMemo(() => {
@@ -284,24 +91,6 @@ export function HelpdeskExecutivoTab({
     [historico]
   );
 
-  // Comparativo mensal (mês atual × anterior + série do período) — agregado do histórico.
-  const mensal = useMemo(() => {
-    const byMonth = new Map<string, { registros: number; minutos: number }>();
-    for (const h of historico) {
-      const mes = h.date?.slice(0, 7);
-      if (!mes) continue;
-      const cur = byMonth.get(mes) ?? { registros: 0, minutos: 0 };
-      cur.registros += h.totalRegistros;
-      cur.minutos += h.totalMinutos;
-      byMonth.set(mes, cur);
-    }
-    return [...byMonth.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([mes, v]) => ({ mes, mesLabel: fmtMes(mes), registros: v.registros, horas: Math.round(v.minutos / 60 * 10) / 10 }));
-  }, [historico]);
-  const mesAtual = mensal.at(-1);
-  const mesAnterior = mensal.at(-2);
-
   return (
     <div className="space-y-5">
       <div>
@@ -313,90 +102,54 @@ export function HelpdeskExecutivoTab({
 
       {filterBar}
 
-      {/* ═══════ 1ª LINHA — RESULTADO ═══════ */}
-      <SecHeader title="Resultado" subtitle="SLA e panorama do mês" />
+      {/* ═══════ 1ª LINHA — RESULTADO (SLA-3/4/5/8) ═══════
+          3 slots, nesta ordem, e o 3º é "Outras Bandeiras" (nunca mais "Flag"). */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <SecHeader
+            title="Resultado"
+            subtitle="SLA por mês de calendário — mês atual · mês anterior · ano"
+          />
+        </div>
+        <SeloCalculado
+          janela={'Resultado calculado sobre janelas de calendário fechadas (mês atual, mês anterior e ano corrente).\nNão responde ao filtro de período desta tela.'}
+        />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <SlaExecCard titulo="Nestlé" data={slaNestle} />
-        <SlaExecCard titulo="Heineken" data={slaHeineken} />
-        <SlaExecCard titulo="Flag" data={slaFlag} />
+        <SlaSegmentoCard
+          titulo="Nestlé"
+          data={slaNestle.data} isLoading={slaNestle.isLoading} isError={slaNestle.isError}
+          refetch={() => slaNestle.refetch()} onDrillInc={drillInc}
+        />
+        <SlaSegmentoCard
+          titulo="Heineken"
+          data={slaHeineken.data} isLoading={slaHeineken.isLoading} isError={slaHeineken.isError}
+          refetch={() => slaHeineken.refetch()} onDrillInc={drillInc}
+        />
+        <SlaSegmentoCard
+          titulo="Outras Bandeiras"
+          data={slaOutras.data} isLoading={slaOutras.isLoading} isError={slaOutras.isError}
+          refetch={() => slaOutras.refetch()} onDrillInc={drillInc}
+        />
       </div>
 
       {/* ═══════ 2ª LINHA — INDICADORES ═══════ */}
-      <SecHeader title="Indicadores" subtitle="tipos, panorama e produtividade" />
+      <SecHeader title="Indicadores" subtitle="panorama, produtividade e volume por consultor" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Tempo Médio por Tipo de Chamado */}
-        <BlocoCard icon={Clock} titulo="Tempo Médio por Tipo de Chamado">
-          {tipos.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">Sem dados de tipo de chamado.</p>
-          ) : (
-            <div className="overflow-y-auto" style={{ maxHeight: 200 }}>
-              <ResponsiveContainer width="100%" height={Math.max(160, tipos.length * 28)}>
-                <BarChart data={tipos} layout="vertical" margin={{ top: 4, right: 36, bottom: 4, left: 8 }}>
-                  <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} unit="m" />
-                  <YAxis type="category" dataKey="tipo" width={96} tick={{ fontSize: 10 }} />
-                  <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v} min`, 'tempo médio']} />
-                  <Bar dataKey="tempo" fill="hsl(262,83%,58%)" radius={[0, 4, 4, 0]}>
-                    <LabelList dataKey="tempo" position="insideRight" fill="#fff" style={{ fontSize: 11, fontWeight: 600 }} formatter={(v: number) => `${v}m`} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Todos os tipos (role para ver mais).</p>
-        </BlocoCard>
+        {/* PAN-1 + PAN-2 */}
+        <PanoramaAtendimentoCard
+          totalRegistros={totalRegistros}
+          totalMinutos={totalMinutos}
+          consultoresAtivos={consultoresAtivos}
+          totalSistemas={registrosPorSistema.length}
+          totalBandeiras={registrosPorBandeira.length}
+          clientesNoPeriodo={registrosPorCliente.length}
+        />
 
-        {/* Panorama do Atendimento (volume + horas + cobertura unificados) */}
-        <BlocoCard icon={Headphones} titulo="Panorama do Atendimento">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-4xl font-bold font-mono">{totalRegistros}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">registros no período</p>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold font-mono">{totalHoras}h</p>
-              <p className="text-[11px] text-muted-foreground">horas</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-4 gap-2 text-center border-t pt-2">
-            <div><p className="text-xl font-bold font-mono">{consultoresAtivos}</p><p className="text-[10px] text-muted-foreground">consultores</p></div>
-            <div><p className="text-xl font-bold font-mono">{registrosPorSistema.length}</p><p className="text-[10px] text-muted-foreground">sistemas</p></div>
-            <div><p className="text-xl font-bold font-mono">{registrosPorBandeira.length}</p><p className="text-[10px] text-muted-foreground">bandeiras</p></div>
-            <div><p className="text-xl font-bold font-mono">{registrosPorCliente.length}</p><p className="text-[10px] text-muted-foreground">clientes</p></div>
-          </div>
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Volume, horas e abrangência do atendimento no período.</p>
-        </BlocoCard>
+        {/* PRD-1 — heatmap dia-a-dia + média sobre DIAS ÚTEIS */}
+        <ProdutividadeConsultoresCard dataInicio={periodoIni} dataFim={periodoFim} />
 
-        {/* Produtividade dos Consultores — heatmap consultor × dia (TechLead) */}
-        <BlocoCard icon={Gauge} titulo="Produtividade dos Consultores">
-          <ProdutividadeHeatmap registros={porDia.data?.registros ?? []} isLoading={porDia.isLoading} />
-        </BlocoCard>
-      </div>
-
-      {/* ═══════ 3ª LINHA — ANÁLISE ═══════ */}
-      <SecHeader title="Análise" subtitle="volumes por dia, consultor e sistema" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Volume de Atendimentos por Dia */}
-        <BlocoCard icon={CalendarClock} titulo="Volume de Atendimentos por Dia">
-          {volumeDia.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">Sem série no período.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={volumeDia} margin={{ top: 16, right: 8, left: -24, bottom: 0 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v} registros`, '']} />
-                <Bar dataKey="registros" fill="hsl(199,89%,48%)" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="registros" position="top" style={{ fontSize: 10 }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Registros de atendimento por dia.</p>
-        </BlocoCard>
-
-        {/* Volume de Atendimentos por Consultor */}
+        {/* Volume de Atendimentos por Consultor — movido da 3ª linha, JSX inalterado */}
         <BlocoCard icon={Users} titulo="Volume de Atendimentos por Consultor">
           {consultoresData.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Sem consultores no período.</p>
@@ -417,8 +170,32 @@ export function HelpdeskExecutivoTab({
           )}
           <p className="text-[11px] text-muted-foreground border-t pt-2">Consultores do CS (role para ver todos).</p>
         </BlocoCard>
+      </div>
 
-        {/* Volume de Atendimentos por Sistema */}
+      {/* ═══════ 3ª LINHA — ANÁLISE ═══════ */}
+      <SecHeader title="Análise" subtitle="volume por dia e por sistema · tempo médio por tipo" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Volume de Atendimentos por Dia — JSX inalterado */}
+        <BlocoCard icon={CalendarClock} titulo="Volume de Atendimentos por Dia">
+          {volumeDia.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Sem série no período.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={volumeDia} margin={{ top: 16, right: 8, left: -24, bottom: 0 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v} registros`, '']} />
+                <Bar dataKey="registros" fill="hsl(199,89%,48%)" radius={[3, 3, 0, 0]}>
+                  <LabelList dataKey="registros" position="top" style={{ fontSize: 10 }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          <p className="text-[11px] text-muted-foreground border-t pt-2">Registros de atendimento por dia.</p>
+        </BlocoCard>
+
+        {/* Volume de Atendimentos por Sistema — movido, JSX inalterado */}
         <BlocoCard icon={Monitor} titulo="Volume de Atendimentos por Sistema">
           {sistemas.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">Sem sistemas no período.</p>
@@ -439,68 +216,42 @@ export function HelpdeskExecutivoTab({
           )}
           <p className="text-[11px] text-muted-foreground border-t pt-2">Volume por sistema (role para ver todos).</p>
         </BlocoCard>
-      </div>
 
-      {/* ═══════ 4ª LINHA — COMPARATIVO MENSAL (mês atual × anterior · anual) ═══════ */}
-      <SecHeader title="Comparativo mensal" subtitle="mês atual × anterior · selecione 'Ano' no período para o comparativo anual completo" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <BlocoCard icon={CalendarClock} titulo="Mês atual × anterior">
-          {!mesAtual ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">Sem série mensal no período.</p>
+        {/* Tempo Médio por Tipo de Chamado — DESCE da 2ª linha. JSX inalterado
+            exceto maxHeight 200 → 220, para casar a rolagem com os dois vizinhos. */}
+        <BlocoCard icon={Clock} titulo="Tempo Médio por Tipo de Chamado">
+          {tipos.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">Sem dados de tipo de chamado.</p>
           ) : (
-            <div className="space-y-3">
-              <div className="flex items-end justify-between">
-                <div>
-                  <p className="text-[11px] text-muted-foreground">{mesAtual.mesLabel} · registros</p>
-                  <p className="text-3xl font-bold font-mono">{mesAtual.registros}</p>
-                </div>
-                {mesAnterior && <DeltaBadge atual={mesAtual.registros} anterior={mesAnterior.registros} />}
-              </div>
-              <div className="flex items-end justify-between border-t pt-2">
-                <div>
-                  <p className="text-[11px] text-muted-foreground">{mesAtual.mesLabel} · horas</p>
-                  <p className="text-2xl font-bold font-mono">{mesAtual.horas}h</p>
-                </div>
-                {mesAnterior && <DeltaBadge atual={mesAtual.horas} anterior={mesAnterior.horas} />}
-              </div>
-              {mesAnterior ? (
-                <p className="text-[10px] text-muted-foreground border-t pt-2">
-                  vs {mesAnterior.mesLabel}: {mesAnterior.registros} registros · {mesAnterior.horas}h
-                </p>
-              ) : (
-                <p className="text-[10px] text-muted-foreground border-t pt-2">
-                  Selecione “Ano” no período para comparar com o mês anterior.
-                </p>
-              )}
+            <div className="overflow-y-auto" style={{ maxHeight: 220 }}>
+              <ResponsiveContainer width="100%" height={Math.max(160, tipos.length * 28)}>
+                <BarChart data={tipos} layout="vertical" margin={{ top: 4, right: 36, bottom: 4, left: 8 }}>
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} unit="m" />
+                  <YAxis type="category" dataKey="tipo" width={96} tick={{ fontSize: 10 }} />
+                  <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v} min`, 'tempo médio']} />
+                  <Bar dataKey="tempo" fill="hsl(262,83%,58%)" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="tempo" position="insideRight" fill="#fff" style={{ fontSize: 11, fontWeight: 600 }} formatter={(v: number) => `${v}m`} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           )}
-        </BlocoCard>
-
-        <BlocoCard icon={TrendingUp} titulo="Série mensal de registros" className="lg:col-span-2">
-          {mensal.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">Sem série mensal no período.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={mensal} margin={{ top: 16, right: 8, left: -24, bottom: 0 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="mesLabel" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <RTooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => [`${v} registros`, '']} />
-                <Bar dataKey="registros" fill="hsl(199,89%,48%)" radius={[3, 3, 0, 0]}>
-                  <LabelList dataKey="registros" position="top" style={{ fontSize: 10 }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-          <p className="text-[11px] text-muted-foreground border-t pt-2">Registros por mês no período (comparativo mensal e anual).</p>
+          <p className="text-[11px] text-muted-foreground border-t pt-2">Todos os tipos (role para ver mais).</p>
         </BlocoCard>
       </div>
 
-      {/* ═══════ 5ª LINHA — INCIDENTES COM PARADA (Global × Pontual) ═══════ */}
-      <SecHeader title="Incidentes com parada" subtitle="priorização por escopo (Global × Pontual) — estrutura provisória, origem a definir" />
+      {/* ═══════ 4ª LINHA — INCIDENTES DECLARADOS (INC-1..3) ═══════ */}
+      <SecHeader
+        title="Incidentes declarados"
+        subtitle="lista SG-LST-016/017 do SharePoint SGSI — declaração manual, filtrada pelo período"
+      />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <IncidentesComParadaCard base={registrosPorCliente.length} />
+        <IncidentesDeclaradosCard dataInicio={periodoIni} dataFim={periodoFim} />
       </div>
+
+      {/* Drill-down das INC (fora das grids; só existe quando há filtro, i.e. não na TV) */}
+      <SlaIncDetalheSheet alvo={incDrill} onClose={() => setIncDrill(null)} />
     </div>
   );
 }
