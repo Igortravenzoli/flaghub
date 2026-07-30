@@ -321,6 +321,108 @@ function buildMocks(): Record<string, unknown> {
     ],
   };
 
+  /* ── SLA mensal por segmento (SLA-1) — 1 payload por segmento ──────────
+     Números internamente consistentes (variação = conta feita sobre os dois
+     meses; status = escada do GestaoSlaMensalCalculator): mock incoerente
+     treina o olho errado. Os rótulos de mês saem do relógio local para que
+     "jul/26 · jun/26 · 2026" fique coerente em qualquer dia — inclusive na
+     virada de janeiro, quando `mesAnterior` é dezembro do ano anterior. */
+  const hojeRef = new Date();
+  const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const isoDia = (d: Date) => `${ym(d)}-${String(d.getDate()).padStart(2, '0')}`;
+  const iniMesAtual = new Date(hojeRef.getFullYear(), hojeRef.getMonth(), 1);
+  const iniMesAnt = new Date(hojeRef.getFullYear(), hojeRef.getMonth() - 1, 1);
+  const iniMesProx = new Date(hojeRef.getFullYear(), hojeRef.getMonth() + 1, 1);
+  const referenciaMock = {
+    mesAtual: ym(iniMesAtual),
+    mesAnterior: ym(iniMesAnt),
+    ano: hojeRef.getFullYear(),
+    inicioMesAtual: isoDia(iniMesAtual),
+    fimJanelaExclusivo: isoDia(iniMesProx),
+    inicioAno: `${hojeRef.getFullYear()}-01-01`,
+    hoje: isoDia(hojeRef),
+  };
+
+  /* Nestlé — caso completo: TTR ALERT (4,35 > 3,9 e ≤ 5,85) + 24h OK (48,7 ≥ 48),
+     INC no rodapé, drill-down inc5/inc30 habilitado. */
+  const slaMensalNestle = {
+    success: true, message: '[MOCK] Dados simulados', timestamp: new Date().toISOString(),
+    segmento: 'nestle', formulaVersao: 'planilha-cs-v1',
+    referencia: referenciaMock,
+    metas: { metaTTRDias: 3.9, metaTTR24hPct: 48.0, metaDefinida: true },
+    ttr: {
+      mesAtual: 3.42, mesAnterior: 3.91, variacaoPct: -12.53, variacaoDias: -0.49,
+      anual: 4.35, atingiuMetaAnual: false, statusAnual: 'ALERT',
+      menorMelhor: true, unidadeVariacao: '%',
+    },
+    ttr24h: {
+      mesAtual: 51.2, mesAnterior: 44.9, variacaoPp: 6.3,
+      anual: 48.7, atingiuMetaAnual: true, statusAnual: 'OK',
+      menorMelhor: false, unidadeVariacao: 'p.p.',
+    },
+    abertos: { totalAbertos: 61, maior5Dias: 53, maior30Dias: 9, incMaior5Dias: 23, incMaior30Dias: 7 },
+    volumes: { fechadosMesAtual: 131, fechadosMesAnterior: 549, fechadosAno: 3204 },
+    qualidade: { ttrNegativoMesAtual: 0, ttrNegativoMesAnterior: 2, ttrNegativoAno: 5, osDuplicadasJanela: 0 },
+  };
+
+  /* Heineken — metaDefinida FALSE: metas null, NEUTRO nos dois grupos,
+     atingiuMetaAnual null, incMaior* null → rodapé cai para OS em aberto. */
+  const slaMensalHeineken = {
+    success: true, message: '[MOCK] Dados simulados', timestamp: new Date().toISOString(),
+    segmento: 'heineken', formulaVersao: 'planilha-cs-v1',
+    referencia: referenciaMock,
+    metas: { metaTTRDias: null, metaTTR24hPct: null, metaDefinida: false },
+    ttr: {
+      mesAtual: 3.16, mesAnterior: 3.02, variacaoPct: 4.64, variacaoDias: 0.14,
+      anual: 3.28, atingiuMetaAnual: null, statusAnual: 'NEUTRO',
+      menorMelhor: true, unidadeVariacao: '%',
+    },
+    ttr24h: {
+      mesAtual: 62.5, mesAnterior: 65.1, variacaoPp: -2.6,
+      anual: 63.4, atingiuMetaAnual: null, statusAnual: 'NEUTRO',
+      menorMelhor: false, unidadeVariacao: 'p.p.',
+    },
+    abertos: { totalAbertos: 34, maior5Dias: 9, maior30Dias: 4, incMaior5Dias: null, incMaior30Dias: null },
+    volumes: { fechadosMesAtual: 96, fechadosMesAnterior: 118, fechadosAno: 742 },
+    qualidade: { ttrNegativoMesAtual: 1, ttrNegativoMesAnterior: 0, ttrNegativoAno: 3, osDuplicadasJanela: 2 },
+  };
+
+  /* Outras Bandeiras — caso NULL: nenhuma OS fechada no mês ⇒ mesAtual/variações
+     null (o card mostra '—' e "sem base", nunca 0,00) + 24h CRITICAL
+     (39,8 < 48×0,85) + sinais de qualidade acionando o aviso do rodapé. */
+  const slaMensalOutras = {
+    success: true, message: '[MOCK] Dados simulados', timestamp: new Date().toISOString(),
+    segmento: 'outros', formulaVersao: 'planilha-cs-v1',
+    referencia: referenciaMock,
+    metas: { metaTTRDias: 3.9, metaTTR24hPct: 48.0, metaDefinida: true },
+    ttr: {
+      mesAtual: null, mesAnterior: 4.12, variacaoPct: null, variacaoDias: null,
+      anual: 4.12, atingiuMetaAnual: false, statusAnual: 'ALERT',
+      menorMelhor: true, unidadeVariacao: '%',
+    },
+    ttr24h: {
+      mesAtual: null, mesAnterior: 39.8, variacaoPp: null,
+      anual: 39.8, atingiuMetaAnual: false, statusAnual: 'CRITICAL',
+      menorMelhor: false, unidadeVariacao: 'p.p.',
+    },
+    abertos: { totalAbertos: 87, maior5Dias: 23, maior30Dias: 8, incMaior5Dias: null, incMaior30Dias: null },
+    volumes: { fechadosMesAtual: 0, fechadosMesAnterior: 214, fechadosAno: 1187 },
+    qualidade: { ttrNegativoMesAtual: 1, ttrNegativoMesAnterior: 0, ttrNegativoAno: 4, osDuplicadasJanela: 4 },
+  };
+
+  /* Cobertura de clientes (PAN-2) — mês corrente, escopo fixo.
+     `atendidosSemClienteAtivo > 0` exercita o aviso de grafia divergente. */
+  const coberturaClientes = {
+    success: true, message: '[MOCK] Dados simulados', timestamp: new Date().toISOString(),
+    mesReferencia: ym(iniMesAtual),
+    totalClientesAtivos: 312, atendidosMes: 148, naoAtendidos: 164,
+    pctCobertura: 47.4, atendidosSemClienteAtivo: 3,
+    clientesInternosExcluidos: ['SUPORTE FLAG', 'L & D'],
+  };
+
+  /* Drill-down INC (inc5/inc30) — recorte do mockNestleOs só com ticket INC. */
+  const mockNestleInc = mockNestleOs.filter((o) => o.ticket?.startsWith('INC')).slice(0, 23);
+
   return {
     '/api/helpdesk/dashboard': helpdeskDashboard,
     '/api/techlead/acumulado': {
@@ -379,9 +481,21 @@ function buildMocks(): Record<string, unknown> {
     '/api/gestao/sla-nestle': slaNestle,
     '/api/gestao/sla-heineken': slaHeineken,
     '/api/gestao/sla-nestle-historico': slaNestleHistorico,
-    '/api/gestao/sla-flag-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockFlagOs.length, items: mockFlagOs },
-    '/api/gestao/sla-nestle-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockNestleOs.length, items: mockNestleOs },
-    '/api/gestao/sla-heineken-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockHeinekenOs.length, items: mockHeinekenOs },
+    '/api/gestao/sla-flag-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockFlagOs.length, truncado: false, limite: 500, items: mockFlagOs },
+    '/api/gestao/sla-nestle-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockNestleOs.length, truncado: false, limite: 500, items: mockNestleOs },
+    '/api/gestao/sla-heineken-detalhe': { success: true, message: '[MOCK]', filtro: 'aberto', total: mockHeinekenOs.length, truncado: false, limite: 500, items: mockHeinekenOs },
+
+    // ── SLA-1 / SLA-8: um mock POR SEGMENTO (resolvido pelo path com query) ──
+    '/api/gestao/sla-mensal?segmento=nestle': slaMensalNestle,
+    '/api/gestao/sla-mensal?segmento=heineken': slaMensalHeineken,
+    '/api/gestao/sla-mensal?segmento=outros': slaMensalOutras,
+    // fallback: chamada sem query não estoura — vale o segmento default do gateway
+    '/api/gestao/sla-mensal': slaMensalNestle,
+    '/api/gestao/cobertura-clientes': coberturaClientes,
+    '/api/gestao/sla-nestle-detalhe?filtro=inc5':
+      { success: true, message: '[MOCK]', filtro: 'inc5', total: mockNestleInc.length, truncado: false, limite: 500, items: mockNestleInc },
+    '/api/gestao/sla-nestle-detalhe?filtro=inc30':
+      { success: true, message: '[MOCK]', filtro: 'inc30', total: 7, truncado: false, limite: 500, items: mockNestleInc.slice(0, 7) },
   };
 }
 
@@ -430,10 +544,14 @@ export const isMockMode = MOCK_MODE;
 export async function gatewayGet<T>(path: string): Promise<T> {
   if (MOCK_MODE) {
     await new Promise((r) => setTimeout(r, 300)); // simula latência
-    const key = path.split('?')[0];
-    const mock = getMocks()[key];
+    const mocks = getMocks();
+    // 1º o path COM query — rotas cujo payload muda por parâmetro (ex.:
+    // `sla-mensal?segmento=`, em que colapsar os 3 segmentos num mock só
+    // esconderia justamente o caso "Heineken sem meta");
+    // 2º o path sem query — todas as rotas já registradas.
+    const mock = mocks[path] ?? mocks[path.split('?')[0]];
     if (mock !== undefined) return mock as T;
-    throw new Error(`[mock] sem dados para ${key}`);
+    throw new Error(`[mock] sem dados para ${path}`);
   }
   const token = await getToken();
   const res = await fetch(`${GATEWAY_URL}${path}`, {
