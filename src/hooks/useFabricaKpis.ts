@@ -2,6 +2,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
+import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { normalizeProduct, extractProducts } from '@/lib/products';
 
 const normalizeFabricaState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
@@ -356,9 +357,35 @@ export function useFabricaKpis(
     ? sprintFilter.filter(Boolean)
     : (sprintFilter === '__pending__' ? 'all' : sprintFilter);
 
+  /**
+   * Filtro por CÓDIGO de sprint ("S15-2026"), além do `iteration_path` completo.
+   *
+   * O modo TV só conhece o código (`getCurrentOfficialSprintCode()`), não o PATH,
+   * e por isso o kiosk chamava este hook com `'all'` + range de datas — o que
+   * escopava por "created OU changed dentro da janela", **sem olhar a sprint**.
+   * Medido em 29/07/2026: 197 itens no telão, dos quais só 94 eram de S15
+   * (48 vinham do Backlog e 27 de S14). Decisão de Igor: no KPI do telão vale
+   * apenas a sprint vigente.
+   *
+   * Se o código não casar com nenhum item (sprint inexistente ou base ainda
+   * vazia), cai de volta na janela de datas em vez de zerar o telão em silêncio.
+   */
+  const filtroCodigo = (typeof effectiveSprintFilter === 'string'
+    && effectiveSprintFilter !== 'all'
+    && /^S\d+-\d{4}$/i.test(effectiveSprintFilter))
+    ? effectiveSprintFilter.toUpperCase()
+    : null;
+  const casaCodigo = (path?: string | null): boolean =>
+    !!filtroCodigo && extractSprintCodeFromPath(path)?.toUpperCase() === filtroCodigo;
+
+  const itemsPorCodigo = filtroCodigo ? nonInfraItems.filter((i) => casaCodigo(i.iteration_path)) : [];
+  const wiPorCodigo = filtroCodigo ? nonInfraWorkItems.filter((wi) => casaCodigo(wi.iteration_path)) : [];
+  const codigoResolveu = filtroCodigo !== null && (itemsPorCodigo.length > 0 || wiPorCodigo.length > 0);
+
   // Sprint is the primary filter. In custom mode (all sprints), date range scopes work items.
   const items = (() => {
-    if (effectiveSprintFilter === 'all') return dateScopedItems;
+    if (codigoResolveu) return itemsPorCodigo;
+    if (effectiveSprintFilter === 'all' || filtroCodigo) return dateScopedItems;
     if (Array.isArray(effectiveSprintFilter)) {
       const sprintSet = new Set(effectiveSprintFilter);
       return nonInfraItems.filter(i => !!i.iteration_path && sprintSet.has(i.iteration_path));
@@ -367,7 +394,8 @@ export function useFabricaKpis(
   })();
 
   const scopedWorkItems = (() => {
-    if (effectiveSprintFilter === 'all') return dateScopedWorkItems;
+    if (codigoResolveu) return wiPorCodigo;
+    if (effectiveSprintFilter === 'all' || filtroCodigo) return dateScopedWorkItems;
     if (Array.isArray(effectiveSprintFilter)) {
       const sprintSet = new Set(effectiveSprintFilter);
       return nonInfraWorkItems.filter((wi) => !!wi.iteration_path && sprintSet.has(wi.iteration_path));
@@ -397,9 +425,94 @@ export function useFabricaKpis(
       count_in_kpi: true,
     }));
 
-  const scopedItems = [...items, ...fallbackManagerItems];
+  /**
+   * Tasks também são repostas (não só itens de gestor).
+   *
+   * A view só entrega Task que esteja na fila ou cujo PBI pai esteja — quando o
+   * pai sai da fila (tipicamente ao concluir) a Task desaparecia do escopo, e com
+   * ela o dev: `allCollaborators` sai de `scopedItems`, então quem só tem Task
+   * nessa situação não era listado nem podia ser marcado no filtro. Caso medido
+   * em 29/07/2026: Johnny C. dos Santos, 6 Tasks Done em S15, nenhuma na view —
+   * ausente da lista de colaboradores enquanto as horas dele seguiam aparecendo
+   * no ranking. Não infla "Itens no escopo": `kpiItems` filtra itens de gestor.
+   */
+  const idsGestorDaFabrica = new Set(
+    nonInfraWorkItems
+      .filter((wi) => isFabricaManagerItem(wi.work_item_type) && wi.id != null)
+      .map((wi) => wi.id as number),
+  );
+  const fallbackTaskItems: FabricaItem[] = scopedWorkItems
+    .filter((wi) => isFabricaTaskItem(wi.work_item_type)
+      && !viewIds.has(wi.id)
+      && wi.parent_id != null
+      && idsGestorDaFabrica.has(wi.parent_id))
+    .map((wi) => ({
+      id: wi.id,
+      title: wi.title,
+      work_item_type: wi.work_item_type,
+      state: wi.state,
+      assigned_to_display: wi.assigned_to_display,
+      priority: wi.priority,
+      effort: wi.effort,
+      iteration_path: wi.iteration_path,
+      created_date: wi.created_date,
+      changed_date: wi.changed_date,
+      parent_id: wi.parent_id,
+      parent_title: null,
+      parent_type: null,
+      web_url: wi.web_url,
+      tags: wi.tags,
+      count_in_kpi: true,
+    }));
 
-  const isExcluded = (name: string | null | undefined): boolean => isCollaboratorExcluded(name, excludedCollaborators);
+  const scopedItems = [...items, ...fallbackManagerItems, ...fallbackTaskItems];
+
+  /**
+   * Escopo de pessoas = roster ativo da Fábrica (`fabrica_squad_membership`).
+   *
+   * Antes o recorte vivia SÓ no localStorage do navegador do gestor
+   * (`fabrica.excluded-collabs.v1`, semeado com {'ari'}) e não era passado pelo
+   * kiosk nem pela Home — então a mesma sprint tinha totais diferentes por tela,
+   * sem ninguém clicar em nada. Agora o roster manda, igual em todas.
+   *
+   * Semântica preservada de EXCLUSÃO (fail-open): quem não tem responsável
+   * continua no escopo, e se o roster falhar ou vier vazio NADA é excluído — uma
+   * lista de inclusão zeraria KPIs e horas no telão em caso de erro de RLS.
+   * Casamento por nome COMPLETO normalizado: `getCollaboratorExclusionKeys` casa
+   * por primeiro nome, e existem dois "Alessandro" no escopo de S15.
+   */
+  const rosterQuery = useFabricaRoster();
+  const rosterNomes = (() => {
+    const set = new Set<string>();
+    for (const r of rosterQuery.data || []) {
+      const n = normalizeCollaboratorName(r.colaborador);
+      if (n) set.add(n);
+    }
+    return set;
+  })();
+  const rosterPronto = rosterQuery.isSuccess && rosterNomes.size > 0;
+
+  const foraDoRoster = (name: string | null | undefined): boolean => {
+    if (!rosterPronto || !name) return false;
+    return !rosterNomes.has(normalizeCollaboratorName(name));
+  };
+
+  /**
+   * O recorte do roster vale SÓ para `assigned_to_display` (responsável do work
+   * item) — a grafia que foi conferida nome a nome contra o roster no PROD.
+   *
+   * Não vale para nome de APONTAMENTO: `vdesk_time_logs.usuario_vdesk` guarda
+   * login curto ("Carlos", "Emerson Luis" — ver 20260514150000_vdesk_shortname_map.sql)
+   * e `devops_time_logs.user_name` guarda o nome do plugin. Nenhum dos dois casa
+   * com nome completo, então aplicar o roster ali zerava 100% das horas VDESK em
+   * silêncio. É justamente para isso que existe `devops_collaborator_map`.
+   */
+  const isExcluded = (name: string | null | undefined): boolean =>
+    isCollaboratorExcluded(name, excludedCollaborators) || foraDoRoster(name);
+
+  /** Exclusão para nome de apontamento: só o recorte manual do gestor. */
+  const isExcludedApontamento = (name: string | null | undefined): boolean =>
+    isCollaboratorExcluded(name, excludedCollaborators);
 
   const filteredItems = scopedItems.filter((item) => !isExcluded(item.assigned_to_display));
 
@@ -447,11 +560,18 @@ export function useFabricaKpis(
     ...managerScopedTaskIds,
   ]);
 
-  // Unique collaborator names in the current items
+  /**
+   * Lista do filtro de colaboradores: quem está no escopo da Fábrica.
+   * Aplica o recorte do ROSTER (senão o gestor veria nomes que nunca entram na
+   * conta) mas NÃO o recorte dos checkboxes — quem ele desmarcou tem que
+   * continuar na lista para poder ser remarcado.
+   */
   const allCollaborators: string[] = (() => {
     const set = new Set<string>();
     for (const item of scopedItems) {
-      if (item.assigned_to_display) set.add(item.assigned_to_display);
+      if (item.assigned_to_display && !foraDoRoster(item.assigned_to_display)) {
+        set.add(item.assigned_to_display);
+      }
     }
     return [...set].sort((a, b) => a.localeCompare(b));
   })();
@@ -483,7 +603,7 @@ export function useFabricaKpis(
   const itemIdsInScope = timelogScopeIds;
   const scopedTimeLogs = timeLogs.filter((tl) => {
     if (tl.work_item_id == null || !itemIdsInScope.has(tl.work_item_id)) return false;
-    return !isExcluded(tl.user_name);
+    return !isExcludedApontamento(tl.user_name);
   });
 
   const totalHoursLogged = scopedTimeLogs.reduce((sum, tl) => sum + (tl.time_minutes || 0), 0) / 60;
@@ -491,7 +611,7 @@ export function useFabricaKpis(
 
   // Alocação completa: TODO apontamento do período (sem o filtro de fila/estado),
   // para a visão "horas trabalhadas no período" que não some quando o item avança.
-  const completeTimeLogs = timeLogs.filter((tl) => tl.work_item_id != null && !isExcluded(tl.user_name));
+  const completeTimeLogs = timeLogs.filter((tl) => tl.work_item_id != null && !isExcludedApontamento(tl.user_name));
   const hasTimeLogsFull = completeTimeLogs.length > 0;
 
   // Build work item lookup
@@ -563,7 +683,7 @@ export function useFabricaKpis(
     const collabMap = collabMapQuery.data || new Map<string, string>();
     for (const tl of scopedTimeLogs) {
       const rawName = tl.user_name || 'Desconhecido';
-      if (isExcluded(rawName)) continue;
+      if (isExcludedApontamento(rawName)) continue;
       const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
       // Persistent map takes precedence over first-seen heuristic
       const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
@@ -589,7 +709,7 @@ export function useFabricaKpis(
     for (const tl of scopedTimeLogs) {
       if (!tl.work_item_id) continue;
       const rawName = tl.user_name || 'Desconhecido';
-      if (isExcluded(rawName)) continue;
+      if (isExcludedApontamento(rawName)) continue;
       const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
       const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
       const label = canonical || rawName;
@@ -714,7 +834,7 @@ export function useFabricaKpis(
   const vdeskLogs = vdeskLogsQuery.data || [];
   const scopedVdeskLogs = vdeskLogs.filter((vl) => {
     if (!itemIdsInScope.has(vl.task_devops)) return false;
-    return !isExcluded(vl.usuario_vdesk) && !isExcluded(normalizeCollaboratorName(vl.usuario_vdesk));
+    return !isExcludedApontamento(vl.usuario_vdesk) && !isExcludedApontamento(normalizeCollaboratorName(vl.usuario_vdesk));
   });
   const totalVdeskHours = scopedVdeskLogs.reduce((sum, vl) => sum + vl.tempo_segundos, 0) / 3600;
   const hasVdeskData = scopedVdeskLogs.length > 0;
@@ -726,7 +846,7 @@ export function useFabricaKpis(
     const collabMap = collabMapQuery.data || new Map<string, string>();
     for (const vl of scopedVdeskLogs) {
       const rawName = vl.usuario_vdesk || 'Desconhecido';
-      if (isExcluded(rawName)) continue;
+      if (isExcludedApontamento(rawName)) continue;
       const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
       const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
       if (canonical) labelMap[normalized] = canonical;
@@ -747,7 +867,7 @@ export function useFabricaKpis(
     const collabMap = collabMapQuery.data || new Map<string, string>();
     for (const vl of scopedVdeskLogs) {
       const rawName = vl.usuario_vdesk || 'Desconhecido';
-      if (isExcluded(rawName)) continue;
+      if (isExcludedApontamento(rawName)) continue;
       const normalized = normalizeCollaboratorName(rawName) || 'desconhecido';
       const canonical = collabMap.get(rawName.toLowerCase()) ?? collabMap.get(normalized);
       const label = canonical || rawName;

@@ -6,6 +6,7 @@ import { RankingFabricasCard } from '@/components/fabrica/RankingFabricasCard';
 import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabricaCharts';
 import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
+import { contaCategorias } from '@/lib/fabricaClassificacao';
 
 interface FabKpisLite {
   total: number;
@@ -14,7 +15,8 @@ interface FabKpisLite {
   entregue: number;
   toDo: number;
   isLoading: boolean;
-  items?: Array<{ work_item_type?: string | null; tags?: string | null }>;
+  /** Itens da régua do gestor — mesma base do "Itens no escopo". */
+  kpiItems?: Array<{ work_item_type?: string | null; tags?: string | null }>;
   horasPorFabricaFull?: Array<{ key: string; collaborators: { name: string; minutes: number }[] }>;
 }
 
@@ -32,18 +34,17 @@ interface FabricaExecutivoTabProps {
  * Saúde dos itens ou Linha de base: o que não está no TV saiu daqui também.
  */
 export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo, periodLabel }: FabricaExecutivoTabProps) {
-  // Classificação das demandas no escopo (mesmas regras de fn_classifica_demanda)
+  /**
+   * Régua canônica (`@/lib/fabricaClassificacao`) sobre `kpiItems` — o mesmo
+   * conjunto do card "Itens no escopo" acima. O bloco de regex que vivia aqui
+   * rodava sobre `fab.items` sem `count_in_kpi`/estado contável e sem a
+   * precedência de Priorização; era uma das origens do "39 que não bate com o
+   * Gerencial" (29/07/2026).
+   */
   const categoria = useMemo(() => {
-    let bug = 0, retorno = 0, aviao = 0;
-    for (const i of fab.items ?? []) {
-      if (!['Product Backlog Item', 'Bug', 'User Story'].includes(i.work_item_type || '')) continue;
-      const t = (i.tags || '').toLowerCase();
-      if (/retorno\s*(de\s*)?qa/.test(t)) retorno++;
-      else if (/avi[aã]o/.test(t)) aviao++;
-      else if (i.work_item_type === 'Bug' || /(^|;)\s*bug\s*(;|$)/.test(t)) bug++;
-    }
-    return { bug, retorno, aviao };
-  }, [fab.items]);
+    const c = contaCategorias(fab.kpiItems ?? []);
+    return { bug: c.bug, retorno: c.retornoQa, aviao: c.aviaoSprint + c.aviaoTransbordado };
+  }, [fab.kpiItems]);
 
   // Concluído = Done + Entregue (regra do gestor); "em dev" exclui os entregues.
   const concluido = fab.done + fab.entregue;
@@ -111,6 +112,8 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
         <DesempenhoTrendChart height={220} />
         <p className="text-[11px] text-muted-foreground border-t pt-2">
           % Entrega (concluído ÷ escopo, ↑ melhor) · % Retorno QA · % Bug (↓ melhor) — últimas 8 sprints.
+          Os três percentuais são <b>sobre o escopo da sprint</b> (régua do guia de indicadores) e vêm das
+          <b> fotografias seladas</b>: a sprint em curso não tem ponto aqui.
         </p>
       </BlocoCard>
 

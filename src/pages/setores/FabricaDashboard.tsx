@@ -52,11 +52,12 @@ import type { Integration } from '@/components/setores/SectorIntegrations';
 import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
 import { horasHM } from '@/lib/formatHoras';
+import { classificaDemanda, ehAviao, itemEhNaoPriorizado, rotuloCategoria } from '@/lib/fabricaClassificacao';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'entregue' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
 type SemTaskContextFilter = 'all' | 'stc' | 'ctc';
 type CollaboratorViewMode = 'tasks' | 'gestor';
-type PrevistoFilter = 'previsto' | 'nao_previsto';
+type PriorizadoFilter = 'priorizado' | 'nao_priorizado';
 type NewEntryReadFilter = 'all' | 'unread';
 
 const normalizeState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
@@ -105,11 +106,20 @@ function getItemTags(item: FabricaItem, tagsByWorkItemId: Record<number, string>
   return item.tags || '';
 }
 
-function isNaoPrevistoManagerItem(item: FabricaItem, tagsByWorkItemId: Record<number, string>): boolean {
+/**
+ * "Não priorizado" pela régua canônica (`fn_classifica_demanda`, via
+ * `@/lib/fabricaClassificacao`). Antes esta função tinha a sua própria cópia da
+ * regra e testava `type === 'Bug'` ANTES da tag Priorização — então bug
+ * priorizado caía aqui como "não previsto" e a Visão Geral mostrava 89/19 onde
+ * o Gerencial mostrava 88/20 (1 item, medido no PROD em 29/07/2026).
+ * As tags vêm de `tagsByWorkItemId` quando existem: é a versão mais fresca.
+ */
+function isNaoPriorizadoManagerItem(item: FabricaItem, tagsByWorkItemId: Record<number, string>): boolean {
   if (!isManagerLikeItem(item)) return false;
-  if (item.work_item_type === 'Bug') return true;
-  const tags = getItemTags(item, tagsByWorkItemId);
-  return RETORNO_QA_REGEX.test(tags) || AVIAO_REGEX.test(tags);
+  return itemEhNaoPriorizado({
+    work_item_type: item.work_item_type,
+    tags: getItemTags(item, tagsByWorkItemId),
+  });
 }
 
 function isTaskOnlyItem(item: FabricaItem): boolean {
@@ -429,7 +439,7 @@ export default function FabricaDashboard() {
   /** Sub-aba com que a tela de Logs abre (o aviso do Nivelamento aponta p/ Vdesk). */
   const [logsAbaInicial, setLogsAbaInicial] = useState<LogAba>('retornos');
   const [collaboratorViewMode, setCollaboratorViewMode] = useState<CollaboratorViewMode>('gestor');
-  const [previstoFilter, setPrevistoFilter] = useState<PrevistoFilter | null>(null);
+  const [priorizadoFilter, setPriorizadoFilter] = useState<PriorizadoFilter | null>(null);
   const [collaboratorFilter, setCollaboratorFilter] = useState<string | null>(null);
   const [collaboratorSearch, setCollaboratorSearch] = useState('');
   const [boardSortField, setBoardSortField] = useState<'transbordo' | null>(null);
@@ -909,8 +919,8 @@ export default function FabricaDashboard() {
     setExcludedCollabs(allExcluded);
   }, [fab.allCollaborators]);
 
-  const togglePrevistoFilter = (value: PrevistoFilter) => {
-    setPrevistoFilter(prev => prev === value ? null : value);
+  const togglePriorizadoFilter = (value: PriorizadoFilter) => {
+    setPriorizadoFilter(prev => prev === value ? null : value);
     setPage(0);
   };
 
@@ -1177,8 +1187,12 @@ export default function FabricaDashboard() {
       case 'aviao': items = items.filter(i => {
         if (!i.id) return false;
         if (!isManagerLikeItem(i)) return false;
-        const tags = getItemTags(i, fab.tagsByWorkItemId);
-        return AVIAO_REGEX.test(tags);
+        // Regra canônica: pega também "AVIAO ANTIGO"/"AVIAO TRANSBORDADO", que a
+        // regex local de segmento fechado deixava passar.
+        return ehAviao(classificaDemanda({
+          work_item_type: i.work_item_type,
+          tags: getItemTags(i, fab.tagsByWorkItemId),
+        }));
       }); break;
       case 'sem_task': {
         const pendingManagerIds = new Set(
@@ -1205,13 +1219,13 @@ export default function FabricaDashboard() {
         break;
       }
     }
-    if (previstoFilter) {
+    if (priorizadoFilter) {
       const managerMatchIds = new Set(
         collaboratorScopedItems
           .filter((i) => isManagerLikeItem(i) && i.id != null)
           .filter((i) => {
-            const naoPrevisto = isNaoPrevistoManagerItem(i, fab.tagsByWorkItemId);
-            return previstoFilter === 'nao_previsto' ? naoPrevisto : !naoPrevisto;
+            const naoPriorizado = isNaoPriorizadoManagerItem(i, fab.tagsByWorkItemId);
+            return priorizadoFilter === 'nao_priorizado' ? naoPriorizado : !naoPriorizado;
           })
           .map((i) => i.id as number)
       );
@@ -1223,7 +1237,7 @@ export default function FabricaDashboard() {
       });
     }
     return items;
-  }, [collaboratorScopedItems, fabKpiFilter, fab.tagsByWorkItemId, previstoFilter, sprintTaskParentScope, semTaskContextFilter]);
+  }, [collaboratorScopedItems, fabKpiFilter, fab.tagsByWorkItemId, priorizadoFilter, sprintTaskParentScope, semTaskContextFilter]);
 
   const itemsById = useMemo(() => {
     const map = new Map<number, FabricaItem>();
@@ -1251,15 +1265,13 @@ export default function FabricaDashboard() {
       const baseItem = item.work_item_type === 'Task' && item.parent_id != null
         ? (itemsById.get(item.parent_id) ?? item)
         : item;
-      const tags = getItemTags(baseItem, fab.tagsByWorkItemId);
-      const isRetornoQa = RETORNO_QA_REGEX.test(tags);
-      const isAviao = AVIAO_REGEX.test(tags);
-      const isNaoPrevisto = baseItem.work_item_type === 'Bug' || isRetornoQa || isAviao;
-
-      let categoryLabel = 'Novo na sprint';
-      if (isRetornoQa) categoryLabel = 'Retorno QA';
-      else if (isAviao) categoryLabel = 'Avião';
-      else if (isNaoPrevisto) categoryLabel = 'Não previsto';
+      // Rótulo pela categoria canônica. Este é o único ponto do produto que
+      // resolve Task -> PBI pai ANTES de classificar (baseItem acima) — preservar.
+      const cat = classificaDemanda({
+        work_item_type: baseItem.work_item_type,
+        tags: getItemTags(baseItem, fab.tagsByWorkItemId),
+      });
+      const categoryLabel = cat === 'priorizacao' ? 'Novo na sprint' : rotuloCategoria(cat);
 
       map.set(item.id, { categoryLabel, createdAt });
     }
@@ -1372,21 +1384,26 @@ export default function FabricaDashboard() {
     };
   }, [collaboratorViewItems]);
 
-  const previstoNaoPrevisto = useMemo(() => {
-    const managerItems = collaboratorScopedItems.filter((item) => isManagerLikeItem(item) && item.count_in_kpi !== false);
-    let previsto = 0;
-    let naoPrevisto = 0;
+  const priorizadoNaoPriorizado = useMemo(() => {
+    // `isFabricaCountableState` estava FALTANDO aqui (presente em sprintKpiItems
+    // e no gerencial): itens Removed entravam pelo fallback e o "total monitorado"
+    // não fechava com "Itens no escopo". Corrigido em 29/07/2026.
+    const managerItems = collaboratorScopedItems.filter(
+      (item) => isManagerLikeItem(item) && item.count_in_kpi !== false && isFabricaCountableState(item.state),
+    );
+    let priorizado = 0;
+    let naoPriorizado = 0;
     for (const item of managerItems) {
-      if (isNaoPrevistoManagerItem(item, fab.tagsByWorkItemId)) naoPrevisto += 1;
-      else previsto += 1;
+      if (isNaoPriorizadoManagerItem(item, fab.tagsByWorkItemId)) naoPriorizado += 1;
+      else priorizado += 1;
     }
-    const total = previsto + naoPrevisto;
+    const total = priorizado + naoPriorizado;
     return {
-      previsto,
-      naoPrevisto,
+      priorizado,
+      naoPriorizado,
       total,
-      previstoPct: total > 0 ? Math.round((previsto / total) * 100) : 0,
-      naoPrevistoPct: total > 0 ? Math.round((naoPrevisto / total) * 100) : 0,
+      priorizadoPct: total > 0 ? Math.round((priorizado / total) * 100) : 0,
+      naoPriorizadoPct: total > 0 ? Math.round((naoPriorizado / total) * 100) : 0,
     };
   }, [collaboratorScopedItems, fab.tagsByWorkItemId]);
 
@@ -1575,7 +1592,7 @@ export default function FabricaDashboard() {
       const semTaskContextLabel = semTaskContextFilter === 'stc' ? ' (STC)' : semTaskContextFilter === 'ctc' ? ' (CTC)' : '';
       parts.push(`Filtro KPI: ${getFabFilterLabel(fabKpiFilter)}${fabKpiFilter === 'sem_task' ? semTaskContextLabel : ''}`);
     }
-    if (previstoFilter) parts.push(`Visão: ${previstoFilter === 'previsto' ? 'Previsto' : 'Não Previsto'}`);
+    if (priorizadoFilter) parts.push(`Visão: ${priorizadoFilter === 'priorizado' ? 'Priorizado' : 'Não Priorizado'}`);
     if (collaboratorFilter) parts.push(`Colaborador: ${collaboratorFilter}`);
     if (search.trim()) parts.push(`Busca: ${search.trim()}`);
     if (activeTab === 'timelog') {
@@ -1594,7 +1611,7 @@ export default function FabricaDashboard() {
     selectedSprintCodes,
     activeTabLabel,
     fabKpiFilter,
-    previstoFilter,
+    priorizadoFilter,
     collaboratorFilter,
     search,
     activeTab,
@@ -2107,9 +2124,9 @@ export default function FabricaDashboard() {
             Filtro: {filterLabel(fabKpiFilter)}{fabKpiFilter === 'sem_task' && semTaskContextFilter !== 'all' ? ` ${semTaskContextFilter.toUpperCase()}` : ''} ✕
           </Badge>
         )}
-        {previstoFilter && (
-          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setPrevistoFilter(null)}>
-            Visão: {previstoFilter === 'previsto' ? 'Previsto' : 'Não Previsto'} ✕
+        {priorizadoFilter && (
+          <Badge variant="default" className="gap-1 text-xs cursor-pointer animate-fade-in" onClick={() => setPriorizadoFilter(null)}>
+            Visão: {priorizadoFilter === 'priorizado' ? 'Priorizado' : 'Não Priorizado'} ✕
           </Badge>
         )}
         {collaboratorFilter && (
@@ -2326,58 +2343,58 @@ export default function FabricaDashboard() {
                   </Card>
                 )}
 
-                {previstoNaoPrevisto.total > 0 ? (
+                {priorizadoNaoPriorizado.total > 0 ? (
                   <Card className="p-6 animate-fade-in" style={{ animationDelay: '600ms' }}>
-                    <p className="text-xs font-medium text-muted-foreground mb-4">VISÃO PREVISTO X NÃO PREVISTO</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-4">VISÃO PRIORIZADO X NÃO PRIORIZADO</p>
                     <div className="relative">
                       <div className="pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 border-t border-border" />
                       <button
                         type="button"
-                        onClick={() => togglePrevistoFilter('previsto')}
-                        className={`relative z-10 w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors ${previstoFilter === 'previsto' ? 'bg-primary/10' : ''}`}
+                        onClick={() => togglePriorizadoFilter('priorizado')}
+                        className={`relative z-10 w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors ${priorizadoFilter === 'priorizado' ? 'bg-primary/10' : ''}`}
                       >
                         <div className="flex items-center gap-2.5">
                           <div className="p-1.5 rounded-lg bg-primary/10">
                             <TrendingUp className="h-3.5 w-3.5 text-primary" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-foreground">Previsto</p>
+                            <p className="text-sm font-medium text-foreground">Priorizado</p>
                             <p className="text-[11px] text-muted-foreground/70">Itens priorizados do escopo</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <span className="text-2xl font-semibold text-foreground">{previstoNaoPrevisto.previsto}</span>
-                          <p className="text-[11px] text-muted-foreground">{previstoNaoPrevisto.previstoPct}%</p>
+                          <span className="text-2xl font-semibold text-foreground">{priorizadoNaoPriorizado.priorizado}</span>
+                          <p className="text-[11px] text-muted-foreground">{priorizadoNaoPriorizado.priorizadoPct}%</p>
                         </div>
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => togglePrevistoFilter('nao_previsto')}
-                        className={`relative z-10 w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors ${previstoFilter === 'nao_previsto' ? 'bg-primary/10' : ''}`}
+                        onClick={() => togglePriorizadoFilter('nao_priorizado')}
+                        className={`relative z-10 w-full text-left flex items-center justify-between py-3 hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors ${priorizadoFilter === 'nao_priorizado' ? 'bg-primary/10' : ''}`}
                       >
                         <div className="flex items-center gap-2.5">
                           <div className="p-1.5 rounded-lg bg-amber-500/10">
                             <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-foreground">Não Previsto</p>
+                            <p className="text-sm font-medium text-foreground">Não Priorizado</p>
                             <p className="text-[11px] text-muted-foreground/70">Bug, Retorno QA ou Avião</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <span className="text-2xl font-semibold text-foreground">{previstoNaoPrevisto.naoPrevisto}</span>
-                          <p className="text-[11px] text-muted-foreground">{previstoNaoPrevisto.naoPrevistoPct}%</p>
+                          <span className="text-2xl font-semibold text-foreground">{priorizadoNaoPriorizado.naoPriorizado}</span>
+                          <p className="text-[11px] text-muted-foreground">{priorizadoNaoPriorizado.naoPriorizadoPct}%</p>
                         </div>
                       </button>
                     </div>
                     <div className="mt-3 text-[11px] text-muted-foreground">
-                      Total monitorado nesta visão: <span className="font-medium text-foreground">{previstoNaoPrevisto.total}</span>
+                      Total monitorado nesta visão: <span className="font-medium text-foreground">{priorizadoNaoPriorizado.total}</span>
                     </div>
                   </Card>
                 ) : (
                   <Card className="p-6">
-                    <p className="text-xs text-muted-foreground">Sem itens para visão previsto/não previsto no filtro atual.</p>
+                    <p className="text-xs text-muted-foreground">Sem itens para visão priorizado/não priorizado no filtro atual.</p>
                   </Card>
                 )}
               </div>

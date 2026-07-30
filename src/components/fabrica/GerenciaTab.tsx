@@ -4,6 +4,7 @@ import { isFabricaCountableState } from '@/hooks/useFabricaKpis';
 import type { SprintSnapshotRow, SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { cleanFabricaName } from '@/lib/fabricaNames';
+import { classificaDemanda, ehPriorizado, type CategoriaDemanda } from '@/lib/fabricaClassificacao';
 import { horasHMdeDecimal } from '@/lib/formatHoras';
 import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
 import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabricaCharts';
@@ -106,68 +107,14 @@ function percentNum(value: number, total: number): number {
   return Math.round(((value / total) * 100) * 10) / 10;
 }
 
-function includesRetornoQa(tags: string | null | undefined): boolean {
-  return /(^|;)\s*retorno\s*(de\s*)?qa\s*(;|$)/i.test(tags || '');
-}
-
-// Aceita "AVIAO" e variantes compostas legadas ("AVIAO ANTIGO", "AVIAO TRANSBORDADO")
-function includesAviao(tags: string | null | undefined): boolean {
-  return /(^|;)\s*avi[aã]o\b/i.test(tags || '');
-}
-
-function includesAviaoTransbordadoLegado(tags: string | null | undefined): boolean {
-  return /(^|;)\s*avi[aã]o\s+(antigo|transbordad[oa])\s*(;|$)/i.test(tags || '');
-}
-
-function includesTransbordo(tags: string | null | undefined): boolean {
-  return /(^|;)\s*transbord(o|ad[oa])\s*(;|$)/i.test(tags || '');
-}
-
-function includesPriorizacao(tags: string | null | undefined): boolean {
-  return /(^|;)\s*prioriza[cç][aã]o\s*(;|$)/i.test(tags || '');
-}
-
-function includesBugTag(tags: string | null | undefined): boolean {
-  return /(^|;)\s*bug\s*(;|$)/i.test(tags || '');
-}
-
-type Bucket =
-  | 'priorizacao'
-  | 'priorizacao_transbordo'
-  | 'bug'
-  | 'retorno_qa'
-  | 'aviao_sprint'
-  | 'aviao_transbordado';
-
 /**
- * Regras de classificação (alinhadas com a planilha gerencial da Fábrica):
- * 1. Retorno de QA: qualquer item (Avião, Bug, PBI) com tag "Retorno de QA"
- * 2. Avião da sprint: tag Avião sem tag Transbordo nem Retorno de QA
- *    Avião Transbordado: tag Avião + tag Transbordo, sem Retorno de QA
- * 3. Priorização: tag Priorização sem Retorno de QA nem Transbordo (inclui Bugs priorizados)
- *    Transbordo: tag Priorização + tag Transbordo, sem Retorno de QA
- * 4. Bug: tipo Bug (ou tag BUG) sem tag Retorno de QA
+ * A regra de classificação vive em `@/lib/fabricaClassificacao` (espelho de
+ * `fn_classifica_demanda`). Antes cada tela tinha a sua cópia — e elas divergiam.
+ * Os aliases abaixo mantêm os nomes locais que o restante deste arquivo usa.
  */
-function classifyItem(item: FabricaItem): Bucket {
-  const tags = item.tags || '';
-  if (includesRetornoQa(tags)) {
-    return 'retorno_qa';
-  }
-  if (includesAviao(tags)) {
-    return (includesTransbordo(tags) || includesAviaoTransbordadoLegado(tags))
-      ? 'aviao_transbordado'
-      : 'aviao_sprint';
-  }
-  if (includesPriorizacao(tags)) {
-    return includesTransbordo(tags) ? 'priorizacao_transbordo' : 'priorizacao';
-  }
-  if (item.work_item_type === 'Bug' || includesBugTag(tags)) return 'bug';
-  return 'priorizacao';
-}
-
-function isPriorizadoBucket(bucket: Bucket): boolean {
-  return bucket === 'priorizacao' || bucket === 'priorizacao_transbordo';
-}
+type Bucket = CategoriaDemanda;
+const classifyItem = classificaDemanda;
+const isPriorizadoBucket = ehPriorizado;
 
 /**
  * Sprint já encerrou? (fim oficial — sexta 23:59 — anterior a hoje)
@@ -294,7 +241,14 @@ function KpiCard({
   total: number;
   drilldownKey: DrilldownKey;
   valueColor?: string;
-  subItems?: { label: string; value: number; total: number; key: DrilldownKey; valueColor?: string }[];
+  /**
+   * `total` é o ESCOPO da sprint — a base do guia de indicadores da Fábrica
+   * ("% … sobre o total"), a mesma da manchete do card e da linha de evolução.
+   * `totalBloco` é opcional e rende o share DENTRO do bloco, em tom fraco: o
+   * gestor comparava "Bug 55,1%" do card com "Bug 24%" da linha e via
+   * divergência onde só havia denominador diferente (ajuste 29/07/2026).
+   */
+  subItems?: { label: string; value: number; total: number; totalBloco?: number; key: DrilldownKey; valueColor?: string }[];
   /** Sprints anteriores lado a lado, em tom claro (fotografia de fim de sprint) */
   history?: KpiHistoryEntry[];
   isActive: boolean;
@@ -342,6 +296,9 @@ function KpiCard({
           <div className="mt-3 pt-2 border-t space-y-0.5">
             {subItems.map((sub) => {
               const subPct = sub.total > 0 ? `${((sub.value / sub.total) * 100).toFixed(1).replace('.', ',')}%` : '0,0%';
+              const blocoPct = sub.totalBloco && sub.totalBloco > 0
+                ? `${Math.round((sub.value / sub.totalBloco) * 100)}%`
+                : null;
               const isSubActive = activeSubKey === sub.key;
               return (
                 <button
@@ -356,6 +313,11 @@ function KpiCard({
                     {sub.value} | {subPct}
                   </span>
                   <span className="text-muted-foreground truncate">{sub.label}</span>
+                  {blocoPct && (
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/60 tabular-nums">
+                      {blocoPct} do bloco
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -589,20 +551,61 @@ export function GerenciaTab({
 
   const comparisonSprints = useMemo(() => {
     if (sortedSprints.length === 0) return [];
+    /**
+     * `selectedSprintCodes` traz CÓDIGOS ("S15-2026") e `sortedSprints` traz
+     * PATHS ("Flag.Planejamento\S15-2026") — a comparação precisa passar por
+     * `normalizeSprintCode`. Sem isso o `has` nunca casava: a multisseleção vinha
+     * vazia e a seleção única caía no fallback "última sprint da lista", que é
+     * justamente a âncora que este ajuste veio eliminar.
+     */
     if (isExplicitMultiSelection) {
       const selectedSet = new Set(selectedSprintCodes);
-      return sortedSprints.filter((sp) => selectedSet.has(sp));
+      return sortedSprints.filter((sp) => selectedSet.has(normalizeSprintCode(sp)));
     }
     let refIdx: number;
     if (hasAllSprints || selectedSprintCodes.length === 0) {
-      refIdx = sortedSprints.length - 1;
+      /**
+       * Âncora = sprint oficial CORRENTE, não o fim da lista (ajuste 29/07/2026).
+       * `sortedSprints` traz as sprints futuras já criadas no DevOps, então
+       * ancorar no último elemento produzia a janela S14→S17: 1 anterior, a
+       * atual e DUAS futuras (uma com 1 item, outra vazia) — barras de 100%
+       * priorizado sem significado, e o título "atual + 3 anteriores" mentindo.
+       * Sem sprint corrente na lista, cai na última COM itens.
+       */
+      const codigoAtual = getCurrentOfficialSprintCode();
+      const idxAtual = codigoAtual
+        ? sortedSprints.findIndex((sp) => normalizeSprintCode(sp) === codigoAtual)
+        : -1;
+      if (idxAtual >= 0) {
+        refIdx = idxAtual;
+      } else {
+        const comItens = new Set(
+          allItems.map((i) => i.iteration_path).filter((p): p is string => !!p),
+        );
+        let ultimoComItens = -1;
+        sortedSprints.forEach((sp, i) => { if (comItens.has(sp)) ultimoComItens = i; });
+        refIdx = ultimoComItens >= 0 ? ultimoComItens : sortedSprints.length - 1;
+      }
     } else {
       const selectedSet = new Set(selectedSprintCodes);
-      const found = [...sortedSprints].reverse().find((sp) => selectedSet.has(sp));
+      const found = [...sortedSprints].reverse().find((sp) => selectedSet.has(normalizeSprintCode(sp)));
       refIdx = found ? sortedSprints.indexOf(found) : sortedSprints.length - 1;
     }
     return sortedSprints.slice(Math.max(0, refIdx - 3), refIdx + 1);
-  }, [sortedSprints, selectedSprintCodes, hasAllSprints, isExplicitMultiSelection]);
+  }, [sortedSprints, selectedSprintCodes, hasAllSprints, isExplicitMultiSelection, allItems]);
+
+  /**
+   * Título derivado da janela REAL, não de um texto fixo: dizia "sprint atual +
+   * 3 anteriores" enquanto exibia 1 anterior + atual + 2 futuras.
+   */
+  const tituloJanelaComparacao = useMemo(() => {
+    if (isExplicitMultiSelection) return '(sprints selecionadas)';
+    if (comparisonSprints.length === 0) return '';
+    const codigos = comparisonSprints.map((sp) => normalizeSprintCode(sp).replace(/-\d{4}$/, ''));
+    const faixa = codigos.length > 1 ? `${codigos[0]} → ${codigos[codigos.length - 1]}` : codigos[0];
+    const anteriores = comparisonSprints.length - 1;
+    return `· ${faixa} (atual${anteriores > 0 ? ` + ${anteriores} anterior${anteriores > 1 ? 'es' : ''}` : ''})`;
+  }, [comparisonSprints, isExplicitMultiSelection]);
 
   // Uma entrada por sprint da janela — fotografia congelada quando a sprint
   // está fechada e tem snapshot; senão, estado atual do DevOps.
@@ -643,8 +646,13 @@ export function GerenciaTab({
         };
       }
 
+      // `isFabricaCountableState` faltava aqui: item Removed entrava na barra da
+      // sprint em curso e no denominador de Entregue/Done da tabela, contra cards
+      // que o excluem (`allManagerItems`). Mesma omissão corrigida no quadro da
+      // Visão Geral em 29/07/2026.
       const sprintItems = allItems.filter(
         (i) => i.iteration_path === sprintPath && i.count_in_kpi !== false && isManagerLike(i)
+          && isFabricaCountableState(i.state)
           && (!selectedFabrica || fabricaOf(i) === selectedFabrica),
       );
       let priorizacao = 0, bug = 0, retornoQa = 0, aviao = 0, entregue = 0, done = 0;
@@ -881,10 +889,10 @@ export function GerenciaTab({
               onClick={(k) => handleDrilldown(k, 'Não Priorizado')}
               onSubClick={(k) => handleDrilldown(k, k)}
               subItems={[
-                { key: 'np_bug', label: 'Bug', value: metrics.bug, total: metrics.naoPriorizado, valueColor: 'text-destructive' },
-                { key: 'np_retorno_qa', label: 'Retorno QA', value: metrics.retornoQa, total: metrics.naoPriorizado, valueColor: 'text-amber-600' },
-                { key: 'np_aviao_sprint', label: selectedSingleSprintCode ? `Avião ${selectedSingleSprintCode}` : 'Avião da Sprint', value: metrics.aviaoSprint, total: metrics.naoPriorizado },
-                { key: 'np_aviao_transbordado', label: 'Avião Transbordado', value: metrics.aviaoTransbordado, total: metrics.naoPriorizado },
+                { key: 'np_bug', label: 'Bug', value: metrics.bug, total: metrics.total, totalBloco: metrics.naoPriorizado, valueColor: 'text-destructive' },
+                { key: 'np_retorno_qa', label: 'Retorno QA', value: metrics.retornoQa, total: metrics.total, totalBloco: metrics.naoPriorizado, valueColor: 'text-amber-600' },
+                { key: 'np_aviao_sprint', label: selectedSingleSprintCode ? `Avião ${selectedSingleSprintCode}` : 'Avião da Sprint', value: metrics.aviaoSprint, total: metrics.total, totalBloco: metrics.naoPriorizado },
+                { key: 'np_aviao_transbordado', label: 'Avião Transbordado', value: metrics.aviaoTransbordado, total: metrics.total, totalBloco: metrics.naoPriorizado },
               ]}
             />
             <KpiCard
@@ -996,7 +1004,7 @@ export function GerenciaTab({
 
       {renderSectionHeader(
         'hist_comparacao',
-        `Comparação por Sprint ${isExplicitMultiSelection ? '(sprints selecionadas)' : '(sprint atual + 3 anteriores)'}${selectedFabrica ? ` — Fábrica ${selectedFabrica}` : ''}`,
+        `Comparação por Sprint ${tituloJanelaComparacao}${selectedFabrica ? ` — Fábrica ${selectedFabrica}` : ''}`,
         <BarChart3 className="h-4 w-4" />,
       )}
       {!isCollapsed('hist_comparacao') && (

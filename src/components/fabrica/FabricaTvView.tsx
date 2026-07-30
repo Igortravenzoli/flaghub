@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { format } from 'date-fns';
 import { usePaginaKiosk } from '@/contexts/KioskRotationContext';
 import { Card } from '@/components/ui/card';
-import { EntregaSprintReguaCard } from '@/components/fabrica/EntregaSprintReguaCard';
+import { PainelMetaSprintCard } from '@/components/fabrica/PainelMetaSprintCard';
 import { MatrizFabricaSprintCard } from '@/components/fabrica/MatrizFabricaSprintCard';
 import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabricaCharts';
 import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
@@ -10,6 +10,7 @@ import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 import { isDone, isFabricaEntregue } from '@/hooks/useFabricaKpis';
 import { SQUADS } from '@/lib/fabricaRoster';
 import { agregaLivePorFabrica, pctDe, type ItemLive } from '@/lib/fabricaTvSeries';
+import { contaCategorias } from '@/lib/fabricaClassificacao';
 import { calcRitmoSprint } from '@/lib/fabricaMetas';
 
 /**
@@ -27,6 +28,13 @@ const PAGES = 2;
  * componente.
  */
 const TV_MAX_SPRINTS = 3;
+
+/**
+ * Os painéis por meta aguentam mais pontos que a régua de faixas: cada série
+ * tem painel próprio, então 8 sprints + a em curso caber sem virar emaranhado
+ * (é a janela que a aba Executiva já usa na linha de evolução).
+ */
+const PAINEIS_MAX_SPRINTS = 8;
 
 type FabKpisTv = {
   total: number;
@@ -74,17 +82,17 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
    */
   const page = usePaginaKiosk(PAGES);
 
+  /**
+   * Classificação pela régua canônica e sobre `kpiItems` — o MESMO conjunto do
+   * número grande "Escopo" ao lado. Antes era um bloco de regex próprio rodando
+   * sobre `fab.items`: sem `count_in_kpi`, sem estado contável e sem a
+   * precedência de Priorização, então bug + retorno + avião podiam somar mais
+   * que o total exibido acima deles.
+   */
   const categoria = useMemo(() => {
-    let bug = 0, retorno = 0, aviao = 0;
-    for (const i of fab.items ?? []) {
-      if (!['Product Backlog Item', 'Bug', 'User Story'].includes(i.work_item_type || '')) continue;
-      const t = (i.tags || '').toLowerCase();
-      if (/retorno\s*(de\s*)?qa/.test(t)) retorno++;
-      else if (/avi[aã]o/.test(t)) aviao++;
-      else if (i.work_item_type === 'Bug' || /(^|;)\s*bug\s*(;|$)/.test(t)) bug++;
-    }
-    return { bug, retorno, aviao };
-  }, [fab.items]);
+    const c = contaCategorias(fab.kpiItems ?? []);
+    return { bug: c.bug, retorno: c.retornoQa, aviao: c.aviaoSprint + c.aviaoTransbordado };
+  }, [fab.kpiItems]);
 
   // Concluído = Done + Entregue (regra do gestor). "em dev" exclui os entregues.
   const concluido = fab.done + fab.entregue;
@@ -117,19 +125,16 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
     };
   }, [sprintLabel, liveFabricas, fab.total, concluido, categoria.bug, categoria.retorno]);
 
-  const atualRegua = useMemo(() => {
+  /** Sprint em curso para os painéis de meta (entra tracejada, é estimativa). */
+  const atualPaineis = useMemo(() => {
     if (!sprintLabel || fab.total <= 0) return null;
     return {
       sprint: sprintLabel,
-      total: fab.total,
-      concluido,
+      entregaPct: pctDe(concluido, fab.total),
       bugPct: pctDe(categoria.bug, fab.total),
       retornoPct: pctDe(categoria.retorno, fab.total),
-      diaAtual: ritmo?.diasDecorridos,
-      diasUteis: ritmo?.diasUteis,
-      ritmoNecessario: ritmo?.ritmoNecessario,
     };
-  }, [sprintLabel, fab.total, concluido, categoria.bug, categoria.retorno, ritmo]);
+  }, [sprintLabel, fab.total, concluido, categoria.bug, categoria.retorno]);
 
   const emAtraso = ritmo != null && pctDe(concluido, fab.total) < ritmo.esperadoPct;
 
@@ -193,7 +198,8 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
         <>
           {/* ─── Página 1 — Desempenho ─── */}
           <div className="flex-1 min-h-0">
-            <EntregaSprintReguaCard maxSprints={TV_MAX_SPRINTS} atual={atualRegua} />
+            {/* Régua de faixas → painéis por meta (variante H aprovada em 29/07/2026). */}
+            <PainelMetaSprintCard maxSprints={PAINEIS_MAX_SPRINTS} atual={atualPaineis} />
           </div>
           <div className="flex-[1.2] min-h-0">
             <MatrizFabricaSprintCard maxSprints={TV_MAX_SPRINTS} live={live} />

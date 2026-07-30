@@ -142,6 +142,24 @@ describe('categoriaDoItem', () => {
     expect(categoriaDoItem({ work_item_type: 'Product Backlog Item', tags: 'Avião' })).toBe('aviao');
     expect(categoriaDoItem({ work_item_type: 'Product Backlog Item', tags: 'priorizacao' })).toBe('outro');
   });
+
+  /**
+   * Regressão de 29/07/2026: esta função tinha a sua própria cópia da regra e
+   * IGNORAVA a tag Priorização, então bug priorizado contava como bug aqui e
+   * como priorizado na fotografia de sprint. Agora delega ao classificador
+   * canônico (`@/lib/fabricaClassificacao`).
+   */
+  it('bug com tag Priorização NÃO é bug (é priorizado)', () => {
+    expect(categoriaDoItem({ work_item_type: 'Bug', tags: 'PRIORIZACAO; FLEXX' })).toBe('outro');
+    expect(categoriaDoItem({ work_item_type: 'Bug', tags: 'PRIORIZAÇÃO' })).toBe('outro');
+  });
+
+  it('avião composto legado conta como avião, e substring não conta', () => {
+    expect(categoriaDoItem({ work_item_type: 'Bug', tags: 'AVIAO ANTIGO' })).toBe('aviao');
+    expect(categoriaDoItem({ work_item_type: 'Bug', tags: 'AVIAO; TRANSBORDO' })).toBe('aviao');
+    // "DEBUG" contém "bug" mas não é o segmento da tag
+    expect(categoriaDoItem({ work_item_type: 'Product Backlog Item', tags: 'DEBUG' })).toBe('outro');
+  });
 });
 
 describe('calcRitmoSprint', () => {

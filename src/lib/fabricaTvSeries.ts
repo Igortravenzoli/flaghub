@@ -1,5 +1,6 @@
 import type { SnapshotScopeBreakdown, SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 import { cleanFabricaName } from '@/lib/fabricaNames';
+import { classificaDemanda, ehAviao } from '@/lib/fabricaClassificacao';
 
 /**
  * Séries da Visão Executiva da Fábrica (régua de entrega e matriz fábrica ×
@@ -168,15 +169,19 @@ export type ItemLive = {
 };
 
 /**
- * Categoria do item pela mesma precedência do banco (`fn_classifica_demanda`):
- * retorno de QA vence avião, que vence bug. Sem essa ordem um bug com tag de
- * retorno seria contado duas vezes.
+ * Categoria do item, delegando à régua canônica (`@/lib/fabricaClassificacao`,
+ * espelho de `fn_classifica_demanda`).
+ *
+ * A implementação anterior morava aqui e divergia em dois pontos: **ignorava a
+ * tag Priorização** (então bug priorizado contava como bug, ao contrário da
+ * fotografia de sprint) e usava regex sem âncora de segmento, casando substring
+ * — "DEBUG" virava bug. Corrigido em 29/07/2026.
  */
 export function categoriaDoItem(item: ItemLive): 'retorno_qa' | 'aviao' | 'bug' | 'outro' {
-  const t = (item.tags || '').toLowerCase();
-  if (/retorno\s*(de\s*)?qa/.test(t)) return 'retorno_qa';
-  if (/avi[aã]o/.test(t)) return 'aviao';
-  if (item.work_item_type === 'Bug' || /(^|;)\s*bug\s*(;|$)/.test(t)) return 'bug';
+  const cat = classificaDemanda(item);
+  if (cat === 'retorno_qa') return 'retorno_qa';
+  if (ehAviao(cat)) return 'aviao';
+  if (cat === 'bug') return 'bug';
   return 'outro';
 }
 
