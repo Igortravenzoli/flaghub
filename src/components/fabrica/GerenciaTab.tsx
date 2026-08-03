@@ -5,6 +5,7 @@ import type { SprintSnapshotRow, SnapshotScopeBreakdown } from '@/hooks/useSprin
 import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { classificaDemanda, ehPriorizado, type CategoriaDemanda } from '@/lib/fabricaClassificacao';
+import { ehEstadoDone, ehEstadoEntregue } from '@/lib/fabricaEstados';
 import { horasHMdeDecimal } from '@/lib/formatHoras';
 import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
 import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabricaCharts';
@@ -91,11 +92,11 @@ function isManagerLike(item: FabricaItem): boolean {
   return item.work_item_type === 'Product Backlog Item' || item.work_item_type === 'User Story' || item.work_item_type === 'Bug';
 }
 
-function isDoneState(state: string | null | undefined): boolean {
-  return state === 'Done' || state === 'Closed' || state === 'Resolved';
-}
-
-const ENTREGUE_STATES = new Set(['Aguardando Teste', 'Em Teste', 'Aguardando Deploy']);
+// Régua única (espelho de fn_estado_entregue/fn_estado_done no banco): a lista
+// vivia aqui, comparando string exata — "Done" batia, "done" não. Ver
+// @/lib/fabricaEstados.
+const isDoneState = ehEstadoDone;
+const isEntregueState = ehEstadoEntregue;
 
 function percent(value: number, total: number): string {
   if (total <= 0) return '0,0%';
@@ -497,7 +498,7 @@ export function GerenciaTab({
     for (const item of managerItems) {
       const bucket = classifyItem(item);
       const done = isDoneState(item.state);
-      const entregue = ENTREGUE_STATES.has(item.state || '');
+      const entregue = isEntregueState(item.state);
 
       if (bucket === 'priorizacao') priorizacaoPura++;
       else if (bucket === 'priorizacao_transbordo') priorizacaoTransbordo++;
@@ -662,7 +663,7 @@ export function GerenciaTab({
         else if (bucket === 'bug') bug++;
         else if (bucket === 'retorno_qa') retornoQa++;
         else aviao++;
-        if (ENTREGUE_STATES.has(item.state || '')) entregue++;
+        if (isEntregueState(item.state)) entregue++;
         if (isDoneState(item.state)) done++;
       }
       return { code, isPhoto: false, total: sprintItems.length, priorizacao, bug, retornoQa, aviao, entregue, done };
@@ -715,7 +716,7 @@ export function GerenciaTab({
     return managerItems.filter((item) => {
       const bucket = classifyItem(item);
       const done = isDoneState(item.state);
-      const entregue = ENTREGUE_STATES.has(item.state || '');
+      const entregue = isEntregueState(item.state);
       switch (key) {
         case 'demandas': return true;
         case 'concluido': return done || entregue;

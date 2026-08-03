@@ -19,6 +19,46 @@ Fotos já seladas **não** são reprocessadas — a série histórica fica mista
 documentada: ≤S13-2026 corte sexta; S14-2026 corte sábado (exceção manual);
 S15-2026 em diante corte domingo 22:00.
 
+**Atualização — 03/08/2026 (SN-7: a foto mede O QUADRO):** o universo deixou de
+sair de `pbi_lifecycle_summary.committed_sprint` e passou a ser o
+`iteration_path` do item no corte — **PBI + User Story + Bug**, o mesmo conjunto
+do card "Itens no escopo" (migration
+`20260803160000_sn7_foto_universo_quadro_e_ids.sql`).
+
+> Motivo: o job que popula `pbi_lifecycle_summary` filtrava
+> `('Product Backlog Item','User Story')` — **bug nunca entrava**. Os 888 bugs
+> que estavam lá vieram de um backfill único de 01/07/2026. Enquanto ele cobria
+> o presente (≤S13) a foto ficou correta; depois degradou rápido: a **S14**
+> perdeu 35 dos 125 itens e a **S15**, 70 dos 128 (sobraram 2 bugs de 71).
+> A S14 marcava **91,1%** contra **71,8%** reais. Auditoria completa de S1 a S15
+> feita em 03/08/2026.
+
+Consequências, todas aplicadas na mesma data:
+
+- **S14 e S15 foram reprocessadas** por decisão do gestor — as duas únicas fotos
+  comprovadamente erradas. S1–S13 ficaram intocadas (desvio de 0 a 2 pp, dentro
+  do ruído da própria reconstrução).
+- **"Entregue" virou uma definição só**: `aguardando teste`, `em teste`,
+  `aguardando deploy`, `deploy`, `homologação` (`fn_estado_entregue`). Antes a
+  mesma foto carregava duas listas — `delivered_demands` e
+  `category_breakdown.entregue` divergiam em "Aguardando Teste", e a S15 dava
+  69% ou 71% conforme o card. A régua do gestor inclui.
+- **`category_breakdown.ids`**: ids por bucket (entregue, done, bug, retorno_qa)
+  em cada escopo, para o gráfico de evolução abrir a lista de itens por trás de
+  cada bolinha com link para o DevOps. Fotos anteriores não têm o campo — o
+  front mostra "detalhamento indisponível".
+- **O job de lifecycle/health passou a processar Bug**
+  (`devops-sync-all`). A foto já não depende dele para montar escopo, mas
+  `health_status` e `total_lead_time_days` dependem — sem bug, cobriam menos da
+  metade do quadro. **Requer deploy da edge function.**
+- **O driver de selagem varre o quadro**, não mais `pbi_lifecycle_summary`: uma
+  sprint composta só de bugs nunca apareceria na lista antiga.
+
+> Na selagem (segunda 00:30) o `iteration_path` do item ainda é o da sprint que
+> fechou — o botão Migrar só destrava depois da foto selada. A reconstrução por
+> `iteration_history` existe para refazer foto antiga, e aí carrega **±1 item**
+> de incerteza, porque esse histórico tem sync próprio e atrasa.
+
 ## Regra
 
 1. A fotografia de cada sprint é o estado do quadro às **domingo 22:00 (horário de Brasília)** — o corte oficial, **sem tolerância**. A sprint continua encerrando na **sexta**; o fim de semana inteiro é a folga para o time acertar os status.
@@ -55,12 +95,24 @@ estar espelhados antes de selar.
 
 A série de evolução (`sprint_daily_progress`, job `sprint-daily-progress` 00:05
 BRT) ganha um ponto extra após o fim da sprint, para o DailyProgressCard fechar
-próximo da foto (migration `20260725123000_sn4_daily_progress_ponto_sabado.sql`).
+junto da foto (migration `20260803120000_sn6_daily_progress_ponto_domingo_e_transbordo_tag.sql`,
+que substitui a regra de sábado da SN-4).
 
-> ⚠️ Esse complemento foi escrito para o corte de sábado e ainda grava o ponto
-> como `captured_date = sprint_end + 1`. Com o corte em domingo 22:00 ele ficou
-> defasado — ajustar para `sprint_end + 2` numa próxima passada. Não afeta a
-> foto selada, só o fechamento visual do gráfico de evolução.
+**Ponto de fechamento (SN-6, 03/08/2026):** capturado na **segunda 00:05 BRT**
+(`sprint_end + 3`) — 2h05 depois do corte e 25 min antes da selagem — e gravado
+com rótulo de **domingo** (`sprint_end + 2`), o dia do corte. É escrito **uma
+única vez**: se o ponto já existir, o driver pula. Recapturar depois do
+transbordo trocaria o escopo da sprint encerrada (o botão *Migrar* reescreve
+`last_committed_sprint`) e o ponto deixaria de bater com a foto.
+
+Como a sprint seguinte **começa na segunda**, nesse dia o cron grava **dois**
+pontos: o de fechamento da que encerrou e o do dia da que abriu. Por isso a
+função foi partida em `rpc_capture_sprint_daily_progress_at(sprint, data)`
+(captura) + `rpc_capture_sprint_daily_progress()` (driver) — a condição antiga
+("só quando não há sprint aberta hoje") nunca mais seria verdadeira.
+
+`transbordo_count` da série diária também passou a vir da **TAG** — antes
+gravava zero em todo ponto, como acontecia na foto até a SN-5.
 
 ## Exceções (esporádicas, por decisão do gestor)
 
@@ -95,18 +147,28 @@ Sprint antiga que por qualquer motivo ainda esteja sem foto selada seria selada
 pelo cron com o corte NOVO. A migration emite um `NOTICE` por straggler ao ser
 aplicada; para conferir manualmente:
 
+O driver só processa códigos do **ano vigente** (`p_year`, default
+`EXTRACT(YEAR FROM NOW())`), então a auditoria precisa do mesmo filtro. Sem ele
+a consulta devolve ~45 falsos positivos: convivem no banco duas numerações
+(`S15-2026` e a legada `S41-2025`, que também termina em 31/07/2026), e nenhum
+código `-2025`/`-2024` jamais entra no laço da selagem.
+
 ```sql
--- Sprints com corte já passado e sem foto selada/manual
+-- Sprints do ANO VIGENTE com corte já passado e sem foto selada/manual
 select cands.sc, r.sprint_end
 from (select distinct coalesce(ls.last_committed_sprint, ls.first_committed_sprint) as sc
         from public.pbi_lifecycle_summary ls
        where coalesce(ls.last_committed_sprint, ls.first_committed_sprint) ~ '^S[0-9]+-[0-9]{4}$') cands
 join lateral public.fn_sprint_official_range(cands.sc) r on true
-where r.sprint_end + 2 < (now() at time zone 'America/Sao_Paulo')::date
+where split_part(cands.sc, '-', 2)::int = extract(year from now())::int
+  and r.sprint_end + 2 < (now() at time zone 'America/Sao_Paulo')::date
   and not exists (select 1 from public.sprint_indicator_snapshots s
                    where s.sprint_code = cands.sc
                      and s.snapshot_source in ('fim_sprint_selado','manual'));
 ```
+
+> A auditoria embutida na migration `20260726120000` tem o mesmo viés e emite
+> `NOTICE` para os códigos legados. Ruído conhecido, não é straggler.
 
 Se aparecer sprint antiga, selar manualmente com o corte da época ANTES da
 próxima madrugada: runbook de exceção com `p_as_of` da data correta +
@@ -129,5 +191,6 @@ transbordo no meio da sprint.
 
 ## Backlog relacionado
 
-- Ajustar o ponto extra da série diária para `sprint_end + 2` (corte domingo).
+- **Alinhar a série diária ao universo da foto.** `rpc_capture_sprint_daily_progress_at` ainda monta o escopo por `pbi_lifecycle_summary`; enquanto a edge function corrigida não subir e o backfill de bug não rodar, o `DailyProgressCard` fecha num escopo menor que a foto da mesma sprint.
+- **Deploy da `devops-sync-all`** com Bug no laço de lifecycle/health — sem ele, `itens_criticos/atencao/saudaveis` e o lead-time médio das fotos novas cobrem só os PBIs do quadro.
 - Se exceções se tornarem recorrentes: botão administrativo **"Atualizar foto — Sprint X"** no HUB (executa o runbook acima com data escolhida, com auditoria).

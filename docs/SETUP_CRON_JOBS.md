@@ -175,10 +175,11 @@ SELECT cron.schedule(
 );
 
 -- 7. Snapshot de Sprint — diário às 03:30 UTC (00:30 BRT)
--- Reconstrói e SELA a foto de fim de sprint (corte SÁBADO 23:59 BRT desde
--- 24/07/2026; antes, sexta). O guard interno só permite selar a partir de
--- domingo (quando o corte de sábado já passou); fotos seladas/manuais nunca
--- são regravadas. Ver docs/FOTOGRAFIA_SPRINT_SELAGEM.md.
+-- Reconstrói e SELA a foto de fim de sprint (corte DOMINGO 22:00 BRT desde
+-- 25/07/2026; antes, sábado 23:59 e, antes disso, sexta). O guard interno só
+-- permite selar a partir de SEGUNDA (quando o corte de domingo já passou);
+-- fotos seladas/manuais nunca são regravadas.
+-- Ver docs/FOTOGRAFIA_SPRINT_SELAGEM.md.
 SELECT cron.schedule(
   'snapshot-sprint-end-daily',
   '30 3 * * *',

@@ -114,6 +114,8 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
           % Entrega (concluído ÷ escopo, ↑ melhor) · % Retorno QA · % Bug (↓ melhor) — últimas 8 sprints.
           Os três percentuais são <b>sobre o escopo da sprint</b> (régua do guia de indicadores) e vêm das
           <b> fotografias seladas</b>: a sprint em curso não tem ponto aqui.
+          Escopo = o mesmo do card <b>Itens no escopo</b> (PBI + Bug do quadro no corte).
+          Passe o mouse na bolinha para ver os itens — cada um abre no <b>DevOps</b>; clique para a lista completa.
         </p>
       </BlocoCard>
 

@@ -20,6 +20,26 @@ export function concluidoDoEscopo(scope: SnapshotScopeBreakdown): number {
   return scope.done.total + scope.entregue.total;
 }
 
+/** Séries do gráfico de evolução por sprint. */
+export type SerieSprint = 'Entrega' | 'Retorno QA' | 'Bug';
+
+/**
+ * Ids dos itens por trás de cada série, para o drill-down do gráfico.
+ *
+ * Entrega = done + entregue, na mesma régua de `concluidoDoEscopo` — os dois
+ * conjuntos são disjuntos por construção na fotografia, então concatenar não
+ * duplica item. Fotos seladas antes da SN-7 (03/08/2026) não têm `ids`:
+ * devolve lista vazia e o front avisa em vez de mostrar zero itens como se
+ * fosse resposta.
+ */
+export function idsDaSerie(scope: SnapshotScopeBreakdown, serie: SerieSprint): number[] {
+  const ids = scope.ids;
+  if (!ids) return [];
+  if (serie === 'Entrega') return [...(ids.done ?? []), ...(ids.entregue ?? [])];
+  if (serie === 'Bug') return ids.bug ?? [];
+  return ids.retorno_qa ?? [];
+}
+
 export function pctDe(parte: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((parte / total) * 1000) / 10;

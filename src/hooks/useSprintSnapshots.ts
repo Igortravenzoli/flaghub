@@ -14,6 +14,12 @@ export interface SnapshotScopeBreakdown {
   };
   entregue: { total: number; bug: number; retorno_qa: number; priorizacao: number; aviao: number };
   done: { total: number; bug: number; retorno_qa: number; priorizacao: number; aviao: number };
+  /**
+   * Ids dos itens por bucket — base do drill-down do gráfico de evolução.
+   * Só existe em fotos geradas a partir da SN-7 (03/08/2026); nas anteriores
+   * vem `undefined` e o front mostra "detalhamento indisponível".
+   */
+  ids?: { entregue: number[]; done: number[]; bug: number[]; retorno_qa: number[] };
   priorizado_done: number;
   priorizado_em_dev: number;
 }

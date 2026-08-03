@@ -4,6 +4,7 @@ import { fetchAllRows } from '@/lib/fetchAllRows';
 import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { normalizeProduct, extractProducts } from '@/lib/products';
+import { ehEstadoEntregue } from '@/lib/fabricaEstados';
 
 const normalizeFabricaState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 
@@ -15,8 +16,6 @@ export const FABRICA_IN_PROGRESS_STATES = new Set([
   'em teste',
   'aguardando deploy',
 ]);
-// "Entregue" = já saiu do dev, aguardando teste/deploy (subconjunto de in-progress).
-const FABRICA_ENTREGUE_STATES = new Set(['aguardando teste', 'em teste', 'aguardando deploy']);
 const FABRICA_TODO_STATES = new Set(['to do', 'new']);
 const DONE_STATES = new Set(['done', 'closed', 'resolved']);
 const FABRICA_MANAGER_ITEM_TYPES = new Set(['Product Backlog Item', 'User Story', 'Bug']);
@@ -57,8 +56,9 @@ export function isFabricaCountableState(state: string | null | undefined): boole
   return FABRICA_COUNTABLE_STATES.has(normalizeFabricaState(state));
 }
 
+/** "Entregue" = já saiu do dev, aguardando teste/deploy/homologação. Régua única — @/lib/fabricaEstados. */
 export function isFabricaEntregue(state: string | null | undefined): boolean {
-  return FABRICA_ENTREGUE_STATES.has(normalizeFabricaState(state));
+  return ehEstadoEntregue(state);
 }
 
 function isFabricaManagerItem(workItemType: string | null | undefined): boolean {

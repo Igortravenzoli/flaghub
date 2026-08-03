@@ -6,6 +6,7 @@ import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDr
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
 import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS, getCollaboratorExclusionKeys, isCollaboratorExcluded, normalizeCollaboratorName, isFabricaInProgress, isFabricaCountableState } from '@/hooks/useFabricaKpis';
+import { ehEstadoEntregue } from '@/lib/fabricaEstados';
 import { useTimelogUnificado } from '@/hooks/useTimelogUnificado';
 import { useSprintSnapshots } from '@/hooks/useSprintSnapshots';
 import { useAuth } from '@/hooks/useAuth';
@@ -63,7 +64,6 @@ type NewEntryReadFilter = 'all' | 'unread';
 const normalizeState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 const FABRICA_TODO_STATES = new Set(['to do', 'new']);
 const DONE_STATES = new Set(['done', 'closed', 'resolved']);
-const ENTREGUE_STATES = new Set(['aguardando teste', 'em teste', 'aguardando deploy']);
 const RETORNO_QA_REGEX = /(^|;)\s*retorno\s*(de\s*)?qa\s*(;|$)/i;
 
 function isFabricaTodo(state: string | null | undefined): boolean {
@@ -78,9 +78,8 @@ function isRemoved(state: string | null | undefined): boolean {
   return normalizeState(state) === 'removed';
 }
 
-function isEntregueState(state: string | null | undefined): boolean {
-  return ENTREGUE_STATES.has(normalizeState(state));
-}
+// Régua única, espelho do banco — @/lib/fabricaEstados.
+const isEntregueState = ehEstadoEntregue;
 
 const integrations: Integration[] = [
   { name: 'Azure DevOps API', type: 'api', status: 'up', lastCheck: '', latency: '—', description: 'Work Items, Sprints' },

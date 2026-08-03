@@ -460,11 +460,18 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
     })
   }
 
+  // Bug entra aqui desde 03/08/2026 (SN-7). Sem ele, `pbi_lifecycle_summary` e
+  // `pbi_health_summary` só recebiam bug via backfill manual — o último foi em
+  // 01/07/2026, e a partir daí NENHUM bug novo ganhou linha (90 bugs criados em
+  // julho, 5 com linha). A fotografia de sprint já não depende dessa tabela
+  // para montar o escopo, mas health e lead-time dependem, e sem bug eles
+  // cobriam menos da metade do quadro.
+  // Limite subiu junto: o conjunto passou de ~1,2k para ~2,2k itens.
   const { data: pbiItems, error: pbiErr } = await admin
     .from('devops_work_items')
     .select('id, work_item_type, state, iteration_path, assigned_to_unique, created_date, changed_date, custom_fields, iteration_history')
-    .in('work_item_type', ['Product Backlog Item', 'User Story'])
-    .limit(3000)
+    .in('work_item_type', ['Product Backlog Item', 'User Story', 'Bug'])
+    .limit(4000)
 
   if (pbiErr) {
     console.error('[LifecycleHealth] Failed to fetch PBIs:', pbiErr.message)

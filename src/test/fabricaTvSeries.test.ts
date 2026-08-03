@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SnapshotScopeBreakdown, SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 import {
-  agregaLivePorFabrica, categoriaDoItem, concluidoDoEscopo,
+  agregaLivePorFabrica, categoriaDoItem, concluidoDoEscopo, idsDaSerie,
   matrizFabricaSprint, serieEntregaGeral,
 } from '@/lib/fabricaTvSeries';
 import { calcRitmoSprint, META_ENTREGA_PCT } from '@/lib/fabricaMetas';
@@ -31,6 +31,36 @@ function snap(code: string, geral: SnapshotScopeBreakdown, fabricas: Record<stri
 }
 
 const ANO = 2026;
+
+describe('drill-down por série (ids da fotografia)', () => {
+  const comIds = (): SnapshotScopeBreakdown => ({
+    ...escopo({ total: 10, done: 2, entregue: 3, bug: 4, retorno: 1 }),
+    ids: { done: [1, 2], entregue: [3, 4, 5], bug: [6, 7, 8, 9], retorno_qa: [10] },
+  });
+
+  it('Entrega concatena done + entregue, na mesma régua do indicador', () => {
+    expect(idsDaSerie(comIds(), 'Entrega')).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('Bug e Retorno QA saem do próprio bucket', () => {
+    expect(idsDaSerie(comIds(), 'Bug')).toEqual([6, 7, 8, 9]);
+    expect(idsDaSerie(comIds(), 'Retorno QA')).toEqual([10]);
+  });
+
+  it('foto anterior à SN-7 (sem ids) devolve vazio — o front avisa em vez de mostrar lista falsa', () => {
+    const antiga = escopo({ total: 10, done: 2, entregue: 3 });
+    expect(idsDaSerie(antiga, 'Entrega')).toEqual([]);
+    expect(idsDaSerie(antiga, 'Bug')).toEqual([]);
+  });
+
+  it('bucket ausente no payload não quebra a concatenação', () => {
+    const parcial: SnapshotScopeBreakdown = {
+      ...escopo({ total: 4, done: 1, entregue: 0 }),
+      ids: { done: [7], entregue: undefined as unknown as number[], bug: [], retorno_qa: [] },
+    };
+    expect(idsDaSerie(parcial, 'Entrega')).toEqual([7]);
+  });
+});
 
 describe('concluído = done + entregue', () => {
   it('soma os dois estados da fotografia', () => {
