@@ -18,6 +18,8 @@ type DesempenhoTrendChartProps = {
   height?: number | string;
   /** Mostra o número dentro da bolinha de cada ponto (e habilita o drill-down). */
   showValues?: boolean;
+  /** Oculta a legenda interna (quando o card pai já tem legenda própria). */
+  showLegend?: boolean;
 };
 
 // Semântica das cores: Entrega ↑ é bom (verde), Bug ↓ é ruim (vermelho),
@@ -28,11 +30,13 @@ const COR_BUG = 'hsl(0,72%,52%)';
 
 type Serie = SerieSprint;
 
-const COR: Record<Serie, string> = {
+/** Exportado para os cards que replicam a legenda fora do gráfico (ex.: ranking por fábrica). */
+export const COR_SERIE: Record<Serie, string> = {
   'Entrega': COR_ENTREGA,
   'Retorno QA': COR_RETORNO,
   'Bug': COR_BUG,
 };
+const COR = COR_SERIE;
 
 function sprintNum(code: string): number {
   return Number(code.match(/\d+/)?.[0] ?? 0);
@@ -161,6 +165,7 @@ export function DesempenhoTrendChart({
   maxSprints = 8,
   height = 220,
   showValues = true,
+  showLegend = true,
 }: DesempenhoTrendChartProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const anoVigente = new Date().getFullYear();
@@ -279,7 +284,7 @@ export function DesempenhoTrendChart({
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="sprint" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
-          <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+          {showLegend && <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />}
           <Line type="monotone" dataKey="Entrega" stroke={COR_ENTREGA} strokeWidth={2.5} dot={dotFor('Entrega')} activeDot={false} isAnimationActive={false} />
           <Line type="monotone" dataKey="Retorno QA" stroke={COR_RETORNO} strokeWidth={2} dot={dotFor('Retorno QA')} activeDot={false} isAnimationActive={false} />
           <Line type="monotone" dataKey="Bug" stroke={COR_BUG} strokeWidth={2} dot={dotFor('Bug')} activeDot={false} isAnimationActive={false} />

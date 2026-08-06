@@ -5,11 +5,14 @@ import {
 import { BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useSprintSnapshots, type SnapshotScopeBreakdown, type SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { SQUADS } from '@/lib/fabricaRoster';
 import { fabricaColor } from '@/lib/chartColors';
 import { quarterLabel } from '@/lib/sprintCalendar';
+import { concluidoDoEscopo } from '@/lib/fabricaTvSeries';
 
 type GroupBy = 'sprint' | 'quarter';
 
@@ -37,14 +40,28 @@ function normalizedFabricas(snap: SprintSnapshotRow): Record<string, SnapshotSco
   return out;
 }
 
-type RawSums = { done: number; scope: number; bug: number; retorno: number };
-const emptySums = (): RawSums => ({ done: 0, scope: 0, bug: 0, retorno: 0 });
+type RawSums = { encerrados: number; scope: number; bug: number; retorno: number };
+const emptySums = (): RawSums => ({ encerrados: 0, scope: 0, bug: 0, retorno: 0 });
 function addScope(acc: RawSums, scope: SnapshotScopeBreakdown): void {
-  acc.done += scope.done.total;
+  // Encerrados = done + entregue — MESMA régua do gerencial/ranking (26/07/2026).
+  // Até 06/08/2026 somava só `done.total`, o que deixava as Entregas deste card
+  // artificialmente baixas em relação ao ranking e à evolução por sprint.
+  acc.encerrados += concluidoDoEscopo(scope);
   acc.scope += scope.total;
   acc.bug += scope.cats.bug;
   acc.retorno += scope.cats.retorno_qa;
 }
+
+/** Linha do detalhamento (popup): contribuição de UMA sprint para a coluna clicada. */
+export type SprintDetalhe = { sprint: string; escopo: number; encerrados: number; bug: number; retorno: number };
+
+type MetricKey = 'entrega' | 'bug' | 'retorno';
+
+const METRICA_INFO: Record<MetricKey, { titulo: string; campo: 'encerrados' | 'bug' | 'retorno'; numerador: string }> = {
+  entrega: { titulo: 'Entregas', campo: 'encerrados', numerador: 'itens encerrados (done + entregue)' },
+  bug: { titulo: 'Bug', campo: 'bug', numerador: 'bugs no escopo' },
+  retorno: { titulo: 'Retorno QA', campo: 'retorno', numerador: 'retornos de QA no escopo' },
+};
 
 type TooltipPayload = Array<{ payload: Record<string, string | number | undefined> }> | undefined;
 
@@ -105,67 +122,115 @@ function TooltipQualidade({ active, label, payload, cor }: {
   );
 }
 
+export type ColunaQualidade = { label: string; cells: Record<string, CelulaFabricaMetricas> };
+
+/**
+ * Agregação pura das fotografias em colunas (sprint ou quarter) — exportada para
+ * os testes exercitarem a regra sem Supabase (mesmo padrão de fabricaTvSeries).
+ *
+ * Regras que os testes cravam (validação pedida pelo gestor, 06/08/2026):
+ *  - Entregas = encerrados (done + entregue) ÷ escopo;
+ *  - sprint entra no quarter pelo mês em que TERMINA;
+ *  - no quarter soma-se tudo ANTES de dividir (não é média das sprints);
+ *  - quarter agrega o ano inteiro; por sprint, últimas N;
+ *  - `detalhes` guarda a composição por sprint de cada barra (popup).
+ */
+export function montaColunasQualidade(
+  snapshots: Record<string, SprintSnapshotRow>,
+  opts: { groupBy: GroupBy; maxSprints: number; anoVigente: number },
+): { columns: ColunaQualidade[]; fabricasOrdenadas: string[]; detalhes: Record<string, SprintDetalhe[]> } {
+  const { groupBy, maxSprints, anoVigente } = opts;
+  const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
+  const todas = Object.values(snapshots)
+    .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
+    .sort((a, b) => sprintNum(a.sprint_code) - sprintNum(b.sprint_code));
+  // No quarter, agrega o ANO INTEIRO (várias colunas Q); por sprint, últimas N.
+  const rows = groupBy === 'quarter' ? todas : todas.slice(-maxSprints);
+
+  const colOrder: string[] = [];
+  const raw = new Map<string, Map<string, RawSums>>();
+  const agg: Record<string, RawSums> = {};
+  // Composição de cada barra (chave `coluna::fábrica`), para o popup de detalhe.
+  const detalhes: Record<string, SprintDetalhe[]> = {};
+
+  for (const s of rows) {
+    const colKey = groupBy === 'quarter'
+      ? (quarterLabel(s.sprint_code) ?? s.sprint_code.split('-')[0])
+      : s.sprint_code.split('-')[0];
+    if (!raw.has(colKey)) { raw.set(colKey, new Map()); colOrder.push(colKey); }
+    const colMap = raw.get(colKey)!;
+    for (const [name, scope] of Object.entries(normalizedFabricas(s))) {
+      // Só as squads reais — "Sem fábrica"/"DESIGN"/"FLG" viravam séries extras
+      // e deixavam as barras ilegíveis (7 séries em vez de 4).
+      if (!SQUADS.includes(name)) continue;
+      const c = colMap.get(name) ?? emptySums();
+      addScope(c, scope);
+      colMap.set(name, c);
+      const a = (agg[name] ??= emptySums());
+      addScope(a, scope);
+      (detalhes[`${colKey}::${name}`] ??= []).push({
+        sprint: s.sprint_code.split('-')[0],
+        escopo: scope.total,
+        encerrados: concluidoDoEscopo(scope),
+        bug: scope.cats.bug,
+        retorno: scope.cats.retorno_qa,
+      });
+    }
+  }
+
+  const columns = colOrder.map((key) => {
+    const colMap = raw.get(key)!;
+    const cells: Record<string, CelulaFabricaMetricas> = {};
+    for (const [name, c] of colMap) {
+      cells[name] = { entrega: pct(c.encerrados, c.scope), bug: pct(c.bug, c.scope), retorno: pct(c.retorno, c.scope) };
+    }
+    return { label: key, cells };
+  });
+
+  // Score = Desempenho − (½·Bug + ½·RetornoQA); maior primeiro (melhor → pior).
+  const fabricasOrdenadas = Object.entries(agg)
+    .filter(([, a]) => a.scope > 0)
+    .map(([name, a]) => ({ name, score: pct(a.encerrados, a.scope) - 0.5 * pct(a.bug, a.scope) - 0.5 * pct(a.retorno, a.scope) }))
+    .sort((x, y) => y.score - x.score)
+    .map((x) => x.name);
+
+  return { columns, fabricasOrdenadas, detalhes };
+}
+
 /**
  * "Qualidade das Fábricas" (slides 1 e 3): Entregas, Bug e Retorno QA por sprint,
  * uma barra por fábrica. Alternância Sprint ⇄ Quarter — no acumulado por quarter
- * os totais das sprints são somados ANTES de dividir (não é média de sprints).
+ * os totais das sprints são somados ANTES de dividir (não é média de sprints), e
+ * a sprint entra no quarter pelo mês em que TERMINA. Quarter é a visão default
+ * no painel (pedido do gestor, 06/08/2026); no TV fica por sprint.
+ * Entregas = encerrados (done + entregue) ÷ escopo — mesma régua do gerencial.
+ * Clicar numa barra abre o detalhamento: quais sprints compõem a coluna e as
+ * contagens por trás do percentual.
  * Fábricas ordenadas da melhor para a pior cruzando Desempenho × Qualidade.
- * Fonte = fotografias de fim de sprint.
+ * Fonte = fotografias de fim de sprint (a sprint em curso não entra).
  */
 export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, fill = false }: QualidadePorFabricaChartsProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
-  const [groupBy, setGroupBy] = useState<GroupBy>('sprint');
+  const [groupBy, setGroupBy] = useState<GroupBy>(fill ? 'sprint' : 'quarter');
+  const [detalhe, setDetalhe] = useState<{ coluna: string; fabrica: string; metrica: MetricKey } | null>(null);
   const anoVigente = new Date().getFullYear();
 
-  const { columns, fabricasOrdenadas } = useMemo(() => {
-    const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
-    // No quarter, agrega o ano inteiro (várias colunas Q); por sprint, últimas N.
-    const limit = groupBy === 'quarter' ? 24 : maxSprints;
-    const rows = Object.values(snapshots)
-      .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
-      .sort((a, b) => sprintNum(a.sprint_code) - sprintNum(b.sprint_code))
-      .slice(-limit);
+  const { columns, fabricasOrdenadas, detalhes } = useMemo(
+    () => montaColunasQualidade(snapshots, { groupBy, maxSprints, anoVigente }),
+    [snapshots, anoVigente, maxSprints, groupBy],
+  );
 
-    const colOrder: string[] = [];
-    const raw = new Map<string, Map<string, RawSums>>();
-    const agg: Record<string, RawSums> = {};
-
-    for (const s of rows) {
-      const colKey = groupBy === 'quarter'
-        ? (quarterLabel(s.sprint_code) ?? s.sprint_code.split('-')[0])
-        : s.sprint_code.split('-')[0];
-      if (!raw.has(colKey)) { raw.set(colKey, new Map()); colOrder.push(colKey); }
-      const colMap = raw.get(colKey)!;
-      for (const [name, scope] of Object.entries(normalizedFabricas(s))) {
-        // Só as squads reais — "Sem fábrica"/"DESIGN"/"FLG" viravam séries extras
-        // e deixavam as barras ilegíveis (7 séries em vez de 4).
-        if (!SQUADS.includes(name)) continue;
-        const c = colMap.get(name) ?? emptySums();
-        addScope(c, scope);
-        colMap.set(name, c);
-        const a = (agg[name] ??= emptySums());
-        addScope(a, scope);
-      }
-    }
-
-    const columns = colOrder.map((key) => {
-      const colMap = raw.get(key)!;
-      const cells: Record<string, { entrega: number; bug: number; retorno: number }> = {};
-      for (const [name, c] of colMap) {
-        cells[name] = { entrega: pct(c.done, c.scope), bug: pct(c.bug, c.scope), retorno: pct(c.retorno, c.scope) };
-      }
-      return { label: key, cells };
-    });
-
-    // Score = Desempenho − (½·Bug + ½·RetornoQA); maior primeiro (melhor → pior).
-    const ordered = Object.entries(agg)
-      .filter(([, a]) => a.scope > 0)
-      .map(([name, a]) => ({ name, score: pct(a.done, a.scope) - 0.5 * pct(a.bug, a.scope) - 0.5 * pct(a.retorno, a.scope) }))
-      .sort((x, y) => y.score - x.score)
-      .map((x) => x.name);
-
-    return { columns, fabricasOrdenadas: ordered };
-  }, [snapshots, anoVigente, maxSprints, groupBy]);
+  // Linhas e totais do popup de composição (recalculados só quando abre/muda).
+  const detalheRows = detalhe ? (detalhes[`${detalhe.coluna}::${detalhe.fabrica}`] ?? []) : [];
+  const detalheTot = detalheRows.reduce(
+    (acc, r) => ({
+      escopo: acc.escopo + r.escopo,
+      encerrados: acc.encerrados + r.encerrados,
+      bug: acc.bug + r.bug,
+      retorno: acc.retorno + r.retorno,
+    }),
+    { escopo: 0, encerrados: 0, bug: 0, retorno: 0 },
+  );
 
   /** Cor fixa por fábrica (a mesma da legenda), independente da posição da barra. */
   const corDaFabrica = useMemo(() => {
@@ -261,7 +326,22 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
                           )}
                         />
                         {Array.from({ length: SQUADS.length }, (_, slot) => (
-                          <Bar key={slot} dataKey={`v${slot}`} maxBarSize={12} radius={[2, 2, 0, 0]}>
+                          <Bar
+                            key={slot}
+                            dataKey={`v${slot}`}
+                            maxBarSize={12}
+                            radius={[2, 2, 0, 0]}
+                            className="cursor-pointer"
+                            onClick={(entry: unknown) => {
+                              // O onClick do Bar entrega os props da barra; a linha original fica em `payload`.
+                              const p = (entry && typeof entry === 'object' && 'payload' in entry
+                                ? (entry as { payload: Record<string, unknown> }).payload
+                                : entry) as Record<string, unknown> | undefined;
+                              const fabrica = typeof p?.[`f${slot}`] === 'string' ? (p[`f${slot}`] as string) : '';
+                              const coluna = typeof p?.label === 'string' ? (p.label as string) : '';
+                              if (fabrica && coluna) setDetalhe({ coluna, fabrica, metrica: c.key });
+                            }}
+                          >
                             {dados.map((row, ri) => (
                               <Cell key={ri} fill={corDaFabrica(String(row[`f${slot}`] ?? ''))} />
                             ))}
@@ -277,11 +357,71 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
         )}
         <p className="text-[11px] text-muted-foreground mt-2">
           % sobre o escopo de cada fábrica{groupBy === 'quarter' ? ' no quarter (soma das sprints do trimestre)' : ' na sprint'}.
+          Entregas = <b>encerrados (done + entregue) ÷ escopo</b>, mesma régua do gerencial.
           Em cada {groupBy === 'quarter' ? 'quarter' : 'sprint'} a <b>primeira barra é a melhor</b>:
           Entregas do maior para o menor; Bug e Retorno QA do menor para o maior.
           A legenda segue a ordem do ranking Desempenho × Qualidade.
           {groupBy === 'quarter' && ' Sprint entra no quarter pelo mês em que termina.'}
+          {!fill && <b> Clique numa barra para ver a composição do número.</b>}
         </p>
+
+        {/* Popup de composição — o que está por trás da barra clicada (06/08/2026). */}
+        <Dialog open={detalhe !== null} onOpenChange={(v) => !v && setDetalhe(null)}>
+          <DialogContent className="sm:max-w-[560px]">
+            {detalhe && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-sm flex items-center gap-2">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: corDaFabrica(detalhe.fabrica) }} />
+                    {detalhe.fabrica} · {detalhe.coluna} — {METRICA_INFO[detalhe.metrica].titulo}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="max-h-[55vh] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Sprint</TableHead>
+                        <TableHead className="text-xs text-right">Escopo</TableHead>
+                        <TableHead className={`text-xs text-right ${detalhe.metrica === 'entrega' ? 'text-foreground font-semibold' : ''}`}>Encerrados</TableHead>
+                        <TableHead className={`text-xs text-right ${detalhe.metrica === 'bug' ? 'text-foreground font-semibold' : ''}`}>Bug</TableHead>
+                        <TableHead className={`text-xs text-right ${detalhe.metrica === 'retorno' ? 'text-foreground font-semibold' : ''}`}>Retorno QA</TableHead>
+                        <TableHead className="text-xs text-right">% {METRICA_INFO[detalhe.metrica].titulo}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detalheRows.map((r) => (
+                        <TableRow key={r.sprint}>
+                          <TableCell className="text-xs font-medium">{r.sprint}</TableCell>
+                          <TableCell className="text-xs text-right font-mono tabular-nums">{r.escopo}</TableCell>
+                          <TableCell className={`text-xs text-right font-mono tabular-nums ${detalhe.metrica === 'entrega' ? 'font-semibold' : 'text-muted-foreground'}`}>{r.encerrados}</TableCell>
+                          <TableCell className={`text-xs text-right font-mono tabular-nums ${detalhe.metrica === 'bug' ? 'font-semibold' : 'text-muted-foreground'}`}>{r.bug}</TableCell>
+                          <TableCell className={`text-xs text-right font-mono tabular-nums ${detalhe.metrica === 'retorno' ? 'font-semibold' : 'text-muted-foreground'}`}>{r.retorno}</TableCell>
+                          <TableCell className="text-xs text-right font-mono tabular-nums">{pct(r[METRICA_INFO[detalhe.metrica].campo], r.escopo)}%</TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="border-t-2">
+                        <TableCell className="text-xs font-semibold">Total {detalhe.coluna}</TableCell>
+                        <TableCell className="text-xs text-right font-mono tabular-nums font-semibold">{detalheTot.escopo}</TableCell>
+                        <TableCell className="text-xs text-right font-mono tabular-nums font-semibold">{detalheTot.encerrados}</TableCell>
+                        <TableCell className="text-xs text-right font-mono tabular-nums font-semibold">{detalheTot.bug}</TableCell>
+                        <TableCell className="text-xs text-right font-mono tabular-nums font-semibold">{detalheTot.retorno}</TableCell>
+                        <TableCell className="text-xs text-right font-mono tabular-nums font-semibold">
+                          {pct(detalheTot[METRICA_INFO[detalhe.metrica].campo], detalheTot.escopo)}%
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+                <p className="border-t pt-2 text-[11px] text-muted-foreground">
+                  {METRICA_INFO[detalhe.metrica].titulo} de {detalhe.coluna} = {detalheTot[METRICA_INFO[detalhe.metrica].campo]} {METRICA_INFO[detalhe.metrica].numerador} ÷ {detalheTot.escopo} itens
+                  de escopo = <b>{pct(detalheTot[METRICA_INFO[detalhe.metrica].campo], detalheTot.escopo)}%</b>.
+                  {detalhe.coluna.startsWith('Q') && ' A soma é feita ANTES de dividir (não é média das sprints); a sprint entra no quarter pelo mês em que termina.'}
+                  {' '}Fonte: fotografias seladas de fim de sprint — a sprint em curso não entra.
+                </p>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

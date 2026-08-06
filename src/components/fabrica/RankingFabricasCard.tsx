@@ -6,14 +6,15 @@ import { cleanFabricaName } from '@/lib/fabricaNames';
 import { SQUADS } from '@/lib/fabricaRoster';
 import { concluidoDoEscopo } from '@/lib/fabricaTvSeries';
 import { fabricaColor, medalColor } from '@/lib/chartColors';
+import { DesempenhoTrendChart, COR_SERIE } from '@/components/fabrica/DesempenhoTrendChart';
 
 type RankingFabricasCardProps = {
-  /** Quantas sprints mais recentes considerar (barras aninhadas + agregado do score). */
+  /** Quantas sprints mais recentes considerar (linhas do gráfico + agregado do score). */
   maxSprints?: number;
   /** Colunas do grid de fábricas (4 no modo TV = tudo numa linha). */
   columns?: number;
-  /** Altura renderizada do gráfico aninhado (px). Menor no modo TV. */
-  svgHeight?: number;
+  /** Altura do gráfico de linhas de cada fábrica (px). */
+  chartHeight?: number;
   /** Preenche a altura do card (modo TV) em vez de usar altura fixa. */
   fill?: boolean;
 };
@@ -58,19 +59,6 @@ function verdeProporcional(ratio: number): { fundo: string; borda: string } {
   };
 }
 
-// Geometria do gráfico aninhado (coordenadas do viewBox).
-const CHART_TOP = 10;
-const CHART_BOTTOM = 104;
-const CHART_H = CHART_BOTTOM - CHART_TOP;
-// Geometria: no TV (fill) as barras são maiores e mais espaçadas (menos sprints,
-// leitura a distância); no painel, mais compactas.
-const GEO_TV = { GROUP_W: 92, OUTER_W: 58, INNER_W: 17 };
-const GEO_PANEL = { GROUP_W: 62, OUTER_W: 40, INNER_W: 13 };
-
-function y(value: number): number {
-  return CHART_BOTTOM - (Math.max(0, Math.min(100, value)) / 100) * CHART_H;
-}
-
 /** Barra fina de qualidade, com rótulo e valor sempre visíveis (regra de TV: sem hover). */
 function BarraQualidade({ rotulo, valor, cor }: { rotulo: string; valor: number; cor: string }) {
   return (
@@ -87,7 +75,7 @@ function BarraQualidade({ rotulo, valor, cor }: { rotulo: string; valor: number;
   );
 }
 
-export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 126, fill = false }: RankingFabricasCardProps) {
+export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight = 190, fill = false }: RankingFabricasCardProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const anoVigente = new Date().getFullYear();
 
@@ -168,12 +156,6 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
 
   return (
     <Card className={fill ? 'h-full flex flex-col' : undefined}>
-      {/* Barras "crescem" da base ao montar (e a cada rotação do TV, que remonta o card). */}
-      <style>{`
-        @keyframes fabBarGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-        .fab-bar { transform-box: fill-box; transform-origin: 50% 100%; animation: fabBarGrow .7s cubic-bezier(.22,1,.36,1) both; }
-        @media (prefers-reduced-motion: reduce) { .fab-bar { animation: none; } }
-      `}</style>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-sm font-medium flex items-center gap-1.5">
@@ -183,8 +165,11 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
             </Info>
           </CardTitle>
           <div className="flex gap-3 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(0,72%,55%)' }} /> Bug</span>
-            <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(38,92%,50%)' }} /> Retorno QA</span>
+            {!fill && (
+              <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: COR_SERIE['Entrega'] }} /> Entrega</span>
+            )}
+            <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: COR_SERIE['Bug'] }} /> Bug</span>
+            <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: COR_SERIE['Retorno QA'] }} /> Retorno QA</span>
           </div>
         </div>
       </CardHeader>
@@ -234,13 +219,16 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
             })}
           </div>
         ) : (
+          /* ── Painel · evolução por sprint de CADA fábrica ───────────────────
+             Mesmo gráfico de linhas do "Desempenho · evolução por sprint"
+             (Entrega/Bug/Retorno QA), escopado pela fábrica — pedido de
+             06/08/2026, substituindo as barras aninhadas. Hover na bolinha
+             lista os itens; clique abre a lista completa (drill-down herdado). */
           <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
             {ranking.map((f, idx) => {
               const color = fabricaColor(f.name, idx);
-              const { GROUP_W, OUTER_W, INNER_W } = fill ? GEO_TV : GEO_PANEL;
-              const vbW = Math.max(GROUP_W * f.cells.length, GROUP_W);
               return (
-                <div key={f.name} className={`border rounded-lg p-3 ${fill ? 'flex flex-col min-h-0' : ''}`}>
+                <div key={f.name} className="border rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <span
                       className="inline-grid place-items-center w-6 h-6 rounded-full text-white font-mono font-bold text-xs shrink-0"
@@ -253,41 +241,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
                       score <span className="font-mono font-semibold text-foreground">{f.score}</span>
                     </span>
                   </div>
-                  <svg
-                    viewBox={`0 0 ${vbW} 126`}
-                    width="100%"
-                    height={fill ? '100%' : svgHeight}
-                    className={fill ? 'flex-1 min-h-0' : undefined}
-                    preserveAspectRatio="xMidYMid meet"
-                    role="img"
-                    aria-label={`Desempenho aninhado de ${f.name}`}
-                  >
-                    <line x1="0" y1={CHART_BOTTOM} x2={vbW} y2={CHART_BOTTOM} stroke="hsl(var(--border))" />
-                    {f.cells.map((c, i) => {
-                      const cx = i * GROUP_W + GROUP_W / 2;
-                      const outerX = cx - OUTER_W / 2;
-                      const outerY = y(c.desempenho);
-                      const delay = { animationDelay: `${i * 90}ms` };
-                      return (
-                        <g key={c.sprint + i}>
-                          {/* Barra externa = Desempenho */}
-                          <rect
-                            className="fab-bar" style={delay}
-                            x={outerX} y={outerY} width={OUTER_W} height={CHART_BOTTOM - outerY}
-                            rx="3" fill={color} fillOpacity="0.18" stroke={color} strokeWidth="1.5"
-                          />
-                          {/* Barras internas = Qualidade (Bug, Retorno QA) */}
-                          <rect className="fab-bar" style={{ animationDelay: `${i * 90 + 120}ms` }} x={cx - INNER_W - 1} y={y(c.bug)} width={INNER_W} height={CHART_BOTTOM - y(c.bug)} fill="hsl(0,72%,55%)" />
-                          <rect className="fab-bar" style={{ animationDelay: `${i * 90 + 120}ms` }} x={cx + 1} y={y(c.retorno)} width={INNER_W} height={CHART_BOTTOM - y(c.retorno)} fill="hsl(38,92%,50%)" />
-                          {/* No TV, o número (grande) só na sprint atual — evita encavalar; as anteriores mostram a tendência pela altura. */}
-                          {(!fill || i === f.cells.length - 1) && (
-                            <text x={cx} y={outerY - 4} textAnchor="middle" fontSize={fill ? 22 : 11} fontFamily="monospace" fontWeight={fill ? 800 : 700} fill="hsl(var(--foreground))">{c.desempenho}</text>
-                          )}
-                          <text x={cx} y="120" textAnchor="middle" fontSize={fill ? 11 : 9} fill="hsl(var(--muted-foreground))">{c.sprint}</text>
-                        </g>
-                      );
-                    })}
-                  </svg>
+                  <DesempenhoTrendChart fabrica={f.name} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
                 </div>
               );
             })}
@@ -296,7 +250,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, svgHeight = 1
         <p className="text-[11px] text-muted-foreground mt-2">
           {fill
             ? 'Caixinha maior e mais verde = mais PBIs encerrados na sprint. Barras finas = Qualidade (Retorno QA e Bug, quanto menor melhor).'
-            : `Barra maior = Desempenho (% concluído do escopo). Barras finas dentro = Qualidade (Bug e Retorno QA, quanto menor melhor). Medalha cruza os dois. Últimas ${maxSprints} sprints.`}
+            : `Linhas por sprint de cada fábrica: Entrega (% encerrado do escopo, ↑ melhor), Bug e Retorno QA (% do escopo, ↓ melhor). Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints. Passe o mouse na bolinha para ver os itens; clique para a lista completa.`}
         </p>
       </CardContent>
     </Card>
