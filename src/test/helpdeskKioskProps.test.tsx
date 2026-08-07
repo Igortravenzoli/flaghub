@@ -1,15 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 
-// LAY-4 — contrato do modo TV. O kiosk renderiza a MESMA tab sem filterBar.
-// Este arquivo documenta por que a prop é `totalMinutos` e não `totalHoras`:
-// o TS já quebra o build se ela faltar, mas não impede alguém de "consertar"
-// passando `k.totalHoras * 60` — o que degradaria o TMA.
+// LAY-4 — contrato do modo TV. Desde 07/08/2026 o kiosk NÃO renderiza mais a
+// HelpdeskExecutivoTab encolhida: ele monta a CsTvView (view própria de telão,
+// modo fill, 2 páginas — sem provider de rotação renderiza a página 1, Resultado).
+// Este arquivo continua documentando por que o dado é `totalMinutos` e não
+// `totalHoras`: a CsTvView deriva h:mm e TMA dos MINUTOS BRUTOS, e nada impede
+// alguém de "consertar" passando `k.totalHoras * 60` — o que degradaria o TMA.
 
 const semDados = { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
 
-// Os cards de SLA precisam de DADO: sem dado eles caem no DashboardEmptyState,
-// que renderiza um h3 próprio e falsearia a contagem de seções.
+// Os cards de SLA precisam de DADO: sem dado eles caem no estado de erro de VPN
+// e o teste deixaria de exercer o contrato cheio da página 1.
 const slaMensal = {
   success: true, message: 'ok', timestamp: '2026-07-30T12:00:00Z',
   segmento: 'nestle' as const, formulaVersao: 'planilha-cs-v1',
@@ -84,19 +86,23 @@ describe('HelpdeskKiosk — modo TV', () => {
     expect(container.textContent).not.toContain('498.3h');
   });
 
-  it('a TV recebe 4 seções, não 5 (o Comparativo mensal não volta pelo kiosk)', () => {
+  it('a TV renderiza a view de telão, não a tab de mesa (o Comparativo mensal não volta pelo kiosk)', () => {
     const { container } = render(<HelpdeskKiosk />);
-    expect([...container.querySelectorAll('h3')].map((h) => h.textContent))
-      .toEqual(['Resultado', 'Indicadores', 'Análise', 'Incidentes declarados']);
+    // As seções <h3> são anatomia da HelpdeskExecutivoTab — na TV não existe nenhuma.
+    expect(container.querySelectorAll('h3')).toHaveLength(0);
+    expect(container.textContent).not.toContain('Comparativo mensal');
+    // Página 1 (Resultado): os 3 blocos de SLA, na ordem, no wrapper padrão BlocoTv.
+    expect([...container.querySelectorAll('p.uppercase.tracking-widest')].map((p) => p.textContent))
+      .toEqual(['SLA Nestlé', 'SLA Heineken', 'SLA Outras Bandeiras']);
   });
 
-  it('nenhum DashboardFilterBar aparece — a tab não ganha filtro implícito na TV', () => {
+  it('nenhum DashboardFilterBar aparece — a TV não ganha filtro implícito', () => {
     const { container } = render(<HelpdeskKiosk />);
     expect(screen.queryByText('Período')).toBeNull();
     expect(screen.queryByRole('combobox')).toBeNull();
-    // e o escopo fixo do kiosk fica declarado no cabeçalho
-    const sub = [...container.querySelectorAll('p')].find((p) => p.textContent?.includes('Customer Service'));
-    expect(sub?.textContent).toContain('Mês atual');
+    // e o escopo fixo do kiosk fica declarado no card de identidade da faixa
+    const sub = [...container.querySelectorAll('p')].find((p) => p.textContent?.includes('Panorama'));
+    expect(sub?.textContent).toContain('mês atual');
   });
 
   it('nenhum número da tela sai como undefined/NaN com os dados do kiosk', () => {

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { BlocoCard, SecHeader, SeloCalculado } from '@/components/executivo/BlocoCard';
 import type { ConsultorKpi, TipoChamadoKpi, RegistroPorGrupo, HistoricoEntry } from '@/hooks/useHelpdeskKpis';
+import { agrupaVolumePorConsultorCS } from '@/lib/csConsultores';
 import { useGestaoSlaMensal } from '@/hooks/useGestaoKpis';
 import {
   SlaSegmentoCard, SlaIncDetalheSheet, type SlaIncDrillAlvo,
@@ -15,10 +16,8 @@ import { PanoramaAtendimentoCard } from '@/components/helpdesk/PanoramaAtendimen
 import { ProdutividadeConsultoresCard } from '@/components/helpdesk/ProdutividadeConsultoresCard';
 import { IncidentesDeclaradosCard } from '@/components/helpdesk/IncidentesDeclaradosCard';
 
-// Consultores de atendimento (CS) — escopo do Wilker
-const CONSULTORES_CS = ['ailton', 'italo', 'leandro', 'vagner', 'guimaraes', 'ricardo', 'wilker', 'bruna', 'ronaldo'];
-const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const isConsultorCS = (nome: string) => { const n = norm(nome); return CONSULTORES_CS.some((t) => n.includes(t)); };
+// Consultores de atendimento (CS): lista, filtro e dedupe promovidos para
+// `@/lib/csConsultores` (07/08/2026) — compartilhados com a TV (`CsTvView`).
 
 interface HelpdeskExecutivoTabProps {
   totalRegistros: number;
@@ -53,7 +52,9 @@ export function HelpdeskExecutivoTab({
   const slaOutras = useGestaoSlaMensal('outros');
 
   const [incDrill, setIncDrill] = useState<SlaIncDrillAlvo | null>(null);
-  // O modo TV (HelpdeskKiosk) não passa filterBar → rodapé sem clique lá.
+  // Sem filterBar → rodapé sem clique. (Até 07/08/2026 era o caso do modo TV;
+  // hoje o kiosk renderiza a CsTvView e esta tab é só de mesa, mas a regra fica:
+  // quem montar a tab sem filtro não ganha drill.)
   const drillInc = filterBar ? setIncDrill : undefined;
 
   const now = new Date();
@@ -61,14 +62,10 @@ export function HelpdeskExecutivoTab({
   const periodoFim = dataFim ?? now;
 
   // Volume por consultor — filtra os 9 do CS e DEDUPLICA por nome (corrige "duas barrinhas")
-  const consultoresData = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const c of registrosPorConsultor) {
-      if (!isConsultorCS(c.nome)) continue;
-      map.set(c.nome, (map.get(c.nome) ?? 0) + c.totalRegistros);
-    }
-    return [...map.entries()].map(([nome, registros]) => ({ nome, registros })).sort((a, b) => b.registros - a.registros);
-  }, [registrosPorConsultor]);
+  const consultoresData = useMemo(
+    () => agrupaVolumePorConsultorCS(registrosPorConsultor),
+    [registrosPorConsultor]
+  );
 
   const sistemas = useMemo(
     () => [...registrosPorSistema].sort((a, b) => b.quantidade - a.quantidade),

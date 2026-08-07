@@ -13,8 +13,8 @@ type RankingFabricasCardProps = {
   maxSprints?: number;
   /** Colunas do grid de fábricas (4 no modo TV = tudo numa linha). */
   columns?: number;
-  /** Altura do gráfico de linhas de cada fábrica (px). */
-  chartHeight?: number;
+  /** Altura do gráfico de linhas de cada fábrica: px, ou '100%' para esticar até o pai (telão). */
+  chartHeight?: number | string;
   /** Preenche a altura do card (modo TV) em vez de usar altura fixa. */
   fill?: boolean;
 };
@@ -78,6 +78,15 @@ function BarraQualidade({ rotulo, valor, cor }: { rotulo: string; valor: number;
 export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight = 190, fill = false }: RankingFabricasCardProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const anoVigente = new Date().getFullYear();
+
+  /**
+   * chartHeight percentual = variante desktop dentro do fill do kiosk
+   * (página 1 da TV, 07/08/2026): o card estica a cadeia flex + min-h-0 até
+   * os mini-gráficos em vez de somar alturas fixas — px fixo sobra ou corta
+   * conforme o formato da tela, e no fill não há rede de proteção contra
+   * corte. `fill` continua sendo a outra variante (caixinhas da sprint).
+   */
+  const esticar = typeof chartHeight === 'string';
 
   const ranking = useMemo<FabricaRank[]>(() => {
     const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
@@ -155,10 +164,17 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
   }, [ranking]);
 
   return (
-    <Card className={fill ? 'h-full flex flex-col' : undefined}>
+    <Card className={fill || esticar ? 'h-full flex flex-col' : undefined}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+          {/* No telão (esticar) o título entra no MESMO formato dos demais blocos
+              da página 1 da TV (12px uppercase bold) — um único padrão de
+              cabeçalho por tela, mesma régua do BlocoTv do CS. */}
+          <CardTitle
+            className={esticar
+              ? 'text-[12px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5'
+              : 'text-sm font-medium flex items-center gap-1.5'}
+          >
             {fill ? 'Desempenho por Fábrica — ranking da sprint' : 'Desempenho por Fábrica — ranking'}
             <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" aria-label={RANKING_FORMULA}>
               <title>{RANKING_FORMULA}</title>
@@ -173,7 +189,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
           </div>
         </div>
       </CardHeader>
-      <CardContent className={fill ? 'flex-1 min-h-0 flex flex-col' : undefined}>
+      <CardContent className={fill || esticar ? 'flex-1 min-h-0 flex flex-col' : undefined}>
         {isLoading ? (
           <p className="text-xs text-muted-foreground text-center py-8">Carregando fotografias de sprint…</p>
         ) : ranking.length === 0 ? (
@@ -224,11 +240,11 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
              (Entrega/Bug/Retorno QA), escopado pela fábrica — pedido de
              06/08/2026, substituindo as barras aninhadas. Hover na bolinha
              lista os itens; clique abre a lista completa (drill-down herdado). */
-          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+          <div className={`grid gap-3 ${esticar ? 'flex-1 min-h-0' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
             {ranking.map((f, idx) => {
               const color = fabricaColor(f.name, idx);
               return (
-                <div key={f.name} className="border rounded-lg p-3">
+                <div key={f.name} className={`border rounded-lg p-3 ${esticar ? 'min-h-0 flex flex-col' : ''}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <span
                       className="inline-grid place-items-center w-6 h-6 rounded-full text-white font-mono font-bold text-xs shrink-0"
@@ -241,7 +257,13 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
                       score <span className="font-mono font-semibold text-foreground">{f.score}</span>
                     </span>
                   </div>
-                  <DesempenhoTrendChart fabrica={f.name} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
+                  {esticar ? (
+                    <div className="flex-1 min-h-0">
+                      <DesempenhoTrendChart fabrica={f.name} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
+                    </div>
+                  ) : (
+                    <DesempenhoTrendChart fabrica={f.name} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
+                  )}
                 </div>
               );
             })}
@@ -250,7 +272,12 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
         <p className="text-[11px] text-muted-foreground mt-2">
           {fill
             ? 'Caixinha maior e mais verde = mais PBIs encerrados na sprint. Barras finas = Qualidade (Retorno QA e Bug, quanto menor melhor).'
-            : `Linhas por sprint de cada fábrica: Entrega (% encerrado do escopo, ↑ melhor), Bug e Retorno QA (% do escopo, ↓ melhor). Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints. Passe o mouse na bolinha para ver os itens; clique para a lista completa.`}
+            /* No telão (esticar) a frase do mouse sai (hover não existe na parede)
+               e a fórmula do score ENTRA em texto: no desktop ela vive no tooltip
+               do ícone Info, que na TV seria informação inacessível. */
+            : `Linhas por sprint de cada fábrica: Entrega (% encerrado do escopo, ↑ melhor), Bug e Retorno QA (% do escopo, ↓ melhor). Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints.${esticar
+              ? ' Fotos seladas · score = desempenho − ½·bug − ½·retorno QA.'
+              : ' Passe o mouse na bolinha para ver os itens; clique para a lista completa.'}`}
         </p>
       </CardContent>
     </Card>

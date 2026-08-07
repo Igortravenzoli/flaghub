@@ -1,47 +1,18 @@
-import { useMemo } from 'react';
 import { Gauge } from 'lucide-react';
 import { BlocoCard } from '@/components/executivo/BlocoCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HEALTH_COLORS } from '@/lib/chartColors';
-import {
-  useTechLeadPorDia,
-  useTechLeadConsultorSistemas,
-  useTechLeadConsultorInfra,
-} from '@/hooks/useTechLeadKpis';
+import { faixaCorProd, useProdutividadeConsultores } from '@/hooks/useProdutividadeConsultores';
 
 /**
- * PRD-1 — Produtividade dos Consultores.
+ * PRD-1 — Produtividade dos Consultores (uso de perto, com scroll).
  *
- * O bug que este card corrige: a coluna "Média" era a média ARITMÉTICA de
- * `produtividadeDia` **só dos dias que apareciam em `/api/techlead/por-dia`** —
- * isto é, só dias COM lançamento. Um sábado com 40 min entrava como ~8% e
- * derrubava a média; uma segunda-feira sem lançamento simplesmente não entrava
- * e a inflava. Não era o número da planilha do CS por construção.
- *
- * Agora:
- *  · Heatmap consultor × dia continua vindo de `/api/techlead/por-dia`
- *    (`produtividadeDia` = minutos do dia ÷ 480) — bom sinal visual.
- *  · Coluna "Média · dias úteis" vem de `/api/techlead/resumo-consultor`
- *    (sistemas) e `/resumo-consultor-infra` (infra), onde o gateway calcula
- *    `(SUM(DuracaoSeg) / TotalDiasUteis) / 28800 × 100` — exclui fim de semana
- *    e feriados. É o número da planilha do Wilker.
- *  · Lista ÚNICA, com a equipe marcada em texto (`sis`/`infra`) — cor tem papel
- *    de status nesta tela, então equipe não pode ser cor.
- *
- * Pode passar de 100%: o numerador soma TODOS os lançamentos do período
- * (inclusive fim de semana e feriado) e o divisor conta só dias úteis. O clamp
- * é aplicado só na LARGURA DA BARRA — o número exibido é o real, porque um
- * número truncado em 100% esconde justamente o sinal de dado suspeito.
+ * O merge dos 3 endpoints — e o porquê de a média vir do GATEWAY sobre dias
+ * úteis, nunca da média aritmética dos dias com lançamento — vive em
+ * `useProdutividadeConsultores` (07/08/2026), compartilhado com a TV do CS
+ * (`CsTvView`). Aqui fica só a renderização de mesa: heatmap completo com
+ * tooltip e rolagem horizontal, coisas que a TV não pode ter.
  */
-
-type EquipeProd = 'sistemas' | 'infra';
-
-/** Faixa de produtividade: verde ≥ 80% · âmbar ≥ 50% · vermelho < 50%.
- *  Valores idênticos aos literais hsl() anteriores, agora via token. */
-const faixaCorProd = (p: number) =>
-  p >= 80 ? HEALTH_COLORS.verde : p >= 50 ? HEALTH_COLORS.amarelo : HEALTH_COLORS.vermelho;
-
-const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 export function ProdutividadeConsultoresCard({ dataInicio, dataFim }: { dataInicio: Date; dataFim: Date }) {
   return (
@@ -52,52 +23,9 @@ export function ProdutividadeConsultoresCard({ dataInicio, dataFim }: { dataInic
 }
 
 function ProdutividadeConsultores({ dataInicio, dataFim }: { dataInicio: Date; dataFim: Date }) {
-  const porDia = useTechLeadPorDia(dataInicio, dataFim);
-  const sis = useTechLeadConsultorSistemas(dataInicio, dataFim);
-  const inf = useTechLeadConsultorInfra(dataInicio, dataFim);
-
-  const isLoading = porDia.isLoading || sis.isLoading || inf.isLoading;
-  const falhouTudo = porDia.isError && sis.isError && inf.isError;
-  const falhouMedia = sis.isError || inf.isError;
-
-  const { dias, linhas, temAcima100 } = useMemo(() => {
-    // média por dias úteis, indexada por nome normalizado (imune a acento/caixa)
-    const media = new Map<string, { pct: number; equipe: EquipeProd; nome: string }>();
-    for (const c of sis.data?.consultores ?? []) {
-      media.set(norm(c.consultor), { pct: c.produtividade, equipe: 'sistemas', nome: c.consultor });
-    }
-    for (const c of inf.data?.consultores ?? []) {
-      media.set(norm(c.consultor), { pct: c.produtividade, equipe: 'infra', nome: c.consultor });
-    }
-
-    // heatmap dia-a-dia
-    const diasSet = new Set<string>();
-    const porConsultor = new Map<string, Map<string, number>>();
-    for (const r of porDia.data?.registros ?? []) {
-      const dia = r.dataRegistro?.slice(0, 10);
-      if (!dia) continue;
-      diasSet.add(dia);
-      if (!porConsultor.has(r.consultor)) porConsultor.set(r.consultor, new Map());
-      porConsultor.get(r.consultor)!.set(dia, r.produtividadeDia);
-    }
-    // união, não interseção: quem tem média mas nenhum dia no por-dia também aparece
-    const vistos = new Set([...porConsultor.keys()].map(norm));
-    for (const [chave, v] of media) if (!vistos.has(chave)) porConsultor.set(v.nome, new Map());
-
-    const linhas = [...porConsultor.entries()]
-      .map(([consultor, mapa]) => {
-        const m = media.get(norm(consultor));
-        return { consultor, mapa, media: m?.pct ?? null, equipe: m?.equipe ?? null };
-      })
-      // null vai para o FIM: com `?? 0` um consultor sem base ficava à frente de um 0% real
-      .sort((a, b) => (b.media ?? -1) - (a.media ?? -1));
-
-    return {
-      dias: [...diasSet].sort(),
-      linhas,
-      temAcima100: linhas.some((l) => l.media != null && l.media > 100),
-    };
-  }, [porDia.data, sis.data, inf.data]);
+  const {
+    dias, linhas, temAcima100, isLoading, falhouTudo, falhouMedia, refetchTudo, refetchMedia,
+  } = useProdutividadeConsultores(dataInicio, dataFim);
 
   if (isLoading) return <Skeleton className="h-48 w-full" />;
 
@@ -111,7 +39,7 @@ function ProdutividadeConsultores({ dataInicio, dataFim }: { dataInicio: Date; d
         </p>
         <button
           type="button"
-          onClick={() => { porDia.refetch(); sis.refetch(); inf.refetch(); }}
+          onClick={refetchTudo}
           className="text-xs font-medium text-primary hover:underline"
         >
           Tentar novamente
@@ -212,7 +140,7 @@ function ProdutividadeConsultores({ dataInicio, dataFim }: { dataInicio: Date; d
         {falhouMedia && !falhouTudo && (
           <button
             type="button"
-            onClick={() => { sis.refetch(); inf.refetch(); }}
+            onClick={refetchMedia}
             className="text-[10px] font-medium text-primary hover:underline"
           >
             Média por dias úteis indisponível — tentar novamente

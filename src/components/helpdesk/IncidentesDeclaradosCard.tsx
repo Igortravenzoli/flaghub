@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BlocoCard } from '@/components/executivo/BlocoCard';
 import { HEALTH_COLORS, getChartColor } from '@/lib/chartColors';
+import { DASH } from '@/lib/sgsiFields';
 import {
   useCsIncidentesDeclarados,
   type CsIncidenteDeclarado,
@@ -15,14 +16,18 @@ import {
 // Substitui o antigo "Incidentes com parada · priorização", que renderizava
 // 4 itens FICTÍCIOS hardcoded (INCIDENTES_PARADA_SEED) como se fossem dado real.
 //
-// Regra do modo TV (HelpdeskKiosk renderiza a mesma tab): todo indicador tem
-// rótulo VISÍVEL, nada de informação só no hover, título do card sem truncar.
+// Desde 07/08/2026 o modo TV NÃO renderiza mais este card (a CsTvView redesenha
+// o bloco), mas as regras de rótulo visível/sem hover/sem truncar seguem aqui:
+// são a mesma leitura do mesmo dado, e as peças exportadas abaixo alimentam a TV.
 //
 // Global × Pontual (INC-3) NÃO é renderizado: a lista 017 não tem campo de
 // escopo nem de clientes afetados. O rodapé declara a ausência — zero exemplo
 // fictício, zero valor sintetizado.
 
-const COR_BUCKET: Record<StatusBucket017, string> = {
+// `COR_BUCKET`/`corSla`/`fmtHoras` são exportados porque a TV do CS (`CsTvView`)
+// redesenha o bloco de incidentes e precisa das MESMAS regras — duplicar o
+// semáforo criaria duas leituras do mesmo SLA.
+export const COR_BUCKET: Record<StatusBucket017, string> = {
   ativo: HEALTH_COLORS.vermelho,
   contornado: HEALTH_COLORS.amarelo,
   resolvido: HEALTH_COLORS.verde,
@@ -30,7 +35,7 @@ const COR_BUCKET: Record<StatusBucket017, string> = {
 };
 
 /** Semáforo do % dentro do SLA. */
-const corSla = (pct: number | null): string =>
+export const corSla = (pct: number | null): string =>
   pct == null ? HEALTH_COLORS.cinza
   : pct > 90 ? HEALTH_COLORS.verde
   : pct >= 80 ? HEALTH_COLORS.amarelo
@@ -38,7 +43,7 @@ const corSla = (pct: number | null): string =>
 
 const fmtInt = (n: number) => n.toLocaleString('pt-BR');
 /** null → '—'. Nunca '0,0h' para campo não declarado. */
-const fmtHoras = (h: number | null) => (h == null ? '—' : `${h.toFixed(1).replace('.', ',')}h`);
+export const fmtHoras = (h: number | null) => (h == null ? '—' : `${h.toFixed(1).replace('.', ',')}h`);
 const fmtPct = (p: number | null) => (p == null ? '—' : `${p}%`);
 const fmtDia = (iso: string | null) =>
   iso == null ? '—'
@@ -61,8 +66,9 @@ function Stat({ label, valor, cor }: { label: string; valor: string; cor?: strin
   );
 }
 
-/** Selo de frescor do espelho — cinza quando saudável, cor só quando desvia. */
-function SeloEspelho({ d }: { d?: CsIncidentesDeclaradosResponse }) {
+/** Selo de frescor do espelho — cinza quando saudável, cor só quando desvia.
+ *  Exportado para a TV do CS: o frescor do espelho é regra, não estilo. */
+export function SeloEspelho({ d }: { d?: CsIncidentesDeclaradosResponse }) {
   if (!d) return null;
   const h = d.sincronizadoHaHoras;
   const texto =
@@ -94,6 +100,12 @@ function LinhaIncidente({ i }: { i: CsIncidenteDeclarado }) {
         </p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
+        {/* Produto afetado (pedido de 07/08) — padrão da coluna "Ativo" do painel
+            SGSI da Infra, que exibe o ativo de cada incidente da MESMA lista 017.
+            DASH = campo vazio no SharePoint → chip omitido (chip '—' seria ruído). */}
+        {i.produto !== DASH && (
+          <Badge variant="secondary" className="text-[10px] font-semibold">{i.produto}</Badge>
+        )}
         <Badge variant="outline" className="text-[10px]">{i.status}</Badge>
         <span className="font-mono text-[11px] font-bold tabular-nums text-muted-foreground">
           {fmtHoras(i.downtimeHoras)}

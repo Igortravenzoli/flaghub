@@ -14,9 +14,10 @@
  * Agora há um relógio só, no Home, e um único `avancar()` que o botão e o timer
  * compartilham: página 1 → página 2 → próximo setor.
  *
- * Setores sem páginas internas (comercial, CS, helpdesk, qualidade, infra) não
- * precisam fazer nada: `paginas` vale 1 por padrão e o avanço cai direto no
- * próximo setor.
+ * Setores sem páginas internas (comercial, customer-service/Produtos,
+ * qualidade, infra) não precisam fazer nada: `paginas` vale 1 por padrão e o
+ * avanço cai direto no próximo setor. Fábrica e Customer Service (slug
+ * `helpdesk`, desde 07/08/2026) declaram 2 páginas via `registrarPaginas`.
  */
 import { createContext, useContext, useEffect } from 'react';
 

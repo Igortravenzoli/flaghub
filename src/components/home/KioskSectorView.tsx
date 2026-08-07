@@ -28,8 +28,11 @@ const DESIGN_WIDTH = 1320;
  * preencher qualquer formato de tela sem cortar. Só adicionar aqui DEPOIS de
  * validar visualmente que o setor se molda a alturas variadas — no modo fill
  * não há mais rede de proteção contra corte. Os demais seguem no modo legado.
+ *
+ * 07/08/2026: 'helpdesk' (Customer Service no telão) entrou com a `CsTvView`
+ * — 2 páginas via sequência única do kiosk, mock MOCK_TV_CS_07-08 (Direção A).
  */
-const FILL_READY = new Set(['fabrica', 'qualidade', 'infraestrutura']);
+const FILL_READY = new Set(['fabrica', 'qualidade', 'infraestrutura', 'helpdesk']);
 
 /**
  * Escala o conteúdo para ocupar TODA a área do modo TV, em qualquer proporção

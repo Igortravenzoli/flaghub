@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
 import { ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useSprintSnapshots, type SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { useWorkItemsByIds } from '@/hooks/useWorkItemsByIds';
 import { cleanFabricaName } from '@/lib/fabricaNames';
+import { META_ENTREGA_PCT, TETO_BUG_PCT } from '@/lib/fabricaMetas';
 import { concluidoDoEscopo, idsDaSerie, type SerieSprint } from '@/lib/fabricaTvSeries';
 
 type DesempenhoTrendChartProps = {
@@ -20,6 +21,13 @@ type DesempenhoTrendChartProps = {
   showValues?: boolean;
   /** Oculta a legenda interna (quando o card pai já tem legenda própria). */
   showLegend?: boolean;
+  /**
+   * Desenha as metas do gestor como linhas de referência tracejadas (piso de
+   * entrega e teto de bug/retorno). Ligado só no telão (07/08/2026): os
+   * painéis de meta saíram da página 1 da TV e a régua não podia sumir da
+   * parede. Na mesa fica desligado — a leitura de meta mora nos painéis.
+   */
+  showMetas?: boolean;
 };
 
 // Semântica das cores: Entrega ↑ é bom (verde), Bug ↓ é ruim (vermelho),
@@ -166,6 +174,7 @@ export function DesempenhoTrendChart({
   height = 220,
   showValues = true,
   showLegend = true,
+  showMetas = false,
 }: DesempenhoTrendChartProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const anoVigente = new Date().getFullYear();
@@ -278,13 +287,39 @@ export function DesempenhoTrendChart({
   const meio = larguraPainel / 2 + 8;
 
   return (
-    <div ref={wrapperRef} className="relative">
+    /**
+     * `height="100%"` exige que ESTE wrapper também preencha o pai — sem
+     * `h-full` ele colapsa para a altura do conteúdo e o ResponsiveContainer
+     * mede zero. Altura numérica (uso de mesa) segue como sempre foi.
+     */
+    <div ref={wrapperRef} className={height === '100%' ? 'relative h-full' : 'relative'}>
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 18, right: 18, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="sprint" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
           {showLegend && <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />}
+          {/* Metas tracejadas: bug e retorno QA compartilham o teto (30%), então
+              uma linha neutra serve os dois; se as constantes divergirem um dia,
+              separar. Rótulo sempre visível — regra de TV, nada só em hover. */}
+          {showMetas && (
+            <ReferenceLine
+              y={META_ENTREGA_PCT}
+              stroke={COR_ENTREGA}
+              strokeDasharray="7 5"
+              strokeOpacity={0.55}
+              label={{ value: `piso entrega ${META_ENTREGA_PCT}%`, position: 'insideTopRight', fill: COR_ENTREGA, fontSize: 11, opacity: 0.8 }}
+            />
+          )}
+          {showMetas && (
+            <ReferenceLine
+              y={TETO_BUG_PCT}
+              stroke="hsl(var(--muted-foreground))"
+              strokeDasharray="7 5"
+              strokeOpacity={0.45}
+              label={{ value: `teto bug · retorno ${TETO_BUG_PCT}%`, position: 'insideBottomRight', fill: 'hsl(var(--muted-foreground))', fontSize: 11, opacity: 0.8 }}
+            />
+          )}
           <Line type="monotone" dataKey="Entrega" stroke={COR_ENTREGA} strokeWidth={2.5} dot={dotFor('Entrega')} activeDot={false} isAnimationActive={false} />
           <Line type="monotone" dataKey="Retorno QA" stroke={COR_RETORNO} strokeWidth={2} dot={dotFor('Retorno QA')} activeDot={false} isAnimationActive={false} />
           <Line type="monotone" dataKey="Bug" stroke={COR_BUG} strokeWidth={2} dot={dotFor('Bug')} activeDot={false} isAnimationActive={false} />
