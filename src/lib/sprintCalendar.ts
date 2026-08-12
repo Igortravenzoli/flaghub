@@ -39,6 +39,35 @@ export function getOfficialSprintRange(sprintCode: string): { from: Date; to: Da
   return { from, to };
 }
 
+/**
+ * Fins de sprint dentro de [from, to], em ordem.
+ *
+ * Serve para marcar a virada no gráfico de atividade: um pico de lançamentos
+ * colado no fim da sprint é a assinatura de quem registra em lote. Com o filtro
+ * numa sprint só, o fim coincide com a borda do período e não vale a linha —
+ * quem consome decide se desenha.
+ */
+export function sprintEndsBetween(from: Date, to: Date): Array<{ code: string; end: Date }> {
+  const out: Array<{ code: string; end: Date }> = [];
+  const inicio = startOfDay(from);
+  const fim = startOfDay(to);
+  let code = getCurrentOfficialSprintCode(inicio);
+
+  // 27 sprints cobrem mais de um ano — teto só para não girar em falso.
+  for (let i = 0; i < 30; i++) {
+    const range = getOfficialSprintRange(code);
+    if (!range) break;
+    if (startOfDay(range.to) > fim) break;
+    if (startOfDay(range.to) >= inicio) out.push({ code, end: startOfDay(range.to) });
+
+    const proximo = getCurrentOfficialSprintCode(addDays(range.from, 14));
+    const rangeProximo = getOfficialSprintRange(proximo);
+    if (!rangeProximo || rangeProximo.from.getTime() <= range.from.getTime()) break;
+    code = proximo;
+  }
+  return out;
+}
+
 export function getCurrentOfficialSprintCode(baseDate: Date = new Date()): string {
   const year = baseDate.getFullYear();
   const firstSprintStart = getFirstSprintStart(year);

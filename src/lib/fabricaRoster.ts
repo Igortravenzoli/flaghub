@@ -9,6 +9,13 @@
 /** Ordem canônica das squads para exibição (rótulos, não são dado pessoal). */
 export const SQUADS: string[] = ['K8', 'FLEXX', 'STAGING', 'APP'];
 
+/**
+ * Balde de quem apontou hora mas não está no roster. É uma linha de primeira
+ * classe nas visões por squad — sem ela essas pessoas some da tela ao serem
+ * filtradas (Igor, Ana, Leonardo, Mauricio, Rodolfo…).
+ */
+export const SEM_SQUAD = 'Sem squad';
+
 export type RosterEntry = {
   colaborador: string;
   squad: string;
