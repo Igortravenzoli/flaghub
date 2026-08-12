@@ -5,6 +5,7 @@ import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { normalizeProduct, extractProducts } from '@/lib/products';
 import { ehEstadoEntregue } from '@/lib/fabricaEstados';
+import { SQUADS } from '@/lib/fabricaRoster';
 
 const normalizeFabricaState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 
@@ -25,8 +26,16 @@ const FABRICA_COUNTABLE_STATES = new Set([
   ...DONE_STATES,
 ]);
 
-/** Collaborators excluded by default from Fábrica KPI counts (belong to Design sector) */
-export const KPI_DEFAULT_EXCLUDED_COLLABORATORS = new Set(['ari']);
+/**
+ * Exclusão-padrão do filtro de colaboradores do gestor.
+ *
+ * Vazio desde 12/08/2026. Era `{'ari'}` para tirar o Design da conta, e isso
+ * zerava as HORAS dele junto — o recorte era sobre o nome do apontamento. Agora
+ * o Design é área de horas no roster (ver AREAS): fica fora dos KPIs de sprint
+ * pelo próprio recorte de fábrica, e as horas aparecem. "Ari entra só no
+ * contexto de horas" (decisão do gestor).
+ */
+export const KPI_DEFAULT_EXCLUDED_COLLABORATORS = new Set<string>();
 
 /** Marcador de título usado pela Infra (a vw_infraestrutura_kpis consome estes itens). */
 const INFRA_PREFIX = '[INFRA]';
@@ -668,9 +677,19 @@ export function useFabricaKpis(
    * por primeiro nome, e existem dois "Alessandro" no escopo de S15.
    */
   const rosterQuery = useFabricaRoster();
+  /**
+   * SÓ as fábricas entram aqui.
+   *
+   * Este conjunto recorta ESCOPO DE ITEM (via `foraDoRoster`), não contagem de
+   * horas. As áreas de horas (INFRA, DESIGN, QUALIDADE) vivem na mesma tabela,
+   * mas cadastrar alguém nelas não pode arrastar os PBIs dessa pessoa para
+   * dentro dos KPIs de sprint da Fábrica — foi a condição da decisão de
+   * 12/08/2026 ("só para horas"). Ver AREAS em @/lib/fabricaRoster.
+   */
   const rosterNomes = (() => {
     const set = new Set<string>();
     for (const r of rosterQuery.data || []) {
+      if (!SQUADS.includes(r.squad)) continue;
       const n = normalizeCollaboratorName(r.colaborador);
       if (n) set.add(n);
     }

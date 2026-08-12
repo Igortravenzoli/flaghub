@@ -14,7 +14,6 @@ import { useHubIsAdmin } from '@/hooks/useHubPermissions';
 import { useHubAreas } from '@/hooks/useHubAreas';
 import { PostarParaDevOps } from '@/components/timelog/TimelogSharedComponents';
 import { LogsTab, type LogAba } from '@/components/fabrica/LogsTab';
-import { HoursRankingCard } from '@/components/timelog/HoursRankingCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
 import { ColaboradorAnaliseDialog } from '@/components/fabrica/ColaboradorAnaliseDialog';
@@ -44,10 +43,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { getAvailableDateKeysFromItems, getDateBoundsFromItems } from '@/lib/dateBounds';
 import {
   Code2, ListTodo, Bug, Users, ChevronRight, ChevronDown, Search, ChevronLeft, X,
-  Clock, Clock3, Gauge, AlertTriangle, Timer, Package, Building2,
+  Clock, Clock3, Gauge, AlertTriangle, Timer, Package,
   TrendingUp, BarChart3, Zap, HeartPulse, Workflow, LayoutGrid, MoreHorizontal,
   GitMerge, Loader2, ExternalLink, CheckCircle2, Check, Minus, SendHorizonal, ScrollText,
-  Filter, Download, Eye,
+  Filter, Download, Eye, Info,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
@@ -379,7 +378,11 @@ export default function FabricaDashboard() {
     const fallback = new Set(KPI_DEFAULT_EXCLUDED_COLLABORATORS);
     if (typeof window === 'undefined') return fallback;
     try {
-      const raw = window.localStorage.getItem('fabrica.excluded-collabs.v1');
+      // v2: a chave foi virada em 12/08/2026 junto com o fim da exclusão-padrão
+      // do Design. Quem já tinha {'ari'} gravado no navegador continuaria sem as
+      // horas dele mesmo depois da mudança, e o gestor não teria como saber por
+      // quê. Virar a chave zera o recorte antigo uma única vez.
+      const raw = window.localStorage.getItem('fabrica.excluded-collabs.v2');
       if (!raw) return fallback;
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return fallback;
@@ -628,42 +631,19 @@ export default function FabricaDashboard() {
     return map;
   }, [fab.collaboratorTaskIdsDevops, fab.collaboratorTaskIdsVdesk, showDevops, showVdesk]);
 
-  // Lente do timelog por fábrica: "squad" (roster fixo + uso cruzado, padrão) ou
-  // "atual" (visão por colaborador, independente da squad — a chave seletora).
-  const [timelogLens, setTimelogLens] = useState<'squad' | 'atual'>('squad');
-  // Modo do card "Horas por Fábrica": alocação completa (padrão) ou só fila ativa.
-  const [fabricaScopeMode, setFabricaScopeMode] = useState<'full' | 'fila'>('full');
-  const fabricaRows = useMemo(
-    () => (fabricaScopeMode === 'full' ? fab.horasPorFabricaFull : fab.horasPorFabricaScope) || [],
-    [fabricaScopeMode, fab.horasPorFabricaFull, fab.horasPorFabricaScope]
-  );
-
-  const fabricaTaskScopeMap = useMemo(() => {
-    const map = new Map<string, number[]>();
-    for (const row of fabricaRows) map.set(row.displayName, row.taskIds);
-    return map;
-  }, [fabricaRows]);
-
-  const horasPorFabricaData = useMemo(
-    () => fabricaRows.map((row) => ({
-      name: row.displayName,
-      hours: row.hours,
-      minutes: row.minutes,
-    })),
-    [fabricaRows]
-  );
-
-  // Colaboradores por fábrica (drill-down inline no card "Horas por Fábrica")
-  const fabricaColaboradoresMap = useMemo(() => {
-    const map: Record<string, { name: string; hours: number; minutes: number }[]> = {};
-    for (const row of fabricaRows) map[row.displayName] = row.collaborators || [];
-    return map;
-  }, [fabricaRows]);
-
-  const fabricaTotalMinutos = useMemo(
-    () => fabricaRows.reduce((s, r) => s + r.minutes, 0),
-    [fabricaRows]
-  );
+  /**
+   * A lente "Por Colaborador" saiu em 12/08/2026, e com ela o card
+   * "Horas por Fábrica (DevOps)".
+   *
+   * O nome prometia visão por pessoa, mas o que ela mostrava era um ranking por
+   * FÁBRICA com os colaboradores aninhados — subconjunto do que o card de
+   * Capacidade × Realizado já faz, e que abre até o lançamento. Visão por pessoa
+   * quem entrega é o card "Horas por Colaborador", logo abaixo, que continua.
+   *
+   * O que se perdeu junto: o recorte "só fila ativa" (`horasPorFabricaScope`),
+   * que só existia naquele card. O hook continua exportando o dado, então
+   * devolver isso é ligar um seletor no card que ficou, não recalcular nada.
+   */
 
   const timelogScopeTaskIds = useMemo(
     () => reconEntriesScoped.map(([taskId]) => taskId),
@@ -780,6 +760,22 @@ export default function FabricaDashboard() {
     fab.horasPeriodoTotalPorColaborador, showVdesk, showDevops, colabEscopo,
   ]);
 
+  /**
+   * Cobertura da aba: quanto do apontamento do período cabe no recorte da fila
+   * da Fábrica.
+   *
+   * Medida em runtime porque muda todo mês (em 07/2026 eram 1.270 h de 3.367 h,
+   * 37,7%). Sem a frase na tela, toda conferência com o relatório do TimeLog
+   * reabre a mesma dúvida — "o portal está perdendo hora?" — quando na verdade é
+   * o recorte da pergunta que a aba responde (pedido de 12/08/2026).
+   */
+  const coberturaAba = useMemo(() => {
+    const periodoMin = (fab.horasPeriodoTotalPorColaborador || []).reduce((s, c) => s + c.minutes, 0);
+    const filaMin = Math.round((fab.totalHorasConsolidadas || 0) * 60);
+    if (periodoMin <= 0) return null;
+    return { filaMin, periodoMin, pct: Math.round((filaMin / periodoMin) * 1000) / 10 };
+  }, [fab.horasPeriodoTotalPorColaborador, fab.totalHorasConsolidadas]);
+
   const ambasFontes = showVdesk && showDevops;
   const [sobrecargaAberta, setSobrecargaAberta] = useState(false);
 
@@ -817,7 +813,7 @@ export default function FabricaDashboard() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('fabrica.excluded-collabs.v1', JSON.stringify(Array.from(excludedCollabs)));
+    window.localStorage.setItem('fabrica.excluded-collabs.v2', JSON.stringify(Array.from(excludedCollabs)));
   }, [excludedCollabs]);
 
   // Load read entries from Supabase on mount
@@ -2722,23 +2718,45 @@ export default function FabricaDashboard() {
 
           {/* ═══════ TAB: Horas (TimeLog) ═══════ */}
           <TabsContent value="timelog" className="space-y-5 mt-0">
-            <div className="flex items-center gap-1 rounded-md border border-border/60 p-0.5 text-xs w-fit">
-              {([
-                { id: 'squad' as const, label: 'Por Squad (fixa)' },
-                { id: 'atual' as const, label: 'Por Colaborador' },
-              ]).map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={`px-2.5 py-1 rounded-[3px] transition-colors ${timelogLens === opt.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                  onClick={() => setTimelogLens(opt.id)}
-                >
-                  {opt.label}
-                </button>
-              ))}
+            {/*
+              O recorte, escrito. Uma linha só: o número sai medido do próprio
+              período (ver `coberturaAba`) e a explicação fica no (i), para o
+              aviso não competir com os cards.
+            */}
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Como ler o escopo desta aba"
+                    className="inline-flex items-center text-muted-foreground/70 transition-colors hover:text-foreground"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-sm text-xs">
+                  Só entra apontamento em PBI e Bug da fila da Fábrica e nas tasks filhas. O restante
+                  é trabalho fora da fila: outro setor, item sem PBI na fila ou responsável fora do
+                  roster da squad. Para o total de horas do colaborador, use a lente "Todo o período"
+                  no card Horas por Colaborador.
+                </TooltipContent>
+              </Tooltip>
+              <span>
+                Escopo: <strong className="text-foreground">fila da Fábrica</strong>
+                {coberturaAba && (
+                  <>
+                    {' · '}
+                    <strong className="text-foreground">
+                      {horasHM(coberturaAba.filaMin)} de {horasHM(coberturaAba.periodoMin)}
+                      {' '}({coberturaAba.pct.toFixed(1).replace('.', ',')}%)
+                    </strong>
+                    {' '}do apontamento do período
+                  </>
+                )}
+              </span>
             </div>
-            {timelogLens === 'squad' && (
-              <div className="space-y-4">
+
+            <div className="space-y-4">
                 {/*
                   Card único: a barra de capacidade É o cabeçalho da squad e abre
                   no drill-down dev → task → lançamento. Antes "Capacidade ×
@@ -2746,61 +2764,8 @@ export default function FabricaDashboard() {
                   mesmo realizado/capacidade e o mesmo uso cruzado, em dois
                   cards seguidos (mesclados em 11/08/2026).
                 */}
-                <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} pbiByTaskId={fab.managerIdByTaskId} foraDasFabricas={fab.horasForaDasFabricas || []} onAnalisarColaborador={(n) => setAnaliseColabs([n])} />
-              </div>
-            )}
-            {timelogLens === 'atual' && (
-            <div className="grid grid-cols-1 gap-4">
-              <HoursRankingCard
-                title="Horas por Fábrica (DevOps)"
-                icon={Building2}
-                data={horasPorFabricaData}
-                subItemsByName={fabricaColaboradoresMap}
-                isLoading={fab.isLoading}
-                emptyMessage="Nenhuma fábrica identificada"
-                delay={500}
-                formatValue={(item) => horasHM(item.minutes)}
-                summaryBadge={horasPorFabricaData.length > 0
-                  ? `${horasHM(fabricaTotalMinutos)} ${fabricaScopeMode === 'full' ? 'no período' : 'na fila'}`
-                  : undefined}
-                headerRight={(
-                  <div className="flex items-center rounded-md border border-border/60 p-0.5 text-[10px]">
-                    {([
-                      { id: 'full' as const, label: 'Alocação completa', short: 'Completa' },
-                      { id: 'fila' as const, label: 'Só fila ativa', short: 'Fila ativa' },
-                    ]).map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        title={opt.id === 'full'
-                          ? 'Todas as horas apontadas no período, por fábrica (não some quando o item avança).'
-                          : 'Só horas de itens ainda na fila ativa do board (exclui Em Teste/Done).'}
-                        className={`px-2 py-0.5 rounded-[3px] transition-colors ${fabricaScopeMode === opt.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                        onClick={() => {
-                          setFabricaScopeMode(opt.id);
-                          setTimelogDrilldown({ type: 'none', key: null, taskIds: [], userCanonical: null });
-                        }}
-                      >
-                        {opt.short}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                activeItemName={timelogDrilldown.type === 'fabrica' ? timelogDrilldown.key : null}
-                onItemClick={(item) => {
-                  const taskIds = fabricaTaskScopeMap.get(item.name) || [];
-                  setTimelogDrilldown((prev) => {
-                    if (prev.type === 'fabrica' && prev.key === item.name) {
-                      return { type: 'none', key: null, taskIds: [], userCanonical: null };
-                    }
-                    return { type: 'fabrica', key: item.name, taskIds, userCanonical: null };
-                  });
-                  setReconFilter('all');
-                }}
-              />
+                  <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} pbiByTaskId={fab.managerIdByTaskId} foraDasFabricas={fab.horasForaDasFabricas || []} onAnalisarColaborador={(n) => setAnaliseColabs([n])} />
             </div>
-            )}
-
 
               {/* Horas por Colaborador (chart compacto) */}
               <Card className="animate-fade-in border-l-4 border-l-primary" style={{ animationDelay: '700ms' }}>
