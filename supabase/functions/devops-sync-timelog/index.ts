@@ -1,4 +1,4 @@
-// devops-sync-timelog v3.1 — Background processing via EdgeRuntime.waitUntil()
+// devops-sync-timelog v3.2 — Background processing via EdgeRuntime.waitUntil()
 // v3.0: Respond immediately, process in background to avoid CPU limits
 // v3.1: fix ext_entry_id — o caller passava entry.id como docId, anulando o
 //       teste `entry.id !== docId` e deixando TODAS as linhas sem id oficial
@@ -6,6 +6,10 @@
 //       Agora o docId é a coleção/documento real; edições caem no UPSERT
 //       (Phase A) e a versão anterior é preservada por trigger
 //       (devops_time_log_revisions, migration 20260720100000).
+// v3.2: fix dedup — o teste por conteúdo (que ignora `notes`) valia também para
+//       linha COM ext_entry_id e engolia lançamento legítimo repetido no mesmo
+//       item/dia/pessoa com a mesma duração. Conferência de 12/08/2026 contra o
+//       relatório do TimeLog: 6 lançamentos / 11h15 perdidos em 07/2026.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -202,8 +206,24 @@ async function processTimeLogs(pat: string) {
       else seenExtIds.add(normalized.ext_entry_id)
     }
 
+    /**
+     * O dedup por conteúdo vale SÓ para linha sem id oficial.
+     *
+     * `dedupKey` não olha `notes`: dois apontamentos legítimos no mesmo
+     * item/dia/pessoa, com a mesma duração e sem hora de início, geram a MESMA
+     * chave. Enquanto o teste valia para todo mundo, o segundo era descartado
+     * aqui — antes de chegar ao upsert — mesmo carregando `ext_entry_id`
+     * próprio, que é a garantia da extensão de que são lançamentos distintos.
+     * Em 07/2026 isso custou 6 lançamentos / 11h15 (Rodolfo ×4, Charles,
+     * Mauricio); ex.: 90min "certificado Ambiente PA" + 90min "certificado
+     * Ambiente Nespresso" viravam um só. Os pares que sobreviviam eram os de
+     * manhã/tarde, porque `start_time` diferente muda a chave.
+     *
+     * A chave continua sendo REGISTRADA para as duas famílias: é ela que evita
+     * uma linha sem id oficial entrar em duplicidade com uma que já tem id.
+     */
     const key = dedupKey(normalized)
-    if (seenKeys.has(key)) { dedupSkipped++; continue }
+    if (!normalized.ext_entry_id && seenKeys.has(key)) { dedupSkipped++; continue }
     seenKeys.add(key)
     allRows.push(normalized)
   }
