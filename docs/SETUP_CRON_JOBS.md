@@ -174,12 +174,22 @@ SELECT cron.schedule(
   $$
 );
 
--- 7. Snapshot de Sprint — diário às 03:30 UTC (00:30 BRT)
--- Reconstrói e SELA a foto de fim de sprint (corte DOMINGO 22:00 BRT desde
--- 25/07/2026; antes, sábado 23:59 e, antes disso, sexta). O guard interno só
--- permite selar a partir de SEGUNDA (quando o corte de domingo já passou);
--- fotos seladas/manuais nunca são regravadas.
+-- 7. Snapshot de Sprint — SÁBADO às 16:20 UTC (13:20 BRT)
+-- Reconstrói e SELA a foto de fim de sprint. Corte: SÁBADO 13:00 BRT desde
+-- 04/08/2026 (antes domingo 22:00, sábado 23:59 e sexta 23:59). Este é o job
+-- que de fato tira a foto — 20 min depois do corte, para os últimos syncs do
+-- DevOps estarem espelhados. O guard interno compara now() com
+-- fn_corte_foto_sprint(); fotos seladas/manuais nunca são regravadas.
 -- Ver docs/FOTOGRAFIA_SPRINT_SELAGEM.md.
+SELECT cron.schedule(
+  'snapshot-sprint-end-saturday',
+  '20 16 * * 6',
+  'SELECT public.rpc_backfill_reconstruct_closed_sprints();'
+);
+
+-- 8. Snapshot de Sprint — rede de segurança, diário às 03:30 UTC (00:30 BRT)
+-- Mesmo driver, idempotente: só age se o job de sábado tiver falhado (a foto
+-- atrasa para a madrugada seguinte, mas não some). NÃO remover.
 SELECT cron.schedule(
   'snapshot-sprint-end-daily',
   '30 3 * * *',
@@ -196,7 +206,7 @@ Os jobs de retenção abaixo sao gerenciados por migration e nao precisam ser cr
 
 ## Observação (snapshot de sprint)
 
-O job `snapshot-sprint-end-daily` (item 7) roda direto em SQL, **sem Edge Function**. Não faz parte do `MANAGED_JOBS` em `manage-sync-schedules`. Para qualquer manutenção, localizar o job **pelo `jobname`** (nunca pelo `jobid` — muda entre ambientes). Para verificar capturas realizadas:
+Os jobs `snapshot-sprint-end-saturday` (item 7) e `snapshot-sprint-end-daily` (item 8) rodam direto em SQL, **sem Edge Function**. Não fazem parte do `MANAGED_JOBS` em `manage-sync-schedules`. Para qualquer manutenção, localizar o job **pelo `jobname`** (nunca pelo `jobid` — muda entre ambientes). Para verificar capturas realizadas:
 
 ```sql
 SELECT sprint_code, total_demands, finalized_demands, snapshot_datetime, notes
@@ -247,6 +257,7 @@ SELECT cron.unschedule('sync-vdesk-helpdesk');
 SELECT cron.unschedule('sync-devops-timelog');
 SELECT cron.unschedule('sync-vdesk-timelog');
 SELECT cron.unschedule('sync-devops-qualidade');
+SELECT cron.unschedule('snapshot-sprint-end-saturday');
 SELECT cron.unschedule('snapshot-sprint-end-daily');
 ```
 
@@ -258,5 +269,5 @@ SELECT cron.unschedule('snapshot-sprint-end-daily');
 - [ ] Executar passo 1 (Vault) com o mesmo valor
 - [ ] Executar passo 2 (função helper)
 - [ ] Executar passo 3 substituindo `PROJECT_REF` pela ref de PROD
-- [ ] Executar passo 3 item 7 (`snapshot-sprint-end-daily`) — sem substituição de variável, roda direto em SQL
+- [ ] Executar passo 3 itens 7 e 8 (`snapshot-sprint-end-saturday` e `snapshot-sprint-end-daily`) — sem substituição de variável, rodam direto em SQL
 - [ ] Verificar com passo 4

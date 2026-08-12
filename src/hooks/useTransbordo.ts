@@ -5,9 +5,11 @@
  * TRANSBORDO (move só o que está classificado). A tag é a autorização humana,
  * dada antes; o botão nunca move o que não foi marcado.
  *
- * Escreve no Azure DevOps via edge `devops-transbordo`. A trava (foto selada da
- * sprint que fechou E data posterior ao fim dela) é decidida no banco por
+ * Escreve no Azure DevOps via edge `devops-transbordo`. A trava (foto já TIRADA
+ * da sprint que fechou E data posterior ao fim dela) é decidida no banco por
  * rpc_transbordo_contexto e revalidada pela edge — o gate do front é só UX.
+ * A foto é tirada no sábado 13:00 BRT e selada ~13:20 (SN-9, 04/08/2026);
+ * `corte_previsto` é esse instante, para a mensagem dizer quando libera.
  */
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +22,8 @@ export interface TransbordoContexto {
   sprint_destino: string | null;
   foto_selada: boolean;
   foto_as_of: string | null;
+  /** Instante do corte da foto desta sprint — sábado 13:00 BRT (sprint_fim + 1). */
+  corte_previsto: string | null;
   pode_migrar: boolean;
   motivo: string;
 }

@@ -7,9 +7,10 @@
  *   2. APLICAR TRANSBORDO — move só o que está classificado, levando as tasks
  *      filhas junto.
  *
- * A trava vem do banco (rpc_transbordo_contexto): exige foto selada da sprint
- * que fechou E data posterior ao fim dela. O gate daqui é UX — a edge revalida
- * antes de escrever no DevOps.
+ * A trava vem do banco (rpc_transbordo_contexto): exige a foto da sprint que
+ * fechou já TIRADA (selada) E data posterior ao fim dela. O gate daqui é UX — a
+ * edge revalida antes de escrever no DevOps. A foto sai no sábado 13:00 BRT e é
+ * selada ~13:20, então o transbordo libera no próprio sábado à tarde (SN-9).
  *
  * Nome distinto de TransbordoTab.tsx, que é um componente órfão (nunca
  * importado) e analisa transbordo pelo histórico de iterações, não pela tag.
@@ -182,7 +183,9 @@ export function TransbordoAcoesTab({ dias = 90 }: { dias?: number }) {
               <Camera className="h-3 w-3" />
               {ctx.foto_selada
                 ? <>Foto selada — corte {fmtDataHora(ctx.foto_as_of)}</>
-                : <>Foto ainda não selada</>}
+                : ctx.corte_previsto
+                  ? <>Foto ainda não tirada — corte previsto {fmtDataHora(ctx.corte_previsto)}</>
+                  : <>Foto ainda não tirada</>}
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground border-t pt-2">
