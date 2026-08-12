@@ -6,8 +6,34 @@
  * `useFabricaRoster`. Aqui ficam só os rótulos de squad e o casamento de nomes.
  */
 
-/** Ordem canônica das squads para exibição (rótulos, não são dado pessoal). */
+/**
+ * Fábricas: times de ENTREGA. Ordem canônica para exibição (rótulos, não são
+ * dado pessoal).
+ *
+ * Esta lista é a que define escopo de item da Fábrica — quem está numa fábrica
+ * tem os PBIs dele contados nos KPIs de sprint. Todo o resto do produto
+ * (ranking, matriz de sprint, qualidade por fábrica) usa SÓ esta lista.
+ */
 export const SQUADS: string[] = ['K8', 'FLEXX', 'STAGING', 'APP'];
+
+/**
+ * Áreas que entram SÓ na contagem de horas (decisão de 12/08/2026).
+ *
+ * Não são time de entrega: cadastrar alguém aqui faz as horas da pessoa
+ * aparecerem com nome e capacidade próprios, sem mover nenhum KPI de sprint.
+ * Não têm lead, e não são destino de apontamento — o destino sai do Épico do
+ * work item, e não existe épico de INFRA/DESIGN/QUALIDADE no escopo de squad.
+ * Por isso, para área, não existe "uso cruzado": todas as horas são próprias.
+ */
+export const AREAS: string[] = ['INFRA', 'DESIGN', 'QUALIDADE', 'PRODUTOS'];
+
+/** Fábricas + áreas, na ordem de exibição das visões de HORAS. */
+export const GRUPOS_HORAS: string[] = [...SQUADS, ...AREAS];
+
+/** true quando o grupo é área de horas, não fábrica de entrega. */
+export function ehArea(grupo: string | null | undefined): boolean {
+  return !!grupo && AREAS.includes(grupo);
+}
 
 /**
  * Balde de quem apontou hora mas não está no roster. É uma linha de primeira

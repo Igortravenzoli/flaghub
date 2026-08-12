@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { normName, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
+import { ehArea, GRUPOS_HORAS, normName, SEM_SQUAD } from '@/lib/fabricaRoster';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
+import { useColaboradorAusencias } from '@/hooks/useColaboradorAusencias';
+import { capacidadeMinutos, diasUteisAusentes, indexarAusencias } from '@/lib/capacidade';
 import { businessDaysBetween } from '@/lib/sprintCalendar';
 import { horasHM, horasHMComSinal } from '@/lib/formatHoras';
 
@@ -98,6 +100,8 @@ function semTrilha(row: LogRow): boolean {
  */
 export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbutida, pbiByTaskId, onAnalisarColaborador }: AlocacaoLeadDevCardProps) {
   const { data: roster = [], isLoading } = useFabricaRoster();
+  const { data: ausencias = [] } = useColaboradorAusencias();
+  const ausenciasPorPessoa = useMemo(() => indexarAusencias(ausencias), [ausencias]);
   const [aberta, setAberta] = useState<string | null>(null);
   const [devAberto, setDevAberto] = useState<string | null>(null);
   const [pbiAberto, setPbiAberto] = useState<string | null>(null);
@@ -227,6 +231,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
         cross: 0,
         crossDests: [...v.byDest].sort((a, b) => b[1] - a[1]) as [string, number][],
         cap: 0,
+        diasFora: 0,
       }))
       .sort((a, b) => b.total - a.total);
 
@@ -239,21 +244,31 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
       cap: 0,
     };
 
-    return [...SQUADS.map((squad) => {
+    return [...GRUPOS_HORAS.map((squad) => {
       const membros = roster.filter((r) => r.squad === squad);
       const lead = membros.find((r) => r.papel === 'lead') ?? null;
+      /**
+       * Área não é destino de apontamento, então nada do que ela faz é uso
+       * cruzado: `own` é o total e os destinos viram chip informativo, igual ao
+       * balde de quem está fora do roster.
+       */
+      const area = ehArea(squad);
       // Lead só gestor (conta_horas=false) fica só no cabeçalho; lead executor conta como dev.
       const devs = membros
         .filter((r) => r.conta_horas !== false)
         .map((r) => {
           const stat = byCollab.get(normName(r.colaborador));
           const total = stat?.total ?? 0;
-          const own = stat?.byDest.get(squad) ?? 0;
+          const own = area ? total : (stat?.byDest.get(squad) ?? 0);
           const crossDests = [...(stat?.byDest ?? new Map<string, number>())]
-            .filter(([d]) => d !== squad)
+            .filter(([d]) => area || d !== squad)
             .sort((a, b) => b[1] - a[1]);
-          const cap = businessDays ? (Number(r.capacidade_h_dia) || 0) * businessDays * 60 : 0;
-          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests: crossDests as [string, number][], cap };
+          // Capacidade do dev já sem os dias de ausência dele no período.
+          const diasFora = businessDays && dateFrom && dateTo
+            ? diasUteisAusentes(ausenciasPorPessoa.get(r.colaborador) ?? [], dateFrom, dateTo)
+            : 0;
+          const cap = businessDays ? capacidadeMinutos(r.capacidade_h_dia, businessDays, diasFora) : 0;
+          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests: crossDests as [string, number][], cap, diasFora };
         })
         .sort((a, b) => b.total - a.total);
       const total = devs.reduce((s, d) => s + d.total, 0);
@@ -261,7 +276,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
       const cap = devs.reduce((s, d) => s + d.cap, 0);
       return { squad, lead: lead as (typeof roster)[number] | null, devs, total, cross, cap };
     }), semSquad].filter((s) => s.devs.length > 0);
-  }, [roster, byCollab, businessDays]);
+  }, [roster, byCollab, businessDays, dateFrom, dateTo, ausenciasPorPessoa]);
   const temCapacidade = !!businessDays;
 
   // ── Nível 1 do drill: tasks do dev; nível 2: lançamentos da task ────────────
@@ -500,6 +515,8 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
   const renderDevs = (s: (typeof squads)[number], cor: string) => (
     <div className="divide-y divide-border/60">
       {s.devs.map((d) => {
+        // Sem fábrica de casa: quem está fora do roster e as áreas de horas.
+        const foraDoRoster = s.squad === SEM_SQUAD || ehArea(s.squad);
         const ownPct = d.total > 0 ? (d.own / d.total) * 100 : 0;
         const crossPctDev = d.total > 0 ? (d.cross / d.total) * 100 : 0;
         const showCap = temCapacidade && d.cap > 0;
@@ -535,8 +552,45 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
                 {d.papel === 'lead' && (
                   <span className="text-[10px] px-1 rounded bg-muted text-muted-foreground">lead</span>
                 )}
+                {/*
+                  Sem esta marca, a capacidade menor do dev viraria mistério: o
+                  gestor veria 21:00 onde esperava 70:00 e não teria como saber
+                  que a diferença é férias.
+                */}
+                {d.diasFora > 0 && (
+                  <span
+                    className="text-[10px] px-1.5 rounded bg-sky-500/15 text-sky-700 dark:text-sky-300 font-medium"
+                    title={`${d.diasFora} dia(s) útil(eis) de ausência no período, já descontados da capacidade`}
+                  >
+                    ausente {d.diasFora}d
+                  </span>
+                )}
+                {/*
+                  A fábrica de casa também vira chip, em verde.
+                  Só o chip âmbar do uso cruzado lia como se fosse o total da
+                  pessoa: "12:30 → FLEXX" ao lado do nome dá a entender que ele
+                  trabalhou 12h30 no mês, quando é só a parte fora da squad
+                  (reportado em 12/08/2026). Quem está fora do roster não tem
+                  casa, então lá os destinos são informativos, em cinza.
+                */}
+                {!foraDoRoster && d.own > 0 && (
+                  <span
+                    className="text-[10px] px-1.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium"
+                    title={`Fábrica de casa: ${horasHM(d.own)} em ${s.squad}`}
+                  >
+                    {horasHM(d.own)} → {s.squad}
+                  </span>
+                )}
                 {d.crossDests.map(([dest, min]) => (
-                  <span key={dest} className="text-[10px] px-1.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium">
+                  <span
+                    key={dest}
+                    title={foraDoRoster
+                      ? `${horasHM(min)} em ${dest}`
+                      : `Uso cruzado: ${horasHM(min)} em ${dest}, fora da fábrica de casa`}
+                    className={`text-[10px] px-1.5 rounded font-medium ${foraDoRoster
+                      ? 'bg-muted text-muted-foreground'
+                      : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}
+                  >
                     {horasHM(min)} → {dest}
                   </span>
                 ))}
@@ -573,7 +627,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
     if (isLoading) {
       return <p className="text-[11px] text-muted-foreground px-3 py-3">Carregando roster…</p>;
     }
-    const idx = SQUADS.indexOf(squadEmbutida);
+    const idx = GRUPOS_HORAS.indexOf(squadEmbutida);
     const s = squads.find((x) => x.squad === squadEmbutida);
     if (!s) {
       return <p className="text-[11px] text-muted-foreground px-3 py-3">Squad sem membros no roster.</p>;

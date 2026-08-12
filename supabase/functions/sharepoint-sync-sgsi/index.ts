@@ -1,4 +1,5 @@
-// sharepoint-sync-sgsi v1.0 — Espelha as listas SG do SharePoint Online
+// sharepoint-sync-sgsi v1.1 — Espelha as listas SG do SharePoint Online
+// v1.1: + lista Controle Colaborador (SG-LST-013), casada pelo nome humano.
 // Fonte: https://flagcom.sharepoint.com/sites/PORTALSGSI (mesma do PBIX
 // "SG-LST Usecase 1.04"). Lê via Microsoft Graph com client credentials.
 //
@@ -28,6 +29,20 @@ const LIST_MATCHERS: { listKey: string; pattern: RegExp; extra?: RegExp }[] = [
   { listKey: '014', pattern: /^SG-LST-014(?![\d.])/i, extra: /acesso/i },
   { listKey: '017', pattern: /^SG-LST-01[67](?![\d.])/i, extra: /incidente/i },
   { listKey: '018', pattern: /^SG-LST-018(?![\d.])/i },
+  /**
+   * Controle Colaborador — "SG-LST-013" no site.
+   *
+   * Casada pelo nome humano, não pelo código, e ainda bem: a URL da lista sai
+   * como SGLSG0141, o que sugeriria 014.1. O displayName real é SG-LST-013.
+   * Numeração chutada daria silêncio — a lista simplesmente não apareceria.
+   * "Controle Colaborador" é único no site.
+   *
+   * Traz status do colaborador e as datas de férias. Por ora é só espelho; a
+   * capacidade variável por ausência depende de casar o nome do SharePoint
+   * ("Rodolfo Freire De Almeida") com o do apontamento ("Rodolfo F. Almeida"),
+   * que é decisão em aberto (12/08/2026).
+   */
+  { listKey: '013', pattern: /controle\s*colaborador/i },
 ]
 
 // Campos de sistema do Graph que não interessam ao espelho
@@ -247,7 +262,9 @@ serve(async (req) => {
       const name = list.displayName ?? ''
       const matcher = LIST_MATCHERS.find(m => m.pattern.test(name) && (!m.extra || m.extra.test(name)))
       if (!matcher) {
-        if (/^SG-LST/i.test(name)) naoMapeadas.push(name)
+        // Loga qualquer lista SG, não só SG-LST: a Controle Colaborador usa
+        // outro prefixo e ficava invisível neste diagnóstico.
+        if (/^SG[-\s]/i.test(name)) naoMapeadas.push(name)
         continue
       }
       if (seenKeys.has(matcher.listKey)) {
