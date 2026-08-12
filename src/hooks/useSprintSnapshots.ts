@@ -38,8 +38,9 @@ export interface SprintSnapshotRow {
  * Fotografias congeladas das sprints (sprint_indicator_snapshots), indexadas
  * por sprint_code. Usadas pelo gerencial da Fábrica para exibir sprints
  * fechadas como fim-de-sprint em vez do estado atual do DevOps.
- * Corte da foto: domingo 22:00 BRT desde a S15-2026 (regra 25/07/2026).
- * Série mista e imutável: S14-2026 corte sábado (manual); ≤S13-2026 corte sexta.
+ * Corte da foto: sábado 13:00 BRT desde a S16-2026 (regra SN-9, 04/08/2026).
+ * Série mista e imutável: S15-2026 corte domingo 22:00; S14-2026 corte sábado
+ * 23:59 (manual); ≤S13-2026 corte sexta.
  */
 export function useSprintSnapshots() {
   return useQuery({

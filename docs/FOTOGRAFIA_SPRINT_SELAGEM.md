@@ -3,21 +3,33 @@
 **Decisão do gestor da Fábrica — 19/07/2026** · aplicada em PROD na mesma data
 (migration `20260719140000_sprint_snapshot_selagem.sql`).
 
-**Atualização — 25/07/2026 (corte DOMINGO 22:00):** por decisão do gestor, o corte
-da foto passou para **domingo 22:00 BRT** a partir da **S15-2026**
-(migration `20260726120000_sn5_snapshot_corte_domingo_22h.sql`). A regra de sábado
-23:59, definida um dia antes, nunca chegou a selar nenhuma sprint.
+**Atualização — 04/08/2026 (SN-9: a foto é TIRADA no SÁBADO 13:00):** por decisão
+do gestor, o corte **e a selagem** passaram para o sábado, a partir da **S16-2026**
+(migration `20260804120000_sn9_foto_corte_sabado_13h.sql`). Diferente das mudanças
+anteriores, esta não moveu só o corte: moveu o momento em que a foto **existe** —
+o objetivo declarado é liberar o **transbordo no próprio sábado à tarde**.
 
-Evolução do corte: sexta 23:59 → sábado 23:59 → **domingo 22:00**.
-Evolução da selagem: sábado 00:30 → domingo 00:30 → **segunda 00:30**.
+Evolução do corte: sexta 23:59 → sábado 23:59 → domingo 22:00 → **sábado 13:00**.
+Evolução da selagem: sábado 00:30 → domingo 00:30 → segunda 00:30 → **sábado 13:20**.
 
-> "Todos os domingos 22:00" é **por sprint**, não semanal. Sprints são quinzenais
-> e o domingo do corte é sempre o **seguinte ao encerramento** (`sprint_end + 2`).
-> O domingo do meio da sprint não gera foto nenhuma.
+> "Todos os sábados 13:00" é **por sprint**, não semanal. Sprints são quinzenais
+> e o sábado do corte é sempre o **seguinte ao encerramento** (`sprint_end + 1`).
+> O sábado do meio da sprint não gera foto nenhuma.
+
+A folga entre corte e selagem caiu de 2h30 para **20 min** (2 ciclos do
+`devops-sync-all`, que roda a cada 10 min). Ela existe pelo mesmo motivo de
+sempre — os últimos minutos antes do corte precisam estar espelhados no banco
+antes de a foto virar imutável — mas encurtou porque agora o transbordo espera
+por ela.
+
+O instante do corte virou função: **`fn_corte_foto_sprint(sprint_end)`** é a fonte
+única lida pela reconstrução (default), pelo guard da selagem e pela trava do
+transbordo. Antes essa aritmética estava duplicada em três lugares.
 
 Fotos já seladas **não** são reprocessadas — a série histórica fica mista e
-documentada: ≤S13-2026 corte sexta; S14-2026 corte sábado (exceção manual);
-S15-2026 em diante corte domingo 22:00.
+documentada: ≤S13-2026 corte sexta; S14-2026 corte sábado 23:59 (exceção manual);
+S15-2026 corte domingo 22:00; **S16-2026 em diante corte sábado 13:00** (primeira
+aplicação: fim sexta 14/08 → corte sábado 15/08/2026 13:00 BRT).
 
 **Atualização — 03/08/2026 (SN-7: a foto mede O QUADRO):** o universo deixou de
 sair de `pbi_lifecycle_summary.committed_sprint` e passou a ser o
@@ -54,19 +66,19 @@ Consequências, todas aplicadas na mesma data:
 - **O driver de selagem varre o quadro**, não mais `pbi_lifecycle_summary`: uma
   sprint composta só de bugs nunca apareceria na lista antiga.
 
-> Na selagem (segunda 00:30) o `iteration_path` do item ainda é o da sprint que
+> Na selagem (sábado 13:20) o `iteration_path` do item ainda é o da sprint que
 > fechou — o botão Migrar só destrava depois da foto selada. A reconstrução por
 > `iteration_history` existe para refazer foto antiga, e aí carrega **±1 item**
 > de incerteza, porque esse histórico tem sync próprio e atrasa.
 
 ## Regra
 
-1. A fotografia de cada sprint é o estado do quadro às **domingo 22:00 (horário de Brasília)** — o corte oficial, **sem tolerância**. A sprint continua encerrando na **sexta**; o fim de semana inteiro é a folga para o time acertar os status.
-2. A foto é construída pelo cron diário (job `snapshot-sprint-end-daily`, 00:30 BRT) na primeira madrugada **em que o corte já passou** — na prática, **segunda 00:30 BRT** — e **selada na mesma passada**. A partir daí é **imutável**: mudanças de status, tag, hierarquia ou regra de cálculo feitas depois **não** alteram a história.
-3. Entre sexta (fim oficial da sprint) e a selagem de segunda, o gerencial exibe o **estado atual** com aviso — a foto ainda não existe nessa janela.
+1. A fotografia de cada sprint é o estado do quadro às **sábado 13:00 (horário de Brasília)** — o corte oficial, **sem tolerância**. A sprint continua encerrando na **sexta**; a folga para o time acertar os status é sexta à noite + manhã de sábado.
+2. A foto é construída e **selada na mesma passada** pelo job `snapshot-sprint-end-saturday` (**sábado 13:20 BRT**). A partir daí é **imutável**: mudanças de status, tag, hierarquia ou regra de cálculo feitas depois **não** alteram a história.
+3. Entre sexta (fim oficial da sprint) e a selagem de sábado, o gerencial exibe o **estado atual** com aviso — a foto ainda não existe nessa janela.
 4. A meta gerencial de atingimento (% Done + Entregue da sprint) é lida da foto selada — é um fato encerrado por sprint.
 5. Mudanças futuras nas regras de cálculo **não** reprocessam sprints seladas. Reprocesso retroativo só por decisão explícita do gestor (ver runbook).
-6. O corte de **horas/alocação** (timelog) **não muda**: segue sexta 23:59 — a regra de domingo vale só para a foto de STATUS.
+6. O corte de **horas/alocação** (timelog) **não muda**: segue sexta 23:59 — a regra de sábado vale só para a foto de STATUS.
 7. **transbordo_count** vem da **TAG** (`fn_tem_tag_transbordo`), não da coluna `transbordou_sprint` — que nunca é escrita e gravava zero em toda foto.
 
 ## Mecânica (campo `snapshot_source` em `sprint_indicator_snapshots`)
@@ -74,45 +86,55 @@ Consequências, todas aplicadas na mesma data:
 | Valor | Significado | Cron regrava? |
 |---|---|---|
 | `fim_sprint_reconstruido` | foto ainda não selada (transitório) | sim — constrói e sela |
-| `fim_sprint_selado` | selada pela regra (corte domingo 22:00; sábado na S14; sexta p/ ≤S13) | **nunca** |
+| `fim_sprint_selado` | selada pela regra (corte sábado 13:00 desde a S16; domingo 22:00 na S15; sábado 23:59 na S14; sexta p/ ≤S13) | **nunca** |
 | `manual` | exceção aprovada pelo gestor (corte alternativo) | **nunca** |
 | `estado_atual` | captura ao vivo legada (`rpc_capture_sprint_snapshot`) | n/a |
 
-O job `snapshot-sprint-end-daily` roda diariamente às **00:30 BRT** (`30 3 * * *`
-UTC). O guard do driver (`rpc_backfill_reconstruct_closed_sprints`) pula a
-sprint enquanto `sprint_end + 2 >=` **a data de hoje em BRT** (NÃO
-`CURRENT_DATE`, que é UTC: entre 21:00 e 23:59 BRT a data UTC já virou, e uma
-execução manual nessa janela selaria com corte no futuro). Ou seja, no domingo
-ele **não** sela — o corte das 22:00 ainda está à frente; a primeira passada
-elegível é segunda 00:30 BRT, 2h30 após o corte. Essa folga é proposital: os
-syncs do DevOps rodam a cada 10–15 min e os últimos minutos do domingo precisam
-estar espelhados antes de selar.
+**Dois jobs, o mesmo driver:**
 
-> Operacional: localizar o job **sempre pelo `jobname`** (`snapshot-sprint-end-daily`),
-> nunca pelo `jobid` — o id muda entre ambientes.
+| Job | Schedule (UTC) | BRT | Papel |
+|---|---|---|---|
+| `snapshot-sprint-end-saturday` | `20 16 * * 6` | sáb 13:20 | tira e sela a foto |
+| `snapshot-sprint-end-daily` | `30 3 * * *` | diário 00:30 | rede de segurança |
+
+O driver (`rpc_backfill_reconstruct_closed_sprints`) é idempotente — foto selada
+nunca é regravada — então o job diário só age se o de sábado tiver falhado: a
+foto atrasa para a madrugada seguinte, mas não some.
+
+O guard do driver compara **instantes**, não datas: pula a sprint enquanto
+`now() < fn_corte_foto_sprint(sprint_end)`. Isso era obrigatório na SN-9, porque
+a selagem passou a acontecer no **mesmo dia** do corte — um guard por data
+bloquearia o sábado inteiro. De quebra, some o cuidado com data BRT × data UTC
+que a regra de domingo exigia.
+
+> Operacional: localizar os jobs **sempre pelo `jobname`**, nunca pelo `jobid` —
+> o id muda entre ambientes.
 
 ## Série diária (complemento)
 
 A série de evolução (`sprint_daily_progress`, job `sprint-daily-progress` 00:05
 BRT) ganha um ponto extra após o fim da sprint, para o DailyProgressCard fechar
-junto da foto (migration `20260803120000_sn6_daily_progress_ponto_domingo_e_transbordo_tag.sql`,
-que substitui a regra de sábado da SN-4).
+junto da foto.
 
-**Ponto de fechamento (SN-6, 03/08/2026):** capturado na **segunda 00:05 BRT**
-(`sprint_end + 3`) — 2h05 depois do corte e 25 min antes da selagem — e gravado
-com rótulo de **domingo** (`sprint_end + 2`), o dia do corte. É escrito **uma
-única vez**: se o ponto já existir, o driver pula. Recapturar depois do
-transbordo trocaria o escopo da sprint encerrada (o botão *Migrar* reescreve
-`last_committed_sprint`) e o ponto deixaria de bater com a foto.
+**Ponto de fechamento (SN-9, 04/08/2026):** escrito pelo **próprio driver da
+selagem**, na mesma passada e logo após selar (sábado 13:20 BRT), com rótulo
+`sprint_end + 1` — o sábado do corte. É escrito **uma única vez**: se o ponto já
+existir, o driver pula.
 
-Como a sprint seguinte **começa na segunda**, nesse dia o cron grava **dois**
-pontos: o de fechamento da que encerrou e o do dia da que abriu. Por isso a
-função foi partida em `rpc_capture_sprint_daily_progress_at(sprint, data)`
-(captura) + `rpc_capture_sprint_daily_progress()` (driver) — a condição antiga
-("só quando não há sprint aberta hoje") nunca mais seria verdadeira.
+> Por que o dono mudou: a SN-6 capturava esse ponto na segunda 00:05, 25 min
+> ANTES da selagem. Com a foto no sábado 13:00, a segunda passou a ser **depois**
+> de o transbordo destravar — e o botão *Migrar* reescreve o `iteration_path` dos
+> itens que passaram adiante, então o ponto deixaria de bater com a foto.
+> Escrevê-lo grudado na selagem garante mesmo instante, mesmo universo e sempre
+> antes do destrave.
 
-`transbordo_count` da série diária também passou a vir da **TAG** — antes
-gravava zero em todo ponto, como acontecia na foto até a SN-5.
+Em consequência, `rpc_capture_sprint_daily_progress()` voltou a ser só "o ponto
+do dia da sprint aberta" — mantido o passo 2 da SN-6, ele gravaria na segunda um
+**segundo** ponto de fechamento, rotulado no domingo. A captura em si segue em
+`rpc_capture_sprint_daily_progress_at(sprint, data)`, chamada pelos dois drivers.
+
+`transbordo_count` da série diária vem da **TAG** desde a SN-6 — antes gravava
+zero em todo ponto, como acontecia na foto até a SN-5.
 
 ## Exceções (esporádicas, por decisão do gestor)
 
@@ -124,12 +146,12 @@ Este caso motivou as mudanças de regra de 24 e 25/07/2026.
 Runbook para nova exceção (2 comandos):
 
 ```sql
-select * from public.rpc_reconstruct_sprint_snapshot('Sxx-2026', timestamptz 'AAAA-MM-DD 22:00:00-03');
+select * from public.rpc_reconstruct_sprint_snapshot('Sxx-2026', timestamptz 'AAAA-MM-DD 13:00:00-03');
 update public.sprint_indicator_snapshots set snapshot_source = 'manual' where sprint_code = 'Sxx-2026';
 ```
 
-Runbook para des-selar e reprocessar conscientemente (a madrugada seguinte
-reconstrói no corte padrão — domingo 22:00 — e re-sela):
+Runbook para des-selar e reprocessar conscientemente (a próxima passada
+reconstrói no corte padrão — sábado 13:00 — e re-sela):
 
 ```sql
 update public.sprint_indicator_snapshots
@@ -138,7 +160,7 @@ update public.sprint_indicator_snapshots
 ```
 
 > Atenção ao des-selar sprint antiga: o reprocesso usará o corte **NOVO**
-> (domingo 22:00), diferente do corte com que ela foi selada originalmente.
+> (sábado 13:00), diferente do corte com que ela foi selada originalmente.
 > Para reprocessar com o corte da época, passar `p_as_of` explícito.
 
 ### Auditoria de "stragglers"
@@ -156,32 +178,37 @@ código `-2025`/`-2024` jamais entra no laço da selagem.
 ```sql
 -- Sprints do ANO VIGENTE com corte já passado e sem foto selada/manual
 select cands.sc, r.sprint_end
-from (select distinct coalesce(ls.last_committed_sprint, ls.first_committed_sprint) as sc
-        from public.pbi_lifecycle_summary ls
-       where coalesce(ls.last_committed_sprint, ls.first_committed_sprint) ~ '^S[0-9]+-[0-9]{4}$') cands
+from (select distinct regexp_replace(w.iteration_path, '^.*\\', '') as sc
+        from public.devops_work_items w
+       where w.work_item_type in ('Product Backlog Item','User Story','Bug')
+         and regexp_replace(w.iteration_path, '^.*\\', '') ~ '^S[0-9]+-[0-9]{4}$') cands
 join lateral public.fn_sprint_official_range(cands.sc) r on true
 where split_part(cands.sc, '-', 2)::int = extract(year from now())::int
-  and r.sprint_end + 2 < (now() at time zone 'America/Sao_Paulo')::date
+  and now() >= public.fn_corte_foto_sprint(r.sprint_end)
   and not exists (select 1 from public.sprint_indicator_snapshots s
                    where s.sprint_code = cands.sc
                      and s.snapshot_source in ('fim_sprint_selado','manual'));
 ```
 
-> A auditoria embutida na migration `20260726120000` tem o mesmo viés e emite
-> `NOTICE` para os códigos legados. Ruído conhecido, não é straggler.
-
-Se aparecer sprint antiga, selar manualmente com o corte da época ANTES da
-próxima madrugada: runbook de exceção com `p_as_of` da data correta +
+Se aparecer sprint antiga, selar manualmente com o corte da época ANTES do
+próximo job: runbook de exceção com `p_as_of` da data correta +
 `snapshot_source = 'manual'`.
 
 ## Relação com o transbordo
 
 O botão **Migrar PBI/Bugs** só pode agir depois que a foto da sprint que fechou
-estiver **selada** — mover itens antes disso os faria sumir da foto, porque a
-reconstrução seleciona por `last_committed_sprint`/`first_committed_sprint`
-(valores atuais, reescritos pelo sync a cada 10 min). Além da foto selada, o
-botão exige **data posterior ao fim da sprint**: trava de segurança contra
-transbordo no meio da sprint.
+estiver **tirada (selada)** — mover itens antes disso os faria sumir da foto,
+porque o universo sai do `iteration_path` atual, reescrito pelo sync a cada
+10 min. Além da foto, o botão exige **data posterior ao fim da sprint**: trava de
+segurança contra transbordo no meio da sprint. As duas condições são decididas em
+`rpc_transbordo_contexto` e revalidadas pela edge `devops-transbordo` — o gate do
+front é só UX.
+
+Com a foto no **sábado 13:00** e a selagem às **13:20**, o transbordo libera no
+próprio sábado à tarde (antes só destravava na segunda). O transbordo segue
+**manual** — nenhum job move item sozinho. Enquanto a foto não sai, a tela mostra
+o **corte previsto** (`corte_previsto`), para o gestor saber se falta meia hora ou
+dois dias.
 
 ## Consistência do gerencial (Fase 2 — concluída 19/07/2026)
 

@@ -20,8 +20,9 @@
 //       classificados elegíveis da sprint que fechou.
 //
 // TRAVA: 'migrate' revalida rpc_transbordo_contexto() no servidor antes de
-// escrever — foto selada da sprint que fechou E data posterior ao fim dela.
-// Nunca confiar no gate do front.
+// escrever — foto da sprint que fechou já TIRADA (selada) E data posterior ao
+// fim dela. A foto corta sábado 13:00 BRT e é selada ~13:20 (SN-9), então o
+// transbordo libera no próprio sábado. Nunca confiar no gate do front.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
