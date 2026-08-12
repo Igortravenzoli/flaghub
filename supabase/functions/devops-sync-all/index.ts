@@ -21,6 +21,27 @@ const CORE_FIELDS = [
   'Microsoft.VSTS.Common.ClosedBy', 'Microsoft.VSTS.Common.ClosedDate',
 ]
 
+/**
+ * Campos personalizados da FLAG. Ficam FORA de CORE_FIELDS de propósito: o
+ * montador da linha joga em `custom_fields` tudo que não é core, então basta
+ * pedi-los na requisição para serem gravados sem virar coluna nova.
+ *
+ * ATENÇÃO: OS REF-NAMES ESTÃO TROCADOS NA ORIGEM, e não é engano de leitura:
+ *
+ *     Custom.PRODUTOSS  contém a picklist de CLIENTES ("5 S Distribuidora"...)
+ *     Custom.CLIENTESS  contém a picklist de PRODUTOS ("Flexx", "Suite Flexx"...)
+ *
+ * Quem criou os campos na FLAG inverteu o nome interno e corrigiu só o rótulo
+ * do formulário. Conferido via API em 16/07/2026 com `$expand=allowedValues`, e
+ * é assim que o Timer (modeia-platform) já consome. NÃO "corrigir" o mapeamento
+ * por intuição: trocar inverte cliente e produto no relatório financeiro
+ * inteiro. A tradução para a semântica correta vive em
+ * v_devops_work_items_negocio.
+ *
+ * Os dois são picklist — escrita com valor fora da lista é rejeitada pelo Azure.
+ */
+const CUSTOM_FIELDS_FLAG = ['Custom.CLIENTESS', 'Custom.PRODUTOSS']
+
 function toDateOrNull(value: string | null | undefined): Date | null {
   if (!value) return null
   const d = new Date(value)
@@ -140,10 +161,20 @@ async function fetchWorkItemsBatch(ids: number[]): Promise<DevOpsWorkItem[]> {
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const chunk = ids.slice(i, i + BATCH_SIZE)
     const resp = await devopsFetch(
-      `_apis/wit/workitemsbatch?api-version=${DEVOPS_API_VERSION}`,
+      /**
+       * A rota do batch precisa do PROJETO, não só da organização.
+       *
+       * Campo personalizado é resolvido no escopo do projeto: chamando
+       * `/{org}/_apis/wit/workitemsbatch` o Azure devolve os campos System.* e
+       * Microsoft.VSTS.* normalmente e **omite os Custom.* em silêncio**, sem
+       * erro nenhum. Foi o que aconteceu em 12/08/2026: a coleta rodava, os
+       * itens eram atualizados e CLIENTESS/PRODUTOSS chegavam sempre vazios,
+       * enquanto a mesma consulta com o projeto na rota devolvia os dois.
+       */
+      `${encodeURIComponent(DEVOPS_PROJECT)}/_apis/wit/workitemsbatch?api-version=${DEVOPS_API_VERSION}`,
       {
         method: 'POST',
-        body: JSON.stringify({ ids: chunk, fields: CORE_FIELDS, $expand: 'none' }),
+        body: JSON.stringify({ ids: chunk, fields: [...CORE_FIELDS, ...CUSTOM_FIELDS_FLAG], $expand: 'none' }),
       }
     )
     if (!resp.ok) {
