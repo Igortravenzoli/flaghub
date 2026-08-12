@@ -125,7 +125,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
-        .from('devops_time_logs')
+        .from('v_devops_time_logs_ativos')
         .select('user_name, work_item_id, log_date, start_time, time_minutes, notes, ingested_at, etag')
         .gte('log_date', fromStr)
         .lte('log_date', toStr)

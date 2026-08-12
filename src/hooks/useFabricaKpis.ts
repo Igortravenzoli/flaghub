@@ -437,7 +437,7 @@ export function useFabricaKpis(
     queryFn: async () => {
       const data = await fetchAllRows<any>((from, to) => {
         let q = (supabase as any)
-          .from('devops_time_logs')
+          .from('v_devops_time_logs_ativos')
           .select('work_item_id, user_name, log_date, time_minutes');
         if (fromStr) q = q.gte('log_date', fromStr);
         if (toStr)   q = q.lte('log_date', toStr);

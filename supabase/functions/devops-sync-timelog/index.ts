@@ -1,4 +1,4 @@
-// devops-sync-timelog v3.2 — Background processing via EdgeRuntime.waitUntil()
+// devops-sync-timelog v3.3 — Background processing via EdgeRuntime.waitUntil()
 // v3.0: Respond immediately, process in background to avoid CPU limits
 // v3.1: fix ext_entry_id — o caller passava entry.id como docId, anulando o
 //       teste `entry.id !== docId` e deixando TODAS as linhas sem id oficial
@@ -6,6 +6,11 @@
 //       Agora o docId é a coleção/documento real; edições caem no UPSERT
 //       (Phase A) e a versão anterior é preservada por trigger
 //       (devops_time_log_revisions, migration 20260720100000).
+// v3.3: + detecção de exclusão na origem. O sync nunca apaga, então lançamento
+//       excluído no DevOps ficava na base para sempre, em silêncio (7.137 no
+//       payload contra 7.175 na base em 12/08/2026). A diferença vai para
+//       devops_time_log_orphans. Carimbo por linha NÃO serve: o trigger
+//       trg_time_log_revision cancela update sem mudança de conteúdo.
 // v3.2: fix dedup — o teste por conteúdo (que ignora `notes`) valia também para
 //       linha COM ext_entry_id e engolia lançamento legítimo repetido no mesmo
 //       item/dia/pessoa com a mesma duração. Conferência de 12/08/2026 contra o
@@ -274,6 +279,56 @@ async function processTimeLogs(pat: string) {
       upserted += count ?? batch.length
     }
   }
+
+  /**
+   * ── Exclusão na origem ────────────────────────────────────────────────────
+   *
+   * O sync nunca apaga, então lançamento excluído no DevOps ficava na base para
+   * sempre: em 12/08/2026 a extensão devolvia 7.137 e a base tinha 7.175.
+   *
+   * A diferença é calculada aqui, em memória, e só ela é gravada
+   * (devops_time_log_orphans). Carimbar cada linha com "visto nesta coleta" era
+   * o caminho óbvio e está errado: o trigger `trg_time_log_revision` cancela o
+   * update quando nenhuma coluna de conteúdo muda, justamente para não gerar 7
+   * mil updates a cada 15 minutos.
+   */
+  const idsNoPayload = new Set(
+    allRows.map(r => r.ext_entry_id).filter((id): id is string => id != null)
+  )
+  const orfaos: Array<{ ext_entry_id: string; work_item_id: number | null; log_date: string; user_name: string | null; time_minutes: number | null }> = []
+  const PAGINA_ORFAOS = 1000
+  let fromOrfao = 0
+  for (;;) {
+    const { data, error } = await sb
+      .from('devops_time_logs')
+      .select('ext_entry_id, work_item_id, log_date, user_name, time_minutes')
+      .not('ext_entry_id', 'is', null)
+      .range(fromOrfao, fromOrfao + PAGINA_ORFAOS - 1)
+    if (error) { console.warn(`[timelog] Órfãos: leitura falhou: ${error.message}`); break }
+    const chunk = data || []
+    for (const r of chunk) {
+      if (!idsNoPayload.has(r.ext_entry_id as string)) orfaos.push(r as typeof orfaos[number])
+    }
+    if (chunk.length < PAGINA_ORFAOS) break
+    fromOrfao += PAGINA_ORFAOS
+  }
+
+  if (orfaos.length > 0) {
+    // insert-only: `first_missing_at` tem que preservar a PRIMEIRA ausência.
+    const { error } = await sb
+      .from('devops_time_log_orphans')
+      .upsert(orfaos, { onConflict: 'ext_entry_id', ignoreDuplicates: true })
+    if (error) console.warn(`[timelog] Órfãos: gravação falhou: ${error.message}`)
+  }
+  // Lançamento que reapareceu deixa de ser órfão.
+  const { data: jaOrfaos } = await sb.from('devops_time_log_orphans').select('ext_entry_id')
+  const voltaram = (jaOrfaos || [])
+    .map(o => o.ext_entry_id as string)
+    .filter(id => idsNoPayload.has(id))
+  if (voltaram.length > 0) {
+    await sb.from('devops_time_log_orphans').delete().in('ext_entry_id', voltaram)
+  }
+  console.log(`[timelog] Órfãos (na base, fora do payload): ${orfaos.length}; voltaram: ${voltaram.length}`)
 
   // ── Phase B: content-based insert-only for entries without official IDs ─────
   const existingKeys = new Set<string>()
