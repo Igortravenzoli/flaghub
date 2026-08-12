@@ -146,9 +146,19 @@ export function ColaboradorAnaliseDialog({
    */
   const linhasTabela = useMemo(() => {
     const motivosPorId = new Map(atv.atipicos.map((a) => [a.id, a]));
-    if (!diaSelecionado) return atv.atipicos;
-    return atv.lancamentos
-      .filter((l) => l.dia === diaSelecionado)
+    /**
+     * Sem dia selecionado, a tabela abre com TODOS os lançamentos do período.
+     *
+     * Antes ela abria só com os atípicos, e a lista de tasks só aparecia depois
+     * de clicar numa barra do gráfico — quem abria o popup para conferir o que a
+     * pessoa fez via uma tela quase vazia e não tinha como saber que faltava um
+     * clique (pedido de 12/08/2026). O que é atípico continua marcado na coluna
+     * "Por quê"; clicar num dia passa a ser recorte, não pré-requisito.
+     */
+    const base = diaSelecionado
+      ? atv.lancamentos.filter((l) => l.dia === diaSelecionado)
+      : atv.lancamentos;
+    return base
       .map((l) => {
         const at = motivosPorId.get(l.id);
         return { ...l, motivos: at?.motivos ?? [], minutosNoDia: at?.minutosNoDia ?? l.minutos };
@@ -313,6 +323,7 @@ export function ColaboradorAnaliseDialog({
       { label: 'Lançamentos', value: diaSelecionado ? linhasTabela.length : atv.lancamentos.length },
       { label: 'Horas no período', value: horasHM(atv.totalMinutos) },
       { label: 'Lançamentos atípicos', value: atv.atipicos.length },
+      { label: 'Registros removidos (não contabilizados)', value: atv.removidos.length },
     ],
     /*
       No PDF as URLs cruas ficam fora: dois links de ~70 caracteres espremiam as
@@ -562,6 +573,82 @@ export function ColaboradorAnaliseDialog({
               </div>
             )}
 
+            {/*
+              Registros removidos de lançamento.
+              O portal guarda o rastro do que foi apagado no DevOps, mas NÃO
+              conta essas horas (decisão do gestor de 12/08/2026). Sem esta
+              lista, a diferença entre o que a pessoa lembra de ter lançado e o
+              que o relatório mostra vira discussão sem prova.
+            */}
+            {atv.removidos.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 flex-wrap">
+                  Registros removidos de lançamento
+                  <span className="text-[11px] font-normal text-muted-foreground">
+                    {atv.removidos.length} registro{atv.removidos.length === 1 ? '' : 's'} ·{' '}
+                    {horasHM(atv.removidos.reduce((t, l) => t + l.minutos, 0))} · não contabilizados
+                  </span>
+                </h3>
+                <div className="border rounded-md overflow-x-auto max-h-[220px] overflow-y-auto">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-muted sticky top-0">
+                      <tr>
+                        {varios && <th className="text-left px-2 py-1.5 font-medium">Quem</th>}
+                        <th className="text-left px-2 py-1.5 font-medium">PBI</th>
+                        <th className="text-left px-2 py-1.5 font-medium">Task</th>
+                        <th className="text-left px-2 py-1.5 font-medium">Descrição</th>
+                        <th className="text-left px-2 py-1.5 font-medium">Dia</th>
+                        <th className="text-right px-2 py-1.5 font-medium">Horas</th>
+                        <th className="text-left px-2 py-1.5 font-medium">Registro</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {atv.removidos.map((l) => (
+                        <tr key={l.id} className="hover:bg-muted/30 text-muted-foreground">
+                          {varios && <td className="px-2 py-1 truncate max-w-[110px]">{l.colaborador}</td>}
+                          <td className="px-2 py-1 font-mono whitespace-nowrap">
+                            {l.pbiId ? (
+                              <a href={urlItem(l.pbiId, l.pbiUrl)} target="_blank" rel="noopener noreferrer"
+                                className="text-primary hover:underline inline-flex items-center gap-0.5">
+                                #{l.pbiId}<ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            ) : <span className="text-muted-foreground/60">—</span>}
+                          </td>
+                          <td className="px-2 py-1 font-mono whitespace-nowrap">
+                            <a href={urlItem(l.taskId, l.taskUrl)} target="_blank" rel="noopener noreferrer"
+                              className="text-primary hover:underline inline-flex items-center gap-0.5">
+                              #{l.taskId}<ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          </td>
+                          <td className="px-2 py-1 max-w-[220px]">
+                            <span className="block truncate line-through decoration-muted-foreground/40" title={l.taskTitulo}>
+                              {l.taskTitulo}
+                            </span>
+                            {l.notas && (
+                              <span className="block truncate text-muted-foreground/70" title={l.notas}>{l.notas}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1 whitespace-nowrap tabular-nums">{l.dia.split('-').reverse().join('/')}</td>
+                          <td className="px-2 py-1 text-right font-mono tabular-nums whitespace-nowrap line-through">
+                            {horasHM(l.minutos)}
+                          </td>
+                          <td className="px-2 py-1">
+                            <Badge variant="outline" className="text-[9px] bg-muted text-muted-foreground border-border">
+                              removido no DevOps
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Lançamentos que existiam quando o portal coletou e foram apagados no DevOps depois.
+                  Ficam listados como rastro e <strong>não entram em nenhuma soma</strong> de horas.
+                </p>
+              </div>
+            )}
+
             {/* Lançamentos atípicos */}
             <div>
               <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 flex-wrap">
@@ -581,16 +668,18 @@ export function ColaboradorAnaliseDialog({
                   </>
                 ) : (
                   <>
-                    Lançamentos atípicos
+                    Lançamentos do período
                     <span className="text-[11px] font-normal text-muted-foreground">
-                      {atv.atipicos.length} de {atv.lancamentos.length}
+                      {atv.lancamentos.length} lançamento{atv.lancamentos.length === 1 ? '' : 's'} ·{' '}
+                      {horasHM(atv.totalMinutos)}
+                      {atv.atipicos.length > 0 && ` · ${atv.atipicos.length} atípico${atv.atipicos.length === 1 ? '' : 's'}`}
                     </span>
                   </>
                 )}
               </h3>
               {linhasTabela.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-3">
-                  {diaSelecionado ? 'Sem lançamentos neste dia.' : 'Nada atípico no período.'}
+                  {diaSelecionado ? 'Sem lançamentos neste dia.' : 'Sem lançamento no período.'}
                 </p>
               ) : (
                 <div className="border rounded-md overflow-x-auto max-h-[320px] overflow-y-auto">

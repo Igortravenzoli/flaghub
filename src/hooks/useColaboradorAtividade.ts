@@ -26,6 +26,12 @@ export interface LancamentoDetalhe {
   /** Versão do lançamento: >1 = editado no DevOps depois de criado */
   versao: number;
   notas: string | null;
+  /**
+   * Lançamento apagado no DevOps depois de coletado. Fica visível no relatório
+   * (o portal tem o rastro), mas NÃO entra em nenhuma soma — decisão do gestor
+   * de 12/08/2026: hora removida não é contabilizada.
+   */
+  removido: boolean;
 }
 
 /** Por que um lançamento chamou atenção. Vazio = nada atípico. */
@@ -69,6 +75,7 @@ export interface DiaAtividade {
 
 interface LogRow {
   id: string;
+  ext_entry_id: string | null;
   user_name: string;
   work_item_id: number;
   log_date: string;
@@ -114,11 +121,32 @@ export function useColaboradorAtividade(
       fetchAllRows<LogRow>((from, to) =>
         (supabase as any)
           .from('devops_time_logs')
-          .select('id, user_name, work_item_id, log_date, start_time, time_minutes, notes, ingested_at, etag')
+          .select('id, ext_entry_id, user_name, work_item_id, log_date, start_time, time_minutes, notes, ingested_at, etag')
           .gte('log_date', fromStr)
           .lte('log_date', toStr)
           .range(from, to),
       ),
+  });
+
+  /**
+   * Lançamentos removidos na origem, para o mesmo recorte.
+   *
+   * A tabela crua continua completa de propósito: é o rastro que permite dizer
+   * ao colaborador O QUE foi apagado. Quem soma é a view `ativos`.
+   */
+  const removidosQuery = useQuery({
+    queryKey: ['colab-atividade-removidos', fromStr, toStr],
+    enabled: habilitado,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any)
+        .from('devops_time_log_orphans')
+        .select('ext_entry_id')
+        .gte('log_date', fromStr)
+        .lte('log_date', toStr);
+      return new Set(((data || []) as Array<{ ext_entry_id: string }>).map(r => r.ext_entry_id));
+    },
   });
 
   const mapaQuery = useQuery({
@@ -189,6 +217,7 @@ export function useColaboradorAtividade(
         const versaoNum = Number(r.etag);
         return {
           id: r.id,
+          removido: !!r.ext_entry_id && (removidosQuery.data?.has(r.ext_entry_id) ?? false),
           colaborador: r.canonico,
           taskId: r.work_item_id,
           taskTitulo: task?.title ?? `#${r.work_item_id}`,
@@ -206,7 +235,19 @@ export function useColaboradorAtividade(
         } satisfies LancamentoDetalhe;
       })
       .sort((a, b) => a.dia.localeCompare(b.dia) || (a.inicio || '').localeCompare(b.inicio || ''));
-  }, [linhasDoAlvo, itensQuery.data, pbiByTaskId]);
+  }, [linhasDoAlvo, itensQuery.data, pbiByTaskId, removidosQuery.data]);
+
+  /** Só o que conta. Removido fica fora de toda soma e de todo gráfico. */
+  const lancamentosAtivos = useMemo(
+    () => lancamentos.filter((l) => !l.removido),
+    [lancamentos],
+  );
+
+  /** O rastro: apagado no DevOps, listado no relatório, fora da conta. */
+  const removidos = useMemo(
+    () => lancamentos.filter((l) => l.removido),
+    [lancamentos],
+  );
 
   /** Série diária cobrindo TODO o range — dias sem apontamento entram zerados. */
   const porDia: DiaAtividade[] = useMemo(() => {
@@ -219,7 +260,7 @@ export function useColaboradorAtividade(
         atrasoMaxDias: 0, lancamentosAtrasados: 0, temSemTrilha: false,
       });
     }
-    for (const l of lancamentos) {
+    for (const l of lancamentosAtivos) {
       const e = mapa.get(l.dia);
       if (e) {
         e.porColaborador[l.colaborador] = (e.porColaborador[l.colaborador] || 0) + l.minutos;
@@ -235,11 +276,11 @@ export function useColaboradorAtividade(
       if (reg) reg.totalRegistrado += l.minutos;
     }
     return [...mapa.values()];
-  }, [lancamentos, dateFrom, dateTo]);
+  }, [lancamentosAtivos, dateFrom, dateTo]);
 
   const atipicos: LancamentoAtipico[] = useMemo(() => {
     const minutosDiaPessoa = new Map<string, number>();
-    for (const l of lancamentos) {
+    for (const l of lancamentosAtivos) {
       const k = `${l.colaborador}|${l.dia}`;
       minutosDiaPessoa.set(k, (minutosDiaPessoa.get(k) || 0) + l.minutos);
     }
@@ -247,7 +288,7 @@ export function useColaboradorAtividade(
       ? new Date(dateTo.getFullYear(), dateTo.getMonth(), dateTo.getDate(), 23, 59, 59, 999).getTime()
       : null;
 
-    return lancamentos
+    return lancamentosAtivos
       .map((l) => {
         const noDia = minutosDiaPessoa.get(`${l.colaborador}|${l.dia}`) || 0;
         const motivos: MotivoAtipico[] = [];
@@ -263,7 +304,7 @@ export function useColaboradorAtividade(
       })
       .filter((l) => l.motivos.length > 0)
       .sort((a, b) => b.motivos.length - a.motivos.length || b.minutos - a.minutos);
-  }, [lancamentos, dateTo]);
+  }, [lancamentosAtivos, dateTo]);
 
   /** Agregado por semana ISO (segunda a domingo) — a leitura de ritmo. */
   const porSemana = useMemo(() => {
@@ -280,11 +321,13 @@ export function useColaboradorAtividade(
   }, [porDia]);
 
   return {
-    lancamentos,
+    lancamentos: lancamentosAtivos,
+    /** Apagados na origem: aparecem no relatório, não entram em soma nenhuma. */
+    removidos,
     porDia,
     porSemana,
     atipicos,
-    totalMinutos: lancamentos.reduce((s, l) => s + l.minutos, 0),
+    totalMinutos: lancamentosAtivos.reduce((s, l) => s + l.minutos, 0),
     isLoading: logsQuery.isLoading || mapaQuery.isLoading || itensQuery.isLoading,
     isError: logsQuery.isError,
   };
