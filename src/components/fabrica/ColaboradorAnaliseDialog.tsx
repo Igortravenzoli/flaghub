@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
   Tooltip as RechartsTooltip, Legend, ReferenceLine,
 } from 'recharts';
-import { AlertTriangle, Download, ExternalLink, Info, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Download, ExternalLink, Info, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -155,6 +155,80 @@ export function ColaboradorAnaliseDialog({
       })
       .sort((a, b) => (a.inicio || '').localeCompare(b.inicio || '') || b.minutos - a.minutos);
   }, [diaSelecionado, atv.atipicos, atv.lancamentos]);
+
+  /**
+   * Ordenação da tabela.
+   *
+   * `null` = ordem de relevância, que é a que o hook entrega (atípicos: mais
+   * motivos e mais horas primeiro; dia selecionado: hora de início). Clicar
+   * cicla asc → desc → relevância, para dar como voltar ao padrão sem fechar o
+   * popup (pedido de 12/08/2026).
+   */
+  type CampoOrdem =
+    | 'colaborador' | 'pbiId' | 'taskId' | 'taskTitulo'
+    | 'dia' | 'minutos' | 'registradoEm' | 'motivos';
+  const [ordem, setOrdem] = useState<{ campo: CampoOrdem; dir: 'asc' | 'desc' } | null>(null);
+
+  const alternarOrdem = (campo: CampoOrdem) =>
+    setOrdem((atual) => {
+      if (atual?.campo !== campo) return { campo, dir: 'asc' };
+      return atual.dir === 'asc' ? { campo, dir: 'desc' } : null;
+    });
+
+  const linhasOrdenadas = useMemo(() => {
+    if (!ordem) return linhasTabela;
+    const { campo, dir } = ordem;
+    const sinal = dir === 'asc' ? 1 : -1;
+    const txt = (v: string | null | undefined) => (v || '').toLocaleLowerCase('pt-BR');
+    return [...linhasTabela].sort((a, b) => {
+      switch (campo) {
+        case 'colaborador': return sinal * txt(a.colaborador).localeCompare(txt(b.colaborador), 'pt-BR');
+        case 'taskTitulo':  return sinal * txt(a.taskTitulo).localeCompare(txt(b.taskTitulo), 'pt-BR');
+        case 'pbiId':       return sinal * ((a.pbiId ?? 0) - (b.pbiId ?? 0));
+        case 'taskId':      return sinal * (a.taskId - b.taskId);
+        case 'minutos':     return sinal * (a.minutos - b.minutos);
+        case 'motivos':     return sinal * (a.motivos.length - b.motivos.length);
+        case 'dia':         return sinal * (a.dia.localeCompare(b.dia) || (a.inicio || '').localeCompare(b.inicio || ''));
+        /**
+         * "Sem trilha" (lançamento anterior à recarga de 17/07) não tem momento
+         * de registro conhecido — fica no fim nas DUAS direções, senão a
+         * ordenação sugeriria que foram todos registrados no mesmo instante.
+         */
+        case 'registradoEm': {
+          if (a.atrasoDias == null || b.atrasoDias == null) {
+            if (a.atrasoDias == null && b.atrasoDias == null) return 0;
+            return a.atrasoDias == null ? 1 : -1;
+          }
+          return sinal * a.registradoEm.localeCompare(b.registradoEm);
+        }
+        default: return 0;
+      }
+    });
+  }, [linhasTabela, ordem]);
+
+  /**
+   * Função, não componente: declarar componente dentro do corpo de outro cria um
+   * TIPO novo a cada render e o React remonta o nó (mesmo motivo documentado em
+   * UsoCruzadoCard).
+   */
+  const colunaOrdenavel = (campo: CampoOrdem, rotulo: string, alinhaDireita = false) => {
+    const ativo = ordem?.campo === campo;
+    return (
+      <th className={`px-2 py-1.5 font-medium ${alinhaDireita ? 'text-right' : 'text-left'}`}>
+        <button
+          type="button"
+          onClick={() => alternarOrdem(campo)}
+          title={ativo ? `Ordenado por ${rotulo} — clique para inverter ou voltar ao padrão` : `Ordenar por ${rotulo}`}
+          className={`inline-flex items-center gap-0.5 transition-colors hover:text-foreground ${ativo ? 'text-foreground' : ''}`}
+        >
+          {rotulo}
+          {ativo
+            ? (ordem?.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+            : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+        </button>
+      </th>
+    );
+  };
 
   /**
    * Viradas de sprint dentro do período. A do último dia não vira linha: cairia
@@ -523,18 +597,18 @@ export function ColaboradorAnaliseDialog({
                   <table className="w-full text-[11px]">
                     <thead className="bg-muted sticky top-0">
                       <tr>
-                        {!varios ? null : <th className="text-left px-2 py-1.5 font-medium">Quem</th>}
-                        <th className="text-left px-2 py-1.5 font-medium">PBI</th>
-                        <th className="text-left px-2 py-1.5 font-medium">Task</th>
-                        <th className="text-left px-2 py-1.5 font-medium">Descrição</th>
-                        <th className="text-left px-2 py-1.5 font-medium">Dia</th>
-                        <th className="text-right px-2 py-1.5 font-medium">Horas</th>
-                        <th className="text-left px-2 py-1.5 font-medium">Registrado em</th>
-                        <th className="text-left px-2 py-1.5 font-medium">Por quê</th>
+                        {!varios ? null : colunaOrdenavel('colaborador', 'Quem')}
+                        {colunaOrdenavel('pbiId', 'PBI')}
+                        {colunaOrdenavel('taskId', 'Task')}
+                        {colunaOrdenavel('taskTitulo', 'Descrição')}
+                        {colunaOrdenavel('dia', 'Dia')}
+                        {colunaOrdenavel('minutos', 'Horas', true)}
+                        {colunaOrdenavel('registradoEm', 'Registrado em')}
+                        {colunaOrdenavel('motivos', 'Por quê')}
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {linhasTabela.map((l) => (
+                      {linhasOrdenadas.map((l) => (
                         <tr key={l.id} className="hover:bg-muted/30">
                           {varios && <td className="px-2 py-1 truncate max-w-[110px]">{l.colaborador}</td>}
                           <td className="px-2 py-1 font-mono whitespace-nowrap">
