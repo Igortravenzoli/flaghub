@@ -5,9 +5,10 @@ import { corsHeaders } from '../_shared/cors.ts'
 
 const DEVOPS_ORG = 'FlagIW'
 const DEVOPS_PROJECT = 'Flag.Planejamento'
-const BATCH_SIZE = 200 // max work items per batch call
-const DEVOPS_API_VERSION = '7.0'
+const BATCH_SIZE = 200 // max work items per GET /workitems call
 const WIQL_API_VERSION = '7.1'
+// Campo personalizado só volta na 7.1 do GET /workitems; a 7.0 era do batch antigo.
+const WORKITEMS_API_VERSION = '7.1'
 
 const CORE_FIELDS = [
   'System.Id', 'System.TeamProject', 'System.WorkItemType', 'System.Title',
@@ -20,6 +21,29 @@ const CORE_FIELDS = [
 ]
 
 const CORE_FIELD_SET = new Set(CORE_FIELDS.map(f => f.toLowerCase()))
+
+/**
+ * Campos personalizados da FLAG. Ficam FORA de CORE_FIELDS de propósito: o
+ * montador da linha joga em `custom_fields` tudo que não é core, então basta
+ * pedi-los na requisição para serem gravados sem virar coluna nova.
+ *
+ * Esta função é a que traz os PBIs e Bugs das queries, ou seja, é onde
+ * cliente e produto realmente moram — a `devops-sync-all` só busca os filhos.
+ * Até 12/08/2026 ela não pedia nenhum campo além dos core, e por isso
+ * `custom_fields` estava nulo nos 9.812 itens.
+ *
+ * ATENÇÃO: OS REF-NAMES ESTÃO TROCADOS NA ORIGEM, e não é engano de leitura:
+ *
+ *     Custom.PRODUTOSS  contém a picklist de CLIENTES ("Heineken", "Nestle"...)
+ *     Custom.CLIENTESS  contém a picklist de PRODUTOS ("Flexx", "Decision"...)
+ *
+ * Quem criou os campos na FLAG inverteu o nome interno e corrigiu só o rótulo
+ * do formulário, e é assim que o Timer (modeia-platform) já consome. NÃO
+ * "corrigir" o mapeamento por intuição: trocar inverte cliente e produto no
+ * relatório financeiro inteiro. A tradução para a semântica correta vive na
+ * view de negócio, não aqui.
+ */
+const CUSTOM_FIELDS_FLAG = ['Custom.CLIENTESS', 'Custom.PRODUTOSS']
 
 interface DevOpsWorkItem {
   id: number
@@ -112,24 +136,34 @@ async function runWiql(wiqlOrId: string, mode: string): Promise<number[]> {
   return (data.workItems || []).map((wi: any) => wi.id as number)
 }
 
+/**
+ * Busca work items por id no GET `/{projeto}/_apis/wit/workitems`, não no
+ * POST `workitemsbatch`.
+ *
+ * O batch NÃO devolve campo personalizado, e não é questão de rota: em
+ * 12/08/2026 foi testado com a organização sozinha e com o projeto na rota,
+ * com os dois ref-names na lista `fields`, e nas duas o payload voltou só com
+ * System.* e Microsoft.VSTS.*, sem erro nem aviso. O GET equivalente, com os
+ * mesmos ref-names na query string, devolve os dois. O limite de 200 ids por
+ * chamada é o mesmo, então o batch não compra nada.
+ *
+ * `errorPolicy=omit` mantém o comportamento tolerante: id apagado no DevOps
+ * sai da resposta em vez de derrubar o lote inteiro com 404.
+ */
 async function fetchWorkItemsBatch(ids: number[]): Promise<DevOpsWorkItem[]> {
   const allItems: DevOpsWorkItem[] = []
+  const fields = [...CORE_FIELDS, ...CUSTOM_FIELDS_FLAG].join(',')
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const chunk = ids.slice(i, i + BATCH_SIZE)
     const resp = await devopsFetch(
-      `_apis/wit/workitemsbatch?api-version=${DEVOPS_API_VERSION}`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          ids: chunk,
-          fields: CORE_FIELDS,
-          $expand: 'none',
-        }),
-      }
+      `${encodeURIComponent(DEVOPS_PROJECT)}/_apis/wit/workitems` +
+      `?ids=${chunk.join(',')}` +
+      `&fields=${encodeURIComponent(fields)}` +
+      `&errorPolicy=omit&api-version=${WORKITEMS_API_VERSION}`
     )
     if (!resp.ok) {
       const text = await resp.text()
-      throw new Error(`WorkItemsBatch failed (${resp.status}): ${text}`)
+      throw new Error(`WorkItems GET failed (${resp.status}): ${text}`)
     }
     const data = await resp.json()
     allItems.push(...(data.value || []))

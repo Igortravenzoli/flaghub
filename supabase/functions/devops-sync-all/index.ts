@@ -8,8 +8,9 @@ const DEVOPS_PROJECT = 'Flag.Planejamento'
 const EM_TESTE_STATE = 'Em Teste'
 const QUALITY_WIQL_ID = '7b0a8298-5890-42d8-b280-1121b21786da'
 const BATCH_SIZE = 200
-const DEVOPS_API_VERSION = '7.0'
 const WIQL_API_VERSION = '7.1'
+// Campo personalizado só volta na 7.1 do GET /workitems; a 7.0 era do batch antigo.
+const WORKITEMS_API_VERSION = '7.1'
 const FALLBACK_ANON_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54bWdwcGZ5bHR3c3FyeWZ4a2JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NDEwMDEsImV4cCI6MjA4NTExNzAwMX0.6TqJwx2_8dbFwbvflSZKVe6MSaagmPosQaxpg0l9Waw'
 
 const CORE_FIELDS = [
@@ -156,30 +157,35 @@ function mapWorkItem(wi: DevOpsWorkItem) {
   }
 }
 
+/**
+ * Busca work items por id no GET `/{projeto}/_apis/wit/workitems`, não no
+ * POST `workitemsbatch`.
+ *
+ * O batch NÃO devolve campo personalizado, e não é questão de rota: em
+ * 12/08/2026 foi testado com a organização sozinha e com o projeto na rota,
+ * com `Custom.CLIENTESS`/`Custom.PRODUTOSS` na lista `fields`, e nas duas o
+ * payload voltou só com System.* e Microsoft.VSTS.*, sem erro nem aviso. O GET
+ * equivalente, com os mesmos ref-names na query string, devolve os dois. Como
+ * o limite de 200 ids por chamada é o mesmo, o batch não compra nada — só
+ * perde os campos que a visão financeira precisa.
+ *
+ * `errorPolicy=omit` mantém o comportamento tolerante do batch: id apagado no
+ * DevOps sai da resposta em vez de derrubar o lote inteiro com 404.
+ */
 async function fetchWorkItemsBatch(ids: number[]): Promise<DevOpsWorkItem[]> {
   const allItems: DevOpsWorkItem[] = []
+  const fields = [...CORE_FIELDS, ...CUSTOM_FIELDS_FLAG].join(',')
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const chunk = ids.slice(i, i + BATCH_SIZE)
     const resp = await devopsFetch(
-      /**
-       * A rota do batch precisa do PROJETO, não só da organização.
-       *
-       * Campo personalizado é resolvido no escopo do projeto: chamando
-       * `/{org}/_apis/wit/workitemsbatch` o Azure devolve os campos System.* e
-       * Microsoft.VSTS.* normalmente e **omite os Custom.* em silêncio**, sem
-       * erro nenhum. Foi o que aconteceu em 12/08/2026: a coleta rodava, os
-       * itens eram atualizados e CLIENTESS/PRODUTOSS chegavam sempre vazios,
-       * enquanto a mesma consulta com o projeto na rota devolvia os dois.
-       */
-      `${encodeURIComponent(DEVOPS_PROJECT)}/_apis/wit/workitemsbatch?api-version=${DEVOPS_API_VERSION}`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ ids: chunk, fields: [...CORE_FIELDS, ...CUSTOM_FIELDS_FLAG], $expand: 'none' }),
-      }
+      `${encodeURIComponent(DEVOPS_PROJECT)}/_apis/wit/workitems` +
+      `?ids=${chunk.join(',')}` +
+      `&fields=${encodeURIComponent(fields)}` +
+      `&errorPolicy=omit&api-version=${WORKITEMS_API_VERSION}`
     )
     if (!resp.ok) {
       const text = await resp.text()
-      throw new Error(`WorkItemsBatch failed (${resp.status}): ${text}`)
+      throw new Error(`WorkItems GET failed (${resp.status}): ${text}`)
     }
     const data = await resp.json()
     allItems.push(...(data.value || []))
