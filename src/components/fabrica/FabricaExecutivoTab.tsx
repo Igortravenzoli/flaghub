@@ -18,10 +18,16 @@ interface FabKpisLite {
   /** Itens da régua do gestor — mesma base do "Itens no escopo". */
   kpiItems?: Array<{ work_item_type?: string | null; tags?: string | null }>;
   horasPorFabricaFull?: Array<{ key: string; collaborators: { name: string; minutes: number }[] }>;
+  /** Task id → PBI/Bug pai; habilita o nível de PBI no drill por colaborador. */
+  managerIdByTaskId?: Record<number, number>;
+  /** Apontamento fora dos épicos de squad — alimenta o balde "Sem squad". */
+  horasForaDasFabricas?: Array<{ key: string; collaborators: { name: string; minutes: number }[] }>;
 }
 
 interface FabricaExecutivoTabProps {
   fab: FabKpisLite;
+  /** Abre o popup analítico de um colaborador a partir do drill por squad. */
+  onAnalisarColaborador?: (nome: string) => void;
   selectedSprintCode?: string | null;
   dateFrom?: Date | null;
   dateTo?: Date | null;
@@ -33,7 +39,7 @@ interface FabricaExecutivoTabProps {
  * (tudo empilhado, versões completas dos cards). Sem "O que queremos"/metas,
  * Saúde dos itens ou Linha de base: o que não está no TV saiu daqui também.
  */
-export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo, periodLabel }: FabricaExecutivoTabProps) {
+export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo, periodLabel, onAnalisarColaborador }: FabricaExecutivoTabProps) {
   /**
    * Régua canônica (`@/lib/fabricaClassificacao`) sobre `kpiItems` — o mesmo
    * conjunto do card "Itens no escopo" acima. O bloco de regex que vivia aqui
@@ -129,7 +135,7 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
       <DailyProgressCard sprintCode={selectedSprintCode} />
 
       {/* Capacidade × Realizado por Squad (uso cruzado) */}
-      <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} dateFrom={dateFrom} dateTo={dateTo} />
+      <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} dateFrom={dateFrom} dateTo={dateTo} pbiByTaskId={fab.managerIdByTaskId} foraDasFabricas={fab.horasForaDasFabricas ?? []} onAnalisarColaborador={onAnalisarColaborador} />
     </div>
   );
 }

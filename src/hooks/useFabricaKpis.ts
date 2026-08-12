@@ -119,6 +119,21 @@ export interface TimelogAggregation {
   minutes: number;
 }
 
+/** Uma task (ou o próprio item) que compõe as horas de um PBI/Bug. */
+export interface PbiTaskDetalhe {
+  id: number;
+  title: string;
+  state: string | null;
+  web_url: string | null;
+  devopsMinutes: number;
+  vdeskMinutes: number;
+  /** consolidado — max(devops, vdesk), nunca a soma */
+  minutes: number;
+  /** true quando o apontamento foi feito no próprio PBI/Bug, não numa task filha */
+  isProprioItem: boolean;
+  colaboradores: TimelogAggregation[];
+}
+
 /** Horas consolidadas a nível de PBI/Bug (próprias + tasks filhas), DevOps + VDESK */
 export interface PbiTimelogConsolidado {
   id: number;
@@ -134,6 +149,16 @@ export interface PbiTimelogConsolidado {
   vdeskHours: number;
   /** Quantidade de tasks filhas com apontamento */
   taskCount: number;
+  /** Horas consolidadas por colaborador dentro do PBI/Bug (soma = totalMinutes) */
+  colaboradores: TimelogAggregation[];
+  /** Drill-down: as tasks que compõem o total, da maior para a menor */
+  tasks: PbiTaskDetalhe[];
+  /**
+   * Guarda-chuva de `EPICS_FORA_DA_FABRICA`: as horas contam, mas o item não é
+   * entrega de squad e fica fora de todo KPI. A UI marca com badge para o gestor
+   * não ler como se fosse trabalho de sprint.
+   */
+  foraDoEscopoSquad: boolean;
 }
 
 export interface TimelogFabricaScope {
@@ -202,6 +227,135 @@ export function isCollaboratorExcluded(name: string | null | undefined, excluded
   return getCollaboratorExclusionKeys(name).some((key) => excludedCollaborators.has(key));
 }
 
+export interface ApontamentoConsolidado {
+  taskId: number;
+  /** Nome canônico do colaborador */
+  name: string;
+  devops: number;
+  vdesk: number;
+  /** max(devops, vdesk) — NÃO a soma */
+  consolidado: number;
+}
+
+/**
+ * VDESK e DevOps descrevem A MESMA hora, não duas.
+ *
+ * O FlagHub lança automaticamente no DevOps o que veio do VDESK (nota
+ * "Lançamento automatizado FlagHub"). Somar as duas fontes dobrava as horas de
+ * quem usa a automação: em 07/2026, Anderson/Carlos/Emerson/Klélbio/Thales
+ * tinham 476 h no VDESK e as MESMAS 476 h no DevOps — o card mostrava ~2x.
+ *
+ * Consolidado = por (work item, colaborador) o MAIOR dos dois lados. É a mesma
+ * régua do card "Reconciliação Vdesk ↔ Devops", que trata as fontes como duas
+ * vistas do mesmo apontamento em vez de somá-las.
+ */
+export function consolidarApontamentos(
+  devopsLogs: Array<{ work_item_id: number | null; user_name: string | null; time_minutes: number | null }>,
+  vdeskLogs: Array<{ task_devops: number; usuario_vdesk: string; tempo_segundos: number }>,
+  canonical: (raw: string | null | undefined) => string,
+): ApontamentoConsolidado[] {
+  const acc = new Map<string, { taskId: number; name: string; devops: number; vdesk: number }>();
+  const touch = (taskId: number, rawName: string | null | undefined) => {
+    const name = canonical(rawName);
+    const key = `${taskId}::${name}`;
+    let e = acc.get(key);
+    if (!e) { e = { taskId, name, devops: 0, vdesk: 0 }; acc.set(key, e); }
+    return e;
+  };
+  for (const tl of devopsLogs) {
+    if (tl.work_item_id == null) continue;
+    touch(tl.work_item_id, tl.user_name).devops += tl.time_minutes || 0;
+  }
+  for (const vl of vdeskLogs) {
+    touch(vl.task_devops, vl.usuario_vdesk).vdesk += vl.tempo_segundos / 60;
+  }
+  return [...acc.values()].map((e) => ({ ...e, consolidado: Math.max(e.devops, e.vdesk) }));
+}
+
+/** Capacidade contratada de um colaborador por dia. */
+export const CAPACIDADE_DIA_HORAS = 7;
+
+/**
+ * Acima disto o dia é sinalizado. A folga de 1 h sobre a capacidade é de
+ * propósito: hora extra pontual é normal e não deveria virar alerta — o que
+ * interessa ao gestor é excesso de trabalho ou lançamento errado.
+ */
+export const LIMITE_ALERTA_DIA_HORAS = 8;
+
+/**
+ * Acima disto não cabe num dia: é digitação, não jornada. Separar as duas
+ * leituras evita misturar conversa de carga de trabalho com correção de
+ * apontamento — em 07/2026 havia lançamentos de 30 h e 50 h num único dia.
+ */
+export const LIMITE_ERRO_DIA_HORAS = 12;
+
+/** Horas de um colaborador com as duas fontes visíveis ao lado do consolidado. */
+export interface ColaboradorHoras {
+  name: string;
+  devopsMinutes: number;
+  vdeskMinutes: number;
+  /** consolidado — max por work item, nunca a soma */
+  minutes: number;
+}
+
+export interface DiaSobrecarga {
+  /** Nome canônico do colaborador */
+  name: string;
+  /** ISO date (YYYY-MM-DD) */
+  dia: string;
+  minutes: number;
+}
+
+/**
+ * Dias em que um colaborador passou de `LIMITE_ALERTA_DIA_HORAS`.
+ *
+ * O lançamento é preservado como está — a régua da Flag é que o apontado é o
+ * apontado, certo ou errado (decisão de 11/08/2026). Isto é sinalização, não
+ * saneamento: em 07/2026 o mês tinha 3 lançamentos de 30:00 h e 21 dias-pessoa
+ * acima de 12 h que passavam despercebidos na conferência.
+ *
+ * Consolida por (work item, dia, pessoa) com `max` antes de somar o dia, senão
+ * quem usa a automação VDESK→DevOps apareceria com o dobro da jornada.
+ */
+export function calcularDiasSobrecarga(
+  devopsLogs: Array<{ work_item_id: number | null; user_name: string | null; log_date: string; time_minutes: number | null }>,
+  vdeskLogs: Array<{ task_devops: number; usuario_vdesk: string; log_date: string; tempo_segundos: number }>,
+  canonical: (raw: string | null | undefined) => string,
+  limiteHoras: number = LIMITE_ALERTA_DIA_HORAS,
+): DiaSobrecarga[] {
+  const porTarefaDia = new Map<string, { name: string; dia: string; devops: number; vdesk: number }>();
+  const touch = (taskId: number | null, rawName: string | null | undefined, logDate: string) => {
+    const dia = (logDate || '').slice(0, 10);
+    const name = canonical(rawName);
+    const key = `${taskId ?? 'sem-item'}::${dia}::${name}`;
+    let e = porTarefaDia.get(key);
+    if (!e) { e = { name, dia, devops: 0, vdesk: 0 }; porTarefaDia.set(key, e); }
+    return e;
+  };
+  for (const tl of devopsLogs) {
+    if (!tl.log_date) continue;
+    touch(tl.work_item_id, tl.user_name, tl.log_date).devops += tl.time_minutes || 0;
+  }
+  for (const vl of vdeskLogs) {
+    if (!vl.log_date) continue;
+    touch(vl.task_devops, vl.usuario_vdesk, vl.log_date).vdesk += vl.tempo_segundos / 60;
+  }
+
+  const porDia = new Map<string, DiaSobrecarga>();
+  for (const e of porTarefaDia.values()) {
+    const key = `${e.name}::${e.dia}`;
+    const atual = porDia.get(key) ?? { name: e.name, dia: e.dia, minutes: 0 };
+    atual.minutes += Math.max(e.devops, e.vdesk);
+    porDia.set(key, atual);
+  }
+
+  const limite = limiteHoras * 60;
+  return [...porDia.values()]
+    .filter((d) => d.minutes > limite)
+    .map((d) => ({ ...d, minutes: Math.round(d.minutes) }))
+    .sort((a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name));
+}
+
 export function useFabricaKpis(
   dateFrom?: Date,
   dateTo?: Date,
@@ -262,17 +416,49 @@ export function useFabricaKpis(
     staleTime: 5 * 60 * 1000,
   });
 
+  /**
+   * Apontamentos DevOps com o DIA preservado.
+   *
+   * `rpc_devops_timelog_agg` agrupa por (work item, pessoa) e só devolve
+   * min/max da data — não dá para saber quanto foi lançado em cada dia. Esta
+   * consulta existe só para a régua de jornada (ver `diasSobrecarga`).
+   */
+  const timeLogsDiaQuery = useQuery({
+    queryKey: ['fabrica', 'time-logs-dia', fromStr, toStr, includeTimeLogs],
+    queryFn: async () => {
+      const data = await fetchAllRows<any>((from, to) => {
+        let q = (supabase as any)
+          .from('devops_time_logs')
+          .select('work_item_id, user_name, log_date, time_minutes');
+        if (fromStr) q = q.gte('log_date', fromStr);
+        if (toStr)   q = q.lte('log_date', toStr);
+        return q.range(from, to);
+      });
+      return (data || []) as Array<{
+        work_item_id: number | null;
+        user_name: string | null;
+        log_date: string;
+        time_minutes: number | null;
+      }>;
+    },
+    enabled: includeTimeLogs,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // ── VDESK time logs: server-side filtered by date range ──
   const vdeskLogsQuery = useQuery({
     queryKey: ['fabrica', 'vdesk-time-logs', fromStr, toStr, includeTimeLogs],
     queryFn: async () => {
-      let q = (supabase as any)
-        .from('vdesk_time_logs')
-        .select('id, task_devops, usuario_vdesk, log_date, tempo_segundos');
-      if (fromStr) q = q.gte('log_date', fromStr);
-      if (toStr)   q = q.lte('log_date', toStr);
-      const { data, error } = await q.limit(5000);
-      if (error) throw error;
+      // Sem `.limit()` fixo: o corte em 5 000 sumia com apontamentos em silêncio
+      // assim que a janela passava de ~2 meses.
+      const data = await fetchAllRows<any>((from, to) => {
+        let q = (supabase as any)
+          .from('vdesk_time_logs')
+          .select('id, task_devops, usuario_vdesk, log_date, tempo_segundos');
+        if (fromStr) q = q.gte('log_date', fromStr);
+        if (toStr)   q = q.lte('log_date', toStr);
+        return q.range(from, to);
+      });
       return (data || []) as Array<{
         id: string;
         task_devops: number;
@@ -514,10 +700,73 @@ export function useFabricaKpis(
   const isExcludedApontamento = (name: string | null | undefined): boolean =>
     isCollaboratorExcluded(name, excludedCollaborators);
 
+  /**
+   * Nome canônico de um nome de APONTAMENTO (DevOps `user_name` ou VDESK
+   * `usuario_vdesk`). `devops_collaborator_map.timelog_name` já cobre os dois
+   * lados, inclusive os logins curtos do VDESK ("Carlos", "Emerson Luis").
+   */
+  const canonicalApontamento = (rawName: string | null | undefined): string => {
+    const raw = (rawName || '').trim() || 'Desconhecido';
+    const collabMap = collabMapQuery.data || new Map<string, string>();
+    const normalized = normalizeCollaboratorName(raw);
+    return collabMap.get(raw.toLowerCase()) ?? collabMap.get(normalized) ?? raw;
+  };
+
   const filteredItems = scopedItems.filter((item) => !isExcluded(item.assigned_to_display));
 
-  // Manager baseline: keep KPI and timelog scope aligned to gestor counting.
-  const managerScopedItems = filteredItems.filter((item) => isFabricaManagerItem(item.work_item_type));
+  /**
+   * Escopo de TRABALHO da Fábrica — só o recorte do roster, NUNCA os checkboxes
+   * de colaborador do topo.
+   *
+   * Os checkboxes dizem "de quem quero contar as horas"; eles não deveriam dizer
+   * "quais itens são da Fábrica". Enquanto o escopo de timelog saía de
+   * `filteredItems`, filtrar um colaborador derrubava os PBIs de TODOS os outros
+   * donos — e junto as tasks filhas onde essa pessoa tinha apontado. Filtrar
+   * "Douglas" no topo esvaziava o card "Horas por PBI/Bug", porque as tasks dele
+   * penduram em PBIs de outras pessoas (reportado em 11/08/2026).
+   *
+   * Quem é excluído continua sem contar hora: isso é feito em
+   * `isExcludedApontamento`, sobre o NOME DO APONTAMENTO, que é o correto.
+   */
+  const itemsDaFabrica = scopedItems.filter((item) => !foraDoRoster(item.assigned_to_display));
+
+  /**
+   * Os guarda-chuva de `EPICS_FORA_DA_FABRICA` voltam SÓ para o escopo de timelog.
+   *
+   * 2700 ("[INFRA] - SPRINT") e 16687 saem dos KPIs de propósito — não são
+   * entrega de squad. Mas as horas apontadas nas tasks deles são trabalho real e
+   * sumiam da tela: em 07/2026, 108:56 das 115:56 do Igor Cardoso (94%) estavam
+   * sob 2700, e ele aparecia com UM PBI só quando filtrado.
+   *
+   * Seguro porque `managerScopedItems`/`managerScopedIds` alimentam apenas
+   * `managerIdByTaskId`, `timelogScopeIds` e `horasPorPbi` — nenhum KPI de squad
+   * passa por aqui (esses saem de `filteredItems`).
+   */
+  const guardaChuvaTimelog: FabricaItem[] = (workItemsQuery.data || [])
+    .filter((wi) => EPICS_FORA_DA_FABRICA.has(wi.id))
+    .map((wi) => ({
+      id: wi.id,
+      title: wi.title,
+      work_item_type: wi.work_item_type,
+      state: wi.state,
+      assigned_to_display: wi.assigned_to_display,
+      priority: wi.priority,
+      effort: wi.effort,
+      iteration_path: wi.iteration_path,
+      created_date: wi.created_date,
+      changed_date: wi.changed_date,
+      parent_id: wi.parent_id,
+      parent_title: null,
+      parent_type: null,
+      web_url: wi.web_url,
+      tags: wi.tags,
+      count_in_kpi: false,
+    }));
+
+  const managerScopedItems = [
+    ...itemsDaFabrica.filter((item) => isFabricaManagerItem(item.work_item_type)),
+    ...guardaChuvaTimelog,
+  ];
   const managerScopedIds = new Set(
     managerScopedItems.map((item) => item.id).filter((id): id is number => id != null)
   );
@@ -543,7 +792,7 @@ export function useFabricaKpis(
     }
     // Tasks vindas da fila cujo pai está no escopo — cobre tasks ainda não
     // sincronizadas em devops_work_items
-    for (const item of filteredItems) {
+    for (const item of itemsDaFabrica) {
       if (
         isFabricaTaskItem(item.work_item_type) && item.id != null && item.parent_id != null
         && managerScopedIds.has(item.parent_id) && out[item.id] === undefined
@@ -561,10 +810,19 @@ export function useFabricaKpis(
   ]);
 
   /**
-   * Lista do filtro de colaboradores: quem está no escopo da Fábrica.
-   * Aplica o recorte do ROSTER (senão o gestor veria nomes que nunca entram na
-   * conta) mas NÃO o recorte dos checkboxes — quem ele desmarcou tem que
-   * continuar na lista para poder ser remarcado.
+   * Lista do filtro de colaboradores.
+   *
+   * Duas origens, unidas:
+   *  1. responsável de work item no escopo, recortado pelo ROSTER (senão o gestor
+   *     veria nomes que nunca entram na conta);
+   *  2. QUEM APONTOU HORA no período — regra do gestor: "se tem timelog lançado,
+   *     precisa ser listado". O roster NÃO vale aqui. Antes a lista saía só de (1)
+   *     e ficava em 18 nomes: em 07/2026, 9 pessoas com apontamento (Ana Luiza,
+   *     Leonardo, Mauricio, Rodolfo, Igor, Thiago, Thales, Alessandro Sales e
+   *     Marco Aurélio — 884 h) não estavam no roster da Fábrica e sumiam do filtro.
+   *
+   * Continua SEM o recorte dos checkboxes: quem o gestor desmarcou tem que seguir
+   * na lista para poder ser remarcado.
    */
   const allCollaborators: string[] = (() => {
     const set = new Set<string>();
@@ -572,6 +830,12 @@ export function useFabricaKpis(
       if (item.assigned_to_display && !foraDoRoster(item.assigned_to_display)) {
         set.add(item.assigned_to_display);
       }
+    }
+    for (const tl of (timeLogsQuery.data || [])) {
+      if (tl.user_name) set.add(canonicalApontamento(tl.user_name));
+    }
+    for (const vl of (vdeskLogsQuery.data || [])) {
+      if (vl.usuario_vdesk) set.add(canonicalApontamento(vl.usuario_vdesk));
     }
     return [...set].sort((a, b) => a.localeCompare(b));
   })();
@@ -615,7 +879,7 @@ export function useFabricaKpis(
   const hasTimeLogsFull = completeTimeLogs.length > 0;
 
   // Build work item lookup
-  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any }>();
+  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any; state?: string | null; web_url?: string | null }>();
   const tagsByWorkItemId: Record<number, string> = {};
   for (const wi of (workItemsQuery.data || [])) {
     wiMap.set(wi.id, wi);
@@ -830,6 +1094,20 @@ export function useFabricaKpis(
     : [];
   const totalHoursLoggedFull = horasPorFabricaFull.reduce((sum, r) => sum + r.minutes, 0) / 60;
 
+  /**
+   * O complemento de `horasPorFabricaFull`: apontamento sem Épico ou sob épico
+   * de Infra. NÃO entra na conta das squads (inflaria a utilização de quem está
+   * no roster) — serve para o balde "Sem squad" ter o que mostrar.
+   *
+   * Sem isto, filtrar o Igor Cardoso deixava "Capacidade × Realizado" dizendo
+   * "sem apontamentos" com 108 h lançadas: as tasks dele penduram no 2700, cujo
+   * épico raiz (9990) nem existe na base sincronizada (reportado em 11/08/2026).
+   */
+  const horasForaDasFabricas: TimelogFabricaScope[] = hasTimeLogsFull
+    ? aggregateFabrica(completeTimeLogs, (epic) =>
+        (!epic || /infra/i.test(epic.title)) ? 'Outras' : null)
+    : [];
+
   // ── VDESK aggregations (automatic, more reliable source) ──
   const vdeskLogs = vdeskLogsQuery.data || [];
   const scopedVdeskLogs = vdeskLogs.filter((vl) => {
@@ -900,6 +1178,85 @@ export function useFabricaKpis(
       .sort((a, b) => b.hours - a.hours);
   })();
 
+  const consolidadoPorTarefa = consolidarApontamentos(
+    scopedTimeLogs,
+    scopedVdeskLogs,
+    canonicalApontamento,
+  );
+
+  /**
+   * Jornada acima do limite — régua sobre TODO apontamento do período, não só o
+   * escopo da fila: excesso de jornada é fato de RH, não de sprint.
+   */
+  const diasSobrecarga: DiaSobrecarga[] = calcularDiasSobrecarga(
+    (timeLogsDiaQuery.data || []).filter((tl) => !isExcludedApontamento(tl.user_name)),
+    (vdeskLogsQuery.data || []).filter((vl) => !isExcludedApontamento(vl.usuario_vdesk)),
+    canonicalApontamento,
+  );
+
+  const sobrecargaPorColaborador: Record<string, DiaSobrecarga[]> = (() => {
+    const out: Record<string, DiaSobrecarga[]> = {};
+    for (const d of diasSobrecarga) (out[d.name] ??= []).push(d);
+    for (const lista of Object.values(out)) lista.sort((a, b) => a.dia.localeCompare(b.dia));
+    return out;
+  })();
+
+  const agregarPorColaborador = (linhas: ApontamentoConsolidado[]): TimelogAggregation[] => {
+    const map = new Map<string, number>();
+    for (const e of linhas) {
+      if (isExcludedApontamento(e.name)) continue;
+      map.set(e.name, (map.get(e.name) || 0) + e.consolidado);
+    }
+    return [...map.entries()]
+      .map(([name, minutes]) => ({
+        name,
+        hours: Math.round(minutes / 60 * 10) / 10,
+        minutes: Math.round(minutes),
+      }))
+      .sort((a, b) => b.minutes - a.minutes);
+  };
+
+  /** Horas por colaborador sem dupla contagem — a régua confrontável com o TimeLog. */
+  const horasConsolidadasPorColaborador: TimelogAggregation[] = agregarPorColaborador(consolidadoPorTarefa);
+
+  /**
+   * Mesma régua, mas sobre TODO apontamento do período — sem o recorte da fila
+   * da Fábrica.
+   *
+   * A aba TimeLog cobre só PBI/Bug na fila + tasks filhas: em 07/2026 isso era
+   * 1.270 h de 3.367 h (37,7% do mês). Para controle de horas do colaborador o
+   * gestor precisa do mês inteiro, independente de squad ou sprint.
+   */
+  const horasPeriodoTotalPorColaborador: ColaboradorHoras[] = (() => {
+    const linhas = consolidarApontamentos(
+      completeTimeLogs,
+      (vdeskLogsQuery.data || []).filter((vl) => !isExcludedApontamento(vl.usuario_vdesk)),
+      canonicalApontamento,
+    );
+    const map = new Map<string, ColaboradorHoras>();
+    for (const e of linhas) {
+      if (isExcludedApontamento(e.name)) continue;
+      const a = map.get(e.name) ?? { name: e.name, devopsMinutes: 0, vdeskMinutes: 0, minutes: 0 };
+      a.devopsMinutes += e.devops;
+      a.vdeskMinutes  += e.vdesk;
+      a.minutes       += e.consolidado;
+      map.set(e.name, a);
+    }
+    return [...map.values()]
+      .map((a) => ({
+        name: a.name,
+        devopsMinutes: Math.round(a.devopsMinutes),
+        vdeskMinutes: Math.round(a.vdeskMinutes),
+        minutes: Math.round(a.minutes),
+      }))
+      .sort((a, b) => b.minutes - a.minutes);
+  })();
+
+  const totalHorasConsolidadas =
+    consolidadoPorTarefa
+      .filter((e) => !isExcludedApontamento(e.name))
+      .reduce((s, e) => s + e.consolidado, 0) / 60;
+
   // ── Consolidação a nível de PBI/Bug: horas próprias + horas das tasks filhas ──
   const horasPorPbi: PbiTimelogConsolidado[] = (() => {
     const acc = new Map<number, { devopsMinutes: number; vdeskMinutes: number; taskIds: Set<number> }>();
@@ -922,6 +1279,50 @@ export function useFabricaKpis(
     for (const vl of scopedVdeskLogs) {
       add(vl.task_devops, 'vdesk', vl.tempo_segundos / 60);
     }
+
+    // Consolidado (sem dupla contagem) e quebra por colaborador, subindo a task
+    // filha para o PBI/Bug pai — é o que alimenta o funil de colaborador no card.
+    const consolidadoPorPbi = new Map<number, Map<string, number>>();
+    // Mesma quebra, um nível abaixo: por task — alimenta o drill-down do card.
+    const tasksPorPbi = new Map<number, Map<number, PbiTaskDetalhe>>();
+
+    for (const e of consolidadoPorTarefa) {
+      if (isExcludedApontamento(e.name)) continue;
+      const managerId = resolveManagerId(e.taskId);
+      if (managerId == null) continue;
+
+      const porNome = consolidadoPorPbi.get(managerId) ?? new Map<string, number>();
+      porNome.set(e.name, (porNome.get(e.name) || 0) + e.consolidado);
+      consolidadoPorPbi.set(managerId, porNome);
+
+      const porTask = tasksPorPbi.get(managerId) ?? new Map<number, PbiTaskDetalhe>();
+      let t = porTask.get(e.taskId);
+      if (!t) {
+        const wi = wiMap.get(e.taskId);
+        t = {
+          id: e.taskId,
+          title: wi?.title ?? `#${e.taskId}`,
+          state: wi?.state ?? null,
+          web_url: wi?.web_url ?? null,
+          devopsMinutes: 0,
+          vdeskMinutes: 0,
+          minutes: 0,
+          isProprioItem: e.taskId === managerId,
+          colaboradores: [],
+        };
+        porTask.set(e.taskId, t);
+      }
+      t.devopsMinutes += e.devops;
+      t.vdeskMinutes  += e.vdesk;
+      t.minutes       += e.consolidado;
+      t.colaboradores.push({
+        name: e.name,
+        hours: Math.round(e.consolidado / 60 * 10) / 10,
+        minutes: Math.round(e.consolidado),
+      });
+      tasksPorPbi.set(managerId, porTask);
+    }
+
     const itemById = new Map<number, FabricaItem>();
     for (const item of managerScopedItems) {
       if (item.id != null) itemById.set(item.id, item);
@@ -929,7 +1330,24 @@ export function useFabricaKpis(
     return [...acc.entries()]
       .map(([id, v]) => {
         const item = itemById.get(id);
-        const totalMinutes = v.devopsMinutes + v.vdeskMinutes;
+        const porNome = consolidadoPorPbi.get(id) ?? new Map<string, number>();
+        const colaboradores: TimelogAggregation[] = [...porNome.entries()]
+          .map(([name, minutes]) => ({
+            name,
+            hours: Math.round(minutes / 60 * 10) / 10,
+            minutes: Math.round(minutes),
+          }))
+          .sort((a, b) => b.minutes - a.minutes);
+        const consolidadoMinutes = colaboradores.reduce((s, c) => s + c.minutes, 0);
+        const tasks: PbiTaskDetalhe[] = [...(tasksPorPbi.get(id)?.values() ?? [])]
+          .map((t) => ({
+            ...t,
+            devopsMinutes: Math.round(t.devopsMinutes),
+            vdeskMinutes: Math.round(t.vdeskMinutes),
+            minutes: Math.round(t.minutes),
+            colaboradores: [...t.colaboradores].sort((a, b) => b.minutes - a.minutes),
+          }))
+          .sort((a, b) => b.minutes - a.minutes);
         return {
           id,
           title: item?.title ?? `#${id}`,
@@ -939,10 +1357,15 @@ export function useFabricaKpis(
           web_url: item?.web_url ?? null,
           devopsMinutes: Math.round(v.devopsMinutes),
           vdeskMinutes: Math.round(v.vdeskMinutes),
-          totalMinutes: Math.round(totalMinutes),
+          // `totalMinutes` passa a ser o CONSOLIDADO: somar devops+vdesk contava
+          // duas vezes a hora que o FlagHub replicou do VDESK para o DevOps.
+          totalMinutes: consolidadoMinutes,
           devopsHours: Math.round(v.devopsMinutes / 60 * 10) / 10,
           vdeskHours: Math.round(v.vdeskMinutes / 60 * 10) / 10,
           taskCount: v.taskIds.size,
+          colaboradores,
+          tasks,
+          foraDoEscopoSquad: EPICS_FORA_DA_FABRICA.has(id),
         };
       })
       .sort((a, b) => b.totalMinutes - a.totalMinutes);
@@ -1129,8 +1552,19 @@ export function useFabricaKpis(
     horasPorFabrica,
     horasPorFabricaScope,
     horasPorFabricaFull,
+    /** Apontamento sem Épico ou de Infra — alimenta o balde "Sem squad" */
+    horasForaDasFabricas,
     collaboratorTaskIdsDevops,
     collaboratorTaskIdsVdesk,
+    // Consolidado VDESK+DevOps sem dupla contagem (max por work item/colaborador)
+    horasConsolidadasPorColaborador,
+    /** Idem, sobre todo o período — sem o recorte da fila da Fábrica */
+    horasPeriodoTotalPorColaborador,
+    totalHorasConsolidadas,
+    /** Dias-pessoa acima de LIMITE_ALERTA_DIA_HORAS no período */
+    diasSobrecarga,
+    /** Os mesmos dias, indexados por colaborador */
+    sobrecargaPorColaborador,
     // VDESK aggregations (automatic — more reliable)
     hasVdeskData,
     totalVdeskHours,

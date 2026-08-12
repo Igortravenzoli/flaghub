@@ -1,11 +1,11 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, Fragment } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { SectorLayout } from '@/components/setores/SectorLayout';
 import { DashboardFilterBar } from '@/components/dashboard/DashboardFilterBar';
 import { DashboardDrawer, DrawerField } from '@/components/dashboard/DashboardDrawer';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardLastSyncBadge } from '@/components/dashboard/DashboardLastSyncBadge';
-import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS, getCollaboratorExclusionKeys, isCollaboratorExcluded, normalizeCollaboratorName, isFabricaInProgress, isFabricaCountableState } from '@/hooks/useFabricaKpis';
+import { useFabricaKpis, FabricaItem, TimelogAggregation, KPI_DEFAULT_EXCLUDED_COLLABORATORS, getCollaboratorExclusionKeys, isCollaboratorExcluded, normalizeCollaboratorName, isFabricaInProgress, isFabricaCountableState, CAPACIDADE_DIA_HORAS, LIMITE_ALERTA_DIA_HORAS, LIMITE_ERRO_DIA_HORAS } from '@/hooks/useFabricaKpis';
 import { ehEstadoEntregue } from '@/lib/fabricaEstados';
 import { useTimelogUnificado } from '@/hooks/useTimelogUnificado';
 import { useSprintSnapshots } from '@/hooks/useSprintSnapshots';
@@ -17,6 +17,7 @@ import { LogsTab, type LogAba } from '@/components/fabrica/LogsTab';
 import { HoursRankingCard } from '@/components/timelog/HoursRankingCard';
 import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
+import { ColaboradorAnaliseDialog } from '@/components/fabrica/ColaboradorAnaliseDialog';
 import { usePbiHealthBatch } from '@/hooks/usePbiHealthBatch';
 import { usePbiBottlenecks } from '@/hooks/usePbiBottlenecks';
 import { useFeaturePbiSummary } from '@/hooks/useFeaturePbiSummary';
@@ -46,6 +47,7 @@ import {
   Clock, Clock3, Gauge, AlertTriangle, Timer, Package, Building2,
   TrendingUp, BarChart3, Zap, HeartPulse, Workflow, LayoutGrid, MoreHorizontal,
   GitMerge, Loader2, ExternalLink, CheckCircle2, Check, Minus, SendHorizonal, ScrollText,
+  Filter, Download, Eye,
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
@@ -727,24 +729,81 @@ export default function FabricaDashboard() {
   // Merge VDESK + DevOps collaborators by canonical name.
   // As barras carregam horas SEM arredondar (minutos ÷ 60) para o tooltip poder
   // voltar ao minuto exato e imprimir h:mm fiel ao DevOps.
+  /**
+   * Com as DUAS fontes ligadas o gráfico mostra o CONSOLIDADO (uma barra), não a
+   * soma: o FlagHub replica o apontamento do VDESK no DevOps, então somar contava
+   * a mesma hora duas vezes — em 07/2026 isso dobrava Anderson, Carlos, Emerson,
+   * Klélbio e Thales. Com uma fonte só, mostra aquela fonte pura.
+   */
+  /**
+   * Lente do card: `fila` = escopo da Fábrica (PBI/Bug na fila + tasks filhas),
+   * `periodo` = todo apontamento da janela, independente de squad/sprint.
+   *
+   * A fila cobre ~38% das horas do mês; para controle de horas do colaborador o
+   * gestor precisa do mês inteiro (pedido de 11/08/2026).
+   */
+  const [colabEscopo, setColabEscopo] = useState<'fila' | 'periodo'>('fila');
+
   const mergedCollaboradores = useMemo(() => {
-    const map = new Map<string, { name: string; vdesk: number; devops: number }>();
-    if (showVdesk) {
-      for (const c of fab.horasVdeskPorColaborador) {
-        const e = map.get(c.name) ?? { name: c.name, vdesk: 0, devops: 0 };
-        e.vdesk += c.minutes / 60;
-        map.set(c.name, e);
+    const map = new Map<string, { name: string; vdesk: number; devops: number; consolidado: number }>();
+    const touch = (name: string) => {
+      const e = map.get(name) ?? { name, vdesk: 0, devops: 0, consolidado: 0 };
+      map.set(name, e);
+      return e;
+    };
+
+    if (colabEscopo === 'periodo') {
+      for (const c of fab.horasPeriodoTotalPorColaborador) {
+        const e = touch(c.name);
+        e.devops = c.devopsMinutes / 60;
+        e.vdesk = c.vdeskMinutes / 60;
+        e.consolidado = c.minutes / 60;
       }
+    } else {
+      for (const c of fab.horasVdeskPorColaborador) touch(c.name).vdesk = c.minutes / 60;
+      for (const c of fab.horasPorColaborador) touch(c.name).devops = c.minutes / 60;
+      for (const c of fab.horasConsolidadasPorColaborador) touch(c.name).consolidado = c.minutes / 60;
     }
-    if (showDevops) {
-      for (const c of fab.horasPorColaborador) {
-        const e = map.get(c.name) ?? { name: c.name, vdesk: 0, devops: 0 };
-        e.devops += c.minutes / 60;
-        map.set(c.name, e);
-      }
+
+    const rows = Array.from(map.values()).filter((e) =>
+      (showVdesk && e.vdesk > 0) || (showDevops && e.devops > 0)
+    );
+    // valor plotado: consolidado quando as duas fontes estão ligadas
+    for (const e of rows) {
+      e.consolidado = showVdesk && showDevops
+        ? (e.consolidado || Math.max(e.vdesk, e.devops))
+        : showVdesk ? e.vdesk : e.devops;
     }
-    return Array.from(map.values()).sort((a, b) => (b.vdesk + b.devops) - (a.vdesk + a.devops));
-  }, [fab.horasVdeskPorColaborador, fab.horasPorColaborador, showVdesk, showDevops]);
+    return rows.sort((a, b) => b.consolidado - a.consolidado);
+  }, [
+    fab.horasVdeskPorColaborador, fab.horasPorColaborador, fab.horasConsolidadasPorColaborador,
+    fab.horasPeriodoTotalPorColaborador, showVdesk, showDevops, colabEscopo,
+  ]);
+
+  const ambasFontes = showVdesk && showDevops;
+  const [sobrecargaAberta, setSobrecargaAberta] = useState(false);
+
+  /**
+   * Popup analítico do colaborador: atividade dia a dia, calendário e
+   * lançamentos atípicos. Vazio = fechado; com nomes = aberto para essas pessoas.
+   */
+  const [analiseColabs, setAnaliseColabs] = useState<string[]>([]);
+
+  /**
+   * Dia longo e dia impossível são leituras diferentes: 9h é conversa de carga
+   * de trabalho, 30h é erro de digitação. Contar junto mistura RH com correção
+   * de apontamento (pedido de 11/08/2026).
+   */
+  const sobrecarga = useMemo(() => {
+    const todos = fab.diasSobrecarga;
+    const suspeitos = todos.filter((d) => d.minutes > LIMITE_ERRO_DIA_HORAS * 60);
+    return {
+      todos,
+      suspeitos,
+      excesso: todos.length - suspeitos.length,
+      pessoas: new Set(todos.map((d) => d.name)).size,
+    };
+  }, [fab.diasSobrecarga]);
 
   const { minDate, maxDate } = useMemo(
     () => getDateBoundsFromItems(fab.allItems, [(i) => i.created_date, (i) => i.changed_date]),
@@ -1571,6 +1630,7 @@ export default function FabricaDashboard() {
       case 'uxui-fila': return 'Fila UX-UI';
       case 'qa-return': return 'Retorno QA';
       case 'gerencia': return 'Gerencial';
+      case 'reconciliacao': return 'Reconciliação Vdesk';
       case 'logs': return 'Logs';
       default: return activeTab;
     }
@@ -1597,6 +1657,9 @@ export default function FabricaDashboard() {
     if (activeTab === 'timelog') {
       const sources = [showVdesk ? 'Vdesk' : null, showDevops ? 'DevOps' : null].filter(Boolean).join(' + ');
       parts.push(`Fontes: ${sources || 'nenhuma'}`);
+      parts.push(`Escopo: ${colabEscopo === 'periodo' ? 'Todo o período' : 'Fila da Fábrica'}`);
+    }
+    if (activeTab === 'reconciliacao') {
       if (reconFilter !== 'all') parts.push(`Reconciliação: ${reconFilter}`);
       if (timelogDrilldown.type !== 'none' && timelogDrilldown.key) {
         parts.push(`Drilldown: ${timelogDrilldown.type} (${timelogDrilldown.key})`);
@@ -1622,6 +1685,7 @@ export default function FabricaDashboard() {
     selectedCollaboratorsCount,
     fab.allCollaborators.length,
     semTaskContextFilter,
+    colabEscopo,
   ]);
 
   const toWorkItemExportRow = useCallback((item: FabricaItem) => ({
@@ -1638,14 +1702,58 @@ export default function FabricaDashboard() {
     web_url: item.web_url,
   }), []);
 
+  /**
+   * Export "visão do colaborador" — TODOS os colaboradores com apontamento no
+   * período (o gráfico mostra só o top 8). `consolidado` é a régua confrontável
+   * com o relatório do TimeLog; devops/vdesk ficam ao lado para auditoria.
+   */
+  const colaboradorExport = useMemo(() => {
+    const totalConsolidado = mergedCollaboradores.reduce((s, c) => s + c.consolidado, 0);
+    return {
+      title: colabEscopo === 'periodo' ? 'TimeLog por Colaborador (todo o período)' : 'TimeLog por Colaborador (fila da Fábrica)',
+      area: 'Fábrica',
+      periodLabel: `${periodLabel} • ${exportFilterContext}`,
+      columns: ['colaborador', 'horas_consolidado', 'horas_devops', 'horas_vdesk', 'gap_devops_vs_vdesk', 'pct_do_total', 'tasks', `dias_acima_${LIMITE_ALERTA_DIA_HORAS}h`, 'pior_dia'],
+      rows: mergedCollaboradores.map((c) => {
+        const excesso = fab.sobrecargaPorColaborador[c.name] ?? [];
+        const pior = excesso.reduce<typeof excesso[number] | null>((a, d) => (!a || d.minutes > a.minutes ? d : a), null);
+        return {
+          colaborador: c.name,
+          horas_consolidado: horasHM(Math.round(c.consolidado * 60)),
+          horas_devops: horasHM(Math.round(c.devops * 60)),
+          horas_vdesk: horasHM(Math.round(c.vdesk * 60)),
+          gap_devops_vs_vdesk: horasHM(Math.round(Math.abs(c.devops - c.vdesk) * 60)),
+          pct_do_total: totalConsolidado > 0 ? `${Math.round((c.consolidado / totalConsolidado) * 100)}%` : '0%',
+          tasks: collaboratorTaskScopeMap.get(c.name)?.size ?? 0,
+          [`dias_acima_${LIMITE_ALERTA_DIA_HORAS}h`]: excesso.length,
+          pior_dia: pior ? `${pior.dia.split('-').reverse().join('/')} (${horasHM(pior.minutes)})` : '',
+        };
+      }),
+      kpis: [
+        { label: 'Colaboradores', value: mergedCollaboradores.length },
+        { label: 'Horas consolidadas', value: horasHM(Math.round(totalConsolidado * 60)) },
+        { label: 'Fontes', value: ambasFontes ? 'Vdesk + DevOps (consolidado)' : showVdesk ? 'Vdesk' : 'DevOps' },
+        { label: 'Escopo', value: colabEscopo === 'periodo' ? 'Todo o período' : 'Fila da Fábrica' },
+        { label: `Dias acima de ${LIMITE_ALERTA_DIA_HORAS}h`, value: `${sobrecarga.excesso} (capacidade ${CAPACIDADE_DIA_HORAS}h/dia)` },
+        { label: 'Suspeitos de erro', value: `${sobrecarga.suspeitos.length} (acima de ${LIMITE_ERRO_DIA_HORAS}h num dia)` },
+      ],
+    };
+  }, [mergedCollaboradores, periodLabel, exportFilterContext, collaboratorTaskScopeMap, ambasFontes, showVdesk, fab.sobrecargaPorColaborador, sobrecarga, colabEscopo]);
+
   const exportConfig = useMemo(() => {
     const effectivePeriodLabel = `${periodLabel} • ${exportFilterContext}`;
 
     if (activeTab === 'timelog') {
+      // O card de PBI/Bug virou nível do drill (Fábrica → Colaborador → PBI →
+      // Tasks → Registros), então o export da aba é a visão do colaborador.
+      return colaboradorExport;
+    }
+
+    if (activeTab === 'reconciliacao') {
       return {
         title: timelogDrilldown.type === 'collaborator' && timelogDrilldown.key
-          ? `TimeLog - ${timelogDrilldown.key}`
-          : 'TimeLog',
+          ? `Reconciliacao - ${timelogDrilldown.key}`
+          : 'Reconciliacao Vdesk x DevOps',
         periodLabel: effectivePeriodLabel,
         columns: ['task_id', 'titulo', 'estado', 'responsavel', 'usuarios_apontamento', 'primeira_data_log', 'ultima_data_log', 'os_amostra', 'horas_devops', 'horas_vdesk', 'gap_horas', 'gap_direcao', 'status_reconciliacao'],
         rows: timelogExportRows,
@@ -1723,6 +1831,7 @@ export default function FabricaDashboard() {
     periodLabel,
     exportFilterContext,
     activeTab,
+    colaboradorExport,
     timelogDrilldown.type,
     timelogDrilldown.key,
     timelogExportRows,
@@ -2135,6 +2244,18 @@ export default function FabricaDashboard() {
         )}
       </div>
 
+      <ColaboradorAnaliseDialog
+        aberto={analiseColabs.length > 0}
+        onFechar={() => setAnaliseColabs([])}
+        colaboradores={analiseColabs}
+        dateFrom={effectiveRange?.from ?? null}
+        dateTo={effectiveRange?.to ?? null}
+        periodoLabel={effectiveRange?.from && effectiveRange?.to
+          ? `${effectiveRange.from.toLocaleDateString('pt-BR')} a ${effectiveRange.to.toLocaleDateString('pt-BR')}`
+          : periodLabel}
+        pbiByTaskId={fab.managerIdByTaskId}
+      />
+
       {fab.isError ? (
         <DashboardEmptyState variant="error" onRetry={() => fab.refetch()} />
       ) : (
@@ -2163,12 +2284,12 @@ export default function FabricaDashboard() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md transition-colors flex-shrink-0 ml-auto
-                  ${['backlog-priorizar','uxui-fila','logs'].includes(activeTab)
+                  ${['backlog-priorizar','uxui-fila','reconciliacao','logs'].includes(activeTab)
                     ? 'bg-background shadow-sm text-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-background/60'}`}>
                   <MoreHorizontal className="h-3.5 w-3.5" />
                   Mais
-                  {['backlog-priorizar','uxui-fila','logs'].includes(activeTab) && (
+                  {['backlog-priorizar','uxui-fila','reconciliacao','logs'].includes(activeTab) && (
                     <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
                   )}
                 </button>
@@ -2179,6 +2300,9 @@ export default function FabricaDashboard() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setActiveTab('uxui-fila')} className={`gap-2 text-xs ${activeTab === 'uxui-fila' ? 'font-medium text-primary' : ''}`}>
                   <TrendingUp className="h-3.5 w-3.5" />Fila Design / UX-UI
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setActiveTab('reconciliacao')} className={`gap-2 text-xs ${activeTab === 'reconciliacao' ? 'font-medium text-primary' : ''}`}>
+                  <GitMerge className="h-3.5 w-3.5" />Reconciliação Vdesk
                 </DropdownMenuItem>
                 {canManageTimelog && (
                   <DropdownMenuItem onClick={() => setActiveTab('logs')} className={`gap-2 text-xs ${activeTab === 'logs' ? 'font-medium text-primary' : ''}`}>
@@ -2193,6 +2317,7 @@ export default function FabricaDashboard() {
           <TabsContent value="executivo" className="space-y-4 mt-0">
             <FabricaExecutivoTab
               fab={fab}
+              onAnalisarColaborador={(n) => setAnaliseColabs([n])}
               selectedSprintCode={selectedSprintCode}
               dateFrom={effectiveRange?.from || null}
               dateTo={effectiveRange?.to || null}
@@ -2614,8 +2739,14 @@ export default function FabricaDashboard() {
             </div>
             {timelogLens === 'squad' && (
               <div className="space-y-4">
-                <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} />
-                <AlocacaoLeadDevCard fabricaRows={fab.horasPorFabricaFull || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} />
+                {/*
+                  Card único: a barra de capacidade É o cabeçalho da squad e abre
+                  no drill-down dev → task → lançamento. Antes "Capacidade ×
+                  Realizado" e "Alocação — Lead → desenvolvedores" mostravam o
+                  mesmo realizado/capacidade e o mesmo uso cruzado, em dois
+                  cards seguidos (mesclados em 11/08/2026).
+                */}
+                <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} pbiByTaskId={fab.managerIdByTaskId} foraDasFabricas={fab.horasForaDasFabricas || []} onAnalisarColaborador={(n) => setAnaliseColabs([n])} />
               </div>
             )}
             {timelogLens === 'atual' && (
@@ -2670,71 +2801,253 @@ export default function FabricaDashboard() {
             </div>
             )}
 
-            {/* ── Horas consolidadas por PBI/Bug (próprias + tasks filhas) ───── */}
-            <Card className="animate-fade-in border-l-4 border-l-sky-400">
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Clock3 className="h-4 w-4 text-sky-500" />
-                  Horas por PBI/Bug — consolidado com Tasks
-                  <Badge variant="outline" className="ml-auto text-[10px]">
-                    {fab.horasPorPbi.length} itens com apontamento
-                  </Badge>
-                </CardTitle>
-                <p className="text-[11px] text-muted-foreground">
-                  Soma os apontamentos feitos nas tasks filhas (DevOps e Vdesk) no PBI/Bug pai — visão alinhada ao plugin de timelog do DevOps.
-                </p>
-              </CardHeader>
-              <CardContent>
-                {fab.horasPorPbi.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-6">Nenhum apontamento no escopo atual.</p>
-                ) : (
-                  <DraggableScrollArea className="max-h-[320px] border rounded-md">
-                    <table className="w-full text-xs">
-                      <thead className="bg-muted sticky top-0">
-                        <tr>
-                          <th className="text-left px-2 py-1.5 font-medium">ID</th>
-                          <th className="text-left px-2 py-1.5 font-medium">Tipo</th>
-                          <th className="text-left px-2 py-1.5 font-medium">Título</th>
-                          <th className="text-left px-2 py-1.5 font-medium">Responsável</th>
-                          <th className="text-left px-2 py-1.5 font-medium">Estado</th>
-                          <th className="text-right px-2 py-1.5 font-medium">Tasks c/ apont.</th>
-                          <th className="text-right px-2 py-1.5 font-medium">DevOps</th>
-                          <th className="text-right px-2 py-1.5 font-medium">Vdesk</th>
-                          <th className="text-right px-2 py-1.5 font-medium">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {fab.horasPorPbi.slice(0, 100).map((row) => (
-                          <tr key={row.id} className="hover:bg-muted/30">
-                            <td className="px-2 py-1.5 font-mono">
-                              {row.web_url ? (
-                                <a href={row.web_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{row.id}</a>
-                              ) : row.id}
-                            </td>
-                            <td className="px-2 py-1.5">{row.work_item_type ?? '—'}</td>
-                            <td className="px-2 py-1.5 max-w-[320px] truncate" title={row.title}>{row.title}</td>
-                            <td className="px-2 py-1.5">{row.assigned_to_display ?? '—'}</td>
-                            <td className="px-2 py-1.5">{row.state ?? '—'}</td>
-                            <td className="px-2 py-1.5 text-right">{row.taskCount}</td>
-                            <td className="px-2 py-1.5 text-right">{horasHM(row.devopsMinutes)}</td>
-                            <td className="px-2 py-1.5 text-right">{horasHM(row.vdeskMinutes)}</td>
-                            <td className="px-2 py-1.5 text-right font-semibold">{horasHM(row.totalMinutes)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </DraggableScrollArea>
-                )}
-                {fab.horasPorPbi.length > 100 && (
-                  <p className="text-[11px] text-muted-foreground mt-2">Exibindo 100 de {fab.horasPorPbi.length} itens.</p>
-                )}
-              </CardContent>
-            </Card>
 
-            {/* ── Reconciliação + Horas por Colaborador (lado a lado) ───── */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              {/* Horas por Colaborador (chart compacto) */}
+              <Card className="animate-fade-in border-l-4 border-l-primary" style={{ animationDelay: '700ms' }}>
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-primary" />
+                    Horas por Colaborador
+                    <div className="ml-auto inline-flex rounded-md border border-border overflow-hidden">
+                      {([
+                        { k: 'fila' as const, label: 'Fila da Fábrica' },
+                        { k: 'periodo' as const, label: 'Todo o período' },
+                      ]).map(({ k, label }) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setColabEscopo(k)}
+                          className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                            colabEscopo === k
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-transparent text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </CardTitle>
+                  <p className="text-[11px] text-muted-foreground">
+                    {colabEscopo === 'fila'
+                      ? 'Só apontamento em PBI/Bug da fila e suas tasks — acompanha a sprint.'
+                      : 'Todo apontamento da janela, independente de squad ou sprint — é a régua de controle de horas.'}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] mt-1">
+                    <label className="inline-flex items-center gap-1 cursor-pointer select-none">
+                      <input type="checkbox" checked={showVdesk} onChange={(e) => setShowVdesk(e.target.checked)} className="h-3 w-3 accent-emerald-500" />
+                      <span className="h-2 w-2 rounded-sm bg-emerald-500 inline-block" />
+                      <span className="text-emerald-700 dark:text-emerald-400 font-medium">Vdesk</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1 cursor-pointer select-none">
+                      <input type="checkbox" checked={showDevops} onChange={(e) => setShowDevops(e.target.checked)} className="h-3 w-3 accent-blue-500" />
+                      <span className="h-2 w-2 rounded-sm bg-blue-400 inline-block" />
+                      <span className="text-blue-600 dark:text-blue-400 font-medium">Devops</span>
+                    </label>
+                    {ambasFontes && (
+                      <span className="text-muted-foreground">
+                        Consolidado — a mesma hora não conta duas vezes.
+                      </span>
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 gap-1 px-2 text-[10px] ml-auto"
+                          disabled={mergedCollaboradores.length === 0}
+                        >
+                          <Download className="h-3 w-3" />
+                          Exportar
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => exportCSV(colaboradorExport)} className="text-xs">
+                          CSV — todos os colaboradores
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => exportPDF(colaboradorExport)} className="text-xs">
+                          PDF — todos os colaboradores
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-xs"
+                          onClick={() => setAnaliseColabs(mergedCollaboradores.map((c) => c.name))}
+                        >
+                          Análise detalhada ({mergedCollaboradores.length}) — lançamento a lançamento
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {mergedCollaboradores.length === 0 || (!showVdesk && !showDevops) ? (
+                    /*
+                      Vazio explicado. "Sem dados." era indistinguível de defeito:
+                      filtrar a Ana Luiza mostrava um card mudo quando a verdade é
+                      que ela não apontou nada em agosto (reportado em 11/08/2026).
+                    */
+                    <div className="text-xs text-muted-foreground text-center py-8 space-y-2">
+                      {(!showVdesk && !showDevops) ? (
+                        <p>Selecione ao menos uma fonte (Vdesk ou Devops).</p>
+                      ) : colabEscopo === 'fila' && fab.horasPeriodoTotalPorColaborador.length > 0 ? (
+                        <>
+                          <p>Ninguém apontou em PBI/Bug da <strong>fila da Fábrica</strong> neste período.</p>
+                          <button
+                            type="button"
+                            onClick={() => setColabEscopo('periodo')}
+                            className="text-primary hover:underline font-medium"
+                          >
+                            Ver todo o período ({fab.horasPeriodoTotalPorColaborador.length} com apontamento) →
+                          </button>
+                        </>
+                      ) : (
+                        <p>
+                          Nenhum apontamento neste período
+                          {selectedCollaboratorsCount < fab.allCollaborators.length && ' para quem está marcado no filtro de colaboradores'}.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    /*
+                      Mostra TODOS os colaboradores, não um top 8: com o filtro do
+                      topo marcando todo mundo o gestor quer a lista inteira na tela.
+                      Acima de ~12 nomes o container rola, para o card não crescer sem fim.
+                    */
+                    <div className={mergedCollaboradores.length > 12 ? 'max-h-[400px] overflow-y-auto pr-1' : undefined}>
+                    <ResponsiveContainer width="100%" height={Math.max(180, mergedCollaboradores.length * 32)}>
+                      <BarChart data={mergedCollaboradores} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 0 }} style={{ cursor: 'pointer' }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                        {/* Eixo = escala (hora cheia); o número confrontável sai em h:mm no tooltip. */}
+                        <XAxis type="number" fontSize={10} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: number) => `${Math.round(v)}h`} />
+                        <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={110} />
+                        <RechartsTooltip
+                          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '11px' }}
+                          formatter={(value: number, _n: string, item: any) => {
+                            const d = item?.payload as { vdesk?: number; devops?: number } | undefined;
+                            const label = ambasFontes
+                              ? `Consolidado (Vdesk ${horasHM(Math.round((d?.vdesk ?? 0) * 60))} · Devops ${horasHM(Math.round((d?.devops ?? 0) * 60))})`
+                              : showVdesk ? 'Vdesk' : 'Devops';
+                            return [horasHM(Math.round(value * 60)), label];
+                          }}
+                        />
+                        <Bar
+                          dataKey="consolidado"
+                          fill={ambasFontes ? 'hsl(258,80%,62%)' : showVdesk ? 'hsl(142,71%,45%)' : 'hsl(210,90%,60%)'}
+                          radius={[0, 4, 4, 0]}
+                          onClick={(payload: unknown) => {
+                            const data = payload as { name?: string };
+                            if (!data?.name) return;
+                            const taskIds = collaboratorTaskScopeMap.get(data.name) ? Array.from(collaboratorTaskScopeMap.get(data.name)!) : [];
+                            setTimelogDrilldown((prev) => {
+                              if (prev.type === 'collaborator' && prev.key === data.name) {
+                                return { type: 'none', key: null, taskIds: [], userCanonical: null };
+                              }
+                              return { type: 'collaborator', key: data.name, taskIds, userCanonical: data.name };
+                            });
+                            setReconFilter('all');
+                          }}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    </div>
+                  )}
+                  {mergedCollaboradores.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground mt-2 text-center">
+                      {mergedCollaboradores.length} colaborador{mergedCollaboradores.length === 1 ? '' : 'es'} com apontamento no período.
+                    </p>
+                  )}
+
+                  {/* Jornada: uma linha só, detalhe sob demanda — sinalizar sem poluir. */}
+                  {sobrecarga.todos.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => setSobrecargaAberta((v) => !v)}
+                          className="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <AlertTriangle className="h-3 w-3 text-amber-500" />
+                          {sobrecarga.excesso} {sobrecarga.excesso === 1 ? 'dia' : 'dias'} acima de {LIMITE_ALERTA_DIA_HORAS}h
+                          {sobrecarga.suspeitos.length > 0 && (
+                            <>
+                              {' · '}
+                              <span className="text-red-600 dark:text-red-400 font-medium">
+                                {sobrecarga.suspeitos.length} {sobrecarga.suspeitos.length === 1 ? 'suspeito' : 'suspeitos'} de erro
+                              </span>
+                            </>
+                          )}
+                          {' · '}
+                          {sobrecarga.pessoas} {sobrecarga.pessoas === 1 ? 'pessoa' : 'pessoas'}
+                          <ChevronRight className={`h-3 w-3 transition-transform ${sobrecargaAberta ? 'rotate-90' : ''}`} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs text-xs">
+                        Capacidade de {CAPACIDADE_DIA_HORAS}h/dia. Acima de {LIMITE_ALERTA_DIA_HORAS}h é carga de
+                        trabalho; acima de {LIMITE_ERRO_DIA_HORAS}h não cabe num dia e quase sempre é digitação.
+                        O apontamento é mantido exatamente como foi lançado.
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+
+                  {sobrecargaAberta && sobrecarga.todos.length > 0 && (
+                    <DraggableScrollArea className="mt-2 max-h-[168px] border rounded-md">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-muted sticky top-0">
+                          <tr>
+                            <th className="text-left px-2 py-1 font-medium">Colaborador</th>
+                            <th className="text-left px-2 py-1 font-medium">Dia</th>
+                            <th className="text-right px-2 py-1 font-medium">Lançado</th>
+                            <th className="text-left px-2 py-1 font-medium">Leitura</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {sobrecarga.todos.map((d) => {
+                            const suspeito = d.minutes > LIMITE_ERRO_DIA_HORAS * 60;
+                            return (
+                              <tr
+                                key={`${d.name}-${d.dia}`}
+                                className="hover:bg-muted/30 cursor-pointer"
+                                title="Abrir a análise deste colaborador — tasks, links e lançamentos atípicos"
+                                onClick={() => setAnaliseColabs([d.name])}
+                              >
+                                <td className="px-2 py-1 truncate max-w-[140px]" title={d.name}>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Eye className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                                    {d.name}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-1 whitespace-nowrap">
+                                  {d.dia.split('-').reverse().join('/')}
+                                </td>
+                                <td className={`px-2 py-1 text-right font-mono ${suspeito ? 'text-red-600 font-semibold' : 'text-amber-600'}`}>
+                                  {horasHM(d.minutes)}
+                                </td>
+                                <td className="px-2 py-1">
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[9px] ${suspeito
+                                      ? 'bg-red-500/10 text-red-700 border-red-500/30'
+                                      : 'bg-amber-500/10 text-amber-700 border-amber-500/30'}`}
+                                  >
+                                    {suspeito ? 'suspeito de erro' : 'excesso'}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </DraggableScrollArea>
+                  )}
+                </CardContent>
+              </Card>
+
+          </TabsContent>
+
+          {/* ═══════ TAB: Reconciliação Vdesk (secundária, no menu "Mais") ═══════ */}
+          <TabsContent value="reconciliacao" className="space-y-4 mt-0">
               {/* Reconciliação Vdesk ↔ Devops */}
-              <Card className="animate-fade-in border-l-4 border-l-purple-400 lg:col-span-3" style={{ animationDelay: '600ms' }}>
+              <Card className="animate-fade-in border-l-4 border-l-purple-400" style={{ animationDelay: '600ms' }}>
                 <CardHeader className="pb-2 pt-4">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
                     <GitMerge className="h-4 w-4 text-purple-500" />
@@ -2886,89 +3199,6 @@ export default function FabricaDashboard() {
                   )}
                 </CardContent>
               </Card>
-
-              {/* Horas por Colaborador (chart compacto) */}
-              <Card className="animate-fade-in border-l-4 border-l-primary lg:col-span-2" style={{ animationDelay: '700ms' }}>
-                <CardHeader className="pb-2 pt-4">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-primary" />
-                    Horas por Colaborador
-                  </CardTitle>
-                  <div className="flex flex-wrap items-center gap-3 text-[11px] mt-1">
-                    <label className="inline-flex items-center gap-1 cursor-pointer select-none">
-                      <input type="checkbox" checked={showVdesk} onChange={(e) => setShowVdesk(e.target.checked)} className="h-3 w-3 accent-emerald-500" />
-                      <span className="h-2 w-2 rounded-sm bg-emerald-500 inline-block" />
-                      <span className="text-emerald-700 dark:text-emerald-400 font-medium">Vdesk</span>
-                    </label>
-                    <label className="inline-flex items-center gap-1 cursor-pointer select-none">
-                      <input type="checkbox" checked={showDevops} onChange={(e) => setShowDevops(e.target.checked)} className="h-3 w-3 accent-blue-500" />
-                      <span className="h-2 w-2 rounded-sm bg-blue-400 inline-block" />
-                      <span className="text-blue-600 dark:text-blue-400 font-medium">Devops</span>
-                    </label>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {mergedCollaboradores.length === 0 || (!showVdesk && !showDevops) ? (
-                    <p className="text-xs text-muted-foreground text-center py-8">
-                      {(!showVdesk && !showDevops) ? 'Selecione ao menos uma fonte.' : 'Sem dados.'}
-                    </p>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={Math.min(320, Math.max(180, mergedCollaboradores.slice(0, 8).length * 32))}>
-                      <BarChart data={mergedCollaboradores.slice(0, 8)} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 0 }} style={{ cursor: 'pointer' }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                        {/* Eixo = escala (hora cheia); o número confrontável sai em h:mm no tooltip. */}
-                        <XAxis type="number" fontSize={10} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: number) => `${Math.round(v)}h`} />
-                        <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={110} />
-                        <RechartsTooltip
-                          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '11px' }}
-                          formatter={(value: number, name: string) => [horasHM(Math.round(value * 60)), name === 'vdesk' ? 'Vdesk' : 'Devops']}
-                        />
-                        {showVdesk && (
-                          <Bar
-                            dataKey="vdesk"
-                            stackId="horas"
-                            fill="hsl(142,71%,45%)"
-                            radius={showDevops ? [0, 0, 0, 0] : [0, 4, 4, 0]}
-                            onClick={(payload: unknown) => {
-                              const data = payload as { name?: string };
-                              if (!data?.name) return;
-                              const taskIds = collaboratorTaskScopeMap.get(data.name) ? Array.from(collaboratorTaskScopeMap.get(data.name)!) : [];
-                              setTimelogDrilldown((prev) => {
-                                if (prev.type === 'collaborator' && prev.key === data.name) {
-                                  return { type: 'none', key: null, taskIds: [], userCanonical: null };
-                                }
-                                return { type: 'collaborator', key: data.name, taskIds, userCanonical: data.name };
-                              });
-                              setReconFilter('all');
-                            }}
-                          />
-                        )}
-                        {showDevops && (
-                          <Bar
-                            dataKey="devops"
-                            stackId="horas"
-                            fill="hsl(210,90%,60%)"
-                            radius={[0, 4, 4, 0]}
-                            onClick={(payload: unknown) => {
-                              const data = payload as { name?: string };
-                              if (!data?.name) return;
-                              const taskIds = collaboratorTaskScopeMap.get(data.name) ? Array.from(collaboratorTaskScopeMap.get(data.name)!) : [];
-                              setTimelogDrilldown((prev) => {
-                                if (prev.type === 'collaborator' && prev.key === data.name) {
-                                  return { type: 'none', key: null, taskIds: [], userCanonical: null };
-                                }
-                                return { type: 'collaborator', key: data.name, taskIds, userCanonical: data.name };
-                              });
-                              setReconFilter('all');
-                            }}
-                          />
-                        )}
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
 
             {/* ── Nivelamento Horas Vdesk → Devops (admin OU owner do setor) ── */}
             {canManageTimelog && (              <Card className="border-orange-400/20 bg-orange-500/5">

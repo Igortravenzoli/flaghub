@@ -106,8 +106,15 @@ function exportCsv(rows: TimelogUnificadoRow[]) {
   const a = document.createElement('a');
   a.href = url;
   a.download = `timelog-hibrido-${isoToday()}.csv`;
+  a.style.display = 'none';
+  // O anchor precisa estar no documento e o object URL s\u00F3 pode ser revogado
+  // depois \u2014 revogar na mesma tick cancela o download em Chromium.
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
@@ -629,11 +636,6 @@ export default function TimelogHibridoDashboard() {
                     </TableBody>
                   </Table>
                 </div>
-                {rows.length >= 2000 && (
-                  <div className="p-3 border-t text-center text-xs text-muted-foreground">
-                    Mostrando os primeiros 2 000 registos. Afine os filtros para ver mais.
-                  </div>
-                )}
               </CardContent>
             </Card>
           </TabsContent>

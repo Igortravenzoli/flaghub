@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { normName, SQUADS } from '@/lib/fabricaRoster';
+import { normName, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { businessDaysBetween } from '@/lib/sprintCalendar';
 import { horasHM, horasHMComSinal } from '@/lib/formatHoras';
@@ -21,6 +21,24 @@ type AlocacaoLeadDevCardProps = {
   /** Período do realizado — capacidade = h/dia × dias úteis nesse intervalo. */
   dateFrom?: Date | null;
   dateTo?: Date | null;
+  /**
+   * Modo embutido: renderiza SÓ a lista de devs desta squad, sem Card, sem
+   * cabeçalho e sem os cabeçalhos de squad.
+   *
+   * Existe porque "Capacidade × Realizado por Squad" e este card mostravam o
+   * mesmo número (realizado/capacidade e uso cruzado por squad) em dois lugares.
+   * Agora a barra de capacidade é o cabeçalho e este componente entrega só o
+   * drill-down dev → task → lançamento (decisão de 11/08/2026).
+   */
+  squadEmbutida?: string;
+  /**
+   * Task id → PBI/Bug pai (ex.: `fab.managerIdByTaskId`). Insere o nível de PBI
+   * no drill: Fábrica → Colaborador → PBI → Tasks → Registros. Sem isso o drill
+   * cai direto na task, como era antes.
+   */
+  pbiByTaskId?: Record<number, number>;
+  /** Abre o popup analítico do colaborador (olhinho ao lado do nome). */
+  onAnalisarColaborador?: (nome: string) => void;
 };
 
 type LogRow = {
@@ -78,10 +96,11 @@ function semTrilha(row: LogRow): boolean {
  * do fim da sprint. Este KPI não é congelado: reage ao que é lançado
  * (decisão do gestor 19/07).
  */
-export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoLeadDevCardProps) {
+export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbutida, pbiByTaskId, onAnalisarColaborador }: AlocacaoLeadDevCardProps) {
   const { data: roster = [], isLoading } = useFabricaRoster();
   const [aberta, setAberta] = useState<string | null>(null);
   const [devAberto, setDevAberto] = useState<string | null>(null);
+  const [pbiAberto, setPbiAberto] = useState<string | null>(null);
   const [taskAberta, setTaskAberta] = useState<string | null>(null);
 
   const businessDays = useMemo(
@@ -131,9 +150,14 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
 
   const itemIds = useMemo(() => {
     const ids = new Set<number>();
-    for (const r of logsQuery.data || []) ids.add(r.work_item_id);
+    for (const r of logsQuery.data || []) {
+      ids.add(r.work_item_id);
+      // o PBI pai também precisa de título/link no nível novo do drill
+      const pai = pbiByTaskId?.[r.work_item_id];
+      if (pai != null) ids.add(pai);
+    }
     return [...ids].sort((a, b) => a - b);
-  }, [logsQuery.data]);
+  }, [logsQuery.data, pbiByTaskId]);
 
   const itemsQuery = useQuery({
     queryKey: ['aloc-timelog-items', itemIds.join(',')],
@@ -170,12 +194,12 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
 
   // Horas de cada colaborador por fábrica de DESTINO (fábrica do item).
   const byCollab = useMemo(() => {
-    const m = new Map<string, { total: number; byDest: Map<string, number> }>();
+    const m = new Map<string, { total: number; byDest: Map<string, number>; nome: string }>();
     for (const row of fabricaRows) {
       const dest = cleanFabricaName(row.key);
       for (const c of row.collaborators) {
         const k = normName(c.name);
-        const e = m.get(k) ?? { total: 0, byDest: new Map<string, number>() };
+        const e = m.get(k) ?? { total: 0, byDest: new Map<string, number>(), nome: c.name };
         e.total += c.minutes;
         e.byDest.set(dest, (e.byDest.get(dest) ?? 0) + c.minutes);
         m.set(k, e);
@@ -185,7 +209,37 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
   }, [fabricaRows]);
 
   const squads = useMemo(() => {
-    return SQUADS.map((squad) => {
+    /**
+     * Pseudo-squad de quem apontou mas não está no roster (Igor, Ana, Leonardo,
+     * Mauricio, Rodolfo…). Sem ela, filtrar uma dessas pessoas no topo zerava as
+     * 4 squads e o card não abria nada (reportado em 11/08/2026).
+     * Não têm squad "de casa", então não há uso cruzado: os destinos entram
+     * como chips informativos e a barra fica de uma cor só.
+     */
+    const noRoster = new Set(roster.map((r) => normName(r.colaborador)));
+    const semSquadDevs = [...byCollab.entries()]
+      .filter(([k, v]) => !noRoster.has(k) && v.total > 0)
+      .map(([, v]) => ({
+        nome: v.nome,
+        papel: null as string | null,
+        total: v.total,
+        own: v.total,
+        cross: 0,
+        crossDests: [...v.byDest].sort((a, b) => b[1] - a[1]) as [string, number][],
+        cap: 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const semSquad = {
+      squad: SEM_SQUAD,
+      lead: null as (typeof roster)[number] | null,
+      devs: semSquadDevs,
+      total: semSquadDevs.reduce((s, d) => s + d.total, 0),
+      cross: 0,
+      cap: 0,
+    };
+
+    return [...SQUADS.map((squad) => {
       const membros = roster.filter((r) => r.squad === squad);
       const lead = membros.find((r) => r.papel === 'lead') ?? null;
       // Lead só gestor (conta_horas=false) fica só no cabeçalho; lead executor conta como dev.
@@ -199,14 +253,14 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
             .filter(([d]) => d !== squad)
             .sort((a, b) => b[1] - a[1]);
           const cap = businessDays ? (Number(r.capacidade_h_dia) || 0) * businessDays * 60 : 0;
-          return { nome: r.colaborador, papel: r.papel, total, own, cross: total - own, crossDests, cap };
+          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests: crossDests as [string, number][], cap };
         })
         .sort((a, b) => b.total - a.total);
       const total = devs.reduce((s, d) => s + d.total, 0);
       const cross = devs.reduce((s, d) => s + d.cross, 0);
       const cap = devs.reduce((s, d) => s + d.cap, 0);
-      return { squad, lead, devs, total, cross, cap };
-    }).filter((s) => s.devs.length > 0);
+      return { squad, lead: lead as (typeof roster)[number] | null, devs, total, cross, cap };
+    }), semSquad].filter((s) => s.devs.length > 0);
   }, [roster, byCollab, businessDays]);
   const temCapacidade = !!businessDays;
 
@@ -218,11 +272,13 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
     const totalMin = rows.reduce((s, r) => s + (r.time_minutes || 0), 0);
 
     type Grupo = { id: number; minutes: number; rows: LogRow[]; minDia: string; maxDia: string; maxLag: number; posSprint: number; editados: number };
-    const grupos: Grupo[] = (() => {
+
+    const agrupar = (lista: LogRow[], chave: (r: LogRow) => number): Grupo[] => {
       const m = new Map<number, Grupo>();
-      for (const r of rows) {
-        const g = m.get(r.work_item_id) ?? {
-          id: r.work_item_id, minutes: 0, rows: [] as LogRow[],
+      for (const r of lista) {
+        const k = chave(r);
+        const g = m.get(k) ?? {
+          id: k, minutes: 0, rows: [] as LogRow[],
           minDia: r.log_date, maxDia: r.log_date, maxLag: 0, posSprint: 0, editados: 0,
         };
         g.minutes += r.time_minutes || 0;
@@ -235,10 +291,136 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
           if (lag > g.maxLag) g.maxLag = lag;
           if (fimSprintMs != null && new Date(r.ingested_at).getTime() > fimSprintMs) g.posSprint++;
         }
-        m.set(r.work_item_id, g);
+        m.set(k, g);
       }
       return [...m.values()].sort((a, b) => b.minutes - a.minutes);
-    })();
+    };
+
+    const grupos: Grupo[] = agrupar(rows, (r) => r.work_item_id);
+
+    /**
+     * Nível de PBI/Bug entre o colaborador e as tasks. Task sem pai conhecido
+     * (apontamento feito direto no item) vira o próprio grupo — não some.
+     */
+    const pbis = pbiByTaskId
+      ? agrupar(rows, (r) => pbiByTaskId[r.work_item_id] ?? r.work_item_id)
+      : null;
+
+    /** Uma task com seus lançamentos. `pref` isola a chave quando há PBI acima. */
+    const renderTask = (g: Grupo, pref: string) => {
+                const meta = itemById?.get(g.id);
+                const tKey = `${pref}|${g.id}`;
+                const isTaskAberta = taskAberta === tKey;
+                const periodo = g.minDia === g.maxDia ? fmtDia(g.minDia) : `${fmtDia(g.minDia)}–${fmtDia(g.maxDia)}`;
+                return (
+                  <div key={g.id} className="border-b last:border-b-0 border-border/60">
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/40 cursor-pointer select-none"
+                      title={isTaskAberta ? 'Fechar lançamentos da task' : 'Ver lançamentos individuais desta task'}
+                      onClick={() => setTaskAberta(isTaskAberta ? null : tKey)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTaskAberta(isTaskAberta ? null : tKey); } }}
+                    >
+                      {isTaskAberta
+                        ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                        : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+                      {meta?.web_url ? (
+                        <a
+                          href={meta.web_url} target="_blank" rel="noopener noreferrer"
+                          className="font-mono text-primary hover:underline shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >#{g.id}</a>
+                      ) : (
+                        <span className="font-mono shrink-0">#{g.id}</span>
+                      )}
+                      <span className="truncate flex-1 min-w-0" title={meta?.title ?? undefined}>{meta?.title ?? '—'}</span>
+                      {g.editados > 0 && (
+                        <span className="px-1 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-medium shrink-0" title="Lançamentos editados no DevOps após a criação">
+                          {g.editados} editado{g.editados === 1 ? '' : 's'}
+                        </span>
+                      )}
+                      {g.posSprint > 0 && (
+                        <span className="px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium shrink-0">
+                          {g.posSprint} após a sprint
+                        </span>
+                      )}
+                      {g.posSprint === 0 && g.maxLag >= 2 && (
+                        <span className="px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium shrink-0" title={`Maior atraso de registro: ${g.maxLag} dias`}>
+                          até +{g.maxLag}d
+                        </span>
+                      )}
+                      <span className="text-muted-foreground tabular-nums shrink-0 w-24 text-right">{periodo}</span>
+                      <span className="text-muted-foreground tabular-nums shrink-0 w-16 text-right" title={`${g.rows.length} registros de horas nesta task`}>{g.rows.length} regs</span>
+                      <span className="font-mono font-semibold tabular-nums shrink-0 w-14 text-right">{horasHM(g.minutes)}</span>
+                    </div>
+
+                    {isTaskAberta && (
+                      <table className="w-full text-[11px] bg-muted/10">
+                        <thead className="text-muted-foreground">
+                          <tr className="border-t border-border/40">
+                            <th className="text-left pl-9 pr-2 py-1 font-medium w-16">Dia</th>
+                            <th className="text-left px-2 py-1 font-medium w-14">Início</th>
+                            <th className="text-right px-2 py-1 font-medium w-14">Horas</th>
+                            <th className="text-left px-2 py-1 font-medium w-44">Registrado em</th>
+                            <th className="text-left px-2 py-1 font-medium">Comentário</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40">
+                          {g.rows.map((r, i) => {
+                            const ing = new Date(r.ingested_at);
+                            const ingStr = ing.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                            const lag = lagDias(r);
+                            const posSprint = fimSprintMs != null && ing.getTime() > fimSprintMs;
+                            const trilhaOk = !semTrilha(r);
+                            const versao = versaoLancamento(r);
+                            return (
+                              <tr key={`${r.log_date}-${i}`}>
+                                <td className="pl-9 pr-2 py-1 tabular-nums whitespace-nowrap">{fmtDia(r.log_date)}</td>
+                                <td className="px-2 py-1 tabular-nums text-muted-foreground">{r.start_time || '—'}</td>
+                                <td className="px-2 py-1 text-right font-mono tabular-nums whitespace-nowrap">
+                                  {horasHM(r.time_minutes || 0)}
+                                  {versao > 1 && (
+                                    <span
+                                      className="ml-1 px-1 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-sans font-medium"
+                                      title={`Lançamento editado no DevOps após a criação (versão ${versao}). A versão anterior fica guardada na trilha de revisões do portal.`}
+                                    >
+                                      v{versao} · editado
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-1 whitespace-nowrap">
+                                  {trilhaOk ? (
+                                    <>
+                                      <span className="tabular-nums">{ingStr}</span>
+                                      {posSprint && (
+                                        <span className="ml-1 px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium">após a sprint</span>
+                                      )}
+                                      {!posSprint && lag >= 2 && (
+                                        <span className="ml-1 px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium" title={`Registrado ${lag} dias depois do dia trabalhado`}>+{lag}d</span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span
+                                      className="text-muted-foreground/70"
+                                      title="Lançamento anterior à recarga da coleta (17/07/2026 19:15) — o momento real do registro no DevOps não ficou rastreado. A trilha é confiável a partir daí."
+                                    >
+                                      sem trilha (≤ 17/07 19:15)
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-1 max-w-[320px]">
+                                  <span className="block truncate text-muted-foreground" title={r.notes ?? undefined}>{r.notes || '—'}</span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                );
+    };
 
     return (
       <div className="px-3 pb-3 pl-9 bg-muted/20">
@@ -248,128 +430,63 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
           <p className="text-[11px] text-muted-foreground py-3">Sem lançamentos no período.</p>
         ) : (
           <div className="border rounded-md overflow-hidden bg-card">
-            {grupos.map((g) => {
-              const meta = itemById?.get(g.id);
-              const tKey = `${devKey}|${g.id}`;
-              const isTaskAberta = taskAberta === tKey;
-              const periodo = g.minDia === g.maxDia ? fmtDia(g.minDia) : `${fmtDia(g.minDia)}–${fmtDia(g.maxDia)}`;
-              return (
-                <div key={g.id} className="border-b last:border-b-0 border-border/60">
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className="flex items-center gap-2 px-2 py-1.5 text-[11px] hover:bg-muted/40 cursor-pointer select-none"
-                    title={isTaskAberta ? 'Fechar lançamentos da task' : 'Ver lançamentos individuais desta task'}
-                    onClick={() => setTaskAberta(isTaskAberta ? null : tKey)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTaskAberta(isTaskAberta ? null : tKey); } }}
-                  >
-                    {isTaskAberta
-                      ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
-                      : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
-                    {meta?.web_url ? (
-                      <a
-                        href={meta.web_url} target="_blank" rel="noopener noreferrer"
-                        className="font-mono text-primary hover:underline shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >#{g.id}</a>
-                    ) : (
-                      <span className="font-mono shrink-0">#{g.id}</span>
-                    )}
-                    <span className="truncate flex-1 min-w-0" title={meta?.title ?? undefined}>{meta?.title ?? '—'}</span>
-                    {g.editados > 0 && (
-                      <span className="px-1 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-medium shrink-0" title="Lançamentos editados no DevOps após a criação">
-                        {g.editados} editado{g.editados === 1 ? '' : 's'}
-                      </span>
-                    )}
-                    {g.posSprint > 0 && (
-                      <span className="px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium shrink-0">
-                        {g.posSprint} após a sprint
-                      </span>
-                    )}
-                    {g.posSprint === 0 && g.maxLag >= 2 && (
-                      <span className="px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium shrink-0" title={`Maior atraso de registro: ${g.maxLag} dias`}>
-                        até +{g.maxLag}d
-                      </span>
-                    )}
-                    <span className="text-muted-foreground tabular-nums shrink-0 w-24 text-right">{periodo}</span>
-                    <span className="text-muted-foreground tabular-nums shrink-0 w-16 text-right" title={`${g.rows.length} registros de horas nesta task`}>{g.rows.length} regs</span>
-                    <span className="font-mono font-semibold tabular-nums shrink-0 w-14 text-right">{horasHM(g.minutes)}</span>
-                  </div>
-
-                  {isTaskAberta && (
-                    <table className="w-full text-[11px] bg-muted/10">
-                      <thead className="text-muted-foreground">
-                        <tr className="border-t border-border/40">
-                          <th className="text-left pl-9 pr-2 py-1 font-medium w-16">Dia</th>
-                          <th className="text-left px-2 py-1 font-medium w-14">Início</th>
-                          <th className="text-right px-2 py-1 font-medium w-14">Horas</th>
-                          <th className="text-left px-2 py-1 font-medium w-44">Registrado em</th>
-                          <th className="text-left px-2 py-1 font-medium">Comentário</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/40">
-                        {g.rows.map((r, i) => {
-                          const ing = new Date(r.ingested_at);
-                          const ingStr = ing.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-                          const lag = lagDias(r);
-                          const posSprint = fimSprintMs != null && ing.getTime() > fimSprintMs;
-                          const trilhaOk = !semTrilha(r);
-                          const versao = versaoLancamento(r);
-                          return (
-                            <tr key={`${r.log_date}-${i}`}>
-                              <td className="pl-9 pr-2 py-1 tabular-nums whitespace-nowrap">{fmtDia(r.log_date)}</td>
-                              <td className="px-2 py-1 tabular-nums text-muted-foreground">{r.start_time || '—'}</td>
-                              <td className="px-2 py-1 text-right font-mono tabular-nums whitespace-nowrap">
-                                {horasHM(r.time_minutes || 0)}
-                                {versao > 1 && (
-                                  <span
-                                    className="ml-1 px-1 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-sans font-medium"
-                                    title={`Lançamento editado no DevOps após a criação (versão ${versao}). A versão anterior fica guardada na trilha de revisões do portal.`}
-                                  >
-                                    v{versao} · editado
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-2 py-1 whitespace-nowrap">
-                                {trilhaOk ? (
-                                  <>
-                                    <span className="tabular-nums">{ingStr}</span>
-                                    {posSprint && (
-                                      <span className="ml-1 px-1 rounded bg-rose-500/15 text-rose-600 dark:text-rose-300 font-medium">após a sprint</span>
-                                    )}
-                                    {!posSprint && lag >= 2 && (
-                                      <span className="ml-1 px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium" title={`Registrado ${lag} dias depois do dia trabalhado`}>+{lag}d</span>
-                                    )}
-                                  </>
-                                ) : (
-                                  <span
-                                    className="text-muted-foreground/70"
-                                    title="Lançamento anterior à recarga da coleta (17/07/2026 19:15) — o momento real do registro no DevOps não ficou rastreado. A trilha é confiável a partir daí."
-                                  >
-                                    sem trilha (≤ 17/07 19:15)
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-2 py-1 max-w-[320px]">
-                                <span className="block truncate text-muted-foreground" title={r.notes ?? undefined}>{r.notes || '—'}</span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              );
-            })}
+            {pbis
+              ? pbis.map((pbi) => {
+                  const metaPbi = itemById?.get(pbi.id);
+                  const pKey = `${devKey}|pbi-${pbi.id}`;
+                  const isPbiAberto = pbiAberto === pKey;
+                  const tasksDoPbi = agrupar(pbi.rows, (r) => r.work_item_id);
+                  const periodoPbi = pbi.minDia === pbi.maxDia ? fmtDia(pbi.minDia) : `${fmtDia(pbi.minDia)}–${fmtDia(pbi.maxDia)}`;
+                  return (
+                    <div key={pbi.id} className="border-b last:border-b-0 border-border/60">
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="flex items-center gap-2 px-2 py-1.5 text-[11px] bg-muted/30 hover:bg-muted/50 cursor-pointer select-none font-medium"
+                        title={isPbiAberto ? 'Fechar as tasks deste PBI/Bug' : 'Ver as tasks deste PBI/Bug'}
+                        onClick={() => { setPbiAberto(isPbiAberto ? null : pKey); setTaskAberta(null); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPbiAberto(isPbiAberto ? null : pKey); setTaskAberta(null); } }}
+                      >
+                        {isPbiAberto
+                          ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                          : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        {metaPbi?.web_url ? (
+                          <a
+                            href={metaPbi.web_url} target="_blank" rel="noopener noreferrer"
+                            className="font-mono text-primary hover:underline shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >#{pbi.id}</a>
+                        ) : (
+                          <span className="font-mono shrink-0">#{pbi.id}</span>
+                        )}
+                        <span className="px-1 rounded bg-sky-500/15 text-sky-700 dark:text-sky-300 shrink-0 text-[10px]">
+                          {metaPbi?.work_item_type ?? 'PBI/Bug'}
+                        </span>
+                        <span className="truncate flex-1 min-w-0" title={metaPbi?.title ?? undefined}>{metaPbi?.title ?? '—'}</span>
+                        <span className="text-muted-foreground tabular-nums shrink-0 w-24 text-right">{periodoPbi}</span>
+                        <span className="text-muted-foreground tabular-nums shrink-0 w-16 text-right">{tasksDoPbi.length} task{tasksDoPbi.length === 1 ? '' : 's'}</span>
+                        <span className="font-mono font-semibold tabular-nums shrink-0 w-14 text-right">{horasHM(pbi.minutes)}</span>
+                      </div>
+                      {isPbiAberto && (
+                        <div className="pl-4 border-l-2 border-sky-400/30 ml-2">
+                          {tasksDoPbi.map((g) => renderTask(g, pKey))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              : grupos.map((g) => renderTask(g, devKey))}
             <div className="flex items-center gap-2 px-2 py-1.5 text-[11px] bg-muted/30">
-              <span className="text-muted-foreground">{rows.length} lançamento{rows.length === 1 ? '' : 's'} em {grupos.length} task{grupos.length === 1 ? '' : 's'}</span>
+              <span className="text-muted-foreground">
+                {rows.length} lançamento{rows.length === 1 ? '' : 's'} em {grupos.length} task{grupos.length === 1 ? '' : 's'}
+                {pbis && <> · {pbis.length} PBI/Bug</>}
+              </span>
               <span className="ml-auto font-mono font-bold tabular-nums">{horasHM(totalMin)}</span>
             </div>
           </div>
         )}
         <p className="text-[10px] text-muted-foreground mt-1">
-          Clique na task para abrir os lançamentos. "Registrado em" = quando o lançamento chegou ao portal (coleta a cada ~15 min, horário de Brasília).
+          {pbis ? 'Clique no PBI/Bug para abrir as tasks e na task para abrir os lançamentos.' : 'Clique na task para abrir os lançamentos.'} "Registrado em" = quando o lançamento chegou ao portal (coleta a cada ~15 min, horário de Brasília).
           <span className="text-amber-700 dark:text-amber-300"> +Nd</span> = registrado N dias após o dia trabalhado declarado;
           <span className="text-rose-600 dark:text-rose-300"> após a sprint</span> = registrado depois do fim oficial (sexta 23:59).
           Lançamentos anteriores à recarga da coleta (17/07/2026 19:15) aparecem como "sem trilha" — o momento real do registro não ficou rastreado; a trilha é integral daí em diante.
@@ -378,6 +495,91 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
       </div>
     );
   };
+
+  /** Lista de devs de uma squad — o drill-down propriamente dito. */
+  const renderDevs = (s: (typeof squads)[number], cor: string) => (
+    <div className="divide-y divide-border/60">
+      {s.devs.map((d) => {
+        const ownPct = d.total > 0 ? (d.own / d.total) * 100 : 0;
+        const crossPctDev = d.total > 0 ? (d.cross / d.total) * 100 : 0;
+        const showCap = temCapacidade && d.cap > 0;
+        const capFillPct = showCap ? Math.min(d.total / d.cap, 1) * 100 : 100;
+        const devKey = `${s.squad}|${normName(d.nome)}`;
+        const isDevAberto = devAberto === devKey;
+        return (
+          <div key={d.nome}>
+            <button
+              type="button"
+              className={`w-full grid grid-cols-[1fr_150px_120px] items-center gap-3 px-3 py-2 pl-9 text-left transition-colors hover:bg-muted/40 ${isDevAberto ? 'bg-muted/30' : ''}`}
+              title={isDevAberto ? 'Fechar lançamentos' : 'Ver as tasks e lançamentos do período'}
+              onClick={() => { setDevAberto(isDevAberto ? null : devKey); setTaskAberta(null); }}
+            >
+              <span className="text-sm flex items-center gap-1.5 flex-wrap">
+                {isDevAberto
+                  ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                  : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+                <span className={d.total === 0 ? 'text-muted-foreground' : ''}>{d.nome}</span>
+                {onAnalisarColaborador && d.total > 0 && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Análise de ${d.nome}`}
+                    title="Ver atividade diária, calendário e lançamentos atípicos"
+                    className="text-muted-foreground/60 hover:text-primary transition-colors shrink-0"
+                    onClick={(e) => { e.stopPropagation(); onAnalisarColaborador(d.nome); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onAnalisarColaborador(d.nome); } }}
+                  >
+                    <Eye className="h-3 w-3" />
+                  </span>
+                )}
+                {d.papel === 'lead' && (
+                  <span className="text-[10px] px-1 rounded bg-muted text-muted-foreground">lead</span>
+                )}
+                {d.crossDests.map(([dest, min]) => (
+                  <span key={dest} className="text-[10px] px-1.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium">
+                    {horasHM(min)} → {dest}
+                  </span>
+                ))}
+                {d.total === 0 && d.cap === 0 && (
+                  <span className="text-[10px] px-1.5 rounded bg-muted text-muted-foreground">{showCap || !temCapacidade ? 'sem apontamento' : 'sem capacity'}</span>
+                )}
+              </span>
+              <span className="text-xs text-right font-mono tabular-nums">
+                {showCap ? (
+                  <>{horasHM(d.total)}<span className="text-muted-foreground">/{horasHM(d.cap)}</span> <span className={d.total - d.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}>{horasHMComSinal(d.total - d.cap)}</span></>
+                ) : horasHM(d.total)}
+              </span>
+              <div
+                className="relative h-2.5 w-full overflow-hidden rounded-full"
+                style={{ background: showCap ? 'repeating-linear-gradient(90deg, hsl(var(--muted)), hsl(var(--muted)) 4px, hsl(var(--border)) 4px, hsl(var(--border)) 5px)' : 'hsl(var(--muted))' }}
+                title={showCap ? `capacidade ${horasHM(d.cap)} · realizado ${horasHM(d.total)}` : undefined}
+              >
+                <div className="absolute inset-y-0 left-0 flex" style={{ width: `${capFillPct}%` }}>
+                  <div style={{ width: `${ownPct}%`, background: cor }} title={`própria fábrica: ${horasHM(d.own)}`} />
+                  <div style={{ width: `${crossPctDev}%`, background: 'hsl(28,92%,55%)' }} title={`outras fábricas: ${horasHM(d.cross)}`} />
+                </div>
+                {showCap && <div className="absolute inset-y-0 right-0 w-px bg-foreground/50" />}
+              </div>
+            </button>
+            {isDevAberto && renderDetalhe(normName(d.nome))}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  // ── Modo embutido: só os devs da squad pedida (o cabeçalho vem do card pai) ──
+  if (squadEmbutida) {
+    if (isLoading) {
+      return <p className="text-[11px] text-muted-foreground px-3 py-3">Carregando roster…</p>;
+    }
+    const idx = SQUADS.indexOf(squadEmbutida);
+    const s = squads.find((x) => x.squad === squadEmbutida);
+    if (!s) {
+      return <p className="text-[11px] text-muted-foreground px-3 py-3">Squad sem membros no roster.</p>;
+    }
+    return renderDevs(s, fabricaColor(squadEmbutida, idx < 0 ? 0 : idx));
+  }
 
   return (
     <Card>
@@ -433,63 +635,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo }: AlocacaoL
                     </span>
                   </button>
 
-                  {isOpen && (
-                    <div className="divide-y divide-border/60 border-t">
-                      {s.devs.map((d) => {
-                        const ownPct = d.total > 0 ? (d.own / d.total) * 100 : 0;
-                        const crossPctDev = d.total > 0 ? (d.cross / d.total) * 100 : 0;
-                        const showCap = temCapacidade && d.cap > 0;
-                        const capFillPct = showCap ? Math.min(d.total / d.cap, 1) * 100 : 100;
-                        const devKey = `${s.squad}|${normName(d.nome)}`;
-                        const isDevAberto = devAberto === devKey;
-                        return (
-                          <div key={d.nome}>
-                            <button
-                              type="button"
-                              className={`w-full grid grid-cols-[1fr_150px_120px] items-center gap-3 px-3 py-2 pl-9 text-left transition-colors hover:bg-muted/40 ${isDevAberto ? 'bg-muted/30' : ''}`}
-                              title={isDevAberto ? 'Fechar lançamentos' : 'Ver as tasks e lançamentos do período'}
-                              onClick={() => { setDevAberto(isDevAberto ? null : devKey); setTaskAberta(null); }}
-                            >
-                              <span className="text-sm flex items-center gap-1.5 flex-wrap">
-                                {isDevAberto
-                                  ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
-                                  : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                <span className={d.total === 0 ? 'text-muted-foreground' : ''}>{d.nome}</span>
-                                {d.papel === 'lead' && (
-                                  <span className="text-[10px] px-1 rounded bg-muted text-muted-foreground">lead</span>
-                                )}
-                                {d.crossDests.map(([dest, min]) => (
-                                  <span key={dest} className="text-[10px] px-1.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-medium">
-                                    {horasHM(min)} → {dest}
-                                  </span>
-                                ))}
-                                {d.total === 0 && d.cap === 0 && (
-                                  <span className="text-[10px] px-1.5 rounded bg-muted text-muted-foreground">{showCap || !temCapacidade ? 'sem apontamento' : 'sem capacity'}</span>
-                                )}
-                              </span>
-                              <span className="text-xs text-right font-mono tabular-nums">
-                                {showCap ? (
-                                  <>{horasHM(d.total)}<span className="text-muted-foreground">/{horasHM(d.cap)}</span> <span className={d.total - d.cap >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}>{horasHMComSinal(d.total - d.cap)}</span></>
-                                ) : horasHM(d.total)}
-                              </span>
-                              <div
-                                className="relative h-2.5 w-full overflow-hidden rounded-full"
-                                style={{ background: showCap ? 'repeating-linear-gradient(90deg, hsl(var(--muted)), hsl(var(--muted)) 4px, hsl(var(--border)) 4px, hsl(var(--border)) 5px)' : 'hsl(var(--muted))' }}
-                                title={showCap ? `capacidade ${horasHM(d.cap)} · realizado ${horasHM(d.total)}` : undefined}
-                              >
-                                <div className="absolute inset-y-0 left-0 flex" style={{ width: `${capFillPct}%` }}>
-                                  <div style={{ width: `${ownPct}%`, background: cor }} title={`própria fábrica: ${horasHM(d.own)}`} />
-                                  <div style={{ width: `${crossPctDev}%`, background: 'hsl(28,92%,55%)' }} title={`outras fábricas: ${horasHM(d.cross)}`} />
-                                </div>
-                                {showCap && <div className="absolute inset-y-0 right-0 w-px bg-foreground/50" />}
-                              </div>
-                            </button>
-                            {isDevAberto && renderDetalhe(normName(d.nome))}
-                          </div>
-                          );
-                      })}
-                    </div>
-                  )}
+                  {isOpen && <div className="border-t">{renderDevs(s, cor)}</div>}
                 </div>
               );
             })}
