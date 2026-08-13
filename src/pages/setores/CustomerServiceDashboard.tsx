@@ -23,8 +23,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
-import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, AlertTriangle, Timer, ArrowRight, Target, Gauge } from 'lucide-react';
+import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, AlertTriangle, Timer, ArrowRight, Target, Gauge, Wallet } from 'lucide-react';
 import { CSExecutivoTab } from '@/components/customerservice/CSExecutivoTab';
+import TimelogExecutivoTab from '@/components/timelog/TimelogExecutivoTab';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
@@ -444,6 +445,10 @@ export default function CustomerServiceDashboard() {
               <Target className="h-3.5 w-3.5" />
               Monitoramento
             </TabsTrigger>
+            <TabsTrigger value="timelog" className="gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Wallet className="h-3.5 w-3.5" />
+              TimeLog Executivo
+            </TabsTrigger>
           </TabsList>
 
           {/* ═══ TAB: VISÃO EXECUTIVA ═══ */}
@@ -842,6 +847,11 @@ export default function CustomerServiceDashboard() {
               onRowClick={(r) => setDrawerItem(r)}
               searchPlaceholder="Buscar item..."
             />
+          </TabsContent>
+
+          {/* ═══ TAB: TIMELOG EXECUTIVO ═══ */}
+          <TabsContent value="timelog" className="space-y-4 animate-fade-in">
+            <TimelogExecutivoTab />
           </TabsContent>
         </Tabs>
       )}

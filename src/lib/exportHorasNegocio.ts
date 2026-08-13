@@ -2,7 +2,20 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { HoraNegocioRow, LinhaAgregada, Dimensao } from '@/hooks/useHorasNegocio';
+import type { HoraNegocioRow, Dimensao } from '@/hooks/useHorasNegocio';
+
+/**
+ * Linha do resumo exportado. Vive aqui e não no hook porque é o contrato da
+ * EXPORTAÇÃO: a árvore da tela tem quatro níveis, o resumo tem um só.
+ */
+export interface LinhaAgregada {
+  chave: string;
+  horas: number;
+  horasPorCampo: number;
+  horasPorTag: number;
+  registos: number;
+  semClassificacao?: boolean;
+}
 
 /**
  * Exportação da visão financeira em CSV, Excel e PDF.

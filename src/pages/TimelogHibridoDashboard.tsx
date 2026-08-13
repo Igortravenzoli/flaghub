@@ -11,9 +11,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import {
   Clock, Download, RefreshCw, AlertTriangle, CheckCircle2,
   GitMerge, ExternalLink, Minus, Activity, Play, Users, Loader2,
-  XCircle, Building2,
+  XCircle,
 } from 'lucide-react';
-import ClientesProdutosPanel from '@/components/timelog/ClientesProdutosPanel';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -478,18 +477,10 @@ export default function TimelogHibridoDashboard() {
           <TabsList>
             <TabsTrigger value="dados"          className="gap-1.5"><Clock   className="h-3.5 w-3.5" />Dados</TabsTrigger>
             {/*
-              Admin não é escolha de UX aqui, é correcção do número. A política
-              de SELECT de `devops_time_logs` é `hub_is_admin() OR membro da
-              área`, enquanto `vdesk_time_logs` é `hub_is_approved()`. Como
-              v_horas_negocio consolida os dois com greatest() e roda em
-              security_invoker, um não-admin veria o VDESK inteiro e só a sua
-              área do DevOps — o total mudaria conforme quem abre, sem aviso.
-              Enquanto a assimetria existir, quem exporta tem de ser quem vê
-              tudo.
+              A visão de cliente e produto saiu daqui em 13/08/2026: virou a aba
+              TimeLog Executivo do setor Produtos, que é onde o gestor a procura.
+              Esta página fica com a conciliação linha a linha, que é operação.
             */}
-            {isAdmin && (
-              <TabsTrigger value="negocio"      className="gap-1.5"><Building2 className="h-3.5 w-3.5" />Clientes e Produtos</TabsTrigger>
-            )}
             {isAdmin && (
               <TabsTrigger value="colaboradores"  className="gap-1.5"><Users   className="h-3.5 w-3.5" />Colaboradores</TabsTrigger>
             )}
@@ -653,17 +644,6 @@ export default function TimelogHibridoDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
-
-          {/* ─ TAB: Clientes e Produtos (visão financeira, admin only) ─ */}
-          {isAdmin && (
-            <TabsContent value="negocio" className="mt-4">
-              <ClientesProdutosPanel
-                dateFrom={filters.dateFrom}
-                dateTo={filters.dateTo}
-                onPeriodChange={setFilter}
-              />
-            </TabsContent>
-          )}
 
           {/* ─ TAB: Colaboradores (admin only) ─ */}
           {isAdmin && (
