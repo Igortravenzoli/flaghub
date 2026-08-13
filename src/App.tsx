@@ -22,6 +22,7 @@ import MfaChallenge from "@/pages/MfaChallenge";
 
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 import Acompanhamento from "@/pages/Acompanhamento";
+import TimelogHibridoDashboard from "@/pages/TimelogHibridoDashboard";
 import QualidadeDashboard from "@/pages/setores/QualidadeDashboard";
 import HelpdeskDashboard from "@/pages/setores/HelpdeskDashboard";
 import ComercialDashboard from "@/pages/setores/ComercialDashboard";
@@ -90,6 +91,16 @@ const App = () => (
                 />
                 <Route path="/ticket-busca" element={<TicketBuscaComponente />} />
                 <Route path="/acompanhamento" element={<Acompanhamento />} />
+                {/*
+                  A página existia sem rota nenhuma desde que foi escrita — nada
+                  no src a importava. Sem gate de admin no nível da rota de
+                  propósito: ela própria já esconde as abas Colaboradores, Sync
+                  Manual e Clientes e Produtos atrás de `isAdmin`, e a RLS de
+                  `devops_time_logs` já limita o não-admin à sua área. Gatear a
+                  rota inteira contrariaria o desenho da página, que prevê o
+                  não-admin vendo só a aba Dados.
+                */}
+                <Route path="/timelog" element={<TimelogHibridoDashboard />} />
                 {/* Sector dashboards */}
                 <Route path="/setor/qualidade" element={<QualidadeDashboard />} />
                 <Route path="/setor/helpdesk" element={<HelpdeskDashboard />} />
