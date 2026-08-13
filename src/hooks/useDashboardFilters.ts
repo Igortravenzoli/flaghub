@@ -16,14 +16,34 @@ export interface DashboardFilters {
   customField?: string;
 }
 
+/**
+ * Lê `de`/`ate` da URL. Datas entram como `YYYY-MM-DD` e são construídas em
+ * horário LOCAL (`new Date(a, m-1, d)`), não por `new Date('2026-07-01')`, que o
+ * JS interpreta como UTC e volta um dia atrás a oeste de Greenwich.
+ */
+function dataDaUrl(valor: string | null): Date | null {
+  if (!valor) return null;
+  const m = valor.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function paraUrl(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const presetFromUrl = (searchParams.get('preset') as FilterPreset) || defaultPreset;
 
   const [preset, setPresetState] = useState<FilterPreset>(presetFromUrl);
-  const [customFrom, setCustomFrom] = useState<Date | null>(null);
-  const [customTo, setCustomTo] = useState<Date | null>(null);
+  // O intervalo personalizado também nasce da URL: sem isto, um link com
+  // `?preset=custom` reabria em "últimos 30 dias" e a pessoa que recebeu o link
+  // via um número diferente de quem o mandou, sem nenhum aviso.
+  const [customFrom, setCustomFrom] = useState<Date | null>(() => dataDaUrl(searchParams.get('de')));
+  const [customTo, setCustomTo] = useState<Date | null>(() => dataDaUrl(searchParams.get('ate')));
 
   const dates = useMemo(() => {
     const now = new Date();
@@ -85,6 +105,10 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
     setPresetState(p);
     setSearchParams(prev => {
       prev.set('preset', p);
+      // Sair do personalizado limpa as datas da URL: deixá-las para trás
+      // produzia link com `preset=30d&de=...&ate=...`, em que os parâmetros se
+      // contradizem e quem lê não sabe qual venceu.
+      if (p !== 'custom') { prev.delete('de'); prev.delete('ate'); }
       return prev;
     });
   }, [setSearchParams]);
@@ -95,6 +119,8 @@ export function useDashboardFilters(defaultPreset: FilterPreset = 'mes_atual') {
     setPresetState('custom');
     setSearchParams(prev => {
       prev.set('preset', 'custom');
+      prev.set('de', paraUrl(from));
+      prev.set('ate', paraUrl(to));
       return prev;
     });
   }, [setSearchParams]);

@@ -1,14 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  Download, FileSpreadsheet, FileText, AlertTriangle, RefreshCw,
-} from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import type { ContratoAba } from '@/components/dashboard/contratoAba';
 import {
   useHorasNegocio, calcularKpis, serieDiaria, montarArvore, ordenarArvore,
   ranking, mesFechadoAnterior,
@@ -24,15 +20,16 @@ import { GridAnalitico, type OrdemGrid } from './executivo/GridAnalitico';
 /**
  * TimeLog Executivo — horas da operação correlacionadas com cliente e produto.
  *
- * O período corta por DATA DE LANÇAMENTO e nasce no mês fechado anterior. Não
- * corta por sprint de propósito: as sprints atravessam o mês (99% das horas de
- * julho/2026 vieram de sprints com horas noutros meses), então sprint e mês
- * fiscal não são reconciliáveis, e misturar os dois recortes produz número
- * errado nas duas pontas.
+ * O período NÃO nasce aqui: vem da barra de filtro da página, por props. A aba
+ * já teve um seletor de mês próprio e isso criava a terceira camada de período
+ * na mesma tela, sem conversar com as outras duas. A regra agora é a do
+ * `contratoAba`: a aba consome o intervalo e devolve os filtros de drill para a
+ * barra mostrar.
  *
- * Um filtro só governa a tela inteira: KPIs, gráficos, grid e exportação. Por
- * isso o estado dele vive aqui e desce por props, e a barra que o mostra fica
- * acima dos KPIs, não dentro do grid.
+ * O corte é por DATA DE LANÇAMENTO, nunca por sprint: as sprints atravessam o
+ * mês (99% das horas de julho/2026 vieram de sprints com horas noutros meses),
+ * então sprint e mês fiscal não são reconciliáveis, e misturar os dois recortes
+ * produz número errado nas duas pontas.
  */
 
 const DIMENSOES: Array<{ valor: Dimensao; rotulo: string }> = [
@@ -56,29 +53,27 @@ const COR_CHIP: Record<Conciliacao, string> = {
 const fmt = (n: number) =>
   n.toLocaleString('pt-PT', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-/** Últimos 6 meses fechados, para o atalho de período. */
-function mesesRecentes(hoje = new Date()) {
-  const opcoes: Array<{ valor: string; rotulo: string }> = [];
-  for (let i = 1; i <= 6; i++) {
-    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
-    const valor = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const nome = d.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' });
-    opcoes.push({ valor, rotulo: i === 1 ? `${nome} — mês fechado anterior` : nome });
-  }
-  return opcoes;
+function iso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function ultimoDiaDoMes(ym: string) {
-  const [ano, mes] = ym.split('-').map(Number);
-  return String(new Date(ano, mes, 0).getDate()).padStart(2, '0');
-}
+export default function TimelogExecutivoTab({
+  dateFrom, dateTo, onContrato,
+}: {
+  dateFrom?: Date;
+  dateTo?: Date;
+  /** Publica chips de drill e exportadores para a barra da página. */
+  onContrato?: (contrato: ContratoAba) => void;
+}) {
+  // Sem intervalo vindo da página, cai no mês fechado anterior — é o padrão de
+  // fechamento e evita que a aba apareça vazia se for montada fora do dashboard.
+  const periodo = useMemo(
+    () => (dateFrom && dateTo
+      ? { dateFrom: iso(dateFrom), dateTo: iso(dateTo) }
+      : mesFechadoAnterior()),
+    [dateFrom, dateTo]
+  );
 
-export default function TimelogExecutivoTab() {
-  const padrao = useMemo(() => mesFechadoAnterior(), []);
-  const opcoesMes = useMemo(() => mesesRecentes(), []);
-
-  const [periodo, setPeriodo] = useState(padrao);
-  const [mesAtalho, setMesAtalho] = useState<string>(padrao.dateFrom.slice(0, 7));
   const [dimensao, setDimensao] = useState<Dimensao>('cliente');
   const [conciliacao, setConciliacao] = useState<Conciliacao | null>(null);
   const [dia, setDia] = useState<string | null>(null);
@@ -132,26 +127,10 @@ export default function TimelogExecutivoTab() {
     [arvore]
   );
 
-  const filtrosAtivos = [
-    conciliacao && ROTULO_CONCILIACAO[conciliacao],
-    dia,
-    origemFiltro && `origem ${origemFiltro}`,
-    soNaoClassificados && 'não classificados',
-    chaveSelecionada,
-    excluidos.size > 0 && 'funil',
-  ].filter(Boolean) as string[];
-
-  const limpar = () => {
+  const limpar = useCallback(() => {
     setConciliacao(null); setDia(null); setOrigemFiltro(null);
     setSoNaoClassificados(false); setChaveSelecionada(null); setExcluidos(new Set());
-  };
-
-  const aplicarPeriodo = (ym: string) => {
-    setMesAtalho(ym);
-    if (ym === 'livre') return;
-    setPeriodo({ dateFrom: `${ym}-01`, dateTo: `${ym}-${ultimoDiaDoMes(ym)}` });
-    limpar();
-  };
+  }, []);
 
   const aplicarAlerta = (tipo: AcaoAlerta) => {
     limpar();
@@ -160,7 +139,7 @@ export default function TimelogExecutivoTab() {
     if (tipo === 'sem_classificacao') setSoNaoClassificados(true);
   };
 
-  const exportar = (formato: 'csv' | 'excel' | 'pdf') => {
+  const exportar = useCallback((formato: 'csv' | 'excel' | 'pdf') => {
     if (arvore.length === 0) {
       toast.error('Nada para exportar com os filtros actuais');
       return;
@@ -184,101 +163,77 @@ export default function TimelogExecutivoTab() {
     } catch (e) {
       toast.error(`Falha ao gerar ${formato.toUpperCase()}: ${(e as Error).message}`);
     }
-  };
+  }, [arvore, dimensao, filtradas, periodo]);
+
+  /**
+   * Contrato com a barra da página: os filtros de drill viram chips lá em cima,
+   * e os três formatos substituem o menu de exportação padrão enquanto esta aba
+   * estiver activa.
+   */
+  const chips = useMemo(() => {
+    const lista: Array<{ id: string; rotulo: string; remover: () => void }> = [];
+    if (conciliacao) lista.push({ id: 'conc', rotulo: ROTULO_CONCILIACAO[conciliacao], remover: () => setConciliacao(null) });
+    if (dia) lista.push({ id: 'dia', rotulo: dia, remover: () => setDia(null) });
+    if (origemFiltro) lista.push({ id: 'origem', rotulo: `origem ${origemFiltro}`, remover: () => setOrigemFiltro(null) });
+    if (soNaoClassificados) lista.push({ id: 'sem', rotulo: 'não classificados', remover: () => setSoNaoClassificados(false) });
+    if (chaveSelecionada) lista.push({ id: 'chave', rotulo: chaveSelecionada, remover: () => setChaveSelecionada(null) });
+    if (excluidos.size > 0) lista.push({ id: 'funil', rotulo: `funil (${excluidos.size})`, remover: () => setExcluidos(new Set()) });
+    return lista;
+  }, [conciliacao, dia, origemFiltro, soNaoClassificados, chaveSelecionada, excluidos]);
+
+  useEffect(() => {
+    onContrato?.({
+      chips,
+      limparTudo: chips.length > 0 ? limpar : undefined,
+      exportadores: [
+        { id: 'csv', rotulo: 'Exportar CSV', executar: () => exportar('csv') },
+        { id: 'excel', rotulo: 'Exportar Excel', executar: () => exportar('excel') },
+        { id: 'pdf', rotulo: 'Exportar PDF', executar: () => exportar('pdf') },
+      ],
+    });
+  }, [chips, limpar, exportar, onContrato]);
 
   return (
     <div className="space-y-4">
-      {/* ── Cabeçalho: sino acima, controlos abaixo ── */}
-      <div className="flex flex-col items-end gap-2">
-        <AlertasSino kpis={kpis} onAplicarFiltro={aplicarAlerta} />
+      {/*
+        Cabeçalho da aba: só o que é DELA. Período e exportação saíram para a
+        barra da página; aqui ficam a chave de agrupamento, que é a pergunta que
+        esta aba responde, e o sino, cujos alertas são derivados destas horas.
+      */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex overflow-hidden rounded-md border">
+          {DIMENSOES.map((d) => (
+            <button
+              key={d.valor}
+              type="button"
+              aria-pressed={dimensao === d.valor}
+              onClick={() => {
+                setDimensao(d.valor);
+                setChaveSelecionada(null);
+                setExcluidos(new Set());
+                setOrdem({ coluna: 3, dir: 'desc' });
+              }}
+              className={`border-l px-3 py-1.5 text-xs first:border-l-0 ${
+                dimensao === d.valor
+                  ? 'bg-flag-gold/10 font-semibold text-flag-gold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {d.rotulo}
+            </button>
+          ))}
+        </div>
 
-        <div className="flex w-full flex-wrap items-center justify-end gap-2">
-          <div className="mr-auto flex overflow-hidden rounded-md border">
-            {DIMENSOES.map((d) => (
-              <button
-                key={d.valor}
-                type="button"
-                aria-pressed={dimensao === d.valor}
-                onClick={() => {
-                  setDimensao(d.valor);
-                  setChaveSelecionada(null);
-                  setExcluidos(new Set());
-                  setOrdem({ coluna: 3, dir: 'desc' });
-                }}
-                className={`border-l px-3 py-1.5 text-xs first:border-l-0 ${
-                  dimensao === d.valor
-                    ? 'bg-flag-gold/10 font-semibold text-flag-gold'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {d.rotulo}
-              </button>
-            ))}
-          </div>
+        <span className="text-xs text-muted-foreground">
+          {filtradas.length === rows.length
+            ? <><strong className="text-foreground">{rows.length}</strong> apontamentos de {periodo.dateFrom} a {periodo.dateTo}</>
+            : <><strong className="text-foreground">{filtradas.length}</strong> de {rows.length} apontamentos</>}
+        </span>
 
-          <Select value={mesAtalho} onValueChange={aplicarPeriodo}>
-            <SelectTrigger className="w-56 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {opcoesMes.map((o) => (
-                <SelectItem key={o.valor} value={o.valor} className="text-xs">{o.rotulo}</SelectItem>
-              ))}
-              <SelectItem value="livre" className="text-xs">Personalizado</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            De
-            <Input
-              type="date" value={periodo.dateFrom} className="h-8 w-36"
-              onChange={(e) => { setPeriodo((p) => ({ ...p, dateFrom: e.target.value })); setMesAtalho('livre'); }}
-            />
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Até
-            <Input
-              type="date" value={periodo.dateTo} className="h-8 w-36"
-              onChange={(e) => { setPeriodo((p) => ({ ...p, dateTo: e.target.value })); setMesAtalho('livre'); }}
-            />
-          </label>
-
-          <div className="flex gap-1.5 border-l pl-2">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => exportar('csv')}>
-              <Download className="h-3.5 w-3.5" />CSV
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => exportar('excel')}>
-              <FileSpreadsheet className="h-3.5 w-3.5" />Excel
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => exportar('pdf')}>
-              <FileText className="h-3.5 w-3.5" />PDF
-            </Button>
-          </div>
+        <div className="ml-auto">
+          <AlertasSino kpis={kpis} onAplicarFiltro={aplicarAlerta} />
         </div>
       </div>
-
-      {/* ── Estado do filtro: governa KPIs, gráficos, grid e exportação ── */}
-      <Card className={filtrosAtivos.length > 0 ? 'border-flag-gold/40 bg-flag-gold/5' : ''}>
-        <CardContent className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground">
-          {filtrosAtivos.length > 0 ? (
-            <>
-              <span>
-                <strong className="text-foreground">Filtrando</strong> — {filtradas.length} de {rows.length} apontamentos,
-                em gráficos, grid e exportação:
-              </span>
-              {filtrosAtivos.map((f) => (
-                <Badge key={f} variant="outline" className="border-flag-gold/40 text-flag-gold">{f}</Badge>
-              ))}
-              <Button variant="outline" size="sm" className="ml-auto h-6 px-2 text-[11px]" onClick={limpar}>
-                Limpar tudo
-              </Button>
-            </>
-          ) : (
-            <span>
-              Sem filtro — <strong className="text-foreground">{rows.length} apontamentos</strong> entre{' '}
-              {periodo.dateFrom} e {periodo.dateTo}, agrupados por {dimensao}
-            </span>
-          )}
-        </CardContent>
-      </Card>
 
       {/*
         ── KPIs macro ──

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SectorLayout } from '@/components/setores/SectorLayout';
@@ -26,6 +27,7 @@ import { Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, XAxis, 
 import { Layers, Users, Clock, TrendingUp, Package, Eye, Settings2, HeartPulse, AlertTriangle, Timer, ArrowRight, Target, Gauge, Wallet } from 'lucide-react';
 import { CSExecutivoTab } from '@/components/customerservice/CSExecutivoTab';
 import TimelogExecutivoTab from '@/components/timelog/TimelogExecutivoTab';
+import { CONTRATO_VAZIO, type ContratoAba } from '@/components/dashboard/contratoAba';
 import type { Integration } from '@/components/setores/SectorIntegrations';
 import { getDateBoundsFromItems } from '@/lib/dateBounds';
 
@@ -108,6 +110,7 @@ const implColumns: DataTableColumn<CSKpiItem>[] = [
 ];
 
 export default function CustomerServiceDashboard() {
+  const [searchParams] = useSearchParams();
   const filters = useDashboardFilters('all');
   const [sprintFilter, setSprintFilter] = useState<string>('__pending__');
   const { devopsItems, allItems, implantacoes, totalFilaCS, porResponsavel, implAndamento, implFinalizadas, implTotal, lastSync, isLoading, isError, refetch } = useCustomerServiceKpis(filters.dateFrom, filters.dateTo, sprintFilter);
@@ -127,7 +130,37 @@ export default function CustomerServiceDashboard() {
   const [implFilter, setImplFilter] = useState<ImplFilter>('all');
   const [implFilterValue, setImplFilterValue] = useState<string | null>(null);
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all');
-  const [activeTab, setActiveTab] = useState<'executivo' | 'fila' | 'implantacoes' | 'saude' | 'monitoramento'>('executivo');
+  const [activeTab, setActiveTab] = useState<'executivo' | 'fila' | 'implantacoes' | 'saude' | 'monitoramento' | 'timelog'>('executivo');
+  /**
+   * Contrato publicado pela aba activa: chips de drill e exportadores. Fica na
+   * página, e não em cada aba, para existir UM lugar que responde "o que estou
+   * vendo agora" — antes cada aba montava a própria barra de estado.
+   */
+  const [contratoAba, setContratoAba] = useState<ContratoAba>(CONTRATO_VAZIO);
+  // Estável: a aba publica dentro de um efeito, e uma referência nova a cada
+  // render do dashboard faria o efeito disparar em loop.
+  const receberContrato = useCallback((c: ContratoAba) => setContratoAba(c), []);
+  useEffect(() => {
+    if (activeTab !== 'timelog') setContratoAba(CONTRATO_VAZIO);
+  }, [activeTab]);
+
+  /**
+   * O TimeLog abre no mês fechado anterior — mas só quando a pessoa ainda não
+   * escolheu período nenhum.
+   *
+   * A página inteira usa "Todos" por padrão, que para a fila de CS faz sentido e
+   * para horas significaria dez anos de lançamento. Como o filtro é global e
+   * único, a saída não é a aba ter o próprio período: é a página escolher um
+   * padrão melhor quando esta aba é a primeira coisa que se abre. Se `preset`
+   * está na URL, foi escolha explícita e não se mexe — é o que faz um link
+   * compartilhado reproduzir a tela de quem o mandou.
+   */
+  const [periodoAjustadoParaTimelog, setPeriodoAjustadoParaTimelog] = useState(false);
+  useEffect(() => {
+    if (activeTab !== 'timelog' || periodoAjustadoParaTimelog) return;
+    setPeriodoAjustadoParaTimelog(true);
+    if (!searchParams.get('preset')) filters.setPreset('mes_anterior');
+  }, [activeTab, periodoAjustadoParaTimelog, searchParams, filters]);
   const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>('all');
   const [tableSearch, setTableSearch] = useState('');
   const { minDate, maxDate } = useMemo(
@@ -392,6 +425,9 @@ export default function CustomerServiceDashboard() {
             { value: '7d', label: '7d' },
             { value: '30d', label: '30d' },
             { value: '90d', label: '90d' },
+            // Entrou por causa do TimeLog Executivo, mas serve a todas: é o
+            // recorte de fechamento, o único mês que não muda mais.
+            { value: 'mes_anterior', label: 'Mês ant.' },
           ]}
           dateFrom={filters.dateFrom}
           dateTo={filters.dateTo}
@@ -401,8 +437,17 @@ export default function CustomerServiceDashboard() {
           onExportCSV={handleExportCSV}
           onExportPDF={handleExportPDF}
           showRangeBadge={false}
+          chips={contratoAba.chips}
+          onLimparChips={contratoAba.limparTudo}
+          exportadores={contratoAba.exportadores}
         />
-        {sortedSprints.length > 0 && (
+        {/*
+          O seletor de sprint some na aba TimeLog, e não é enfeite: 99% das
+          horas de um mês vêm de sprints que atravessam o mês, então recortar
+          horas por sprint produziria total que não fecha com nada. Controlo que
+          não se aplica SOME em vez de ficar cinza — cinza convida a clicar.
+        */}
+        {activeTab !== 'timelog' && sortedSprints.length > 0 && (
           <>
             <div className="w-px h-6 bg-border" />
             <Select value={sprintFilter} onValueChange={(v) => setSprintFilter(v)}>
@@ -851,7 +896,11 @@ export default function CustomerServiceDashboard() {
 
           {/* ═══ TAB: TIMELOG EXECUTIVO ═══ */}
           <TabsContent value="timelog" className="space-y-4 animate-fade-in">
-            <TimelogExecutivoTab />
+            <TimelogExecutivoTab
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              onContrato={receberContrato}
+            />
           </TabsContent>
         </Tabs>
       )}
