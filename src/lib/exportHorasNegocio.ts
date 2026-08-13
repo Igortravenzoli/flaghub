@@ -155,10 +155,21 @@ export function exportarPdf({ dim, linhas, periodo }: ContextoExport) {
     styles: { fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [40, 40, 40], textColor: 255 },
     footStyles: { fillColor: [240, 240, 240], textColor: 20, fontStyle: 'bold' },
-    // Número à direita, texto à esquerda — regra 6 do design system.
-    columnStyles: {
-      1: { halign: 'right' }, 2: { halign: 'right' },
-      3: { halign: 'right' }, 4: { halign: 'right' },
+    /**
+     * Alinhamento pelo hook, e NÃO por `columnStyles`.
+     *
+     * `columnStyles` só alcança o corpo nesta versão do autotable: medido no
+     * PDF gerado, o título "Horas" saía em x=221,7, colado à esquerda da
+     * célula, enquanto os valores da mesma coluna ficavam centrados em 252,1 —
+     * 30 pontos de desencontro, e a coluna lia torta. `didParseCell` passa por
+     * head, body e foot, então os três compartilham o mesmo eixo.
+     *
+     * Centrado, e não à direita, porque a coluna é estreita e o rótulo é mais
+     * largo que o número: à direita o valor encosta na borda e parece
+     * pertencer à coluna seguinte.
+     */
+    didParseCell: (data) => {
+      if (data.column.index > 0) data.cell.styles.halign = 'center';
     },
   });
 
