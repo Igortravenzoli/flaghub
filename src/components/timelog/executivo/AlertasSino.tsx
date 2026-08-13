@@ -2,6 +2,7 @@ import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { KpisExecutivo } from '@/hooks/useHorasNegocio';
+import { useTimelogChainHealth, type SaudeCadeia } from '@/hooks/useTimelogChainHealth';
 
 /**
  * Notificação da página: o que está errado no dado do período.
@@ -20,6 +21,55 @@ interface Alerta {
   valor: string;
   corpo: string[];
   acao?: { rotulo: string; tipo: AcaoAlerta };
+}
+
+/**
+ * Alerta da automação. Vem PRIMEIRO e é o único que não fala do período: os
+ * outros descrevem o dado, este descreve se o dado ainda está chegando.
+ *
+ * Só aparece quando há algo errado. Automação saudável não merece linha —
+ * alerta que vive aceso é alerta que ninguém lê.
+ */
+function alertaDaCadeia(saude: SaudeCadeia | null | undefined): Alerta | null {
+  if (!saude || saude.saudavel) return null;
+
+  const partes: string[] = [];
+  if (saude.em_erro > 0) {
+    partes.push(
+      `${saude.em_erro} lançamento(s) em erro. Não existe retry automático, e não deve existir: ` +
+      'postar hora no DevOps é acumulativo, então reprocessar uma falha que ocorreu depois do envio duplicaria a hora.'
+    );
+  }
+  if (saude.presos_em_posting > 0) {
+    partes.push(
+      `${saude.presos_em_posting} preso(s) em "posting". Podem já estar no DevOps — conferir antes de qualquer reprocesso.`
+    );
+  }
+  if (saude.fila_approved > 0 && (saude.approved_mais_antigo_h ?? 0) >= 3) {
+    partes.push(`${saude.fila_approved} na fila há ${saude.approved_mais_antigo_h}h sem sair.`);
+  }
+  if (saude.orfaos > 0 && (saude.orfao_mais_antigo_horas ?? 0) >= 3) {
+    partes.push(
+      `${saude.orfaos} apontamento(s) do VDESK (${saude.horas_orfas}h) fora da fila há ` +
+      `${saude.orfao_mais_antigo_horas}h.`
+    );
+  }
+  if (saude.sem_email_mapeado > 0) {
+    partes.push(`${saude.sem_email_mapeado} parado(s) por falta de e-mail no mapa de colaboradores.`);
+  }
+
+  return {
+    id: 'cadeia',
+    nivel: 'critico',
+    titulo: 'Automação VDESK → DevOps',
+    valor: 'parada',
+    corpo: [
+      saude.veredito,
+      ...partes,
+      'Este alerta mede backlog, não atividade. O indicador anterior media atividade e ' +
+      'ficou verde por semanas enquanto 2.438h não chegavam ao DevOps.',
+    ],
+  };
 }
 
 function montarAlertas(kpis: KpisExecutivo): Alerta[] {
@@ -93,14 +143,16 @@ export function AlertasSino({
   kpis: KpisExecutivo;
   onAplicarFiltro: (tipo: AcaoAlerta) => void;
 }) {
-  const alertas = montarAlertas(kpis);
+  const { data: saude } = useTimelogChainHealth();
+  const daCadeia = alertaDaCadeia(saude);
+  const alertas = daCadeia ? [daCadeia, ...montarAlertas(kpis)] : montarAlertas(kpis);
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
           variant="outline" size="sm"
-          className="relative gap-0 px-2.5"
+          className={`relative gap-0 px-2.5 ${daCadeia ? 'border-red-500/50 text-red-600' : ''}`}
           aria-label={`${alertas.length} alertas do período`}
         >
           <Bell className="h-4 w-4" />

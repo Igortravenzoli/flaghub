@@ -155,7 +155,13 @@ export function calcularKpis(rows: HoraNegocioRow[]): KpisExecutivo {
     // Soma os LANÇAMENTOS, não as linhas: a view é consolidada por (work item,
     // dia, colaborador) e uma linha pode conter mais de um lançamento do VDESK.
     // Contar linhas dava 175 onde a verdade eram 178 em julho/2026.
-    if (r.lancamentos_vdesk > 0) {
+    //
+    // `minutes_vdesk > 0` exclui lançamento de tempo zerado do denominador.
+    // Sem isso o indicador nunca fecha: hora zero não tem o que sincronizar, e
+    // o enfileiramento a bloqueia de propósito, então ela ficaria para sempre
+    // como pendência fantasma. Em julho/2026 eram 3 lançamentos, e por causa
+    // deles o mês travava em 98,3% com tudo conciliado.
+    if (r.lancamentos_vdesk > 0 && r.minutes_vdesk > 0) {
       registosVdesk += r.lancamentos_vdesk;
       if (r.minutes_devops > 0) registosSincronizados += r.lancamentos_vdesk;
     }

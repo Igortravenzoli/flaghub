@@ -240,6 +240,18 @@ describe('calcularKpis', () => {
     expect(kpis.conciliacao).toEqual({ match: 1, divergent: 0, only_vdesk: 2, only_devops: 1 });
   });
 
+  it('ignora lançamento de tempo zerado no denominador', () => {
+    // Hora zero não tem o que sincronizar e o enfileiramento a bloqueia de
+    // propósito. Contá-la trava o indicador abaixo de 100% para sempre, com
+    // tudo conciliado — foi o que segurou julho/2026 em 98,3%.
+    const kpis = calcularKpis([
+      linha({ minutes_vdesk: 60, minutes_devops: 60, lancamentos_vdesk: 1 }),
+      linha({ minutes_vdesk: 0, minutes_devops: 0, lancamentos_vdesk: 1, conciliacao: 'only_vdesk' }),
+    ]);
+    expect(kpis.registosVdesk).toBe(1);
+    expect(kpis.pctSincronizado).toBe(100);
+  });
+
   it('não divide por zero sem lançamento de VDESK', () => {
     const kpis = calcularKpis([
       linha({ minutes_vdesk: 0, minutes_devops: 60, lancamentos_vdesk: 0 }),
