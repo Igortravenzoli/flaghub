@@ -476,6 +476,11 @@ export default function TimelogHibridoDashboard() {
         <Tabs defaultValue="dados">
           <TabsList>
             <TabsTrigger value="dados"          className="gap-1.5"><Clock   className="h-3.5 w-3.5" />Dados</TabsTrigger>
+            {/*
+              A visão de cliente e produto saiu daqui em 13/08/2026: virou a aba
+              TimeLog Executivo do setor Produtos, que é onde o gestor a procura.
+              Esta página fica com a conciliação linha a linha, que é operação.
+            */}
             {isAdmin && (
               <TabsTrigger value="colaboradores"  className="gap-1.5"><Users   className="h-3.5 w-3.5" />Colaboradores</TabsTrigger>
             )}

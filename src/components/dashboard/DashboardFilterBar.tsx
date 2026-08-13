@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import type { FilterPreset } from '@/hooks/useDashboardFilters';
+import type { ChipFiltro, ExportadorAba } from './contratoAba';
 import type { DateRange } from 'react-day-picker';
 
 interface FilterBarProps {
@@ -31,6 +32,19 @@ interface FilterBarProps {
   maxDate?: Date;
   showRangeBadge?: boolean;
   availableDateKeys?: Set<string>;
+  /**
+   * Filtros de drill da aba activa, mostrados como chips removíveis. É o que
+   * evita cada aba montar a própria "barra de estado do filtro": existe um
+   * lugar só que responde "o que estou vendo agora".
+   */
+  chips?: ChipFiltro[];
+  onLimparChips?: () => void;
+  /**
+   * Exportadores da aba activa. Quando presentes, substituem o menu padrão de
+   * CSV/PDF — a exportação passa a ser do recorte que a barra descreve, e não
+   * de um segundo lugar com outra régua.
+   */
+  exportadores?: ExportadorAba[];
 }
 
 const DEFAULT_PRESETS: Array<{ value: FilterPreset; label: string }> = [
@@ -61,6 +75,9 @@ export function DashboardFilterBar({
   maxDate,
   showRangeBadge = true,
   availableDateKeys,
+  chips,
+  onLimparChips,
+  exportadores,
 }: FilterBarProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const isKiosk = typeof document !== 'undefined' && document.querySelector('[data-kiosk="true"]') !== null;
@@ -70,10 +87,27 @@ export function DashboardFilterBar({
 
   const handleRangeSelect = (selected: DateRange | undefined) => {
     setRange(selected);
+    // Só fecha com as DUAS pontas escolhidas. Enquanto houver só `from`, o
+    // calendário fica aberto esperando a data final.
     if (selected?.from && selected?.to && onCustomRange) {
       onCustomRange(selected.from, selected.to);
       setCalendarOpen(false);
     }
+  };
+
+  /**
+   * Abrir o calendário zera a selecção.
+   *
+   * `range` nasce com o intervalo actual, que já tem `from` E `to`. O
+   * react-day-picker, ao receber um clique com um range completo em mãos,
+   * devolve na hora outro range completo — combinando a data nova com uma ponta
+   * antiga. O handler via as duas pontas preenchidas e fechava no primeiro
+   * clique, com um intervalo que a pessoa nunca escolheu. Começando vazio, o
+   * primeiro clique só define `from` e a janela espera o `to`.
+   */
+  const aoAbrirCalendario = (aberto: boolean) => {
+    setCalendarOpen(aberto);
+    if (aberto) setRange(undefined);
   };
 
   const isCustom = preset === 'custom';
@@ -93,7 +127,10 @@ export function DashboardFilterBar({
     return false;
   };
 
+  const temChips = !!chips && chips.length > 0;
+
   return (
+    <div className="flex flex-col gap-2">
     <div className="flex flex-wrap items-center gap-2">
       {/* Period presets */}
       {!isKiosk && (presetControl === 'chips' ? (
@@ -111,7 +148,7 @@ export function DashboardFilterBar({
           ))}
 
           {onCustomRange && (
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <Popover open={calendarOpen} onOpenChange={aoAbrirCalendario}>
               <PopoverTrigger asChild>
                 <Button
                   variant={isCustom ? 'default' : 'ghost'}
@@ -148,7 +185,9 @@ export function DashboardFilterBar({
                 const value = v as FilterPreset;
                 if (value === 'custom') {
                   onPresetChange('custom');
-                  setCalendarOpen(true);
+                  // Pelo handler, não por setCalendarOpen: é ele que zera a
+                  // selecção anterior antes de a janela abrir.
+                  aoAbrirCalendario(true);
                   return;
                 }
                 onPresetChange(value);
@@ -167,7 +206,7 @@ export function DashboardFilterBar({
           )}
 
           {onCustomRange && (
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <Popover open={calendarOpen} onOpenChange={aoAbrirCalendario}>
               <PopoverTrigger asChild>
                 <Button
                   variant={isCustom ? 'default' : 'outline'}
@@ -213,8 +252,29 @@ export function DashboardFilterBar({
         </Badge>
       )}
 
-      {/* Export */}
-      {(onExportCSV || onExportPDF) && !isKiosk && (
+      {/*
+        Exportação: um grupo só na página. Quando a aba activa declara os
+        próprios formatos, eles substituem o CSV/PDF padrão — dois botões de
+        exportar na mesma tela é como ter dois relógios.
+      */}
+      {!isKiosk && (exportadores?.length ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+              <Download className="h-3.5 w-3.5" />
+              Exportar
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {exportadores.map(e => (
+              <DropdownMenuItem key={e.id} onClick={e.executar}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                {e.rotulo}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (onExportCSV || onExportPDF) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
@@ -237,7 +297,42 @@ export function DashboardFilterBar({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      )}
+      ))}
+    </div>
+
+    {/* Chips de drill da aba activa. Segunda linha, e não misturados nos
+        controlos: são efémeros e removíveis um a um, ao contrário do período. */}
+    {temChips && !isKiosk && (
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-dashed pt-2">
+        <span className="text-xs text-muted-foreground">Filtrando por:</span>
+        {chips!.map(c => (
+          <Badge
+            key={c.id}
+            variant="outline"
+            className="gap-1 border-flag-gold/40 bg-flag-gold/5 pr-1 text-xs font-normal text-flag-gold"
+          >
+            {c.rotulo}
+            <button
+              type="button"
+              aria-label={`Remover filtro ${c.rotulo}`}
+              onClick={c.remover}
+              className="rounded-full px-1 leading-none hover:bg-flag-gold/20"
+            >
+              ×
+            </button>
+          </Badge>
+        ))}
+        {onLimparChips && (
+          <Button
+            variant="ghost" size="sm"
+            className="ml-auto h-6 px-2 text-[11px]"
+            onClick={onLimparChips}
+          >
+            Limpar filtros
+          </Button>
+        )}
+      </div>
+    )}
     </div>
   );
 }
