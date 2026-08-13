@@ -87,10 +87,27 @@ export function DashboardFilterBar({
 
   const handleRangeSelect = (selected: DateRange | undefined) => {
     setRange(selected);
+    // Só fecha com as DUAS pontas escolhidas. Enquanto houver só `from`, o
+    // calendário fica aberto esperando a data final.
     if (selected?.from && selected?.to && onCustomRange) {
       onCustomRange(selected.from, selected.to);
       setCalendarOpen(false);
     }
+  };
+
+  /**
+   * Abrir o calendário zera a selecção.
+   *
+   * `range` nasce com o intervalo actual, que já tem `from` E `to`. O
+   * react-day-picker, ao receber um clique com um range completo em mãos,
+   * devolve na hora outro range completo — combinando a data nova com uma ponta
+   * antiga. O handler via as duas pontas preenchidas e fechava no primeiro
+   * clique, com um intervalo que a pessoa nunca escolheu. Começando vazio, o
+   * primeiro clique só define `from` e a janela espera o `to`.
+   */
+  const aoAbrirCalendario = (aberto: boolean) => {
+    setCalendarOpen(aberto);
+    if (aberto) setRange(undefined);
   };
 
   const isCustom = preset === 'custom';
@@ -131,7 +148,7 @@ export function DashboardFilterBar({
           ))}
 
           {onCustomRange && (
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <Popover open={calendarOpen} onOpenChange={aoAbrirCalendario}>
               <PopoverTrigger asChild>
                 <Button
                   variant={isCustom ? 'default' : 'ghost'}
@@ -168,7 +185,9 @@ export function DashboardFilterBar({
                 const value = v as FilterPreset;
                 if (value === 'custom') {
                   onPresetChange('custom');
-                  setCalendarOpen(true);
+                  // Pelo handler, não por setCalendarOpen: é ele que zera a
+                  // selecção anterior antes de a janela abrir.
+                  aoAbrirCalendario(true);
                   return;
                 }
                 onPresetChange(value);
@@ -187,7 +206,7 @@ export function DashboardFilterBar({
           )}
 
           {onCustomRange && (
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <Popover open={calendarOpen} onOpenChange={aoAbrirCalendario}>
               <PopoverTrigger asChild>
                 <Button
                   variant={isCustom ? 'default' : 'outline'}
