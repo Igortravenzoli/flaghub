@@ -104,8 +104,12 @@ export function TransbordoAcoesTab({ dias = 90 }: { dias?: number }) {
   const [modoSelecao, setModoSelecao] = useState(false);
 
   const todos = useMemo(() => elegiveisQ.data ?? [], [elegiveisQ.data]);
-  const classificados = useMemo(() => todos.filter(i => i.tem_tag), [todos]);
-  const pendentes = useMemo(() => todos.filter(i => !i.tem_tag), [todos]);
+  // `ja_migrado` separa registro de fila: a RPC devolve também o que JÁ saiu da
+  // sprint (TR-3, 16/08/2026) para o quadro não esvaziar depois do transbordo.
+  // Só `classificados` — quem tem a tag e continua na sprint — é payload de ação.
+  const classificados = useMemo(() => todos.filter(i => i.tem_tag && !i.ja_migrado), [todos]);
+  const jaMovidos = useMemo(() => todos.filter(i => i.ja_migrado), [todos]);
+  const pendentes = useMemo(() => todos.filter(i => !i.tem_tag && !i.ja_migrado), [todos]);
 
   const alternar = (id: number) => setSelecionados(s => {
     const n = new Set(s);
@@ -208,6 +212,11 @@ export function TransbordoAcoesTab({ dias = 90 }: { dias?: number }) {
             <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 border-emerald-500/30">
               {classificados.length} classificados
             </Badge>
+            {jaMovidos.length > 0 && (
+              <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground">
+                {jaMovidos.length} já movidos
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">

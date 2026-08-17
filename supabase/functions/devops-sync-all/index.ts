@@ -459,9 +459,29 @@ function computeHealthStatus(input: {
   return { health: 'verde', reasons: ['fluxo_saudavel'], bottleneckStage: null }
 }
 
-async function processLifecycleAndHealth(admin: any): Promise<{ processed: number; skippedTimeout: number }> {
+/**
+ * Recalcula pbi_lifecycle_summary + pbi_health_summary dos itens defasados.
+ *
+ * ── Por que a fila vem do banco e ORDENADA (16/08/2026) ────────────────────
+ * Antes, esta função baixava os ~2.274 PBIs com histórico, filtrava em memória
+ * quem mudou desde o último cálculo e processava em ordem INDEFINIDA até
+ * estourar 8s. O que sobrava era descartado — e voltava na mesma posição na
+ * rodada seguinte. Inanição pura: 144 rodadas/dia entregando 6 a 30 linhas, com
+ * 94 resumos defasados (11 há mais de 30 dias) e 33 itens sem linha nenhuma.
+ * Isso congelou a lista de transbordo (US 15485 invisível na S16), o
+ * sprint_migration_count e a saúde dos itens afetados.
+ *
+ * `rpc_lifecycle_refresh_candidates` devolve a fila filtrada e ordenada do mais
+ * defasado para o menos. Quem espera há mais tempo vai primeiro, sempre — é o
+ * que garante que todo item é recalculado em tempo finito.
+ */
+async function processLifecycleAndHealth(
+  admin: any,
+  opts: { maxMs?: number; limit?: number } = {},
+): Promise<{ processed: number; skippedTimeout: number; queued: number }> {
   const startedAt = Date.now()
-  const maxMs = 8000
+  const maxMs = opts.maxMs ?? 8000
+  const batchLimit = opts.limit ?? 200
 
   const [{ data: configRows, error: configErr }, { data: leadRows, error: leadErr }, { data: thresholdRows, error: thresholdErr }] = await Promise.all([
     admin
@@ -480,7 +500,7 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
 
   if (configErr || leadErr || thresholdErr) {
     console.error('[LifecycleHealth] Failed to load configs:', configErr?.message || leadErr?.message || thresholdErr?.message)
-    return { processed: 0, skippedTimeout: 0 }
+    return { processed: 0, skippedTimeout: 0, queued: 0 }
   }
 
   const stageConfig = (configRows || []) as StageConfigRow[]
@@ -502,32 +522,30 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
   // 01/07/2026, e a partir daí NENHUM bug novo ganhou linha (90 bugs criados em
   // julho, 5 com linha). A fotografia de sprint já não depende dessa tabela
   // para montar o escopo, mas health e lead-time dependem, e sem bug eles
-  // cobriam menos da metade do quadro.
-  // Limite subiu junto: o conjunto passou de ~1,2k para ~2,2k itens.
-  const { data: pbiItems, error: pbiErr } = await admin
-    .from('devops_work_items')
-    .select('id, work_item_type, state, iteration_path, assigned_to_unique, created_date, changed_date, custom_fields, iteration_history')
-    .in('work_item_type', ['Product Backlog Item', 'User Story', 'Bug'])
-    .limit(4000)
+  // cobriam menos da metade do quadro. O filtro de tipo vive na RPC.
+  const { data: candidateRows, error: candErr } = await admin
+    .rpc('rpc_lifecycle_refresh_candidates', { p_limit: batchLimit })
 
-  if (pbiErr) {
-    console.error('[LifecycleHealth] Failed to fetch PBIs:', pbiErr.message)
-    return { processed: 0, skippedTimeout: 0 }
+  if (candErr) {
+    console.error('[LifecycleHealth] Failed to fetch refresh queue:', candErr.message)
+    return { processed: 0, skippedTimeout: 0, queued: 0 }
   }
 
-  const pbiIds = (pbiItems || []).map((row: any) => row.id).filter(Boolean)
-  if (pbiIds.length === 0) return { processed: 0, skippedTimeout: 0 }
+  const candidates = (candidateRows || []) as any[]
+  // total_pendentes vem repetido em toda linha (window count da fila inteira)
+  const queued = Number(candidates[0]?.total_pendentes ?? 0)
 
-  const [{ data: summaryRows }, { data: queryRows }] = await Promise.all([
-    admin
-      .from('pbi_lifecycle_summary')
-      .select('work_item_id, computed_at')
-      .in('work_item_id', pbiIds),
-    admin
-      .from('devops_query_items_current')
-      .select('work_item_id, query_id')
-      .in('work_item_id', pbiIds),
-  ])
+  if (candidates.length === 0) {
+    console.log('[LifecycleHealth] Queue empty — every PBI summary is up to date')
+    return { processed: 0, skippedTimeout: 0, queued: 0 }
+  }
+
+  const pbiIds = candidates.map((row: any) => row.id).filter(Boolean)
+
+  const { data: queryRows } = await admin
+    .from('devops_query_items_current')
+    .select('work_item_id, query_id')
+    .in('work_item_id', pbiIds)
 
   const queryIds = [...new Set((queryRows || []).map((row: any) => row.query_id).filter(Boolean))]
   let queriesById = new Map<string, string>()
@@ -548,21 +566,7 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
     if (sector) sectorByWorkItem.set(row.work_item_id, sector)
   }
 
-  const summaryComputedAt = new Map<number, string>()
-  for (const row of summaryRows || []) {
-    summaryComputedAt.set(row.work_item_id, row.computed_at)
-  }
-
-  const candidates = (pbiItems || []).filter((item: any) =>
-    shouldRefreshByChange(item.changed_date, summaryComputedAt.get(item.id))
-  )
-
-  if (candidates.length === 0) {
-    console.log('[LifecycleHealth] No PBIs changed since last summary')
-    return { processed: 0, skippedTimeout: 0 }
-  }
-
-  console.log(`[LifecycleHealth] Processing ${candidates.length} changed PBIs`)
+  console.log(`[LifecycleHealth] Queue: ${queued} pending, processing up to ${candidates.length} (oldest first)`)
 
   let processed = 0
   let skippedTimeout = 0
@@ -666,21 +670,14 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
       }
     }
 
-    // Compute QA return count from state_history if available
+    // QA return: state_history já vem na fila (era um SELECT por item — a maior
+    // fatia do custo por iteração, e o que fazia o orçamento de tempo estourar
+    // depois de meia dúzia de itens)
     let qaReturnCount = 0
-    try {
-      const { data: wiRow } = await admin
-        .from('devops_work_items')
-        .select('state_history')
-        .eq('id', item.id)
-        .maybeSingle()
-      const stateHistory = (wiRow?.state_history as StateChange[] | null) || []
-      if (stateHistory.length > 0) {
-        qaReturnCount = countQaReturns(stateHistory)
-      } else {
-        qaReturnCount = Number(customFields['qa_retorno_count'] || 0)
-      }
-    } catch {
+    const stateHistory = (item.state_history as StateChange[] | null) || []
+    if (stateHistory.length > 0) {
+      qaReturnCount = countQaReturns(stateHistory)
+    } else {
       qaReturnCount = Number(customFields['qa_retorno_count'] || 0)
     }
     const nowIso = new Date().toISOString()
@@ -759,8 +756,12 @@ async function processLifecycleAndHealth(admin: any): Promise<{ processed: numbe
     processed++
   }
 
-  console.log(`[LifecycleHealth] Done: ${processed} processed, ${skippedTimeout} skipped by time budget`)
-  return { processed, skippedTimeout }
+  const remaining = Math.max(queued - processed, 0)
+  console.log(
+    `[LifecycleHealth] Done: ${processed} processed, ${skippedTimeout} skipped by time budget, ` +
+    `${remaining} still queued`,
+  )
+  return { processed, skippedTimeout, queued: remaining }
 }
 
 interface StateChange {
@@ -952,6 +953,26 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── Modo dedicado: só o recálculo de ciclo de vida ──────────────────────
+    // Cron `sync-devops-lifecycle` (*/10, defasado 5 min) chama com
+    // {"only":"lifecycle"}. O passo 4 dividia a execução de background com os
+    // passos 1–3 (sync de todas as queries + histórico de iteração + filhas de
+    // ~2.000 PBIs) e sobrava sem tempo: 144 rodadas/dia entregavam 6 a 30
+    // linhas, deixando 127 itens congelados em 16/08/2026. Aqui ele roda
+    // sozinho, com 60s de orçamento e lote de 400.
+    const body = await req.json().catch(() => ({} as Record<string, unknown>))
+    if ((body as any)?.only === 'lifecycle') {
+      // @ts-ignore - EdgeRuntime.waitUntil available in Supabase Edge Functions
+      EdgeRuntime.waitUntil(
+        processLifecycleAndHealth(getSupabaseAdmin(), { maxMs: 60_000, limit: 400 })
+          .then((r) => console.log(`[DevOpsSyncAll:Lifecycle] ${JSON.stringify(r)}`))
+          .catch((err) => console.error('[DevOpsSyncAll:Lifecycle] Fatal:', err)),
+      )
+      return new Response(JSON.stringify({ success: true, mode: 'lifecycle', message: 'Lifecycle refresh started in background' }), {
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
+      })
+    }
+
     // ── Step 1: Sync all active queries ──
     const { data: queries, error: qErr } = await admin
       .from('devops_queries')
@@ -1035,7 +1056,7 @@ serve(async (req: Request) => {
 
       let childrenResult = { fetched: 0, upserted: 0 }
       let iterHistory = { processed: 0, withChanges: 0 }
-      let lifecycleHealth = { processed: 0, skippedTimeout: 0 }
+      let lifecycleHealth = { processed: 0, skippedTimeout: 0, queued: 0 }
       let qaResult = {
         attempted: false,
         ok: false,

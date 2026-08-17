@@ -53,6 +53,12 @@ export interface TransbordoElegivel {
   web_url: string | null;
   tasks_filhas: number;
   migracoes: number;
+  /**
+   * Já saiu da sprint (transbordado pelo botão ou movido à mão no DevOps).
+   * Continua na lista como REGISTRO do que transbordou — nunca como fila de
+   * trabalho. Nada de ação (classificar/mover) deve incluir esses itens.
+   */
+  ja_migrado: boolean;
 }
 
 export function useTransbordoElegiveis(sprint: string | null | undefined) {
