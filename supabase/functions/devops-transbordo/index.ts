@@ -212,11 +212,18 @@ serve(async (req) => {
     type Elegivel = {
       work_item_id: number; work_item_type: string; title: string; state: string
       tags: string; tem_tag: boolean; iteration_path: string; tasks_filhas: number
+      ja_migrado: boolean
     }
     let alvos = (elegiveis ?? []) as Elegivel[]
 
     const pedidos = (body.workItemIds as number[] | undefined)?.map(Number)
     if (pedidos?.length) alvos = alvos.filter(e => pedidos.includes(e.work_item_id))
+
+    // A lista de elegíveis inclui o que JÁ saiu da sprint — é o registro do que
+    // transbordou (TR-3, 16/08/2026), não fila de trabalho. Agir sobre ele
+    // moveria de novo quem já está no destino, criando revisão à toa no Azure e
+    // inflando os contadores de migração, que não têm reversão.
+    alvos = alvos.filter(e => !e.ja_migrado)
 
     // classify → só quem AINDA NÃO tem a tag. migrate → só quem JÁ tem.
     alvos = mode === 'classify' ? alvos.filter(e => !e.tem_tag) : alvos.filter(e => e.tem_tag)
