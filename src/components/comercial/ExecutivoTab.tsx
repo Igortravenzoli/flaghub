@@ -12,7 +12,7 @@ import { useComercialFunil } from '@/hooks/useComercialFunil';
 import { useComercialProdutos } from '@/hooks/useComercialProdutos';
 import { resolvePeriodo, ymLabel } from '@/lib/comercialPeriodo';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
-import { FunnelViz } from '@/components/comercial/FunilVendasTab';
+import { FunnelBands } from '@/components/comercial/FunnelBands';
 
 const PT_MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -381,7 +381,7 @@ export function ExecutivoTab({
       ) : (
         <>
           {funilFallbackNota}
-          <FunnelViz etapas={funilSdr} compact />
+          <FunnelBands etapas={funilSdr} animacaoKey={funilMesLabel} />
         </>
       )}
     </BlocoCard>
@@ -394,7 +394,7 @@ export function ExecutivoTab({
       ) : (
         <>
           {funilFallbackNota}
-          <FunnelViz etapas={funilComercial} compact />
+          <FunnelBands etapas={funilComercial} animacaoKey={funilMesLabel} />
         </>
       )}
     </BlocoCard>
@@ -457,7 +457,10 @@ export function ExecutivoTab({
   );
 
   return (
-    <div className="space-y-4">
+    // No telão a view precisa ser `h-full` + flex para o KioskFit em modo fill
+    // esticar os cards até a borda da tela (o Comercial entrou no FILL_READY em
+    // 18/08/2026, junto com as páginas de funil).
+    <div className={tvMode ? 'h-full flex flex-col gap-4 overflow-hidden' : 'space-y-4'}>
       {/* TV-2: no telão o período vira badge de destaque — a 3–5 m um <p> de
           text-sm é ilegível, e o telão não tem quem pergunte "de que mês é isso?". */}
       {tvMode ? (
@@ -475,40 +478,15 @@ export function ExecutivoTab({
       )}
 
       {tvMode ? (
-        // Modo TV: sem Receita realizada · grade nivelada 3 colunas — o card
-        // único de funis (direita) dita a altura; as 2 linhas de cada coluna
-        // esquerda/central esticam para alinhar sem desnível.
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_1.05fr] gap-4 items-stretch">
-          <div className="grid grid-rows-2 gap-4">
-            {carteiraMovimentoCard}
-            {produtosCard}
-          </div>
-          <div className="grid grid-rows-2 gap-4">
-            {satisfacaoCard}
-            {alertasCard}
-          </div>
-          <BlocoCard icon={FilterIcon} titulo="Funil SDR (Geral)" periodo={funilMesLabel}>
-            {funilLoading ? (
-              <p className="text-sm text-muted-foreground">Carregando…</p>
-            ) : (
-              <>
-                {funilFallbackNota}
-                <div className="px-1">
-                  <FunnelViz etapas={funilSdr} compact />
-                </div>
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="h-px flex-1 bg-border" />
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Funil Comercial (Geral)
-                  </span>
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-                <div className="px-1">
-                  <FunnelViz etapas={funilComercial} compact />
-                </div>
-              </>
-            )}
-          </BlocoCard>
+        // Modo TV: sem Receita realizada (decisão de não exibir valor monetário
+        // no telão) e SEM os funis — desde 18/08/2026 eles têm páginas próprias
+        // na rotação (`ComercialTvView`). Aqui eles dividiam uma coluna em modo
+        // compacto e as quantidades eram ilegíveis a 4 m.
+        <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-2 gap-4">
+          {carteiraMovimentoCard}
+          {produtosCard}
+          {satisfacaoCard}
+          {alertasCard}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

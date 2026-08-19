@@ -7,15 +7,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
+import { FunnelBands } from '@/components/comercial/FunnelBands';
+import { funnelColor } from '@/lib/funilCores';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import {
-  Filter, Pencil, Trash2, Plus, Loader2, BarChart3, Info,
+  Filter, Pencil, Trash2, Plus, Loader2, BarChart3, Info, CalendarDays,
   Target, Search, UserCheck, PhoneCall, MessageSquare, BadgeCheck, ArrowRightLeft,
   Inbox, ClipboardList, MonitorPlay, FileText, Handshake, Trophy, CircleDot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useComercialFunil, FunilEtapa, FunilKey } from '@/hooks/useComercialFunil';
-import { mesesDoTrimestre, qKeyDoMes, qLabel, ymLabel, ymNow } from '@/lib/comercialPeriodo';
+import { visoesDoTrimestre, ymLabel, ymNow, type VisaoTrimestre } from '@/lib/comercialPeriodo';
 
 /** Registro de ícones profissionais por chave (persistida em comercial_funil.icone). */
 export const FUNIL_ICONS: Record<string, { icon: React.ComponentType<{ className?: string }>; label: string }> = {
@@ -40,125 +42,10 @@ export function EtapaIcon({ icone, className }: { icone: string | null; classNam
   return <Icon className={className} />;
 }
 
-/** Paleta inspirada no modelo: topo quente → base fria (7 posições). */
-const FUNNEL_COLORS = ['#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0284c7', '#4f46e5', '#9333ea'];
-
-export function funnelColor(index: number, total: number): string {
-  if (total <= 1) return FUNNEL_COLORS[0];
-  const pos = Math.round((index / (total - 1)) * (FUNNEL_COLORS.length - 1));
-  return FUNNEL_COLORS[pos];
-}
-
-function shade(hex: string, factor: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, Math.round(((n >> 16) & 255) * factor));
-  const g = Math.min(255, Math.round(((n >> 8) & 255) * factor));
-  const b = Math.min(255, Math.round((n & 255) * factor));
-  return `rgb(${r},${g},${b})`;
-}
-
-interface FunnelVizProps {
-  etapas: FunilEtapa[];
-  compact?: boolean;
-}
-
-/** Funil 3D estilizado em perspectiva (SVG com sombreamento e aros elípticos). */
-export function FunnelViz({ etapas, compact = false }: FunnelVizProps) {
-  const total = etapas.length;
-  const uid = useMemo(() => Math.random().toString(36).slice(2, 8), []);
-  if (total === 0) {
-    return <p className="text-xs text-muted-foreground py-4 text-center">Nenhuma etapa cadastrada.</p>;
-  }
-
-  const W = 400;
-  const cx = W / 2;
-  const bandH = compact ? 30 : 48;
-  const gap = compact ? 5 : 8;
-  const maxRx = 186;
-  const minRx = 78;
-  const ryF = 0.13;
-  const fontSize = compact ? 12 : 14;
-  const topQty = etapas[0]?.quantidade ?? 0;
-  const H = 14 + total * (bandH + gap) + (compact ? 14 : 24);
-  const rxAt = (i: number) => maxRx - ((maxRx - minRx) * i) / total;
-
-  let y = 12;
-  const bands = etapas.map((e, i) => {
-    const color = funnelColor(i, total);
-    const rxT = rxAt(i);
-    const rxB = rxAt(i + 1);
-    const ryT = Math.max(compact ? 4 : 6, rxT * ryF);
-    const ryB = Math.max(compact ? 3 : 5, rxB * ryF);
-    const yT = y;
-    const yB = y + bandH;
-    y = yB + gap;
-    const pct = topQty > 0 ? Math.round((e.quantidade / topQty) * 100) : null;
-    const gid = `fnl-${uid}-${i}`;
-    return { e, i, color, rxT, rxB, ryT, ryB, yT, yB, pct, gid };
-  });
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" role="img" aria-label="Funil de vendas">
-      <defs>
-        {bands.map(({ color, gid }) => (
-          <linearGradient key={gid} id={gid} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor={shade(color, 0.55)} />
-            <stop offset="0.28" stopColor={shade(color, 1.22)} />
-            <stop offset="0.55" stopColor={color} />
-            <stop offset="1" stopColor={shade(color, 0.5)} />
-          </linearGradient>
-        ))}
-      </defs>
-      <style>{`
-        @keyframes fnl-band-in {
-          from { opacity: 0; transform: translateY(-8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-      <ellipse cx={cx} cy={y + (compact ? 2 : 6)} rx={minRx * 1.15} ry={compact ? 6 : 10} fill="#000" opacity="0.14" />
-      {bands.map(({ e, i, color, rxT, rxB, ryT, ryB, yT, yB, gid }) => (
-        <g
-          key={`body-${e.id}`}
-          style={{ animation: `fnl-band-in 0.45s ease-out ${i * 0.18}s both` }}
-        >
-          <path
-            d={`M ${cx - rxT} ${yT} A ${rxT} ${ryT} 0 0 0 ${cx + rxT} ${yT} L ${cx + rxB} ${yB} A ${rxB} ${ryB} 0 0 1 ${cx - rxB} ${yB} Z`}
-            fill={`url(#${gid})`}
-          />
-          {i === 0 && (
-            <ellipse cx={cx} cy={yT} rx={rxT} ry={ryT} fill={shade(color, 0.72)} />
-          )}
-        </g>
-      ))}
-      {/* Rótulos por último, acima de qualquer forma — cada um centralizado
-          na face frontal da própria faixa (entre os arcos superior e inferior) */}
-      {bands.map(({ e, i, yT, yB, ryT, ryB, pct }) => (
-        <text
-          key={`label-${e.id}`}
-          x={cx}
-          y={(yT + ryT + yB + ryB) / 2 + fontSize * 0.36}
-          textAnchor="middle"
-          fill="#fff"
-          fontSize={fontSize}
-          fontWeight={700}
-          style={{
-            paintOrder: 'stroke',
-            stroke: 'rgba(0,0,0,0.55)',
-            strokeWidth: 3.5,
-            strokeLinejoin: 'round',
-            animation: `fnl-band-in 0.45s ease-out ${i * 0.18 + 0.1}s both`,
-          }}
-        >
-          {e.etapa} · {e.quantidade}{pct !== null && i > 0 ? ` (${pct}%)` : ''}
-        </text>
-      ))}
-    </svg>
-  );
-}
-
 const FUNIS: { key: FunilKey; titulo: string; subtitulo: string }[] = [
-  { key: 'sdr', titulo: 'SDR (Geral)', subtitulo: 'Da captação do lead à transferência para o Comercial' },
-  { key: 'comercial', titulo: 'Comercial (Geral)', subtitulo: 'Da oportunidade recebida ao fechamento' },
+  // Sem nome de pessoa no título — o funil é do processo, não de quem opera.
+  { key: 'sdr', titulo: 'Funil SDR', subtitulo: 'Da captação do lead à transferência para o Comercial' },
+  { key: 'comercial', titulo: 'Funil Comercial', subtitulo: 'Da oportunidade recebida ao fechamento' },
 ];
 
 interface EtapaFormState {
@@ -174,16 +61,37 @@ interface Props {
   canEdit?: boolean;
 }
 
-type FunilView = 'mes' | 'trimestre';
 type HistView = 'mensal' | 'trimestral' | 'acumulado';
 
+/** Visão de um mês fora do trimestre vigente, escolhido no seletor "Outro mês". */
+function visaoAvulsa(ym: string): VisaoTrimestre {
+  return { key: ym, label: ymLabel(ym), labelCurto: ymLabel(ym), meses: [ym], tipo: 'mes' };
+}
+
 export default function FunilVendasTab({ canEdit = false }: Props) {
-  const [view, setView] = useState<FunilView>('mes');
-  const [mesSel, setMesSel] = useState<string>(ymNow());
-  // Trimestre acompanha o mês selecionado — trocar de visão nunca "pula" de período.
-  const qSel = qKeyDoMes(mesSel);
-  const escopo = view === 'mes' ? [mesSel] : mesesDoTrimestre(qSel);
-  const escopoLabel = view === 'mes' ? ymLabel(mesSel) : qLabel(qSel);
+  // Filtro do modelo da reunião quinzenal (18/08/2026): uma aba por mês já
+  // iniciado do trimestre + o acumulado. Substituiu o par "Mês/Trimestre" +
+  // seletor de mês, que exigia duas interações para responder "e no trimestre?".
+  // Recalculado a cada render de propósito (é uma varredura de 3 meses): com
+  // `useMemo(..., [])` a lista congelava no mount e uma aba aberta na virada do
+  // trimestre continuaria oferecendo o trimestre velho até dar F5.
+  const visoes = visoesDoTrimestre();
+  const [visaoKey, setVisaoKey] = useState<string>(() => {
+    const doMesCorrente = visoes.find(v => v.tipo === 'mes' && v.meses[0] === ymNow());
+    return (doMesCorrente ?? visoes[0]).key;
+  });
+  /** Mês fora do trimestre — o lançamento retroativo continua possível. */
+  const [mesAvulso, setMesAvulso] = useState<string | null>(null);
+
+  // Busca por identidade, não por índice: na virada do trimestre a chave
+  // selecionada some da lista e a aba cai no primeiro mês do trimestre novo.
+  const visao = mesAvulso
+    ? visaoAvulsa(mesAvulso)
+    : visoes.find(v => v.key === visaoKey) ?? visoes[0];
+
+  const escopo = visao.meses;
+  /** Lançamento é sempre mensal — no acumulado a edição fica desligada. */
+  const mesSel = visao.tipo === 'mes' ? visao.meses[0] : null;
 
   const {
     sdr, comercial, historico, historicoTrimestral,
@@ -204,6 +112,12 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
     return historico;
   }, [histView, historico, historicoTrimestral]);
 
+  function selecionarVisao(key: string) {
+    setMesAvulso(null);
+    setVisaoKey(key);
+    setManaging(null);
+  }
+
   const openCreate = (funil: FunilKey) => {
     const list = byFunil[funil];
     setForm({ funil, etapa: '', icone: '', ordem: (list[list.length - 1]?.ordem ?? 0) + 1, quantidade: 0 });
@@ -215,7 +129,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
 
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-    if (!form || !form.etapa.trim()) return;
+    if (!form || !form.etapa.trim() || !mesSel) return;
     setSaving(true);
     try {
       let etapaId = form.id;
@@ -257,6 +171,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
   };
 
   const handleQtyBlur = async (e: FunilEtapa, value: string) => {
+    if (!mesSel) return;
     const qty = Math.max(0, parseInt(value, 10) || 0);
     if (qty === e.quantidade) return;
     try {
@@ -271,43 +186,50 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-xl font-bold">Funil de Vendas</h2>
           <p className="text-sm text-muted-foreground">
             Lançamento sempre mensal — o trimestre é a <strong>soma</strong> dos meses, não um lançamento à parte.
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <ToggleGroup
-            type="single"
-            value={view}
-            onValueChange={(v) => v && setView(v as FunilView)}
-            className="bg-muted/50 rounded-md p-0.5"
-          >
-            <ToggleGroupItem value="mes" className="h-7 px-3 text-xs">Mês</ToggleGroupItem>
-            <ToggleGroupItem value="trimestre" className="h-7 px-3 text-xs">Trimestre</ToggleGroupItem>
-          </ToggleGroup>
-          <div className="flex items-center gap-2">
-            <label htmlFor="funil-mes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {view === 'mes' ? 'Mês' : 'Trimestre'}
-            </label>
+        <div className="flex items-center gap-2 flex-wrap">
+          {visoes.map(v => {
+            const ativa = !mesAvulso && v.key === visao.key;
+            return (
+              <Button
+                key={v.key}
+                type="button"
+                size="sm"
+                variant={ativa ? 'default' : 'outline'}
+                className="h-8 rounded-full px-4 text-xs"
+                aria-pressed={ativa}
+                onClick={() => selecionarVisao(v.key)}
+              >
+                {v.label}
+              </Button>
+            );
+          })}
+          <div className="flex items-center gap-1.5 pl-1">
+            <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+            <label htmlFor="funil-mes-avulso" className="sr-only">Outro mês</label>
             <Input
-              id="funil-mes"
+              id="funil-mes-avulso"
               type="month"
-              value={mesSel}
-              onChange={(e) => e.target.value && setMesSel(e.target.value)}
-              className="h-8 w-40 text-xs"
+              value={mesAvulso ?? ''}
+              onChange={(e) => { setMesAvulso(e.target.value || null); setManaging(null); }}
+              className="h-8 w-36 text-xs"
+              title="Outro mês — para consultar ou lançar fora do trimestre vigente"
             />
           </div>
         </div>
       </div>
 
-      {view === 'trimestre' && (
+      {visao.tipo === 'acumulado' && (
         <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <Info className="h-3.5 w-3.5 flex-shrink-0" />
-          {qLabel(qSel)} — soma de {mesesDoTrimestre(qSel).map(ymLabel).join(' + ')}.
-          Para lançar quantitativos, volte para a visão <strong>Mês</strong>.
+          {visao.label} — soma de {visao.meses.map(ymLabel).join(' + ')}.
+          Para lançar quantitativos, escolha um <strong>mês</strong>.
         </p>
       )}
 
@@ -333,14 +255,14 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="text-[10px] whitespace-nowrap font-mono">
-                    {escopoLabel}
+                    {visao.labelCurto}
                   </Badge>
                   {conversao !== null && (
                     <Badge variant="outline" className="text-[10px] whitespace-nowrap">
                       conversão {conversao}%
                     </Badge>
                   )}
-                  {canEdit && view === 'mes' && (
+                  {canEdit && mesSel && (
                     <Button
                       size="sm"
                       variant={isManaging ? 'default' : 'outline'}
@@ -359,12 +281,10 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                   <Loader2 className="h-5 w-5 animate-spin" />
                 </div>
               ) : (
-                <div className="px-2">
-                  <FunnelViz etapas={etapas} />
-                </div>
+                <FunnelBands etapas={etapas} animacaoKey={visao.key} />
               )}
 
-              {canEdit && isManaging && view === 'mes' && (
+              {canEdit && isManaging && mesSel && (
                 <div className="border-t pt-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -434,7 +354,10 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
           >
             <ToggleGroupItem value="mensal" className="h-7 px-3 text-xs">Mensal</ToggleGroupItem>
             <ToggleGroupItem value="trimestral" className="h-7 px-3 text-xs">Trimestral</ToggleGroupItem>
-            <ToggleGroupItem value="acumulado" className="h-7 px-3 text-xs">Acumulado</ToggleGroupItem>
+            {/* "no ano" no rótulo, não só no subtítulo: desde que o filtro do topo
+                ganhou a aba "Acumulado" (do trimestre), um "Acumulado" solto aqui
+                virou o MESMO nome para duas janelas diferentes na mesma tela. */}
+            <ToggleGroupItem value="acumulado" className="h-7 px-3 text-xs">Acumulado no ano</ToggleGroupItem>
           </ToggleGroup>
         </div>
         {isLoading ? (
@@ -443,7 +366,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
           </div>
         ) : histData.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">
-            Sem lançamentos ainda — lance quantitativos na visão Mês para o histórico aparecer.
+            Sem lançamentos ainda — lance quantitativos em um mês para o histórico aparecer.
           </p>
         ) : (
           <div className="h-[220px]">
@@ -470,7 +393,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
           <form onSubmit={handleSubmit} className="space-y-4">
             <DialogHeader>
               <DialogTitle>
-                {form?.id ? 'Editar categoria' : 'Nova categoria'} · {form?.funil === 'sdr' ? 'SDR (Geral)' : 'Comercial (Geral)'}
+                {form?.id ? 'Editar categoria' : 'Nova categoria'} · {form?.funil === 'sdr' ? 'Funil SDR' : 'Funil Comercial'}
               </DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-1 gap-3">
@@ -516,7 +439,7 @@ export default function FunilVendasTab({ canEdit = false }: Props) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1">Qtd ({ymLabel(mesSel)})</label>
+                  <label className="block text-xs font-semibold mb-1">Qtd ({mesSel ? ymLabel(mesSel) : '—'})</label>
                   <Input
                     type="number"
                     min={0}
