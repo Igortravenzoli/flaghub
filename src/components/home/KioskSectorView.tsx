@@ -31,8 +31,13 @@ const DESIGN_WIDTH = 1320;
  *
  * 07/08/2026: 'helpdesk' (Customer Service no telão) entrou com a `CsTvView`
  * — 2 páginas via sequência única do kiosk, mock MOCK_TV_CS_07-08 (Direção A).
+ *
+ * 18/08/2026: 'comercial' entrou com a `ComercialTvView` (páginas de funil) —
+ * as DUAS páginas do setor foram adaptadas: a `ComercialTvView` nasceu h-full e
+ * a `ExecutivoTab` em `tvMode` passou a ser h-full + flex. Adaptar só uma delas
+ * cortaria a outra no telão.
  */
-const FILL_READY = new Set(['fabrica', 'qualidade', 'infraestrutura', 'helpdesk']);
+const FILL_READY = new Set(['fabrica', 'qualidade', 'infraestrutura', 'helpdesk', 'comercial']);
 
 /**
  * Escala o conteúdo para ocupar TODA a área do modo TV, em qualquer proporção

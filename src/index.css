@@ -288,3 +288,37 @@
     }
   }
 }
+
+/* -- Funil de vendas: cascata das faixas -- */
+@layer utilities {
+  /*
+   * As faixas entram do topo para a base, na mesma ordem em que o funil e lido.
+   * O funil 3D antigo tinha isso; a faixa chapada nasceu sem, e sem a cascata a
+   * tela do telao "aparece pronta" e nao guia o olho para lugar nenhum.
+   *
+   * O atraso vem de --i (indice da etapa), setado pelo componente: e o unico
+   * jeito de escalonar N faixas sem gerar uma classe por posicao.
+   */
+  .funil-band-enter {
+    animation: funilBandIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--i, 0) * 80ms);
+  }
+
+  @keyframes funilBandIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px) scaleX(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scaleX(1);
+    }
+  }
+
+  /* Acessibilidade: quem pede menos movimento recebe a tela pronta, sem cascata. */
+  @media (prefers-reduced-motion: reduce) {
+    .funil-band-enter {
+      animation: none;
+    }
+  }
+}

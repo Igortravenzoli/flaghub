@@ -134,6 +134,29 @@ export function useComercialFunil(escopo?: string | string[]) {
   const sdr = etapas.filter(e => e.funil === 'sdr');
   const comercial = etapas.filter(e => e.funil === 'comercial');
 
+  /**
+   * Etapas somadas num recorte arbitrário de meses, **sem o fallback** aplicado
+   * ao escopo principal.
+   *
+   * Existe para a faixa de KPIs do telão comparar jul × ago × acumulado numa
+   * mesma tela: chamar o hook uma vez por mês daria um número variável de hooks
+   * (o trimestre ganha meses ao longo do tempo) e quebraria a ordem dos hooks.
+   * Aqui não há query nova — só uma varredura dos lançamentos já em cache.
+   */
+  const etapasDe = (recorte: string[]): { sdr: FunilEtapa[]; comercial: FunilEtapa[] } => {
+    const set = new Set(recorte);
+    const qty = new Map<string, number>();
+    for (const l of lancamentos) {
+      if (!set.has(l.mes.slice(0, 7))) continue;
+      qty.set(l.etapa_id, (qty.get(l.etapa_id) ?? 0) + l.quantidade);
+    }
+    const lista: FunilEtapa[] = catalog.map(e => ({ ...e, quantidade: qty.get(e.id) ?? 0 }));
+    return {
+      sdr: lista.filter(e => e.funil === 'sdr'),
+      comercial: lista.filter(e => e.funil === 'comercial'),
+    };
+  };
+
   // Histórico: total por funil × mês (e por trimestre), com acumulado no ano
   const funilByEtapa = new Map(catalog.map(e => [e.id, e.funil]));
   const histMap = new Map<string, { sdr: number; comercial: number }>();
@@ -224,6 +247,8 @@ export function useComercialFunil(escopo?: string | string[]) {
     etapas,
     sdr,
     comercial,
+    /** Soma de um recorte arbitrário de meses, sem fallback — ver definição. */
+    etapasDe,
     historico,
     historicoTrimestral,
     mesesComDados,

@@ -11,6 +11,11 @@
 
 export const PT_MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'] as const;
 
+export const PT_MESES_LONGOS = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+] as const;
+
 /** Mês corrente no formato 'YYYY-MM'. */
 export function ymNow(): string {
   return ymOf(new Date());
@@ -51,6 +56,18 @@ export function qLabel(qKey: string, comMeses = true): string {
   if (!comMeses) return `Q${q} ${y}`;
   const start = (parseInt(q, 10) - 1) * 3;
   return `Q${q} ${y} · ${PT_MESES[start]}–${PT_MESES[start + 2]}`;
+}
+
+/** '2026-01' → '2025-12' */
+export function ymAnterior(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
+/** '2026-Q1' → '2025-Q4' */
+export function qKeyAnterior(qKey: string): string {
+  const [y, q] = qKey.split('-Q').map(Number);
+  return q === 1 ? `${y - 1}-Q4` : `${y}-Q${q - 1}`;
 }
 
 /** Lista de meses 'YYYY-MM' de `from` até `to`, inclusive. */
@@ -109,6 +126,71 @@ export function resolvePeriodo(dateFrom?: Date, dateTo?: Date): PeriodoComercial
 
   const l = `${ymLabel(meses[0])} – ${ymLabel(meses[meses.length - 1])}`;
   return { meses, trimestres, granularidade: 'multi', label: l, labelCurto: l };
+}
+
+/**
+ * Uma visão do filtro do funil: um mês do trimestre ou o acumulado dele.
+ *
+ * É o "modelo reutilizável para as 3 visões" do material da reunião quinzenal:
+ * na mesa cada visão é uma aba clicável; no telão cada visão é uma página da
+ * rotação (não há operador para clicar num filtro).
+ */
+export interface VisaoTrimestre {
+  /** '2026-07' para mês · '2026-Q3' para o acumulado. */
+  key: string;
+  /**
+   * Rótulo da aba: 'Julho' · 'Acumulado'.
+   *
+   * O acumulado NÃO carrega o trimestre no nome. Qual trimestre está no ar já
+   * está no selo do topo da tela ('Q3 2026 · jul–set'), que sai do calendário;
+   * repetir "Q3" na aba só cria mais um lugar para envelhecer na virada do Q4.
+   */
+  label: string;
+  /** Rótulo curto para selo/badge: 'jul/26' · 'Q3 2026'. */
+  labelCurto: string;
+  /** Meses cobertos — o que vai para `useComercialFunil`. */
+  meses: string[];
+  tipo: 'mes' | 'acumulado';
+}
+
+/**
+ * Visões do trimestre vigente: uma por mês JÁ INICIADO, mais o acumulado.
+ *
+ * Em ago/2026 (Q3) devolve Julho · Agosto · Acumulado Q3 — exatamente o que o
+ * modelo pede. Em setembro entra Setembro sozinho; em janeiro (Q1, mês 1) sai
+ * só Janeiro. A lista sai do calendário, nunca de constante no código.
+ *
+ * O acumulado só aparece com 2+ meses: no primeiro mês do trimestre ele seria
+ * uma cópia idêntica da aba do mês — aba que não muda nada é ruído no telão.
+ */
+export function visoesDoTrimestre(ref: Date = new Date()): VisaoTrimestre[] {
+  const qKey = qKeyDoMes(ymOf(ref));
+  const doTrimestre = mesesDoTrimestre(qKey);
+  const atual = ymOf(ref);
+  // Guarda-corpo: `ref` sempre cai dentro do próprio trimestre, então o filtro
+  // nunca devolve vazio — mas se devolvesse, o primeiro mês segura a tela.
+  const iniciados = doTrimestre.filter(m => m <= atual);
+  const meses = iniciados.length > 0 ? iniciados : [doTrimestre[0]];
+
+  const visoes: VisaoTrimestre[] = meses.map(m => ({
+    key: m,
+    label: PT_MESES_LONGOS[parseInt(m.split('-')[1], 10) - 1],
+    labelCurto: ymLabel(m),
+    meses: [m],
+    tipo: 'mes',
+  }));
+
+  if (meses.length > 1) {
+    visoes.push({
+      key: qKey,
+      label: 'Acumulado',
+      labelCurto: qLabel(qKey, false),
+      meses,
+      tipo: 'acumulado',
+    });
+  }
+
+  return visoes;
 }
 
 /** Trimestre vigente — usado pelo modo TV (escopo fixo, sem operador no telão). */
