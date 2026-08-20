@@ -57,7 +57,7 @@ export function FunnelBands({ etapas, variante = 'desk', textoVazio, animacaoKey
       // `key` remonta as faixas quando o recorte muda — é o que faz a cascata
       // rodar de novo em vez de só na primeira montagem.
       key={animacaoKey}
-      className={`flex flex-col ${tv ? 'flex-1 min-h-0 gap-[7px]' : 'gap-1.5'}`}
+      className={`flex flex-col ${tv ? 'flex-1 min-h-0 gap-[5px]' : 'gap-1.5'}`}
       role="list"
       aria-label="Etapas do funil"
     >
@@ -73,26 +73,30 @@ export function FunnelBands({ etapas, variante = 'desk', textoVazio, animacaoKey
           >
             <div
               className={`funil-band-enter flex items-center text-white ${
-                tv ? 'h-full min-h-[38px] px-6' : 'h-10 px-4'
+                // min-h baixo de propósito: no modo fill o KioskFit entrega a
+                // altura REAL da tela dividida pela escala, então um telão
+                // ultrawide (21:9) dá ~557 de canvas em vez de 742. Com 32px
+                // aqui, as 6 faixas estouravam o card nesse formato.
+                tv ? 'h-full min-h-[24px] px-5' : 'h-10 px-4'
               }`}
               style={{
                 width: `${largura}%`,
                 background: `linear-gradient(90deg, ${shade(cor, 0.62)} 0%, ${shade(cor, 1.18)} 26%, ${cor} 58%, ${shade(cor, 0.58)} 100%)`,
-                clipPath: `polygon(0 0, 100% 0, calc(100% - ${tv ? 13 : 9}px) 100%, ${tv ? 13 : 9}px 100%)`,
+                clipPath: `polygon(0 0, 100% 0, calc(100% - ${tv ? 11 : 9}px) 100%, ${tv ? 11 : 9}px 100%)`,
                 // Posição na cascata — o CSS converte em animation-delay.
                 '--i': i,
               } as React.CSSProperties}
             >
               <span
                 className={`flex items-center justify-center rounded-full border border-white/70 font-mono font-bold flex-shrink-0 ${
-                  tv ? 'h-[23px] w-[23px] text-[12.5px]' : 'h-5 w-5 text-[10px]'
+                  tv ? 'h-[19px] w-[19px] text-[11px]' : 'h-5 w-5 text-[10px]'
                 }`}
                 style={{ textShadow: '0 1px 2px rgba(0,0,0,.5)' }}
               >
                 {i + 1}
               </span>
               <span
-                className={`flex-1 text-center font-bold truncate px-2 ${tv ? 'text-[17px]' : 'text-xs'}`}
+                className={`flex-1 text-center font-bold truncate px-2 ${tv ? 'text-[15px]' : 'text-xs'}`}
                 style={{ textShadow: '0 1px 3px rgba(0,0,0,.55)' }}
                 title={e.etapa}
               >
@@ -102,12 +106,12 @@ export function FunnelBands({ etapas, variante = 'desk', textoVazio, animacaoKey
                 className="flex-shrink-0 text-right font-mono tabular-nums"
                 style={{ textShadow: '0 1px 3px rgba(0,0,0,.55)' }}
               >
-                <b className={`font-extrabold ${tv ? 'text-[20px]' : 'text-sm'}`}>
+                <b className={`font-extrabold ${tv ? 'text-[18px]' : 'text-sm'}`}>
                   {e.quantidade.toLocaleString('pt-BR')}
                 </b>
                 {/* A 1ª etapa é a régua dos 100% — repetir "100%" nela é ruído. */}
                 {pct !== null && i > 0 && (
-                  <span className={`opacity-80 ml-1.5 ${tv ? 'text-[12.5px]' : 'text-[10px]'}`}>
+                  <span className={`opacity-80 ml-1.5 ${tv ? 'text-[11px]' : 'text-[10px]'}`}>
                     {pct}%
                   </span>
                 )}

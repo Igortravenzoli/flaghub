@@ -4,37 +4,15 @@ import {
   TrendingDown, Wallet, Package, Smile, AlertTriangle, CheckCircle2, Briefcase, BarChart3,
   Filter as FilterIcon,
 } from 'lucide-react';
-import { useComercialMovimentacao } from '@/hooks/useComercialMovimentacao';
-import { useComercialMetas } from '@/hooks/useComercialMetas';
-import { useComercialVendas } from '@/hooks/useComercialVendas';
-import { useSurveyResponses, useSurveyAggregates } from '@/hooks/useSurveyImport';
+import { useComercialExecutivo } from '@/hooks/useComercialExecutivo';
 import { useComercialFunil } from '@/hooks/useComercialFunil';
-import { useComercialProdutos } from '@/hooks/useComercialProdutos';
 import { resolvePeriodo, ymLabel } from '@/lib/comercialPeriodo';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { FunnelBands } from '@/components/comercial/FunnelBands';
 
-const PT_MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-
-function getMesDate(mes: string): Date | null {
-  const m = mes.toLowerCase().match(/^([a-z]{3})-(\d{4})$/);
-  if (!m) return null;
-  const idx = PT_MONTHS.indexOf(m[1]);
-  if (idx === -1) return null;
-  return new Date(parseInt(m[2]), idx, 1);
-}
-
 function brl(value: number, show: boolean): React.ReactNode {
   if (!show) return <span className="font-mono tracking-widest text-muted-foreground">R$ •••</span>;
   return <span className="font-mono">{value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>;
-}
-
-// 0-5: ≥4.5 promotor · ≥3.5 neutro · <3.5 detrator (mesma régua da Pesquisa)
-function classifyNps(avg: number | null): 'promoter' | 'neutral' | 'detractor' | null {
-  if (avg == null) return null;
-  if (avg >= 4.5) return 'promoter';
-  if (avg >= 3.5) return 'neutral';
-  return 'detractor';
 }
 
 const corPct = (p: number) => (p >= 100 ? '#16a34a' : p >= 70 ? '#f59e0b' : '#ef4444');
@@ -91,8 +69,6 @@ interface ExecutivoTabProps {
   clientesAtivos: number;
   clientesBloqueados: number;
   isLoadingClientes?: boolean;
-  /** Modo TV (kiosk): oculta Receita realizada e ancora os funis na coluna direita. */
-  tvMode?: boolean;
 }
 
 export function ExecutivoTab({
@@ -104,20 +80,21 @@ export function ExecutivoTab({
   clientesAtivos,
   clientesBloqueados,
   isLoadingClientes = false,
-  tvMode = false,
 }: ExecutivoTabProps) {
-  const { items: movItems, isLoading: movLoading } = useComercialMovimentacao('todos', dateFrom, dateTo);
+  // Os numeros vem todos do mesmo hook: telao e mesa nao podem divergir.
+  const { movimento, receita, produtos, satisfacao, alertas, isLoading: loading } =
+    useComercialExecutivo(dateFrom, dateTo);
 
-  // Período é resolvido num lugar só — todo card daqui pra baixo usa este recorte.
+  // Periodo e resolvido num lugar so - todo card daqui pra baixo usa este recorte.
   const periodo = useMemo(() => resolvePeriodo(dateFrom, dateTo), [dateFrom, dateTo]);
-  // Mês e trimestre usam o rótulo explícito ("Q3 2026 · jul–set") — foi o pedido
-  // do Miller: o preset da página diz "3º Trimestre" e não mostra quais meses são.
-  // Recortes irregulares (90 dias, personalizado) mantêm o nome do preset.
+  // Mes e trimestre usam o rotulo explicito ("Q3 2026 - jul-set"): o preset da
+  // pagina diz "3o Trimestre" e nao mostra quais meses sao. Recortes irregulares
+  // (90 dias, personalizado) mantem o nome do preset.
   const periodoTitulo = periodo.granularidade === 'multi' ? (periodLabel ?? periodo.label) : periodo.label;
 
-  // PER-2: o funil obedece ao período selecionado. Quando o período não tem
-  // nenhum lançamento, o hook cai para o último mês com dados e devolve
-  // `fallbackDe` — que a tela avisa em vez de trocar o dado em silêncio.
+  // PER-2: o funil obedece ao periodo selecionado. Quando o periodo nao tem
+  // nenhum lancamento, o hook cai para o ultimo mes com dados e devolve
+  // `fallbackDe` - que a tela avisa em vez de trocar o dado em silencio.
   const {
     sdr: funilSdr,
     comercial: funilComercial,
@@ -129,124 +106,7 @@ export function ExecutivoTab({
   } = useComercialFunil(periodo.meses);
   const funilMesLabel = funilFallbackDe ? ymLabel(funilMeses[0]) : periodo.labelCurto;
   const funilHistorico = periodo.granularidade === 'mes' ? funilHistoricoMensal : funilHistoricoTrimestral;
-  const { data: metas = [], isLoading: metasLoading } = useComercialMetas();
-  // Ordem de apresentação dos produtos: a mesma definida pelo gestor na aba Metas.
-  const { produtos: catalogoProdutos, compararPorOrdem } = useComercialProdutos();
-  const { items: vendasItems, isLoading: vendasLoading } = useComercialVendas();
-  const { data: responses = [] } = useSurveyResponses();
-  const { data: aggregates = [] } = useSurveyAggregates();
 
-  const ymOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  const fromYm = dateFrom ? ymOf(dateFrom) : null;
-  const toYm = dateTo ? ymOf(dateTo) : null;
-
-  // ── Vendas do período ─────────────────────────────────────────
-  const vendasPeriodo = useMemo(() => {
-    return vendasItems.filter((v) => {
-      const ym = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
-      if (!ym) return false;
-      if (fromYm && ym < fromYm) return false;
-      if (toYm && ym > toYm) return false;
-      return true;
-    });
-  }, [vendasItems, fromYm, toYm]);
-
-  // ── Movimento (ganhos × perdas × saldo) ───────────────────────
-  const movimento = useMemo(() => {
-    const ganhos = movItems.filter((i) => i.tipo === 'ganho');
-    const perdas = movItems.filter((i) => i.tipo === 'perda');
-    const valorPerdido = perdas.reduce((s, i) => s + (i.valor_mensal ?? 0), 0);
-    return { ganhos: ganhos.length, perdas: perdas.length, saldo: ganhos.length - perdas.length, valorPerdido };
-  }, [movItems]);
-
-  // ── Receita (somente realizado — não há meta de receita) ──────
-  const receita = useMemo(() => {
-    const total = vendasPeriodo.reduce((s, v) => s + (v.deal_value ?? 0), 0);
-    const orgs = new Set(vendasPeriodo.map((v) => v.organization || 'Outros')).size;
-    return { total, negocios: vendasPeriodo.length, orgs };
-  }, [vendasPeriodo]);
-
-  // ── Produtos: meta × realizado (qtd, consolidado no período) ──
-  const produtos = useMemo(() => {
-    // qty vendida por produto+mês (itens de venda)
-    const vendaQty = new Map<string, number>();
-    for (const v of vendasPeriodo) {
-      const ym = v.period_month?.slice(0, 7) || v.closed_date?.slice(0, 7);
-      if (!ym) continue;
-      for (const it of v.itens ?? []) {
-        const k = `${it.produto}|${ym}`;
-        vendaQty.set(k, (vendaQty.get(k) ?? 0) + (it.quantidade || 0));
-      }
-    }
-    const map = new Map<string, { metaQty: number; realQty: number; semRealizado: boolean }>();
-    for (const m of metas) {
-      if (m.tipo === 'faturamento') continue;
-      const d = getMesDate(m.mes);
-      if (!d) continue;
-      const ym = ymOf(d);
-      if (fromYm && ym < fromYm) continue;
-      if (toYm && ym > toYm) continue;
-      const acc = map.get(m.nome_indicador) ?? { metaQty: 0, realQty: 0, semRealizado: true };
-      acc.metaQty += parseFloat(m.valor) || 0;
-      acc.realQty += (parseInt(m.realizado) || 0) + (vendaQty.get(`${m.nome_indicador}|${ym}`) ?? 0);
-      map.set(m.nome_indicador, acc);
-    }
-    return [...map.entries()]
-      .map(([nome, a]) => ({
-        nome,
-        metaQty: a.metaQty,
-        realQty: a.realQty,
-        pct: a.metaQty > 0 ? Math.round((a.realQty / a.metaQty) * 1000) / 10 : 0,
-      }))
-      .sort((a, b) => compararPorOrdem(a.nome, b.nome));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metas, vendasPeriodo, fromYm, toYm, catalogoProdutos]);
-
-  // ── Satisfação (última pesquisa) ──────────────────────────────
-  const satisfacao = useMemo(() => {
-    const summary = aggregates[0]?.payload?.summary;
-    let detratores = 0;
-    const detratoresNomes: string[] = [];
-    for (const r of responses) {
-      if (classifyNps(r.derived?.avg_score ?? null) === 'detractor') {
-        detratores++;
-        if (r.client_name) detratoresNomes.push(r.client_name);
-      }
-    }
-    return {
-      nota: summary?.nota_media_geral ?? null,
-      csat: summary?.csat_geral ?? null,
-      respostas: summary?.total_clientes_pesquisados ?? responses.length,
-      detratores,
-      detratoresNomes,
-    };
-  }, [aggregates, responses]);
-
-  // ── Alertas (produtos/clientes que exigem atenção) ────────────
-  const alertas = useMemo(() => {
-    const list: { texto: string; nivel: 'alto' | 'medio' }[] = [];
-    for (const p of produtos) {
-      if (p.metaQty > 0 && p.pct < 70) {
-        list.push({
-          texto: `${p.nome}: ${p.pct.toFixed(0)}% da meta (${p.realQty}/${p.metaQty})`,
-          nivel: p.pct < 30 ? 'alto' : 'medio',
-        });
-      }
-    }
-    if (movimento.perdas > 0) {
-      list.push({ texto: `${movimento.perdas} perda${movimento.perdas !== 1 ? 's' : ''} de cliente no período`, nivel: 'alto' });
-    }
-    if (satisfacao.detratores > 0) {
-      const nomes = satisfacao.detratoresNomes.slice(0, 3).join(', ');
-      list.push({
-        texto: `${satisfacao.detratores} cliente${satisfacao.detratores !== 1 ? 's' : ''} detrator${satisfacao.detratores !== 1 ? 'es' : ''} na pesquisa${nomes ? ` (${nomes}${satisfacao.detratores > 3 ? '…' : ''})` : ''}`,
-        nivel: 'alto',
-      });
-    }
-    return list.sort((a, b) => (a.nivel === 'alto' ? -1 : 1) - (b.nivel === 'alto' ? -1 : 1));
-  }, [produtos, movimento.perdas, satisfacao]);
-
-  const loading = movLoading || metasLoading || vendasLoading;
 
   // ── Cards (compostos por modo: padrão × TV) ───────────────────
   const carteiraMovimentoCard = (
@@ -456,50 +316,26 @@ export function ExecutivoTab({
     </BlocoCard>
   );
 
+  // Aba de mesa apenas. O telao tem view propria (`ComercialTvView`) desde
+  // 19/08/2026 - o modo TV daqui foi removido junto, para ninguem manter uma
+  // tela que nada renderiza.
   return (
-    // No telão a view precisa ser `h-full` + flex para o KioskFit em modo fill
-    // esticar os cards até a borda da tela (o Comercial entrou no FILL_READY em
-    // 18/08/2026, junto com as páginas de funil).
-    <div className={tvMode ? 'h-full flex flex-col gap-4 overflow-hidden' : 'space-y-4'}>
-      {/* TV-2: no telão o período vira badge de destaque — a 3–5 m um <p> de
-          text-sm é ilegível, e o telão não tem quem pergunte "de que mês é isso?". */}
-      {tvMode ? (
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-2xl font-bold">Visão Executiva · Comercial</h2>
-          <span className="text-xl font-bold font-mono px-4 py-1.5 rounded-lg border-2 border-primary/60 bg-primary/10 text-primary whitespace-nowrap">
-            {periodoTitulo}
-          </span>
-        </div>
-      ) : (
-        <div>
-          <h2 className="text-xl font-bold">Visão Executiva</h2>
-          <p className="text-sm text-muted-foreground">Resumo do comercial · {periodoTitulo}</p>
-        </div>
-      )}
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold">Visão Executiva</h2>
+        <p className="text-sm text-muted-foreground">Resumo do comercial · {periodoTitulo}</p>
+      </div>
 
-      {tvMode ? (
-        // Modo TV: sem Receita realizada (decisão de não exibir valor monetário
-        // no telão) e SEM os funis — desde 18/08/2026 eles têm páginas próprias
-        // na rotação (`ComercialTvView`). Aqui eles dividiam uma coluna em modo
-        // compacto e as quantidades eram ilegíveis a 4 m.
-        <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-2 gap-4">
-          {carteiraMovimentoCard}
-          {produtosCard}
-          {satisfacaoCard}
-          {alertasCard}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {carteiraMovimentoCard}
-          {receitaCard}
-          {produtosCard}
-          {funilSdrCard}
-          {funilComercialCard}
-          {satisfacaoCard}
-          {funilHistogramaCard}
-          {alertasCard}
-        </div>
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {carteiraMovimentoCard}
+        {receitaCard}
+        {produtosCard}
+        {funilSdrCard}
+        {funilComercialCard}
+        {satisfacaoCard}
+        {funilHistogramaCard}
+        {alertasCard}
+      </div>
     </div>
   );
 }
