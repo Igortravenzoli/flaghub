@@ -92,6 +92,7 @@ vi.mock('@/hooks/useHelpdeskKpis', async (orig) => ({
 
 import HelpdeskKiosk from '@/components/home/kiosk/HelpdeskKiosk';
 import { KioskRotationContext } from '@/contexts/KioskRotationContext';
+import { DASH } from '@/lib/slaFormat';
 
 describe('HelpdeskKiosk — modo TV', () => {
   it('encaminha MINUTOS BRUTOS: o TMA sai 23min (de 29900 ÷ 1284)', () => {
@@ -187,6 +188,42 @@ describe('HelpdeskKiosk — modo TV', () => {
     expect(txt).toContain('Lucas Ferreira');   // entrou no lugar da Bruna
     expect(txt).not.toContain('Marcos');       // fora do CS
     expect(txt).not.toContain('Bruna');        // saiu do time
+  });
+
+  it('consultor sem lançamento no techlead aparece com "sem base", não some', () => {
+    // O mock do techlead NÃO traz Ricardo, Wilker, Guimaraes, Vagner, Italo,
+    // Leandro nem Ronaldo — caso real do Lucas em 21/08: tinha 81 registros de
+    // volume e nenhum de produtividade, e sumia da lista.
+    const { container } = render(
+      <KioskRotationContext.Provider
+        value={{ pagina: 1, paginas: 2, rotacaoLigada: false, pausado: true, registrarPaginas: () => {} }}
+      >
+        <HelpdeskKiosk />
+      </KioskRotationContext.Provider>,
+    );
+    const bloco = [...container.querySelectorAll('p')]
+      .find((p) => p.textContent === 'Produtividade · dias úteis')
+      ?.closest('div.p-4');
+    const txt = bloco!.textContent ?? '';
+
+    // os 9 sempre presentes, mesmo os que a fonte não devolveu
+    for (const nome of ['Ailton', 'Lucas Ferreira', 'Ricardo', 'Wilker', 'Guimaraes', 'Vagner', 'Ronaldo']) {
+      expect(txt, nome).toContain(nome);
+    }
+    // quem não tem média entra como '—' (sem base), nunca 0%
+    expect(txt).toContain(DASH);
+  });
+
+  it('o painel conta os 9 do CS, não os 18 consultores do VDesk', () => {
+    const { container } = render(<HelpdeskKiosk />);
+    const apoio = [...container.querySelectorAll('p')]
+      .find((p) => p.textContent === 'consultores do CS')
+      ?.previousElementSibling;
+    expect(apoio).toBeTruthy();
+    // o mock de useHelpdeskKpis manda totalConsultores: 9 mas só 1 do CS em
+    // registrosPorConsultor — o painel segue a lista filtrada, não o total.
+    expect(apoio!.textContent).toBe('1');
+    expect(container.textContent).not.toContain('consultores do VDesk');
   });
 
   it('o bloco de sistemas não repete que "nada rola" — o corte já está no header', () => {

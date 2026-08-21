@@ -13,9 +13,13 @@ import { HEALTH_COLORS } from '@/lib/chartColors';
 import { horasHM, tmaCurto } from '@/lib/formatHoras';
 import { fmtMesAno } from '@/lib/formatMes';
 import { DASH, corStatus, fmtDias, fmtInt, fmtPct, rotuloStatus } from '@/lib/slaFormat';
-import { agrupaVolumePorConsultorCS, isConsultorCS } from '@/lib/csConsultores';
+import {
+  CONSULTORES_CS, ROTULO_CONSULTOR_CS, agrupaVolumePorConsultorCS, isConsultorCS, tokenConsultorCS,
+} from '@/lib/csConsultores';
 import { useContagem } from '@/hooks/useContagem';
-import { faixaCorProd, useProdutividadeConsultores } from '@/hooks/useProdutividadeConsultores';
+import {
+  faixaCorProd, useProdutividadeConsultores, type LinhaProdutividade,
+} from '@/hooks/useProdutividadeConsultores';
 import {
   useGestaoCoberturaClientes, useGestaoSlaMensal, type GestaoSlaMensalResponse,
 } from '@/hooks/useGestaoKpis';
@@ -123,7 +127,15 @@ export function CsTvView({ k, kAnterior, dataInicio, dataFim }: CsTvViewProps) {
 
   return (
     <div className="w-full h-full flex flex-col gap-2.5 overflow-hidden">
-      <FaixaPanorama k={k} kAnterior={kAnterior} cobertura={cobertura} dataInicio={dataInicio} dataFim={dataFim} page={page} />
+      <FaixaPanorama
+        k={k}
+        kAnterior={kAnterior}
+        cobertura={cobertura}
+        dataInicio={dataInicio}
+        dataFim={dataFim}
+        page={page}
+        totalConsultoresCs={consultores.length}
+      />
 
       {page === 0 ? (
         /* ─── Página 1 — Resultado ─── */
@@ -153,13 +165,15 @@ export function CsTvView({ k, kAnterior, dataInicio, dataFim }: CsTvViewProps) {
 
 /* ═══════════ Faixa de Panorama — fixa nas duas páginas ═══════════ */
 
-function FaixaPanorama({ k, kAnterior, cobertura, dataInicio, dataFim, page }: {
+function FaixaPanorama({ k, kAnterior, cobertura, dataInicio, dataFim, page, totalConsultoresCs }: {
   k: CsTvKpis;
   kAnterior?: CsTvKpisAnterior;
   cobertura: ReturnType<typeof useGestaoCoberturaClientes>;
   dataInicio: Date;
   dataFim: Date;
   page: number;
+  /** Consultores do CS com registro no mês — não o total do VDesk. */
+  totalConsultoresCs: number;
 }) {
   const cob = cobertura.data;
   const pct = cob?.pctCobertura ?? null;
@@ -229,7 +243,11 @@ function FaixaPanorama({ k, kAnterior, cobertura, dataInicio, dataFim, page }: {
       />
 
       <Card className="px-3 py-2 grid grid-cols-5 items-center bg-card/60">
-        <Apoio valor={carregando ? DASH : k.totalConsultores} rotulo="consultores" />
+        {/* 21/08: os 9 do CS, não os 18 de `k.totalConsultores` — este conta
+            TODO consultor com registro no VDesk, inclusive quem não é do time,
+            e o painel do CS não pode dizer um número que a tela abaixo desmente
+            ("Volume por consultor" já lista os 9). */}
+        <Apoio valor={carregando ? DASH : totalConsultoresCs} rotulo="consultores do CS" />
         <Apoio valor={carregando ? DASH : k.registrosPorSistema.length} rotulo="sistemas" />
         <Apoio valor={carregando ? DASH : k.registrosPorBandeira.length} rotulo="bandeiras" />
         {/* Cobertura vem de outro endpoint (mês corrente, PAN-2): null = sem base → '—'. */}
@@ -578,15 +596,31 @@ function BlocoProdutividade({ prod }: { prod: ReturnType<typeof useProdutividade
   const diasJanela = prod.dias.slice(-HEATMAP_MAX_DIAS);
   const janelaCortada = prod.dias.length > diasJanela.length;
   /**
-   * SÓ os 9 do CS (21/08/2026, pedido do Igor). O hook é compartilhado com a
-   * tela de mesa do techlead, que mostra o time inteiro de propósito (sistemas
-   * + infra) — por isso o recorte mora aqui, na TV, e não no hook: mexer lá
-   * tiraria gente da tela de quem justamente precisa vê-la.
+   * SÓ os 9 do CS (21/08/2026, pedido do Igor) — e SEMPRE os 9.
+   *
+   * O hook é compartilhado com a tela de mesa do techlead, que mostra o time
+   * inteiro de propósito (sistemas + infra) — por isso o recorte mora aqui, na
+   * TV, e não no hook: mexer lá tiraria gente da tela de quem precisa vê-la.
+   *
+   * Quem o techlead não devolveu entra com média "sem base" e heatmap vazio, em
+   * vez de sumir. Caso real: o Lucas Ferreira tinha 81 registros no Volume por
+   * consultor e NENHUM lançamento de produtividade — some da lista e ninguém
+   * nota que falta lançamento, que é justamente o sinal a mostrar.
    */
-  const doCs = useMemo(
-    () => prod.linhas.filter((l) => isConsultorCS(l.consultor)),
-    [prod.linhas],
-  );
+  const doCs = useMemo(() => {
+    const presentes = prod.linhas.filter((l) => isConsultorCS(l.consultor));
+    const vistos = new Set(presentes.map((l) => tokenConsultorCS(l.consultor)));
+    const ausentes: LinhaProdutividade[] = CONSULTORES_CS
+      .filter((t) => !vistos.has(t))
+      .map((t) => ({
+        consultor: ROTULO_CONSULTOR_CS[t] ?? t,
+        mapa: new Map<string, number>(),
+        media: null,
+        equipe: null,
+      }));
+    // ausentes no fim: `media: null` é "sem base", que a lista já ordena por último
+    return [...presentes, ...ausentes];
+  }, [prod.linhas]);
   // `prod.linhas` já vem ordenado por média desc (null no fim) — o teto corta o rabo.
   const linhas = doCs.slice(0, PRODUTIVIDADE_MAX);
   const linhasCortadas = doCs.length - linhas.length;
