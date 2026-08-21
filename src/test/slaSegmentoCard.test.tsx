@@ -11,6 +11,7 @@ vi.mock('@/hooks/useGestaoKpis', async (orig) => ({
 }));
 
 import { SlaSegmentoCard } from '@/components/helpdesk/SlaSegmentoCard';
+import { HEALTH_COLORS } from '@/lib/chartColors';
 
 // ── Fixture ────────────────────────────────────────────────────────────
 
@@ -59,6 +60,53 @@ const renderCard = (props: Partial<React.ComponentProps<typeof SlaSegmentoCard>>
       {...props}
     />
   );
+
+/** A cor chega como style inline; o jsdom normaliza HSL para rgb(). */
+const corDe = (texto: string) => {
+  const el = [...document.querySelectorAll('p, span, div')]
+    .find((e) => e.children.length === 0 && e.textContent?.trim() === texto);
+  return el?.getAttribute('style') ?? '';
+};
+const corEsperada = (cor: string) => {
+  const el = document.createElement('span');
+  el.style.color = cor;
+  return el.getAttribute('style') ?? '';
+};
+
+// ── Cor do mês contra a meta (21/08/2026) ──────────────────────────────
+// Mesma régua da TV (`corValorVsMeta`): binária, sem replicar a escada do
+// gateway. Antes só o valor ANUAL tinha cor e um mês estourado passava em
+// branco — na Nestlé, 5,49d contra meta de 3,90d.
+
+describe('mês atual contra a meta', () => {
+  it('mês DENTRO da meta não ganha cor (o vermelho tem que significar alerta)', () => {
+    renderCard();   // fixture: TTR 3,42d ≤ 3,90d e 24h 51,2% ≥ 48%
+    expect(corDe('3,42d')).not.toContain('color');
+    expect(corDe('51,2%')).not.toContain('color');
+  });
+
+  it('mês FORA da meta fica vermelho nos dois grupos', () => {
+    renderCard({
+      data: fixture({
+        ttr: { ...fixture().ttr, mesAtual: 5.49 },        // > 3,90 (menor é melhor)
+        ttr24h: { ...fixture().ttr24h, mesAtual: 31.5 },  // < 48 (maior é melhor)
+      }),
+    });
+    const vermelho = corEsperada(HEALTH_COLORS.vermelho);
+    expect(corDe('5,49d')).toBe(vermelho);
+    expect(corDe('31,5%')).toBe(vermelho);
+  });
+
+  it('sem meta definida o mês fica sem cor — não se julga o que não tem régua', () => {
+    renderCard({
+      data: fixture({
+        metas: { metaTTRDias: null, metaTTR24hPct: null, metaDefinida: false },
+        ttr: { ...fixture().ttr, mesAtual: 99, statusAnual: 'NEUTRO' },
+      }),
+    });
+    expect(corDe('99,00d')).not.toContain('color');
+  });
+});
 
 // ── SLA-8: janela visível, não deduzida ────────────────────────────────
 

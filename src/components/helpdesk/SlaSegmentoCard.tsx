@@ -9,7 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { HEALTH_COLORS } from '@/lib/chartColors';
 import { fmtDataIso, fmtMesAno } from '@/lib/formatMes';
-import { DASH, corStatus, fmtDias, fmtInt, fmtPct, rotuloStatus } from '@/lib/slaFormat';
+import { DASH, corStatus, corValorVsMeta, fmtDias, fmtInt, fmtPct, rotuloStatus } from '@/lib/slaFormat';
 import {
   useGestaoSlaNestleDetalhe,
   type GestaoSlaMensalResponse,
@@ -278,8 +278,13 @@ export function SlaSegmentoCard({
       headerRight={<SeloCalculado texto={`${mAtual} · fora do filtro`} janela={tituloJanela} />}
     >
       <GrupoMetrica titulo="TTR (dias)" status={ttr.statusAnual}>
+        {/* 21/08: o mês fora da meta fica vermelho aqui também — a régua é a
+            mesma da TV (`corValorVsMeta`), binária, sem replicar a escada do
+            gateway. Antes só o valor ANUAL tinha cor, e um mês estourado
+            passava despercebido em branco. */}
         <MetricaCelula
           rotulo="mês atual" periodo={mAtual} valor={fmtDias(ttr.mesAtual)}
+          cor={corValorVsMeta(ttr.mesAtual, metas.metaTTRDias, ttr.menorMelhor)}
           sub={
             <DeltaBadge
               variacao={ttrVarValor}
@@ -302,6 +307,7 @@ export function SlaSegmentoCard({
       <GrupoMetrica titulo="TTR 24h (%)" status={ttr24h.statusAnual}>
         <MetricaCelula
           rotulo="mês atual" periodo={mAtual} valor={fmtPct(ttr24h.mesAtual)}
+          cor={corValorVsMeta(ttr24h.mesAtual, metas.metaTTR24hPct, ttr24h.menorMelhor)}
           sub={
             <DeltaBadge
               variacao={ttr24h.variacaoPp}
