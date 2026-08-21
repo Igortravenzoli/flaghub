@@ -389,15 +389,19 @@ function buildMocks(): Record<string, unknown> {
 
   /* Outras Bandeiras — caso NULL: nenhuma OS fechada no mês ⇒ mesAtual/variações
      null (o card mostra '—' e "sem base", nunca 0,00) + 24h CRITICAL
-     (39,8 < 48×0,85) + sinais de qualidade acionando o aviso do rodapé. */
+     (39,8 < 55×0,85) + sinais de qualidade acionando o aviso do rodapé.
+     Metas 5d/55% espelham Gestao:SlaOutras do gateway (commit 35188a6, 07/08):
+     estavam em 3,9/48 (herança do SlaFlag) e mostravam no telão local uma meta
+     que não é a do segmento. Com 5d o TTR anual 4,12 passa a OK — o cenário
+     ALERT de TTR segue coberto pela Nestlé (4,35 > 3,9). */
   const slaMensalOutras = {
     success: true, message: '[MOCK] Dados simulados', timestamp: new Date().toISOString(),
     segmento: 'outros', formulaVersao: 'planilha-cs-v1',
     referencia: referenciaMock,
-    metas: { metaTTRDias: 3.9, metaTTR24hPct: 48.0, metaDefinida: true },
+    metas: { metaTTRDias: 5.0, metaTTR24hPct: 55.0, metaDefinida: true },
     ttr: {
       mesAtual: null, mesAnterior: 4.12, variacaoPct: null, variacaoDias: null,
-      anual: 4.12, atingiuMetaAnual: false, statusAnual: 'ALERT',
+      anual: 4.12, atingiuMetaAnual: true, statusAnual: 'OK',
       menorMelhor: true, unidadeVariacao: '%',
     },
     ttr24h: {

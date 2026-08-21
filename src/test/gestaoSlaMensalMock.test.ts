@@ -120,6 +120,37 @@ describe('coerência dos 3 mocks de sla-mensal com o DTO', () => {
     expect(d.ttr.variacaoDias).toBeNull();
     expect(d.ttr24h.variacaoPp).toBeNull();
   });
+
+  // Réplica da escada do gateway (GestaoSlaMensalCalculator.StatusMenorMelhor /
+  // StatusMaiorMelhor). Mexer numa meta do mock sem reavaliar o status deixaria
+  // a tela local mostrando semáforo que o gateway nunca devolveria — foi o risco
+  // real ao alinhar SlaOutras a 5d/55% em 21/08.
+  it('status e atingiuMetaAnual são coerentes com a meta de cada mock', () => {
+    for (const s of segmentos) {
+      const d = payload[s];
+      if (!d.metas.metaDefinida) continue;
+      const metaTtr = d.metas.metaTTRDias!;
+      const meta24 = d.metas.metaTTR24hPct!;
+      const ttr = d.ttr.anual!;
+      const p24 = d.ttr24h.anual!;
+
+      expect(d.ttr.statusAnual).toBe(ttr <= metaTtr ? 'OK' : ttr <= metaTtr * 1.5 ? 'ALERT' : 'CRITICAL');
+      expect(d.ttr.atingiuMetaAnual).toBe(ttr <= metaTtr);
+      expect(d.ttr24h.statusAnual).toBe(p24 >= meta24 ? 'OK' : p24 >= meta24 * 0.85 ? 'ALERT' : 'CRITICAL');
+      expect(d.ttr24h.atingiuMetaAnual).toBe(p24 >= meta24);
+    }
+  });
+
+  // As metas do mock são a configuração REAL do gateway (Gestao:Sla* do
+  // appsettings): mock com meta de outro segmento fez a tela local ser lida como
+  // se fosse produção em 21/08.
+  it('as metas dos mocks espelham o appsettings do gateway', () => {
+    expect(payload.nestle.metas).toMatchObject({ metaTTRDias: 3.9, metaTTR24hPct: 48.0 });
+    expect(payload.outros.metas).toMatchObject({ metaTTRDias: 5.0, metaTTR24hPct: 55.0 });
+    // Heineken segue com metaDefinida=false DE PROPÓSITO: é o único mock que
+    // exercita o estado NEUTRO da UI (no gateway ela já tem 10d/55% desde D7).
+    expect(payload.heineken.metas.metaDefinida).toBe(false);
+  });
 });
 
 describe('mock de cobertura-clientes (PAN-2)', () => {

@@ -210,18 +210,20 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   // No TV o rótulo QUEBRA em vez de truncar (o "meta > 90%" virava "met…" no
   // telão) e o chip é flex-none — os 3 KPIs são o resumo, nunca podem sumir.
   const KpiLinha = ({ label, valor, cor, tv }: { label: string; valor: ReactNode; cor?: string; tv?: boolean }) => (
-    <div className={`flex items-baseline justify-between gap-2 rounded-md border bg-muted/20 px-2 py-1 ${tv ? 'flex-none' : ''}`}>
+    <div className={`flex items-baseline justify-between gap-2 rounded-md border bg-muted/20 px-2 ${tv ? 'flex-none py-0.5' : 'py-1'}`}>
       <span className={`text-[10px] text-muted-foreground ${tv ? 'leading-tight' : 'truncate'}`} title={label}>{label}</span>
-      <span className="text-sm font-bold font-mono shrink-0" style={cor ? { color: cor } : undefined}>{valor}</span>
+      <span className={`font-bold font-mono shrink-0 ${tv ? 'text-[13px] leading-tight' : 'text-sm'}`} style={cor ? { color: cor } : undefined}>{valor}</span>
     </div>
   );
 
   const cardIncidentes = (tv: boolean) => {
     return (
-    // Sem min-h-0 no card/miolo do TV: o mínimo passa a ser o rail de KPIs
-    // (que nunca clipa); quem cede altura é só a lista (min-h-0 interno).
-    <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'flex-1 overflow-hidden' : undefined}>
-      <div className="flex items-stretch gap-4 flex-1">
+    // min-h-0 no miolo (21/08): sem ele o miolo assumia a altura da LISTA
+    // inteira e o overflow-hidden do card cortava o rail de KPIs junto — era o
+    // "comendo informações" no telão. Com min-h-0 quem cede é a lista (rola),
+    // e o rail é shrink-0: nunca clipa.
+    <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
+      <div className="flex items-stretch gap-4 flex-1 min-h-0">
         {/* Esquerda: KPIs empilhados na vertical */}
         <div className={`${tv ? 'w-[210px]' : 'w-[200px]'} shrink-0 flex flex-col gap-1.5`}>
           <div className="mb-0.5">
@@ -281,8 +283,8 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
   const cardRiscos = (tv: boolean) => {
     return (
-    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'flex-1 overflow-hidden' : undefined}>
-      <div className="flex items-stretch gap-4 flex-1">
+    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
+      <div className="flex items-stretch gap-4 flex-1 min-h-0">
         {/* Esquerda: KPIs empilhados na vertical */}
         <div className={`${tv ? 'w-[210px]' : 'w-[200px]'} shrink-0 flex flex-col gap-1.5`}>
           <div className="mb-0.5">
@@ -451,7 +453,9 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
             {/* 2 · Projetos · status (alvos do planejamento) */}
             <div className="flex-shrink-0 border-l pl-5">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Projetos · status</p>
-              <div className="flex flex-col gap-1.5">
+              {/* 2 colunas (21/08): com 4 alvos a coluna única engordava o card
+                  e roubava altura dos cards de incidentes/riscos abaixo. */}
+              <div className="grid grid-cols-2 gap-1.5">
                 {TV_PIPELINE_ALVOS.map((a) => (
                   <span key={a.nome} className="inline-flex items-center justify-between gap-1.5 rounded-lg border bg-muted/30 px-2.5 py-1 text-xs">
                     <span className="font-semibold text-foreground">{a.nome}</span>
@@ -790,14 +794,16 @@ function DiasComRecorde({ dias, cor, label, recorde }: {
   return (
     <div className="flex items-end gap-3">
       <div>
-        <p className="text-4xl font-bold font-mono leading-none" style={cor ? { color: cor } : undefined}>
+        {/* 3xl (não 4xl) no TV: o rail precisa caber inteiro na altura do card
+            — nº gigante aqui custava chip clipado embaixo (21/08). */}
+        <p className="text-3xl font-bold font-mono leading-none" style={cor ? { color: cor } : undefined}>
           {dias ?? '—'}
         </p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">{label}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">{label}</p>
       </div>
       {recorde != null && (
         <div className="border-l pl-3">
-          <p className="flex items-center gap-1 text-xl font-bold font-mono leading-none"
+          <p className="flex items-center gap-1 text-lg font-bold font-mono leading-none"
             style={{ color: recordeAtual ? 'hsl(142,71%,45%)' : 'hsl(var(--primary))' }}>
             <Trophy className="h-3.5 w-3.5 shrink-0" aria-hidden />
             {recorde}

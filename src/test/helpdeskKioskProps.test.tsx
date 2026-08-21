@@ -109,4 +109,58 @@ describe('HelpdeskKiosk — modo TV', () => {
     const { container } = render(<HelpdeskKiosk />);
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });
+
+  // ── Refino do card de SLA (21/08/2026) ──────────────────────────────────
+  // O que se trava aqui é LEITURA, não estética: o selo precisa estar na
+  // célula do número que ele julga, e o backlog envelhecido precisa ser
+  // legível sem decorar a frase do rodapé.
+
+  it('o selo de status fica na célula do ANO — que é o número que statusAnual julga', async () => {
+    const { container } = render(<HelpdeskKiosk />);
+    // os números entram contando (useContagem): espera a contagem assentar —
+    // o que de quebra prova que ela CHEGA no valor exato do contrato.
+    // (o mock serve o mesmo payload aos 3 segmentos, daí o findAll)
+    await screen.findAllByText('4,35d', {}, { timeout: 3000 });
+
+    const selo = [...container.querySelectorAll('div')]
+      .find((d) => d.textContent?.trim() === 'ALERTA');
+    expect(selo).toBeTruthy();
+
+    // sobe da badge até a célula e confere que ali dentro está o valor anual
+    const celula = selo!.closest('div.min-w-0');
+    expect(celula).toBeTruthy();
+    expect(celula!.textContent).toContain('ano · média');
+    expect(celula!.textContent).toContain('4,35d');   // ttr.anual do fixture
+    expect(celula!.textContent).not.toContain('3,42d'); // o mês NÃO mora aqui
+  });
+
+  it('o backlog > 30 dias aparece com etiqueta própria e destaque', () => {
+    const { container } = render(<HelpdeskKiosk />);
+    const linha = [...container.querySelectorAll('p')]
+      .find((p) => p.textContent?.startsWith('Em aberto'));
+    expect(linha).toBeTruthy();
+    expect(linha!.textContent).toContain('há mais de 30 dias');
+    // Nestlé conta INC do ServiceNow: a fonte é declarada para 7 e 23 não serem
+    // comparados com as OS do VDesk das outras bandeiras.
+    expect(linha!.textContent).toContain('INC ServiceNow');
+    expect(linha!.textContent).toContain('7');       // incMaior30Dias
+    expect(linha!.textContent).toContain('23');      // incMaior5Dias
+  });
+
+  it('sem ServiceNow o rodapé cai para OS e declara o PERCENTUAL do aberto', async () => {
+    // Segmento sem incMaior*: o card usa totalAbertos/maior30Dias (9 de 61 = 15%).
+    const semInc = { ...slaMensal, abertos: { ...slaMensal.abertos, incMaior5Dias: null, incMaior30Dias: null } };
+    const mod = await import('@/hooks/useGestaoKpis');
+    const spy = vi.spyOn(mod, 'useGestaoSlaMensal').mockReturnValue(
+      { data: semInc, isLoading: false, isError: false, refetch: vi.fn() } as never,
+    );
+
+    const { container } = render(<HelpdeskKiosk />);
+    const linha = [...container.querySelectorAll('p')]
+      .find((p) => p.textContent?.startsWith('Em aberto'));
+    expect(linha!.textContent).toContain('15%');
+    expect(linha!.textContent).toContain('das 61 abertas');
+    expect(linha!.textContent).not.toContain('ServiceNow');
+    spy.mockRestore();
+  });
 });
