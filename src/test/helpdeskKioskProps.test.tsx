@@ -93,6 +93,18 @@ vi.mock('@/hooks/useHelpdeskKpis', async (orig) => ({
 import HelpdeskKiosk from '@/components/home/kiosk/HelpdeskKiosk';
 import { KioskRotationContext } from '@/contexts/KioskRotationContext';
 import { DASH } from '@/lib/slaFormat';
+import { HEALTH_COLORS } from '@/lib/chartColors';
+
+/**
+ * `HEALTH_COLORS.vermelho` é HSL e o jsdom normaliza o style inline para rgb().
+ * Em vez de reimplementar a conversão (que envelheceria com a paleta), pinta-se
+ * um elemento com a cor e lê-se de volta o que o DOM guardou.
+ */
+const corNormalizada = (cor: string) => {
+  const el = document.createElement('span');
+  el.style.color = cor;
+  return el.getAttribute('style') ?? '';
+};
 
 describe('HelpdeskKiosk — modo TV', () => {
   it('encaminha MINUTOS BRUTOS: o TMA sai 23min (de 29900 ÷ 1284)', () => {
@@ -152,6 +164,40 @@ describe('HelpdeskKiosk — modo TV', () => {
     expect(celula!.textContent).toContain('ano · média');
     expect(celula!.textContent).toContain('4,35d');   // ttr.anual do fixture
     expect(celula!.textContent).not.toContain('3,42d'); // o mês NÃO mora aqui
+  });
+
+  it('mês DENTRO da meta fica sem cor — o vermelho precisa significar alerta', async () => {
+    const { container } = render(<HelpdeskKiosk />);
+    await screen.findAllByText('4,35d', {}, { timeout: 3000 });   // contagem assentou
+
+    // fixture: TTR do mês 3,42d com meta ≤ 3,90d e %24h 51,2% com meta ≥ 48%
+    for (const v of ['3,42d', '51,2%']) {
+      const el = [...container.querySelectorAll('p')].find((p) => p.textContent === v);
+      expect(el, v).toBeTruthy();
+      expect(el!.getAttribute('style') ?? '', v).not.toContain('color');
+    }
+  });
+
+  it('mês ACIMA da meta fica VERMELHO (caso reportado: Nestlé 5,49d contra 3,90d)', async () => {
+    const estourado = {
+      ...slaMensal,
+      ttr: { ...slaMensal.ttr, mesAtual: 5.49 },          // > meta 3,90 (menor é melhor)
+      ttr24h: { ...slaMensal.ttr24h, mesAtual: 31.5 },    // < meta 48 (maior é melhor)
+    };
+    const mod = await import('@/hooks/useGestaoKpis');
+    const spy = vi.spyOn(mod, 'useGestaoSlaMensal').mockReturnValue(
+      { data: estourado, isLoading: false, isError: false, refetch: vi.fn() } as never,
+    );
+
+    const { container } = render(<HelpdeskKiosk />);
+    await screen.findAllByText('5,49d', {}, { timeout: 3000 });
+
+    for (const v of ['5,49d', '31,5%']) {
+      const el = [...container.querySelectorAll('p')].find((p) => p.textContent === v);
+      expect(el, v).toBeTruthy();
+      expect(el!.getAttribute('style'), v).toBe(corNormalizada(HEALTH_COLORS.vermelho));
+    }
+    spy.mockRestore();
   });
 
   it('o backlog > 30 dias aparece com etiqueta própria e destaque', () => {

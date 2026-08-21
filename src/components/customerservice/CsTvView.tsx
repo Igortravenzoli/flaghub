@@ -12,7 +12,7 @@ import {
 import { HEALTH_COLORS } from '@/lib/chartColors';
 import { horasHM, tmaCurto } from '@/lib/formatHoras';
 import { fmtMesAno } from '@/lib/formatMes';
-import { DASH, corStatus, fmtDias, fmtInt, fmtPct, rotuloStatus } from '@/lib/slaFormat';
+import { DASH, corStatus, corValorVsMeta, fmtDias, fmtInt, fmtPct, rotuloStatus } from '@/lib/slaFormat';
 import {
   CONSULTORES_CS, ROTULO_CONSULTOR_CS, agrupaVolumePorConsultorCS, isConsultorCS, tokenConsultorCS,
 } from '@/lib/csConsultores';
@@ -390,6 +390,9 @@ function SlaTvCard({ titulo, q }: {
           rotulo: `mês atual · ${mAtual}`,
           valor: ttr.mesAtual,
           fmt: fmtDias,
+          // vermelho quando o mês estoura a meta — antes o número ficava neutro
+          // mesmo acima do alvo, e só o ano carregava cor
+          cor: corValorVsMeta(ttr.mesAtual, metas.metaTTRDias, ttr.menorMelhor),
           sub: (
             <DeltaBadge
               variacao={ttrVarValor}
@@ -411,6 +414,8 @@ function SlaTvCard({ titulo, q }: {
           rotulo: `mês atual · ${mAtual}`,
           valor: ttr24h.mesAtual,
           fmt: fmtPct,
+          // aqui MAIOR é melhor: vermelho quando fica ABAIXO do piso da meta
+          cor: corValorVsMeta(ttr24h.mesAtual, metas.metaTTR24hPct, ttr24h.menorMelhor),
           sub: (
             <DeltaBadge
               variacao={ttr24h.variacaoPp}
@@ -504,7 +509,14 @@ function GrupoSlaTv({ titulo, status, meta, heroi, anterior, ano }: {
   titulo: string;
   status: GestaoSlaMensalResponse['ttr']['statusAnual'];
   meta: string;
-  heroi: { rotulo: string; valor: number | null; fmt: (v: number | null | undefined) => string; sub: ReactNode };
+  heroi: {
+    rotulo: string;
+    valor: number | null;
+    fmt: (v: number | null | undefined) => string;
+    /** Vermelho quando o mês não atinge a meta; undefined = cor normal. */
+    cor?: string;
+    sub: ReactNode;
+  };
   anterior: { periodo: string; valor: number | null };
   ano: { periodo: string; valor: number | null; cor: string };
 }) {
@@ -517,7 +529,7 @@ function GrupoSlaTv({ titulo, status, meta, heroi, anterior, ano }: {
       {/* Grid (não flex): "mês anterior" e "ano" caem na MESMA vertical nos dois
           grupos, então o olho desce em linha reta entre TTR e %24h. */}
       <div className="grid grid-cols-[1.3fr_.85fr_1.1fr] gap-2 text-right items-end">
-        <CelulaSlaTv rotulo={heroi.rotulo} valor={heroi.valor} fmt={heroi.fmt} heroi sub={heroi.sub} />
+        <CelulaSlaTv rotulo={heroi.rotulo} valor={heroi.valor} fmt={heroi.fmt} cor={heroi.cor} heroi sub={heroi.sub} />
         <CelulaSlaTv rotulo="mês anterior" periodo={anterior.periodo} valor={anterior.valor} fmt={heroi.fmt} mudo />
         <CelulaSlaTv
           rotulo="ano · média"
