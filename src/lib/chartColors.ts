@@ -40,6 +40,14 @@ export const HEALTH_COLORS = {
   amarelo:  'hsl(43, 85%, 46%)',
   vermelho: 'hsl(0, 84%, 60%)',
   cinza:    'hsl(var(--muted-foreground))',
+  /**
+   * SUPERAÇÃO — não é status de alerta, é "muito melhor que o esperado"
+   * (21/08/2026, régua de 4 cores pedida pelo gestor). Fica fora do trio
+   * semântico do DESIGN-SYSTEM §2.7 de propósito: verde/âmbar/vermelho seguem
+   * respondendo "como estamos"; o azul responde "passamos longe da meta".
+   * Tom do slot 1 da rampa categórica (§2.7a, modo escuro).
+   */
+  azul:     'hsl(212, 77%, 56%)',
 } as const;
 
 export function getChartColor(index: number): string {
