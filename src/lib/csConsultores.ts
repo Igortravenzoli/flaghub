@@ -32,6 +32,33 @@ export const isConsultorCS = (nome: string) => {
   return CONSULTORES_CS.some((t) => n.includes(t));
 };
 
+/** Token do CS que casa com o nome (ou undefined se não é do time). */
+export const tokenConsultorCS = (nome: string): string | undefined => {
+  const n = normalizaNome(nome);
+  return CONSULTORES_CS.find((t) => n.includes(t));
+};
+
+/**
+ * Rótulo canônico por token — usado SÓ quando a fonte não trouxe o consultor.
+ *
+ * Existe por um caso real (21/08/2026): o Lucas Ferreira tinha volume no VDesk
+ * mas nenhum lançamento nos endpoints de produtividade do techlead, então
+ * sumia da tela — e "consultor sem lançamento" é justamente o que o gestor
+ * precisa ver, não algo a esconder. Quando a fonte traz o nome, exibe-se a
+ * grafia DELA (o painel não deve renomear ninguém).
+ */
+export const ROTULO_CONSULTOR_CS: Record<string, string> = {
+  ailton: 'Ailton',
+  italo: 'Italo',
+  leandro: 'Leandrofaria',
+  vagner: 'Vagner',
+  guimaraes: 'Guimaraes',
+  ricardo: 'Ricardo',
+  wilker: 'Wilker',
+  lucas: 'Lucas Ferreira',
+  ronaldo: 'Ronaldo',
+};
+
 /**
  * Volume por consultor do CS: filtra os 9 e DEDUPLICA por nome somando os
  * registros — a origem pode repetir o consultor e cada duplicata virava uma
