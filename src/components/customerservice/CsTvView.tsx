@@ -13,7 +13,7 @@ import { HEALTH_COLORS } from '@/lib/chartColors';
 import { horasHM, tmaCurto } from '@/lib/formatHoras';
 import { fmtMesAno } from '@/lib/formatMes';
 import { DASH, corStatus, fmtDias, fmtInt, fmtPct, rotuloStatus } from '@/lib/slaFormat';
-import { agrupaVolumePorConsultorCS } from '@/lib/csConsultores';
+import { agrupaVolumePorConsultorCS, isConsultorCS } from '@/lib/csConsultores';
 import { useContagem } from '@/hooks/useContagem';
 import { faixaCorProd, useProdutividadeConsultores } from '@/hooks/useProdutividadeConsultores';
 import {
@@ -577,9 +577,19 @@ function BarraH({ nome, valorLabel, pct, cor, nomeW = 'w-24', altura = 'h-[22px]
 function BlocoProdutividade({ prod }: { prod: ReturnType<typeof useProdutividadeConsultores> }) {
   const diasJanela = prod.dias.slice(-HEATMAP_MAX_DIAS);
   const janelaCortada = prod.dias.length > diasJanela.length;
+  /**
+   * SÓ os 9 do CS (21/08/2026, pedido do Igor). O hook é compartilhado com a
+   * tela de mesa do techlead, que mostra o time inteiro de propósito (sistemas
+   * + infra) — por isso o recorte mora aqui, na TV, e não no hook: mexer lá
+   * tiraria gente da tela de quem justamente precisa vê-la.
+   */
+  const doCs = useMemo(
+    () => prod.linhas.filter((l) => isConsultorCS(l.consultor)),
+    [prod.linhas],
+  );
   // `prod.linhas` já vem ordenado por média desc (null no fim) — o teto corta o rabo.
-  const linhas = prod.linhas.slice(0, PRODUTIVIDADE_MAX);
-  const linhasCortadas = prod.linhas.length - linhas.length;
+  const linhas = doCs.slice(0, PRODUTIVIDADE_MAX);
+  const linhasCortadas = doCs.length - linhas.length;
 
   return (
     <BlocoTv
@@ -596,7 +606,7 @@ function BlocoProdutividade({ prod }: { prod: ReturnType<typeof useProdutividade
         <EstadoTv onRetry={prod.refetchTudo}>
           Não foi possível carregar a produtividade. Confirme a VPN da Flag.
         </EstadoTv>
-      ) : prod.linhas.length === 0 ? (
+      ) : doCs.length === 0 ? (
         <EstadoTv>Sem lançamentos de produtividade no mês.</EstadoTv>
       ) : (
         <>
@@ -856,9 +866,10 @@ function BlocoVolumeSistema({ sistemas, k }: { sistemas: RegistroPorGrupo[]; k: 
             />
           ))}
         </div>
-        <p className="flex-none text-[10.5px] text-muted-foreground/80 leading-tight">
-          Na TV nada rola — detalhe completo na tela de mesa.
-        </p>
+        {/* Sem rodapé "na TV nada rola" (21/08, pedido do Igor): o corte já é
+            declarado no header do card ("top 8 de N") e a linha "Outros (+N)"
+            entra no gráfico com o volume somado — dizer de novo era redundância
+            que roubava altura das barras. */}
       </CorpoVolume>
     </BlocoTv>
   );
@@ -897,9 +908,15 @@ function BlocoIncidentes({ q }: { q: ReturnType<typeof useCsIncidentesDeclarados
               cor={corSla(d.pctDentroSla)}
             />
           </div>
-          <div className="flex-1 min-h-0 flex flex-col justify-evenly gap-1">
+          {/* 21/08: item compactado (py-0.5, gap-0.5) e `justify-start` no lugar
+              de `justify-evenly`. Medido: com 3 títulos longos o conteúdo passava
+              22px da janela e o overflow-hidden do BlocoTv comia o rodapé do 3º
+              incidente — o mesmo defeito de "sumir em silêncio" que a lista de
+              produtividade declara com "+N". Aqui não há teto a declarar: o
+              INCIDENTES_MAX já é o corte, então o que faltava era caber. */}
+          <div className="flex-1 min-h-0 flex flex-col justify-start gap-1">
             {d.recentes.slice(0, INCIDENTES_MAX).map((i) => (
-              <div key={i.id} className="flex items-start gap-2 rounded-lg border px-2.5 py-1">
+              <div key={i.id} className="flex items-start gap-2 rounded-lg border px-2.5 py-0.5">
                 <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: COR_BUCKET[i.bucket] }} />
                 <div className="min-w-0 flex-1">
                   {/* sem `truncate`: na TV não existe hover para revelar o resto */}
@@ -908,7 +925,7 @@ function BlocoIncidentes({ q }: { q: ReturnType<typeof useCsIncidentesDeclarados
                     <span className="font-mono">{i.protocolo}</span> · {i.categoria} · {fmtDiaInc(i.criadoEm)}
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
+                <div className="flex shrink-0 flex-col items-end gap-0.5">
                   {/* produto afetado (pedido de 07/08) — padrão "Ativo" da Infra; DASH = sem chip */}
                   {i.produto !== DASH && (
                     <Badge variant="secondary" className="text-[10px] font-semibold">{i.produto}</Badge>
@@ -932,7 +949,7 @@ function BlocoIncidentes({ q }: { q: ReturnType<typeof useCsIncidentesDeclarados
 /** KPI compacto de incidente: rótulo à esquerda SEMPRE visível, número à direita. */
 function StatTv({ label, valor, cor }: { label: string; valor: string; cor?: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-1.5 rounded-lg border px-2 py-1">
+    <div className="flex items-baseline justify-between gap-1.5 rounded-lg border px-2 py-0.5">
       <span className="text-[10.5px] leading-tight text-muted-foreground">{label}</span>
       <span className="font-mono text-[17px] font-extrabold leading-none tabular-nums" style={cor ? { color: cor } : undefined}>
         {valor}

@@ -7,8 +7,11 @@ const MOCK_MODE =
 // ── Mock data registry ────────────────────────────────────────────────
 
 function buildMocks(): Record<string, unknown> {
+  // Quadro atual do CS (21/08/2026): Lucas Ferreira entrou no lugar da Bruna.
+  // O mock espelha o time real porque é o que o dev local exibe — mock com gente
+  // que saiu do time faz a tela local ser lida como se fosse produção.
   const SISTEMAS = ['Ailton', 'Italo', 'Leandrofaria', 'Guimaraes', 'Ricardo', 'Vagner', 'Wilker'];
-  const INFRA = ['Bruna', 'Ronaldo'];
+  const INFRA = ['Lucas Ferreira', 'Ronaldo'];
   const ALL = [...SISTEMAS, ...INFRA];
 
   const now = new Date('2026-05-21');
@@ -29,7 +32,7 @@ function buildMocks(): Record<string, unknown> {
   const baseProd: Record<string, number> = {
     Ailton: 0.785, Italo: 0.821, Leandrofaria: 0.883,
     Guimaraes: 0.724, Ricardo: 0.912, Vagner: 0.798, Wilker: 0.846,
-    Bruna: 0.763, Ronaldo: 0.689,
+    'Lucas Ferreira': 0.763, Ronaldo: 0.689,
   };
 
   const consultorSistemas = SISTEMAS.map((c) => {

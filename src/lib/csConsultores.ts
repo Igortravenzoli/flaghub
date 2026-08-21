@@ -8,8 +8,16 @@
  * aqui e as duas telas acompanham.
  */
 
+/**
+ * Os 9 do CS, em TOKENS normalizados (minúsculas, sem acento) — o filtro é por
+ * `includes`, então basta o primeiro nome como a fonte grafa.
+ *
+ * 21/08/2026: 'bruna' saiu e entrou 'lucas' (Lucas Ferreira) — quadro atual do
+ * time, confirmado pelo Igor. Trocar aqui move as DUAS telas (mesa e TV) de uma
+ * vez, que é o motivo desta lista existir fora dos componentes.
+ */
 export const CONSULTORES_CS = [
-  'ailton', 'italo', 'leandro', 'vagner', 'guimaraes', 'ricardo', 'wilker', 'bruna', 'ronaldo',
+  'ailton', 'italo', 'leandro', 'vagner', 'guimaraes', 'ricardo', 'wilker', 'lucas', 'ronaldo',
 ];
 
 /**
