@@ -43,11 +43,29 @@ vi.mock('@/hooks/useGestaoKpis', async (orig) => ({
   useGestaoSlaNestleDetalhe: () => semDados,
 }));
 
+// Produtividade com gente de FORA do CS de propósito: os endpoints do techlead
+// devolvem o time inteiro (sistemas + infra) e a TV do CS precisa recortar.
+const cons = (consultor: string, produtividade: number) => ({ consultor, produtividade });
 vi.mock('@/hooks/useTechLeadKpis', async (orig) => ({
   ...(await orig<typeof import('@/hooks/useTechLeadKpis')>()),
-  useTechLeadPorDia: () => semDados,
-  useTechLeadConsultorSistemas: () => semDados,
-  useTechLeadConsultorInfra: () => semDados,
+  useTechLeadPorDia: () => ({
+    data: {
+      registros: [
+        { consultor: 'Ailton', dataRegistro: '2026-07-01', produtividadeDia: 82 },
+        { consultor: 'Lucas Ferreira', dataRegistro: '2026-07-01', produtividadeDia: 74 },
+        { consultor: 'Marcos', dataRegistro: '2026-07-01', produtividadeDia: 90 },
+      ],
+    },
+    isLoading: false, isError: false, refetch: vi.fn(),
+  }),
+  useTechLeadConsultorSistemas: () => ({
+    data: { consultores: [cons('Ailton', 82), cons('Lucas Ferreira', 74), cons('Marcos', 90)] },
+    isLoading: false, isError: false, refetch: vi.fn(),
+  }),
+  useTechLeadConsultorInfra: () => ({
+    data: { consultores: [cons('Bruna', 71)] },
+    isLoading: false, isError: false, refetch: vi.fn(),
+  }),
 }));
 
 vi.mock('@/hooks/useCsIncidentesDeclarados', async (orig) => ({
@@ -73,6 +91,7 @@ vi.mock('@/hooks/useHelpdeskKpis', async (orig) => ({
 }));
 
 import HelpdeskKiosk from '@/components/home/kiosk/HelpdeskKiosk';
+import { KioskRotationContext } from '@/contexts/KioskRotationContext';
 
 describe('HelpdeskKiosk — modo TV', () => {
   it('encaminha MINUTOS BRUTOS: o TMA sai 23min (de 29900 ÷ 1284)', () => {
@@ -145,6 +164,34 @@ describe('HelpdeskKiosk — modo TV', () => {
     expect(linha!.textContent).toContain('INC ServiceNow');
     expect(linha!.textContent).toContain('7');       // incMaior30Dias
     expect(linha!.textContent).toContain('23');      // incMaior5Dias
+  });
+
+  // ── Recorte do time e limpeza do rodapé (21/08/2026) ───────────────────
+
+  it('a produtividade mostra SÓ os 9 do CS — o time do techlead não vaza para a TV', () => {
+    // A produtividade vive na PÁGINA 2 (Operação); sem provider o kiosk para na 1.
+    const { container } = render(
+      <KioskRotationContext.Provider
+        value={{ pagina: 1, paginas: 2, rotacaoLigada: false, pausado: true, registrarPaginas: () => {} }}
+      >
+        <HelpdeskKiosk />
+      </KioskRotationContext.Provider>,
+    );
+    const bloco = [...container.querySelectorAll('p')]
+      .find((p) => p.textContent === 'Produtividade · dias úteis')
+      ?.closest('div.p-4');
+    expect(bloco).toBeTruthy();
+    const txt = bloco!.textContent ?? '';
+
+    expect(txt).toContain('Ailton');
+    expect(txt).toContain('Lucas Ferreira');   // entrou no lugar da Bruna
+    expect(txt).not.toContain('Marcos');       // fora do CS
+    expect(txt).not.toContain('Bruna');        // saiu do time
+  });
+
+  it('o bloco de sistemas não repete que "nada rola" — o corte já está no header', () => {
+    const { container } = render(<HelpdeskKiosk />);
+    expect(container.textContent).not.toContain('Na TV nada rola');
   });
 
   it('sem ServiceNow o rodapé cai para OS e declara o PERCENTUAL do aberto', async () => {
