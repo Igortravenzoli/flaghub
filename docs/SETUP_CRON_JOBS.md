@@ -174,22 +174,28 @@ SELECT cron.schedule(
   $$
 );
 
--- 7. Snapshot de Sprint — SÁBADO às 16:20 UTC (13:20 BRT)
--- Reconstrói e SELA a foto de fim de sprint. Corte: SÁBADO 13:00 BRT desde
--- 04/08/2026 (antes domingo 22:00, sábado 23:59 e sexta 23:59). Este é o job
--- que de fato tira a foto — 20 min depois do corte, para os últimos syncs do
--- DevOps estarem espelhados. O guard interno compara now() com
--- fn_corte_foto_sprint(); fotos seladas/manuais nunca são regravadas.
+-- 7. Snapshot de Sprint — SÁBADO 22:30 BRT = 01:30 UTC de DOMINGO
+-- Reconstrói e SELA a foto de fim de sprint. Corte: SÁBADO 22:00 BRT desde
+-- 15/08/2026 (antes sábado 13:00, domingo 22:00, sábado 23:59 e sexta 23:59).
+-- Este é o job que de fato tira a foto — 30 min depois do corte, para os
+-- últimos syncs do DevOps estarem espelhados. O guard interno compara now()
+-- com fn_corte_foto_sprint(); fotos seladas/manuais nunca são regravadas.
+--
+-- ⚠️ O DOW é 0 (DOMINGO), não 6. 22:30 BRT cai em 01:30 UTC do dia seguinte;
+-- o cron do pg_cron é UTC. Com DOW 6 o job rodaria sexta 22:30 BRT — antes do
+-- corte, o guard pularia e a foto só sairia na rede de segurança das 00:30.
+-- O nome do job diz "saturday" porque descreve o sábado DA FOTO em BRT.
 -- Ver docs/FOTOGRAFIA_SPRINT_SELAGEM.md.
 SELECT cron.schedule(
   'snapshot-sprint-end-saturday',
-  '20 16 * * 6',
+  '30 1 * * 0',
   'SELECT public.rpc_backfill_reconstruct_closed_sprints();'
 );
 
 -- 8. Snapshot de Sprint — rede de segurança, diário às 03:30 UTC (00:30 BRT)
--- Mesmo driver, idempotente: só age se o job de sábado tiver falhado (a foto
--- atrasa para a madrugada seguinte, mas não some). NÃO remover.
+-- Mesmo driver, idempotente: só age se o job de sábado tiver falhado. Com o
+-- corte às 22:00, fica a 2h de distância: a foto atrasa pouco, não some.
+-- NÃO remover.
 SELECT cron.schedule(
   'snapshot-sprint-end-daily',
   '30 3 * * *',
