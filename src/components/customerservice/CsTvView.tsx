@@ -403,7 +403,11 @@ function SlaTvCard({ titulo, q }: {
             />
           ),
         }}
-        anterior={{ periodo: mAnt, valor: ttr.mesAnterior }}
+        anterior={{
+          periodo: mAnt,
+          valor: ttr.mesAnterior,
+          cor: corValorVsMeta(ttr.mesAnterior, metas.metaTTRDias, ttr.menorMelhor),
+        }}
         ano={{ periodo: rotAno, valor: ttr.anual, cor: corStatus(ttr.statusAnual) }}
       />
       <GrupoSlaTv
@@ -426,7 +430,11 @@ function SlaTvCard({ titulo, q }: {
             />
           ),
         }}
-        anterior={{ periodo: mAnt, valor: ttr24h.mesAnterior }}
+        anterior={{
+          periodo: mAnt,
+          valor: ttr24h.mesAnterior,
+          cor: corValorVsMeta(ttr24h.mesAnterior, metas.metaTTR24hPct, ttr24h.menorMelhor),
+        }}
         ano={{ periodo: rotAno, valor: ttr24h.anual, cor: corStatus(ttr24h.statusAnual) }}
       />
 
@@ -517,7 +525,7 @@ function GrupoSlaTv({ titulo, status, meta, heroi, anterior, ano }: {
     cor?: string;
     sub: ReactNode;
   };
-  anterior: { periodo: string; valor: number | null };
+  anterior: { periodo: string; valor: number | null; cor?: string };
   ano: { periodo: string; valor: number | null; cor: string };
 }) {
   return (
@@ -530,7 +538,16 @@ function GrupoSlaTv({ titulo, status, meta, heroi, anterior, ano }: {
           grupos, então o olho desce em linha reta entre TTR e %24h. */}
       <div className="grid grid-cols-[1.3fr_.85fr_1.1fr] gap-2 text-right items-end">
         <CelulaSlaTv rotulo={heroi.rotulo} valor={heroi.valor} fmt={heroi.fmt} cor={heroi.cor} heroi sub={heroi.sub} />
-        <CelulaSlaTv rotulo="mês anterior" periodo={anterior.periodo} valor={anterior.valor} fmt={heroi.fmt} mudo />
+        {/* `mudo` só quando não há régua: com meta definida o mês anterior é
+            julgado igual ao atual (21/08) — antes era sempre cinza. */}
+        <CelulaSlaTv
+          rotulo="mês anterior"
+          periodo={anterior.periodo}
+          valor={anterior.valor}
+          fmt={heroi.fmt}
+          cor={anterior.cor}
+          mudo={anterior.cor == null}
+        />
         <CelulaSlaTv
           rotulo="ano · média"
           periodo={ano.periodo}

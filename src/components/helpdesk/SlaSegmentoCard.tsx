@@ -296,7 +296,10 @@ export function SlaSegmentoCard({
             />
           }
         />
-        <MetricaCelula rotulo="mês anterior" periodo={mAnt} valor={fmtDias(ttr.mesAnterior)} />
+        <MetricaCelula
+          rotulo="mês anterior" periodo={mAnt} valor={fmtDias(ttr.mesAnterior)}
+          cor={corValorVsMeta(ttr.mesAnterior, metas.metaTTRDias, ttr.menorMelhor)}
+        />
         <MetricaCelula
           rotulo="ano (média)" periodo={rotAno} valor={fmtDias(ttr.anual)}
           cor={corStatus(ttr.statusAnual)}
@@ -319,7 +322,10 @@ export function SlaSegmentoCard({
             />
           }
         />
-        <MetricaCelula rotulo="mês anterior" periodo={mAnt} valor={fmtPct(ttr24h.mesAnterior)} />
+        <MetricaCelula
+          rotulo="mês anterior" periodo={mAnt} valor={fmtPct(ttr24h.mesAnterior)}
+          cor={corValorVsMeta(ttr24h.mesAnterior, metas.metaTTR24hPct, ttr24h.menorMelhor)}
+        />
         <MetricaCelula
           rotulo="ano (média)" periodo={rotAno} valor={fmtPct(ttr24h.anual)}
           cor={corStatus(ttr24h.statusAnual)}

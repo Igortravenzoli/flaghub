@@ -166,15 +166,16 @@ describe('HelpdeskKiosk — modo TV', () => {
     expect(celula!.textContent).not.toContain('3,42d'); // o mês NÃO mora aqui
   });
 
-  it('mês DENTRO da meta fica sem cor — o vermelho precisa significar alerta', async () => {
+  it('mês DENTRO da meta fica verde (régua de 4 cores)', async () => {
     const { container } = render(<HelpdeskKiosk />);
     await screen.findAllByText('4,35d', {}, { timeout: 3000 });   // contagem assentou
 
     // fixture: TTR do mês 3,42d com meta ≤ 3,90d e %24h 51,2% com meta ≥ 48%
+    const verde = corNormalizada(HEALTH_COLORS.verde);
     for (const v of ['3,42d', '51,2%']) {
       const el = [...container.querySelectorAll('p')].find((p) => p.textContent === v);
       expect(el, v).toBeTruthy();
-      expect(el!.getAttribute('style') ?? '', v).not.toContain('color');
+      expect(el!.getAttribute('style'), v).toBe(verde);
     }
   });
 

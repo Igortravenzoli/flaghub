@@ -78,14 +78,15 @@ const corEsperada = (cor: string) => {
 // gateway. Antes só o valor ANUAL tinha cor e um mês estourado passava em
 // branco — na Nestlé, 5,49d contra meta de 3,90d.
 
-describe('mês atual contra a meta', () => {
-  it('mês DENTRO da meta não ganha cor (o vermelho tem que significar alerta)', () => {
+describe('mês contra a meta — régua de 4 cores', () => {
+  it('DENTRO da meta fica verde', () => {
     renderCard();   // fixture: TTR 3,42d ≤ 3,90d e 24h 51,2% ≥ 48%
-    expect(corDe('3,42d')).not.toContain('color');
-    expect(corDe('51,2%')).not.toContain('color');
+    const verde = corEsperada(HEALTH_COLORS.verde);
+    expect(corDe('3,42d')).toBe(verde);
+    expect(corDe('51,2%')).toBe(verde);
   });
 
-  it('mês FORA da meta fica vermelho nos dois grupos', () => {
+  it('FORA da meta fica vermelho nos dois grupos', () => {
     renderCard({
       data: fixture({
         ttr: { ...fixture().ttr, mesAtual: 5.49 },        // > 3,90 (menor é melhor)
@@ -97,7 +98,19 @@ describe('mês atual contra a meta', () => {
     expect(corDe('31,5%')).toBe(vermelho);
   });
 
-  it('sem meta definida o mês fica sem cor — não se julga o que não tem régua', () => {
+  it('MUITO além da meta fica azul (superação)', () => {
+    renderCard({
+      data: fixture({
+        ttr: { ...fixture().ttr, mesAtual: 2.1 },         // ≤ 3,90 × 0,7
+        ttr24h: { ...fixture().ttr24h, mesAtual: 70 },    // ≥ 48 × 1,3
+      }),
+    });
+    const azul = corEsperada(HEALTH_COLORS.azul);
+    expect(corDe('2,10d')).toBe(azul);
+    expect(corDe('70,0%')).toBe(azul);
+  });
+
+  it('sem meta definida fica BRANCO — não se julga o que não tem régua', () => {
     renderCard({
       data: fixture({
         metas: { metaTTRDias: null, metaTTR24hPct: null, metaDefinida: false },
@@ -105,6 +118,11 @@ describe('mês atual contra a meta', () => {
       }),
     });
     expect(corDe('99,00d')).not.toContain('color');
+  });
+
+  it('o MÊS ANTERIOR também é julgado — antes era sempre cinza', () => {
+    renderCard();   // fixture: mês anterior 3,91d, logo ACIMA da meta de 3,90
+    expect(corDe('3,91d')).toBe(corEsperada(HEALTH_COLORS.vermelho));
   });
 });
 

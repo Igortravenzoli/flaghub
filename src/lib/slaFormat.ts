@@ -46,20 +46,33 @@ export const corStatus = (s: SlaMensalStatusAnual) => COR_STATUS_ANUAL[s] ?? HEA
 export const rotuloStatus = (s: SlaMensalStatusAnual) => ROTULO_STATUS_ANUAL[s] ?? 'SEM BASE';
 
 /**
- * Cor do valor MENSAL contra a meta (21/08/2026, pedido do Igor: "TTR do mês
- * 5,49 na Nestlé está acima da meta de 3,90 — deixar vermelho").
+ * Distância da meta, na direção boa, a partir da qual o resultado deixa de ser
+ * "dentro" e passa a ser SUPERAÇÃO. 30% simétrico nos dois sentidos: com meta
+ * de 10 dias, ≤ 7 dias é superação; com piso de 55%, ≥ 71,5% é superação.
+ */
+const FATOR_SUPERACAO = 0.3;
+
+/**
+ * Cor de um valor contra a meta — régua de QUATRO estados (21/08/2026, pedido
+ * do Igor):
  *
- * BINÁRIA de propósito — atingiu ou não atingiu. O contrato só publica
- * `statusAnual`; a escada de três degraus (meta, meta×1,5, meta×0,85) é do
- * gateway e continua sem réplica aqui, como manda a regra do topo deste
- * arquivo. O que se usa é só o que o contrato entrega: o alvo (`metas.*`) e a
- * direção (`menorMelhor`), comparados direto.
+ *   sem meta / sem base → `undefined` (o texto fica na cor normal, branco)
+ *   fora da meta ........ vermelho
+ *   dentro da meta ...... verde
+ *   muito além dela ..... azul (ver `FATOR_SUPERACAO`)
  *
- * Devolve `undefined` quando ATINGE: o valor fica na cor normal do texto e o
- * vermelho guarda seu papel de alerta, em vez de a tela virar um semáforo
- * inteiro (DESIGN-SYSTEM §2.7 — semântica só para status).
- * Sem base ou sem meta definida também é `undefined`: não se julga o que não
- * tem régua.
+ * Vale para as duas direções: em TTR (menor é melhor) "fora" é ACIMA da meta e
+ * superação é bem abaixo; em %24h (maior é melhor) é o espelho.
+ *
+ * DUAS COISAS QUE ESTA FUNÇÃO NÃO É:
+ *
+ * 1. Não é o semáforo do contrato. A escada de três degraus do gateway
+ *    (meta, meta×1,5, meta×0,85) segue sem réplica aqui, como manda a regra do
+ *    topo deste arquivo — é ela que pinta o valor ANUAL, via `statusAnual`.
+ *    Esta régua é de EXIBIÇÃO e vale para os valores mensais, que o contrato
+ *    não julga.
+ * 2. Não inventa alvo. Usa só o que o contrato entrega: `metas.*` e a direção
+ *    (`menorMelhor`). Sem meta definida não há julgamento — é o caso `NEUTRO`.
  */
 export function corValorVsMeta(
   valor: number | null | undefined,
@@ -67,6 +80,11 @@ export function corValorVsMeta(
   menorMelhor: boolean,
 ): string | undefined {
   if (valor == null || meta == null) return undefined;
-  const atingiu = menorMelhor ? valor <= meta : valor >= meta;
-  return atingiu ? undefined : HEALTH_COLORS.vermelho;
+
+  if (menorMelhor) {
+    if (valor > meta) return HEALTH_COLORS.vermelho;
+    return valor <= meta * (1 - FATOR_SUPERACAO) ? HEALTH_COLORS.azul : HEALTH_COLORS.verde;
+  }
+  if (valor < meta) return HEALTH_COLORS.vermelho;
+  return valor >= meta * (1 + FATOR_SUPERACAO) ? HEALTH_COLORS.azul : HEALTH_COLORS.verde;
 }
