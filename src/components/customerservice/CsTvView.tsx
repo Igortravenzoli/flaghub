@@ -14,6 +14,7 @@ import { horasHM, tmaCurto } from '@/lib/formatHoras';
 import { fmtMesAno } from '@/lib/formatMes';
 import { DASH, corStatus, fmtDias, fmtInt, fmtPct, rotuloStatus } from '@/lib/slaFormat';
 import { agrupaVolumePorConsultorCS } from '@/lib/csConsultores';
+import { useContagem } from '@/hooks/useContagem';
 import { faixaCorProd, useProdutividadeConsultores } from '@/hooks/useProdutividadeConsultores';
 import {
   useGestaoCoberturaClientes, useGestaoSlaMensal, type GestaoSlaMensalResponse,
@@ -357,148 +358,193 @@ function SlaTvCard({ titulo, q }: {
   const ttrVarValor = ttr.variacaoPct ?? ttr.variacaoDias;
   const ttrVarUnid = ttr.variacaoPct != null ? ttr.unidadeVariacao : 'd';
 
+  // Refino 21/08: o miolo deixou de ser `justify-evenly` — ele transformava a
+  // folga da altura em BURACOS entre os grupos (58% de aproveitamento medido no
+  // canvas do kiosk). Agora cada grupo é flex-1 e centra o próprio conteúdo:
+  // a mesma informação preenche o card e a tipografia pôde crescer.
   return (
     <BlocoTv titulo={`SLA ${titulo}`}>
-      <div className="flex-1 min-h-0 flex flex-col justify-evenly">
-        <GrupoSlaTv
-          titulo="TTR — dias"
-          status={ttr.statusAnual}
-          meta={metas.metaTTRDias == null ? 'sem meta definida' : `meta ≤ ${fmtDias(metas.metaTTRDias)}`}
-          heroi={{
-            rotulo: `mês atual · ${mAtual}`,
-            valor: fmtDias(ttr.mesAtual),
-            sub: (
-              <DeltaBadge
-                variacao={ttrVarValor}
-                unidade={ttrVarUnid}
-                menorMelhor={ttr.menorMelhor}
-                semBaseTexto="sem base"
-                aria={`TTR de ${mAtual} em relação a ${mAnt} — queda é melhora`}
-              />
-            ),
-          }}
-          anterior={{ periodo: mAnt, valor: fmtDias(ttr.mesAnterior) }}
-          ano={{ periodo: rotAno, valor: fmtDias(ttr.anual), cor: corStatus(ttr.statusAnual) }}
-        />
-        <GrupoSlaTv
-          titulo="TTR ≤ 24h — %"
-          status={ttr24h.statusAnual}
-          meta={metas.metaTTR24hPct == null ? 'sem meta definida' : `meta ≥ ${fmtPct(metas.metaTTR24hPct)}`}
-          heroi={{
-            rotulo: `mês atual · ${mAtual}`,
-            valor: fmtPct(ttr24h.mesAtual),
-            sub: (
-              <DeltaBadge
-                variacao={ttr24h.variacaoPp}
-                unidade={ttr24h.unidadeVariacao}
-                menorMelhor={ttr24h.menorMelhor}
-                semBaseTexto="sem base"
-                aria={`%24h de ${mAtual} em relação a ${mAnt} — alta é melhora`}
-              />
-            ),
-          }}
-          anterior={{ periodo: mAnt, valor: fmtPct(ttr24h.mesAnterior) }}
-          ano={{ periodo: rotAno, valor: fmtPct(ttr24h.anual), cor: corStatus(ttr24h.statusAnual) }}
-        />
-      </div>
+      <GrupoSlaTv
+        titulo="TTR — dias"
+        status={ttr.statusAnual}
+        meta={metas.metaTTRDias == null ? 'sem meta definida' : `meta ≤ ${fmtDias(metas.metaTTRDias)}`}
+        heroi={{
+          rotulo: `mês atual · ${mAtual}`,
+          valor: ttr.mesAtual,
+          fmt: fmtDias,
+          sub: (
+            <DeltaBadge
+              variacao={ttrVarValor}
+              unidade={ttrVarUnid}
+              menorMelhor={ttr.menorMelhor}
+              semBaseTexto="sem base"
+              aria={`TTR de ${mAtual} em relação a ${mAnt} — queda é melhora`}
+            />
+          ),
+        }}
+        anterior={{ periodo: mAnt, valor: ttr.mesAnterior }}
+        ano={{ periodo: rotAno, valor: ttr.anual, cor: corStatus(ttr.statusAnual) }}
+      />
+      <GrupoSlaTv
+        titulo="TTR ≤ 24h — %"
+        status={ttr24h.statusAnual}
+        meta={metas.metaTTR24hPct == null ? 'sem meta definida' : `meta ≥ ${fmtPct(metas.metaTTR24hPct)}`}
+        heroi={{
+          rotulo: `mês atual · ${mAtual}`,
+          valor: ttr24h.mesAtual,
+          fmt: fmtPct,
+          sub: (
+            <DeltaBadge
+              variacao={ttr24h.variacaoPp}
+              unidade={ttr24h.unidadeVariacao}
+              menorMelhor={ttr24h.menorMelhor}
+              semBaseTexto="sem base"
+              aria={`%24h de ${mAtual} em relação a ${mAnt} — alta é melhora`}
+            />
+          ),
+        }}
+        anterior={{ periodo: mAnt, valor: ttr24h.mesAnterior }}
+        ano={{ periodo: rotAno, valor: ttr24h.anual, cor: corStatus(ttr24h.statusAnual) }}
+      />
 
-      <div className="flex-none border-t pt-2 space-y-1">
-        <p className="text-[12.5px] text-muted-foreground leading-snug">
-          OS fechadas · {mAtual}{' '}
-          <b className="font-mono tabular-nums font-bold text-foreground">{fmtInt(volumes.fechadosMesAtual)}</b>
-          {' · '}{mAnt}{' '}
-          <b className="font-mono tabular-nums font-bold text-foreground">{fmtInt(volumes.fechadosMesAnterior)}</b>
-          {' · '}{rotAno}{' '}
-          <b className="font-mono tabular-nums font-bold text-foreground">{fmtInt(volumes.fechadosAno)}</b>
-        </p>
+      {/* Rodapé com etiqueta fixa à esquerda: o olho encontra "Em aberto" sem
+          reler a frase inteira, e o nº de > 30 dias sai do corpo do texto. */}
+      <div className="flex-none border-t pt-2.5 space-y-1.5">
+        <LinhaRodapeSla etiqueta="Fechadas">
+          {mAtual} <ValorRodape v={volumes.fechadosMesAtual} /> · {mAnt}{' '}
+          <ValorRodape v={volumes.fechadosMesAnterior} /> · {rotAno}{' '}
+          <ValorRodape v={volumes.fechadosAno} />
+        </LinhaRodapeSla>
         {temInc ? (
-          <p className="text-[12.5px] text-muted-foreground leading-snug">
-            INC em aberto · {'> 5 dias'}{' '}
-            <b className="font-mono tabular-nums font-bold text-foreground">{fmtInt(abertos.incMaior5Dias)}</b>
-            {' · > 30 dias '}
-            <b
-              className="font-mono tabular-nums font-bold"
-              style={{
-                color: abertos.incMaior30Dias != null && abertos.incMaior30Dias > 0
-                  ? HEALTH_COLORS.vermelho
-                  : undefined,
-              }}
-            >
-              {fmtInt(abertos.incMaior30Dias)}
-            </b>
-          </p>
+          <LinhaRodapeSla etiqueta="Em aberto">
+            <ValorGrave v={abertos.incMaior30Dias} /> há mais de 30 dias ·{' '}
+            <ValorRodape v={abertos.incMaior5Dias} /> acima de 5 dias
+            {/* A Nestlé conta INC do ServiceNow e os demais OS do VDesk: sem
+                dizer isso, 3 e 91 lado a lado parecem a mesma métrica. */}
+            <span className="text-[11px] text-muted-foreground/70"> · INC ServiceNow</span>
+          </LinhaRodapeSla>
         ) : (
-          <p className="text-[12.5px] text-muted-foreground leading-snug">
-            OS em aberto · total{' '}
-            <b className="font-mono tabular-nums font-bold text-foreground">{fmtInt(abertos.totalAbertos)}</b>
-            {' · > 30 dias '}
-            <b
-              className="font-mono tabular-nums font-bold"
-              style={{ color: abertos.maior30Dias > 0 ? HEALTH_COLORS.vermelho : undefined }}
-            >
-              {fmtInt(abertos.maior30Dias)}
-            </b>
-          </p>
+          <LinhaRodapeSla etiqueta="Em aberto">
+            <ValorGrave v={abertos.maior30Dias} /> há mais de 30 dias
+            {abertos.totalAbertos > 0 && (
+              <>
+                {' · '}
+                <b className="font-mono tabular-nums font-bold text-foreground">
+                  {Math.round((abertos.maior30Dias / abertos.totalAbertos) * 100)}%
+                </b>
+                {' das '}
+                <ValorRodape v={abertos.totalAbertos} /> abertas
+              </>
+            )}
+          </LinhaRodapeSla>
         )}
       </div>
     </BlocoTv>
   );
 }
 
+/** Linha do rodapé: etiqueta de largura fixa + conteúdo. */
+function LinhaRodapeSla({ etiqueta, children }: { etiqueta: string; children: ReactNode }) {
+  return (
+    <p className="flex items-baseline gap-2 text-[12.5px] text-muted-foreground leading-snug">
+      <span className="w-[72px] shrink-0 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground/70">
+        {etiqueta}
+      </span>
+      <span className="min-w-0">{children}</span>
+    </p>
+  );
+}
+
+const ValorRodape = ({ v }: { v: number | null | undefined }) => (
+  <b className="font-mono tabular-nums font-bold text-foreground">{fmtInt(v)}</b>
+);
+
+/** Backlog envelhecido: o número mais acionável do card não pode ter o mesmo
+ *  peso do texto em volta. Vermelho só quando existe de fato (> 0). */
+const ValorGrave = ({ v }: { v: number | null | undefined }) => (
+  <b
+    className="font-mono tabular-nums font-extrabold text-[16px]"
+    style={{ color: v != null && v > 0 ? HEALTH_COLORS.vermelho : undefined }}
+  >
+    {fmtInt(v)}
+  </b>
+);
+
 /**
  * Grupo TTR do card de SLA da TV. O badge de status é POR GRUPO (não um só no
  * header do card): TTR-dias e TTR-24h têm `statusAnual` próprios no contrato e
  * podem divergir — condensar num badge único exigiria recombinar semáforo no
  * front, exatamente o que o contrato proíbe.
+ *
+ * Refino 21/08: o badge saiu do cabeçalho e desceu para BAIXO DO VALOR ANUAL.
+ * `statusAnual` julga o ano, mas no cabeçalho ele ficava colado no título e o
+ * olho o associava ao número gigante do mês — na Heineken isso lia como "META
+ * OK" sobre 2,58d quando o aprovado era o ano de 9,46d, a 5% do teto de 10.
+ * Só mudou de lugar: o contrato e o semáforo continuam intactos.
  */
 function GrupoSlaTv({ titulo, status, meta, heroi, anterior, ano }: {
   titulo: string;
   status: GestaoSlaMensalResponse['ttr']['statusAnual'];
   meta: string;
-  heroi: { rotulo: string; valor: string; sub: ReactNode };
-  anterior: { periodo: string; valor: string };
-  ano: { periodo: string; valor: string; cor: string };
+  heroi: { rotulo: string; valor: number | null; fmt: (v: number | null | undefined) => string; sub: ReactNode };
+  anterior: { periodo: string; valor: number | null };
+  ano: { periodo: string; valor: number | null; cor: string };
 }) {
   return (
-    <div className="border-t first:border-t-0 pt-2 first:pt-0">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground">{titulo}</p>
-        <span className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] text-muted-foreground">{meta}</span>
-          <Badge
-            variant="outline"
-            className="border-current text-[11px] font-bold shrink-0"
-            style={{ color: corStatus(status) }}
-          >
-            {rotuloStatus(status)}
-          </Badge>
-        </span>
+    <div className="flex-1 min-h-0 flex flex-col justify-center gap-2 border-t first:border-t-0 pt-3 first:pt-0">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[12.5px] font-bold uppercase tracking-wide text-muted-foreground">{titulo}</p>
+        <span className="text-[11.5px] font-mono text-muted-foreground/80 shrink-0">{meta}</span>
       </div>
-      <div className="grid grid-cols-[1.25fr_1fr_1fr] gap-2 pt-1 text-right">
-        <CelulaSlaTv rotulo={heroi.rotulo} valor={heroi.valor} heroi sub={heroi.sub} />
-        <CelulaSlaTv rotulo="mês anterior" periodo={anterior.periodo} valor={anterior.valor} mudo />
-        <CelulaSlaTv rotulo="ano (média)" periodo={ano.periodo} valor={ano.valor} cor={ano.cor} />
+      {/* Grid (não flex): "mês anterior" e "ano" caem na MESMA vertical nos dois
+          grupos, então o olho desce em linha reta entre TTR e %24h. */}
+      <div className="grid grid-cols-[1.3fr_.85fr_1.1fr] gap-2 text-right items-end">
+        <CelulaSlaTv rotulo={heroi.rotulo} valor={heroi.valor} fmt={heroi.fmt} heroi sub={heroi.sub} />
+        <CelulaSlaTv rotulo="mês anterior" periodo={anterior.periodo} valor={anterior.valor} fmt={heroi.fmt} mudo />
+        <CelulaSlaTv
+          rotulo="ano · média"
+          periodo={ano.periodo}
+          valor={ano.valor}
+          fmt={heroi.fmt}
+          cor={ano.cor}
+          destaque
+          sub={(
+            <Badge
+              variant="outline"
+              className="border-current text-[11px] font-bold shrink-0"
+              style={{ color: corStatus(status) }}
+            >
+              {rotuloStatus(status)}
+            </Badge>
+          )}
+        />
       </div>
     </div>
   );
 }
 
-function CelulaSlaTv({ rotulo, periodo, valor, cor, sub, heroi, mudo }: {
-  rotulo: string; periodo?: string; valor: string; cor?: string; sub?: ReactNode;
-  heroi?: boolean; mudo?: boolean;
+function CelulaSlaTv({ rotulo, periodo, valor, fmt, cor, sub, heroi, mudo, destaque }: {
+  rotulo: string; periodo?: string; valor: number | null;
+  fmt: (v: number | null | undefined) => string;
+  cor?: string; sub?: ReactNode; heroi?: boolean; mudo?: boolean;
+  /** Coluna do ano: filete à esquerda separando o valor que a meta julga. */
+  destaque?: boolean;
 }) {
+  // Contagem só no que é grande o bastante para se ver de longe; o atraso
+  // escalona os números do card em vez de dispará-los todos no mesmo quadro.
+  const animado = useContagem(valor, { atrasoMs: heroi ? 0 : destaque ? 120 : 60 });
   return (
-    <div className="min-w-0">
-      <p className="text-[11.5px] text-muted-foreground">{rotulo}</p>
+    <div className={`min-w-0 ${destaque ? 'border-l-2 pl-2.5' : ''}`}>
+      <p className="text-[11.5px] text-muted-foreground leading-tight">{rotulo}</p>
       <p className="text-[11px] font-mono tabular-nums text-muted-foreground/70 min-h-4">{periodo}</p>
       <p
-        className={`${heroi ? 'text-[40px]' : 'text-[26px]'} ${mudo ? 'text-muted-foreground' : ''} font-black font-mono tabular-nums leading-none mt-0.5`}
+        className={`${heroi ? 'text-[54px]' : destaque ? 'text-[38px]' : 'text-[28px]'} ${mudo ? 'text-muted-foreground' : ''} font-black font-mono tabular-nums leading-none mt-1`}
         style={cor ? { color: cor } : undefined}
       >
-        {valor}
+        {fmt(animado)}
       </p>
       {/* min-h fixo alinha a 4ª linha entre as células, mesmo vazia */}
-      <div className="min-h-5 text-xs mt-0.5 flex justify-end">{sub}</div>
+      <div className="min-h-6 text-xs mt-1.5 flex justify-end items-center">{sub}</div>
     </div>
   );
 }

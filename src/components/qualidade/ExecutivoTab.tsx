@@ -161,26 +161,27 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
     </BarChart>
   );
 
-  // ── Cards da faixa inferior — TV (faixa 2+1) × mesa (linha 4). ──
-  // TV (20/08, escolha do Igor após o 2+1 espremer em janela fora do 16:9):
-  // a reconciliação vira uma FAIXA de uma linha — título + 3 números — e toda
-  // a altura restante da coluna vai para a tabela de versões. A lista de ≥3x
-  // fica só na mesa: no telão o resumo dela já está no "≥ 3x ⚠" da linha 1.
-  const cardReconciliacao = tvMode ? (
-    <Card className="flex-none p-3 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-2 min-w-0">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
-          <GitCompareArrows className="h-3.5 w-3.5 text-muted-foreground" />
-        </div>
-        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Retorno QA · reconciliação</p>
-      </div>
-      <div className="flex shrink-0 items-baseline gap-4">
-        <span className="text-sm text-muted-foreground"><b className="font-mono text-lg text-foreground">{retornos?.reconc.total_encerrados ?? 0}</b> encerrados {year}</span>
-        <span className="text-sm text-muted-foreground"><b className="font-mono text-lg text-[hsl(142,71%,40%)]">{retornos?.reconc.sem_retorno ?? 0}</b> sem retorno</span>
-        <span className="text-sm text-muted-foreground"><b className="font-mono text-lg text-destructive">{retornos?.reconc.com_retorno ?? 0}</b> com retorno</span>
-      </div>
-    </Card>
-  ) : (
+  // ── Reconciliação — TV × mesa ──
+  // TV (21/08, pedido do Igor): a reconciliação DEIXA de ser card/faixa própria
+  // e vira o rodapé do card de retornos por nº de ciclos (linha 1) — os dois
+  // falam da MESMA base (156 com retorno = 113+24+19), então juntá-los devolve
+  // a coluna esquerda inteira para a tabela de versões, que era o aperto.
+  // A lista de ≥3x fica só na mesa: no telão o resumo já está no "≥ 3x ⚠".
+  const reconciliacaoRodape = (
+    <div className="flex flex-none items-baseline justify-between gap-2 border-t pt-2">
+      <span className="text-sm text-muted-foreground">
+        <b className="font-mono text-lg text-foreground">{retornos?.reconc.total_encerrados ?? 0}</b> encerrados {year}
+      </span>
+      <span className="text-sm text-muted-foreground">
+        <b className="font-mono text-lg text-[hsl(142,71%,40%)]">{retornos?.reconc.sem_retorno ?? 0}</b> sem retorno
+      </span>
+      <span className="text-sm text-muted-foreground">
+        <b className="font-mono text-lg text-destructive">{retornos?.reconc.com_retorno ?? 0}</b> com retorno
+      </span>
+    </div>
+  );
+
+  const cardReconciliacao = (
     <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação">
       <div className="grid grid-cols-3 gap-2 text-center">
         <div>
@@ -222,7 +223,7 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
   // coluna tem altura fixa: o card estica até preenchê-la e, se a tabela
   // crescer além, rola dentro em vez de vazar.
   const cardVersoes = tvMode ? (
-    <div className="flex-1 min-h-0 overflow-y-auto [&>div]:min-h-full [&>div]:p-3 [&>div]:gap-2">
+    <div className="min-h-0 overflow-y-auto [&>div]:min-h-full [&>div]:p-3 [&>div]:gap-2">
       <SistemaVersoesCard canManage={false} compact />
     </div>
   ) : (
@@ -326,6 +327,8 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
               <p className={`${lbl} text-destructive font-medium`}>≥ 3x ⚠</p>
             </div>
           </div>
+          {/* TV: a reconciliação (mesma base) mora aqui desde 21/08 */}
+          {tvMode && reconciliacaoRodape}
           {!tvMode && (
             <p className={`${foot} text-muted-foreground border-t pt-2`}>
               {retornos?.itens_com_retorno ?? 0} itens encerrados com retorno (tag RETORNO QA) em {year} — soma dos 3 grupos. ≥3 = sinal de problema no processo.
@@ -393,18 +396,12 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
       </div>
       )}
 
-      {/* ── Linha 3 + 4: no TV, faixa 2+1 aprovada no mock de 20/08 — Retorno
-          QA sobre Controle de versão na metade esquerda, Distribuição com a
-          metade direita INTEIRA (o gráfico mais denso da tela ganha o dobro de
-          altura). Mesma gramática do TV da Infra; substitui a grade de 3
-          colunas desiguais (1fr·1.5fr·1.1fr). Fora do TV nada muda. ── */}
+      {/* ── Linha 3 + 4: no TV, DUAS metades — Controle de versão à esquerda e
+          Distribuição à direita, ambas em altura total (21/08: a reconciliação
+          subiu para o card de retornos da linha 1, o que desafogou a coluna
+          esquerda). Fora do TV nada muda. ── */}
       <div className={tvMode ? 'flex-1 min-h-0 grid grid-cols-2 gap-3' : 'flex flex-col gap-4'}>
-      {tvMode && (
-        <div className="flex flex-col gap-3 min-h-0 min-w-0">
-          {cardReconciliacao}
-          {cardVersoes}
-        </div>
-      )}
+      {tvMode && cardVersoes}
       <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'min-h-0 overflow-hidden' : undefined}>
         {handoffData.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sem entradas registradas no período.</p>
