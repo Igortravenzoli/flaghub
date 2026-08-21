@@ -131,12 +131,27 @@ describe('buildSgsiResponse', () => {
     expect(r.diasSem.attMalSucedidas).toBe(10);  // mudança malsucedida 01/06
   });
 
+  it('recorde = maior intervalo entre registros consecutivos, incluindo o em curso', () => {
+    // 017: 20/05 → 06/06 = 17 dias (o intervalo em curso, 5, não supera)
+    expect(r.diasSem.maiorIntervaloIncidentes).toBe(17);
+    // 012: 01/03 → 01/04 = 31; 01/04 → 09/06 = 69 (em curso, 2, não supera)
+    expect(r.diasSem.maiorIntervaloRiscos).toBe(69);
+  });
+
+  it('com um único registro o recorde é o próprio intervalo em curso (= dias sem)', () => {
+    const soUm = buildSgsiResponse([item('017', 99, {}, '2026-06-01T12:00:00Z')], null, NOW);
+    expect(soUm.diasSem.incidentes).toBe(10);
+    expect(soUm.diasSem.maiorIntervaloIncidentes).toBe(10); // sequência atual É o recorde
+    expect(soUm.diasSem.maiorIntervaloRiscos).toBeNull();   // 012 sem registros
+  });
+
   it('sem dados sincronizados retorna tudo zerado com diasSem nulos', () => {
     const vazio = buildSgsiResponse([], null, NOW);
     expect(vazio.totalItens).toBe(0);
     expect(vazio.totalItensBase).toBe(0);
     expect(vazio.mudancas.total).toBe(0);
     expect(vazio.diasSem.incidentes).toBeNull();
+    expect(vazio.diasSem.maiorIntervaloIncidentes).toBeNull();
   });
 
   it('filtro de período (sprint) limita os blocos mas não os "dias sem"', () => {

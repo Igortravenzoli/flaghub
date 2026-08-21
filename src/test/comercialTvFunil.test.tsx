@@ -1,20 +1,18 @@
 import { render, within, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { ComercialTvView } from '@/components/comercial/ComercialTvView';
-import { visoesDoTrimestre } from '@/lib/comercialPeriodo';
 
 /**
  * Comercial no telão — UMA tela com tudo (19/08/2026).
  *
  * O que estes testes travam:
- *  • os 11 blocos numa tela só, sem paginação;
+ *  • funis + operação numa tela só, sem paginação — e SEM a faixa de
+ *    comparativo (Julho/Agosto/Acumulado/Taxa de conversão saiu em 20/08);
  *  • título SEM nome de pessoa (o modelo dizia "Funil SDR — Arthur");
  *  • as visões do trimestre como abas CLICÁVEIS, não páginas da rotação;
  *  • nenhum trimestre escrito em rótulo — a virada do Q4 não pode pedir build;
  *  • os tetos de produtos e alertas DECLARADOS: o container é overflow-hidden,
- *    então item cortado em silêncio seria "cobri tudo" mentindo;
- *  • a faixa de comparativo acompanha quantos meses o trimestre já tem — num
- *    grid fixo de 4 colunas, setembro empurraria um card para fora da tela.
+ *    então item cortado em silêncio seria "cobri tudo" mentindo.
  */
 
 const { somar } = vi.hoisted(() => {
@@ -64,9 +62,13 @@ vi.mock('@/hooks/useComercialFunil', async (orig) => ({
   },
 }));
 
-// 5 produtos e 4 alertas de proposito: os tetos da tela sao 4 e 3.
+// 9 produtos e 7 alertas de proposito: os tetos da tela sao 8 e 6 (subiram em
+// 20/08, quando a faixa de comparativo saiu e a operação ficou com a altura).
+// `execCalls` grava a janela pedida ao hook — desde 20/08 a aba de período
+// governa a tela toda, então trocar de aba TEM de mudar a janela da operação.
+const { execCalls } = vi.hoisted(() => ({ execCalls: [] as Array<[Date, Date]> }));
 vi.mock('@/hooks/useComercialExecutivo', () => ({
-  useComercialExecutivo: () => ({
+  useComercialExecutivo: (from: Date, to: Date) => (execCalls.push([from, to]), {
     movimento: { ganhos: 6, perdas: 3, saldo: 3, valorPerdido: 0 },
     receita: { total: 0, negocios: 0, orgs: 0 },
     produtos: [
@@ -75,6 +77,10 @@ vi.mock('@/hooks/useComercialExecutivo', () => ({
       { nome: 'Broker', metaQty: 14, realQty: 10, pct: 71 },
       { nome: 'FlexxPromo', metaQty: 17, realQty: 7, pct: 41 },
       { nome: 'Flag Analytics', metaQty: 8, realQty: 2, pct: 25 },
+      { nome: 'Flag Pay', metaQty: 5, realQty: 5, pct: 100 },
+      { nome: 'Flexx Power', metaQty: 6, realQty: 3, pct: 50 },
+      { nome: 'Portal RH', metaQty: 4, realQty: 1, pct: 25 },
+      { nome: 'Flag BI', metaQty: 3, realQty: 3, pct: 100 },
     ],
     satisfacao: { nota: 4.3, csat: 87, respostas: 34, detratores: 2, detratoresNomes: ['Alfa', 'Beta'] },
     alertas: [
@@ -82,24 +88,23 @@ vi.mock('@/hooks/useComercialExecutivo', () => ({
       { texto: 'Flag Analytics: 25% da meta (2/8)', nivel: 'alto' },
       { texto: '3 perdas de cliente no periodo', nivel: 'alto' },
       { texto: '2 clientes detratores na pesquisa', nivel: 'medio' },
+      { texto: 'Portal RH: 25% da meta (1/4)', nivel: 'alto' },
+      { texto: 'Flexx Power: 50% da meta (3/6)', nivel: 'medio' },
+      { texto: 'Broker: 71% da meta (10/14)', nivel: 'medio' },
     ],
     isLoading: false,
   }),
 }));
 
-// 18/08/2026 → Q3 com Julho, Agosto e Acumulado (setembro não iniciou).
-const VISOES = visoesDoTrimestre(new Date(2026, 7, 18));
-// 30/09/2026 → Q3 fechado: Julho, Agosto, Setembro e Acumulado.
-const VISOES_SET = visoesDoTrimestre(new Date(2026, 8, 30));
+// Relógio injetado: 18/08/2026 → Q3 vigente com Julho, Agosto e Acumulado
+// (setembro não iniciou). O teste de setembro injeta 30/09.
+const HOJE = new Date(2026, 7, 18);
 
-const renderTv = (visaoInicial?: string, visoes = VISOES) =>
+const renderTv = (visaoInicial?: string, hoje = HOJE) =>
   render(
     <ComercialTvView
-      visoes={visoes}
-      trimestreLabel="Q3 2026 · jul–set"
-      qKey="2026-Q3"
-      dateFrom={new Date(2026, 6, 1)}
-      dateTo={new Date(2026, 8, 30)}
+      qKeyInicial="2026-Q3"
+      hoje={hoje}
       clientesAtivos={128}
       clientesBloqueados={9}
       visaoInicial={visaoInicial}
@@ -111,15 +116,19 @@ const abasDe = (container: HTMLElement) =>
   container.querySelector('[aria-label="Visão exibida"]') as HTMLElement;
 
 describe('ComercialTvView — o Comercial inteiro numa tela', () => {
-  it('traz os 11 blocos juntos, sem paginação', () => {
+  it('traz funis, operação e abas numa tela — sem a faixa de comparativo', () => {
     const t = renderTv('2026-07').container.textContent ?? '';
     for (const bloco of [
       'Funil SDR', 'Funil Comercial',
       'Carteira e movimento', 'Produtos · meta × realizado', 'Satisfação', 'Alertas',
-      'Julho', 'Agosto', 'Acumulado', 'Taxa de conversão',
+      'Julho', 'Agosto', 'Acumulado', // abas do trimestre continuam no topo
     ]) {
       expect(t).toContain(bloco);
     }
+    // O comparativo saiu em 20/08 (pedido do Igor): sem taxa ponta a ponta,
+    // sem KPIs mensais "fechadas" e sem referência ao trimestre anterior.
+    expect(t).not.toContain('Taxa de conversão');
+    expect(t).not.toMatch(/vs Q2/);
   });
 
   it('não usa nome de pessoa no título dos funis', () => {
@@ -138,8 +147,9 @@ describe('ComercialTvView — o Comercial inteiro numa tela', () => {
   it('declara o que cortou em produtos e alertas em vez de sumir com o excedente', () => {
     const t = renderTv('2026-07').container.textContent ?? '';
     expect(t).toContain('ConnectMerchan');
-    expect(t).toContain('+1 produto');            // 5 produtos, teto de 4
-    expect(t).toContain('+1 ponto de atenção');   // 4 alertas, teto de 3
+    expect(t).toContain('12/10');                 // realizado/meta visível na linha (20/08)
+    expect(t).toContain('+1 produto');            // 9 produtos, teto de 8
+    expect(t).toContain('+1 ponto de atenção');   // 7 alertas, teto de 6
   });
 
   it('desenha as visões do trimestre e marca a que está no ar', () => {
@@ -174,36 +184,63 @@ describe('ComercialTvView — o Comercial inteiro numa tela', () => {
     expect(t).toContain('Soma de jul/26 + ago/26');
   });
 
-  it('o comparativo é o mesmo em todas as visões', () => {
-    const mes = renderTv('2026-07').container.textContent ?? '';
-    const acumulado = renderTv('2026-Q3').container.textContent ?? '';
-    for (const trecho of ['+22,2% vs jun/26', '−9,1% vs jul/26', '+16,7% vs Q2']) {
-      expect(mes).toContain(trecho);
-      expect(acumulado).toContain(trecho);
-    }
+  it('a aba de período governa a operação toda, não só o funil (decisão 20/08)', () => {
+    const { container } = renderTv('2026-07');
+    // render inicial: janela = julho inteiro
+    const [f1, t1] = execCalls[execCalls.length - 1];
+    expect([f1.getFullYear(), f1.getMonth(), f1.getDate()]).toEqual([2026, 6, 1]);
+    expect([t1.getMonth(), t1.getDate()]).toEqual([6, 31]);
+
+    // ...e a janela é DECLARADA no título dos blocos janelados
+    expect(container.textContent).toContain('Produtos · meta × realizado · jul/26');
+    expect(container.textContent).toContain('Alertas · jul/26');
+
+    fireEvent.click(within(abasDe(container)).getByText('Acumulado'));
+    // acumulado Q3 em agosto: jul + ago → 01/07 a 31/08
+    const [f2, t2] = execCalls[execCalls.length - 1];
+    expect([f2.getMonth(), f2.getDate()]).toEqual([6, 1]);
+    expect([t2.getMonth(), t2.getDate()]).toEqual([7, 31]);
+    expect(container.textContent).toContain('Produtos · meta × realizado · Q3 2026');
   });
 
-  it('o comparativo ganha uma coluna quando o trimestre ganha um mês', () => {
+  it('em setembro a aba nova entra sem estourar o layout (abas = meses + acumulado)', () => {
     const ago = renderTv('2026-07').container.textContent ?? '';
     expect(ago).not.toContain('Setembro');
 
-    // Em setembro sao 5 blocos na faixa (3 meses + acumulado + conversao) —
-    // num grid fixo de 4 colunas o quinto cairia fora da area visivel.
-    const { container } = renderTv('2026-07', VISOES_SET);
+    const { container } = renderTv('2026-07', new Date(2026, 8, 30));
     const abas = abasDe(container);
-    const titulos = [...container.querySelectorAll('p')]
-      .map(p => p.textContent?.trim())
-      .filter(t => ['Julho', 'Agosto', 'Setembro', 'Acumulado', 'Taxa de conversão'].includes(t ?? ''));
-    // Descontando as 4 abas do filtro, sobram os 5 blocos do comparativo.
     expect(abas.querySelectorAll('button')).toHaveLength(4);
-    expect(titulos).toHaveLength(5);
+    expect(within(abas).getByText('Setembro')).toBeInTheDocument();
   });
 
-  it('taxa de conversão é ponta a ponta (lead captado → fechado) do acumulado', () => {
-    const t = renderTv('2026-07').container.textContent ?? '';
-    // 21 fechados ÷ 612 leads = 3,4% · Q2 fez 18 ÷ 895 = 2,0% → +1,4 p.p.
-    expect(t).toContain('3,4%');
-    expect(t).toContain('+1,4 p.p. vs Q2');
+  it('seletor de trimestre: ‹ recalcula abas, funil e operação; › tem teto no vigente', () => {
+    const { container } = renderTv();
+    const voltar = container.querySelector('[aria-label="Trimestre anterior"]') as HTMLButtonElement;
+    const avancar = container.querySelector('[aria-label="Próximo trimestre"]') as HTMLButtonElement;
+
+    // No vigente o avançar é teto (desabilitado); o selo mostra o Q3
+    expect(avancar.disabled).toBe(true);
+    expect(container.textContent).toContain('Q3 2026 · jul–set');
+
+    fireEvent.click(voltar);
+
+    // Q2 fechado: selo, 3 meses + acumulado, funil somando o trimestre inteiro
+    expect(container.textContent).toContain('Q2 2026 · abr–jun');
+    const abas = abasDe(container);
+    expect(abas.querySelectorAll('button')).toHaveLength(4);
+    expect(within(abas).getByText('Abril')).toBeInTheDocument();
+    expect(within(abas).getByText('Acumulado').getAttribute('aria-current')).toBe('true');
+    expect(container.textContent).toContain('895');   // topo SDR Q2 = 300+290+305
+    // operação segue a janela do trimestre exibido: abr–jun
+    const [f, t] = execCalls[execCalls.length - 1];
+    expect([f.getMonth(), f.getDate()]).toEqual([3, 1]);
+    expect([t.getMonth(), t.getDate()]).toEqual([5, 30]);
+
+    // ...e dá para voltar ao vigente
+    expect(avancar.disabled).toBe(false);
+    fireEvent.click(avancar);
+    expect(container.textContent).toContain('Q3 2026 · jul–set');
+    expect(avancar.disabled).toBe(true);
   });
 
   it('conversão do card é a do próprio funil, não a ponta a ponta', () => {

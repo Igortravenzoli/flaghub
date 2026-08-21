@@ -219,6 +219,11 @@ export interface BIInfraSgsiResponse {
     riscos: number | null;
     naoConformidades: number | null;
     attMalSucedidas: number | null;
+    /** Recorde: maior intervalo (dias) entre registros consecutivos da lista,
+     *  considerando também o intervalo em curso. Quando `incidentes` empata com
+     *  este valor, a sequência atual É o recorde (modo TV — aprovado 20/08). */
+    maiorIntervaloIncidentes: number | null;
+    maiorIntervaloRiscos: number | null;
   };
   mudancas: SgMudancasBloco;
   incidentes: SgIncidentesBloco;
@@ -247,6 +252,21 @@ function maxDate(items: SgsiRawItem[], pick: (i: SgsiRawItem) => string | null):
     if (v && (!max || v > max)) max = v;
   }
   return max;
+}
+
+/** Maior intervalo (dias) entre registros consecutivos de uma lista, incluindo
+ *  o intervalo em curso (do último registro até `now`) — assim "dias sem" nunca
+ *  supera o recorde sem que o recorde acompanhe. Usa `created_sp` (mesma data
+ *  dos contadores "dias sem"); null sem registros. */
+function maiorIntervaloDias(items: SgsiRawItem[], now: Date): number | null {
+  const ts = items
+    .map((i) => (i.created_sp ? new Date(i.created_sp).getTime() : NaN))
+    .filter((t) => !Number.isNaN(t))
+    .sort((a, b) => a - b);
+  if (ts.length === 0) return null;
+  let max = now.getTime() - ts[ts.length - 1];
+  for (let k = 1; k < ts.length; k++) max = Math.max(max, ts[k] - ts[k - 1]);
+  return Math.max(0, Math.floor(max / 86400000));
 }
 
 /** Monta a resposta SGSI completa a partir das linhas espelhadas do SharePoint.
@@ -474,6 +494,8 @@ export function buildSgsiResponse(
     riscos: daysSince(maxDate(byAll('012'), (i) => i.created_sp), now),
     naoConformidades: daysSince(maxDate(byAll('018'), (i) => i.created_sp), now),
     attMalSucedidas: daysSince(ultimaAttMalSucedida, now),
+    maiorIntervaloIncidentes: maiorIntervaloDias(byAll('017'), now),
+    maiorIntervaloRiscos: maiorIntervaloDias(byAll('012'), now),
   };
 
   return {

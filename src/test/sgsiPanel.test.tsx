@@ -12,7 +12,7 @@ const mockData: BIInfraSgsiResponse = {
   atualizadoEm: '2026-07-10T12:00:00Z',
   totalItens: 12,
   totalItensBase: 12,
-  diasSem: { incidentes: 5, riscos: 20, naoConformidades: 40, attMalSucedidas: 3 },
+  diasSem: { incidentes: 5, riscos: 20, naoConformidades: 40, attMalSucedidas: 3, maiorIntervaloIncidentes: 45, maiorIntervaloRiscos: 60 },
   mudancas: {
     total: 4, concluidos: 2, pendentes: 1, aguardandoGestor: 1, aguardandoTI: 0,
     porStatus: [{ name: 'Realizado', value: 2 }, { name: 'Aguardando aprovação Gestores', value: 1 }],

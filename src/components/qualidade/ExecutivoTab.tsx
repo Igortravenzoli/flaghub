@@ -161,6 +161,74 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
     </BarChart>
   );
 
+  // ── Cards da faixa inferior — TV (faixa 2+1) × mesa (linha 4). ──
+  // TV (20/08, escolha do Igor após o 2+1 espremer em janela fora do 16:9):
+  // a reconciliação vira uma FAIXA de uma linha — título + 3 números — e toda
+  // a altura restante da coluna vai para a tabela de versões. A lista de ≥3x
+  // fica só na mesa: no telão o resumo dela já está no "≥ 3x ⚠" da linha 1.
+  const cardReconciliacao = tvMode ? (
+    <Card className="flex-none p-3 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+          <GitCompareArrows className="h-3.5 w-3.5 text-muted-foreground" />
+        </div>
+        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Retorno QA · reconciliação</p>
+      </div>
+      <div className="flex shrink-0 items-baseline gap-4">
+        <span className="text-sm text-muted-foreground"><b className="font-mono text-lg text-foreground">{retornos?.reconc.total_encerrados ?? 0}</b> encerrados {year}</span>
+        <span className="text-sm text-muted-foreground"><b className="font-mono text-lg text-[hsl(142,71%,40%)]">{retornos?.reconc.sem_retorno ?? 0}</b> sem retorno</span>
+        <span className="text-sm text-muted-foreground"><b className="font-mono text-lg text-destructive">{retornos?.reconc.com_retorno ?? 0}</b> com retorno</span>
+      </div>
+    </Card>
+  ) : (
+    <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação">
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div>
+          <p className={`${numSec} font-bold font-mono`}>{retornos?.reconc.total_encerrados ?? 0}</p>
+          <p className={`${lbl} text-muted-foreground`}>encerrados em {year}</p>
+        </div>
+        <div>
+          <p className={`${numSec} font-bold font-mono text-[hsl(142,71%,40%)]`}>{retornos?.reconc.sem_retorno ?? 0}</p>
+          <p className={`${lbl} text-muted-foreground`}>sem retorno</p>
+        </div>
+        <div>
+          <p className={`${numSec} font-bold font-mono text-destructive`}>{retornos?.reconc.com_retorno ?? 0}</p>
+          <p className={`${lbl} text-muted-foreground`}>com retorno</p>
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground border-t pt-2">
+        Mesma base da aba <b>Encerramentos por usuário</b>: {retornos?.reconc.com_retorno ?? 0} com retorno = {retornos?.itens_1x ?? 0} (1x) + {retornos?.itens_2x ?? 0} (2x) + {retornos?.itens_3x_mais ?? 0} (≥3x).
+      </p>
+      {!!retornos?.top_3x_mais?.length && (
+        <div className="space-y-1 overflow-y-auto pr-1 border-t pt-2 max-h-[150px]">
+          <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3 text-destructive" /> Itens com ≥ 3 retornos
+          </p>
+          {retornos.top_3x_mais.map((t) => (
+            <div key={t.work_item_id} className="flex items-center justify-between gap-2 text-xs">
+              <span className="truncate text-foreground" title={t.title ?? ''}>
+                {t.sprint_code ? <span className="text-muted-foreground">{t.sprint_code.split('-')[0]} · </span> : null}
+                {t.title ?? `#${t.work_item_id}`}
+              </span>
+              <Badge variant="destructive" className="flex-shrink-0 font-mono text-[10px]">{t.ciclos}x</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+    </BlocoCard>
+  );
+
+  // Controle de versão de sistemas (somente leitura em TV). No TV a metade da
+  // coluna tem altura fixa: o card estica até preenchê-la e, se a tabela
+  // crescer além, rola dentro em vez de vazar.
+  const cardVersoes = tvMode ? (
+    <div className="flex-1 min-h-0 overflow-y-auto [&>div]:min-h-full [&>div]:p-3 [&>div]:gap-2">
+      <SistemaVersoesCard canManage={false} compact />
+    </div>
+  ) : (
+    <SistemaVersoesCard canManage={canManage} />
+  );
+
   return (
     <div className={tvMode ? 'h-full min-h-0 flex flex-col gap-3 overflow-hidden' : 'space-y-4'}>
       {tvMode ? (
@@ -325,11 +393,19 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
       </div>
       )}
 
-      {/* ── Linha 3 + 4: no TV vira UMA grade de 3 colunas (reconciliação ·
-          versões · distribuição), cada card com a altura toda. Versões leva a
-          faixa mais larga — a tabela tem 5 colunas e cortava no 1/3. ── */}
-      <div className={tvMode ? 'flex-1 min-h-0 grid grid-cols-[1fr_1.5fr_1.1fr] gap-3' : 'flex flex-col gap-4'}>
-      <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'order-3 min-h-0 overflow-hidden' : undefined}>
+      {/* ── Linha 3 + 4: no TV, faixa 2+1 aprovada no mock de 20/08 — Retorno
+          QA sobre Controle de versão na metade esquerda, Distribuição com a
+          metade direita INTEIRA (o gráfico mais denso da tela ganha o dobro de
+          altura). Mesma gramática do TV da Infra; substitui a grade de 3
+          colunas desiguais (1fr·1.5fr·1.1fr). Fora do TV nada muda. ── */}
+      <div className={tvMode ? 'flex-1 min-h-0 grid grid-cols-2 gap-3' : 'flex flex-col gap-4'}>
+      {tvMode && (
+        <div className="flex flex-col gap-3 min-h-0 min-w-0">
+          {cardReconciliacao}
+          {cardVersoes}
+        </div>
+      )}
+      <BlocoCard icon={CalendarClock} titulo="Distribuição de entradas em 'Em Teste'" className={tvMode ? 'min-h-0 overflow-hidden' : undefined}>
         {handoffData.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sem entradas registradas no período.</p>
         ) : tvMode ? (
@@ -344,62 +420,13 @@ export function ExecutivoTab({ dateStart, dateEnd, periodLabel, tvMode }: Execut
         </p>
       </BlocoCard>
 
-      {/* ── Linha 4: reconciliação (bug 76-vs-26) + controle de versão.
-          No TV o wrapper vira display:contents — os dois cards entram direto
-          como colunas da grade de 3 ao lado da distribuição. ── */}
-      <div className={tvMode ? 'contents' : 'grid grid-cols-1 lg:grid-cols-2 gap-4'}>
-
-        {/* Reconciliação retorno QA × encerramentos */}
-        <BlocoCard icon={GitCompareArrows} titulo="Retorno QA · reconciliação" className={tvMode ? 'order-1 min-h-0 overflow-hidden' : undefined}>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div>
-              <p className={`${numSec} font-bold font-mono`}>{retornos?.reconc.total_encerrados ?? 0}</p>
-              <p className={`${lbl} text-muted-foreground`}>encerrados em {year}</p>
-            </div>
-            <div>
-              <p className={`${numSec} font-bold font-mono text-[hsl(142,71%,40%)]`}>{retornos?.reconc.sem_retorno ?? 0}</p>
-              <p className={`${lbl} text-muted-foreground`}>sem retorno</p>
-            </div>
-            <div>
-              <p className={`${numSec} font-bold font-mono text-destructive`}>{retornos?.reconc.com_retorno ?? 0}</p>
-              <p className={`${lbl} text-muted-foreground`}>com retorno</p>
-            </div>
-          </div>
-          {/* Nota longa só fora do TV — no telão o espaço vai p/ a lista de ≥3x */}
-          {!tvMode && (
-            <p className="text-[11px] text-muted-foreground border-t pt-2">
-              Mesma base da aba <b>Encerramentos por usuário</b>: {retornos?.reconc.com_retorno ?? 0} com retorno = {retornos?.itens_1x ?? 0} (1x) + {retornos?.itens_2x ?? 0} (2x) + {retornos?.itens_3x_mais ?? 0} (≥3x).
-            </p>
-          )}
-          {!!retornos?.top_3x_mais?.length && (
-            <div className={`space-y-1 overflow-y-auto pr-1 border-t pt-2 ${tvMode ? 'flex-1 min-h-0' : 'max-h-[150px]'}`}>
-              <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3 text-destructive" /> Itens com ≥ 3 retornos
-              </p>
-              {retornos.top_3x_mais.map((t) => (
-                <div key={t.work_item_id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate text-foreground" title={t.title ?? ''}>
-                    {t.sprint_code ? <span className="text-muted-foreground">{t.sprint_code.split('-')[0]} · </span> : null}
-                    {t.title ?? `#${t.work_item_id}`}
-                  </span>
-                  <Badge variant="destructive" className="flex-shrink-0 font-mono text-[10px]">{t.ciclos}x</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </BlocoCard>
-
-        {/* Controle de versão de sistemas (somente leitura em TV) */}
-        {tvMode ? (
-          // Coluna da grade tem altura fixa: o card estica até preenchê-la e,
-          // se a tabela crescer além, rola dentro em vez de vazar.
-          <div className="order-2 min-h-0 overflow-y-auto [&>div]:min-h-full">
-            <SistemaVersoesCard canManage={false} compact />
-          </div>
-        ) : (
-          <SistemaVersoesCard canManage={canManage} />
-        )}
+      {/* ── Linha 4 (só fora do TV): reconciliação + controle de versão. ── */}
+      {!tvMode && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {cardReconciliacao}
+        {cardVersoes}
       </div>
+      )}
       </div>
     </div>
   );

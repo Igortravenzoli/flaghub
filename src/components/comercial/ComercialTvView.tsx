@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { FunnelBands } from '@/components/comercial/FunnelBands';
 import { useComercialFunil, type FunilEtapa } from '@/hooks/useComercialFunil';
 import { useComercialExecutivo, type AlertaComercial, type ProdutoMetaRealizado } from '@/hooks/useComercialExecutivo';
 import {
-  mesesDoTrimestre, qKeyAnterior, qLabel, ymAnterior, ymLabel,
-  type VisaoTrimestre,
+  qKeyAnterior, qKeyDoMes, qKeyProximo, qLabel, visoesDoTrimestreKey, ymLabel, ymOf,
 } from '@/lib/comercialPeriodo';
 
 /**
@@ -14,13 +13,18 @@ import {
  *
  * Histórico curto desta tela: o funil dividia uma coluna da Visão Executiva em
  * modo compacto (ilegível a 4 m) → ganhou tela própria e o setor passou a ter
- * 2 páginas na rotação → agora as duas páginas viraram uma só.
+ * 2 páginas na rotação → as duas páginas viraram uma só → em 20/08/2026 a faixa
+ * de comparativo (Julho · Agosto · Acumulado · Taxa de conversão) SAIU, a
+ * pedido do Igor; a altura dela ficou com a linha de operação, que passou a
+ * mostrar mais produtos e alertas. No mesmo dia a aba de período passou a
+ * governar a tela toda (antes só o funil — ver comentário no corpo) e o selo
+ * do trimestre ganhou setas ‹ › — o trimestre exibido virou escolha do
+ * operador, com teto no vigente.
  *
  * Anatomia, de cima para baixo:
- *   cabeçalho .... título · abas do trimestre (clicáveis) · selo do período
+ *   cabeçalho .... título · abas do trimestre (clicáveis) · seletor ‹ selo ›
  *   funis ........ SDR e Comercial, largura toda, ocupam a folga da tela
- *   grade 4 × 2 .. linha 1 = foto da operação (carteira, produtos, satisfação,
- *                  alertas) · linha 2 = comparativo do trimestre, com destaque
+ *   grade 4 × 1 .. foto da operação: carteira, produtos, satisfação, alertas
  *
  * O que a densidade custa, medido no mock e aceito na decisão: produto e alerta
  * ficam em 10,5 px de canvas — leitura de 2 m, não de 4 m. Se algum dia a tela
@@ -31,21 +35,16 @@ import {
  */
 
 interface ComercialTvViewProps {
-  /** Visões do trimestre — viram as abas clicáveis. */
-  visoes: VisaoTrimestre[];
-  /** Rótulo completo do trimestre ('Q3 2026 · jul–set'), derivado do calendário. */
-  trimestreLabel: string;
-  /** Chave do trimestre vigente ('2026-Q3'), derivada do calendário. */
-  qKey: string;
-  /** Janela do trimestre — recorte dos cards de operação. */
-  dateFrom: Date;
-  dateTo: Date;
   /** Foto da base VDesk (já sem os clientes internos). */
   clientesAtivos: number;
   clientesBloqueados: number;
   isLoadingClientes?: boolean;
+  /** Trimestre inicial ('2026-Q3') — default: o vigente. */
+  qKeyInicial?: string;
   /** Visão inicial — default: o acumulado (ou o único mês, no começo do trimestre). */
   visaoInicial?: string;
+  /** Relógio injetável (testes) — default: agora. Decide quais meses já iniciaram. */
+  hoje?: Date;
 }
 
 /** Última etapa do funil = o que de fato fechou/chegou ao fim. */
@@ -58,68 +57,26 @@ function conversaoPropria(etapas: FunilEtapa[]): number | null {
   return t > 0 ? (base(etapas) / t) * 100 : null;
 }
 
-/** Conversão ponta a ponta: lead captado (topo do SDR) → fechado (base do Comercial). */
-function conversaoTotal(sdr: FunilEtapa[], comercial: FunilEtapa[]): number | null {
-  const t = topo(sdr);
-  return t > 0 ? (base(comercial) / t) * 100 : null;
-}
-
-/** Variação percentual — null quando não há base de comparação (divisão por 0). */
-function variacao(atual: number, anterior: number): number | null {
-  if (anterior === 0) return null;
-  return ((atual - anterior) / anterior) * 100;
-}
-
 const num = (v: number) => v.toLocaleString('pt-BR');
 const dec = (v: number, casas = 1) => v.toFixed(casas).replace('.', ',');
 const corPct = (p: number) => (p >= 100 ? '#3fbe86' : p >= 70 ? '#e0a33c' : '#f4796d');
 
-function DeltaChip({ valor, sufixo, referencia }: { valor: number | null; sufixo: string; referencia: string }) {
-  if (valor === null) {
-    return <span className="text-[11px] text-muted-foreground">sem base em {referencia}</span>;
-  }
-  const positivo = valor >= 0;
-  return (
-    <span
-      className={`text-[11px] font-mono font-bold tabular-nums px-1.5 py-0.5 rounded whitespace-nowrap ${
-        positivo ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'
-      }`}
-    >
-      {positivo ? '+' : '−'}{dec(Math.abs(valor))}{sufixo} vs {referencia}
-    </span>
-  );
-}
-
-/** Caixa única da grade inferior — mesmo padding, mesmo título, sempre. */
-function Bloco({ titulo, children, destaque = false }: {
+/** Caixa única da grade inferior — mesmo padding, mesmo título, sempre.
+ *  O miolo centraliza com `safe center`: conteúdo maior que a área deixa de
+ *  centralizar (alinha ao topo) em vez de vazar por CIMA do título — foi o bug
+ *  de 20/08 no bloco de produtos. O overflow-hidden segura o que ainda passar
+ *  (os tetos *_MAX continuam sendo quem decide o corte com aviso "+N"). */
+function Bloco({ titulo, children }: {
   titulo: string;
   children: React.ReactNode;
-  destaque?: boolean;
 }) {
   return (
-    <Card className={`px-4 py-3 flex flex-col min-h-0 ${destaque ? 'border-primary/50 bg-primary/5' : ''}`}>
+    <Card className="px-4 py-3 flex flex-col min-h-0">
       <p className="text-[10.5px] font-bold uppercase tracking-[0.13em] text-muted-foreground flex-none">
         {titulo}
       </p>
-      <div className="flex-1 min-h-0 flex flex-col justify-center gap-1 mt-1">{children}</div>
+      <div className="flex-1 min-h-0 flex flex-col [justify-content:safe_center] gap-1 mt-1 overflow-hidden">{children}</div>
     </Card>
-  );
-}
-
-function KpiBloco({ titulo, valor, legenda, delta }: {
-  titulo: string;
-  valor: string;
-  legenda: string;
-  delta: React.ReactNode;
-}) {
-  return (
-    <Bloco titulo={titulo} destaque>
-      <p className="text-[34px] leading-none font-mono font-extrabold tabular-nums">{valor}</p>
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[11px] text-muted-foreground">{legenda}</span>
-        {delta}
-      </div>
-    </Bloco>
   );
 }
 
@@ -163,61 +120,55 @@ function FunilCard({ titulo, subtitulo, etapas, carregando, recorte }: {
 }
 
 export function ComercialTvView({
-  visoes,
-  trimestreLabel,
-  qKey,
-  dateFrom,
-  dateTo,
   clientesAtivos,
   clientesBloqueados,
   isLoadingClientes = false,
+  qKeyInicial,
   visaoInicial,
+  hoje,
 }: ComercialTvViewProps) {
+  // Relógio estável por montagem: decide o trimestre vigente (teto do seletor)
+  // e quais meses do trimestre exibido já iniciaram.
+  const [hojeRef] = useState(() => hoje ?? new Date());
+  const qVigente = qKeyDoMes(ymOf(hojeRef));
+
+  // ── Seletor de trimestre (20/08/2026, pedido do Igor): ‹ › ao lado do selo
+  // navegam trimestres; para frente o teto é o vigente. As abas de mês saem do
+  // calendário do trimestre exibido (trimestre passado = 3 meses + acumulado).
+  const [qKey, setQKey] = useState(qKeyInicial ?? qVigente);
+  const visoes = useMemo(() => visoesDoTrimestreKey(qKey, hojeRef), [qKey, hojeRef]);
+  const trimestreLabel = qLabel(qKey);
+  const noVigente = qKey === qVigente;
+
   const [visaoKey, setVisaoKey] = useState<string>(() => visaoInicial ?? visoes[visoes.length - 1].key);
-  // Fallback por identidade, não por índice: se o trimestre virar com o telão
-  // ligado, a chave selecionada some da lista e a tela cai no acumulado novo
-  // em vez de renderizar vazio.
+  // Fallback por identidade, não por índice: ao trocar de trimestre (ou o
+  // trimestre virar com o telão ligado) a chave selecionada some da lista e a
+  // tela cai no acumulado do trimestre exibido em vez de renderizar vazio.
   const visao = visoes.find(v => v.key === visaoKey) ?? visoes[visoes.length - 1];
 
-  const { sdr, comercial, etapasDe, fallbackDe, isLoading: funilLoading } = useComercialFunil(visao.meses);
+  const { sdr, comercial, fallbackDe, isLoading: funilLoading } = useComercialFunil(visao.meses);
 
-  // Os cards de operação seguem a janela do TRIMESTRE, não a da aba: trocar de
-  // mês no filtro muda o funil, não a foto da carteira. Misturar as duas janelas
-  // foi o bug de 30/07/2026 e não vai voltar por descuido de layout.
+  // 20/08/2026 — decisão do Igor, revendo a regra de 30/07: a aba de período
+  // governa a TELA TODA (funil E operação), não só o funil. O bug de 30/07 era
+  // cada card ler uma janela DIFERENTE sem rótulo; aqui a janela é UMA — a da
+  // aba ativa — derivada de `visao.meses`. Só a foto da base (clientes ativos/
+  // bloqueados, via props) segue atemporal: é retrato do ERP, não agregado.
+  const opJanela = useMemo(() => {
+    const meses = visao.meses;
+    const [y0, m0] = meses[0].split('-').map(Number);
+    const [y1, m1] = meses[meses.length - 1].split('-').map(Number);
+    return { from: new Date(y0, m0 - 1, 1), to: new Date(y1, m1, 0, 23, 59, 59) };
+  }, [visao]);
   const { movimento, produtos, satisfacao, alertas, isLoading: opLoading } =
-    useComercialExecutivo(dateFrom, dateTo);
-
-  // ── Comparativo do trimestre — igual em todas as visões ─────────────
-  const mesesAcumulados = visoes.find(v => v.tipo === 'acumulado')?.meses
-    ?? visoes.flatMap(v => (v.tipo === 'mes' ? v.meses : []));
-
-  const kpisMes = visoes
-    .filter(v => v.tipo === 'mes')
-    .map(v => {
-      const mes = v.meses[0];
-      const atual = base(etapasDe([mes]).comercial);
-      const anterior = base(etapasDe([ymAnterior(mes)]).comercial);
-      return { key: mes, rotulo: v.label, valor: atual, delta: variacao(atual, anterior), referencia: ymLabel(ymAnterior(mes)) };
-    });
-
-  const acumulado = etapasDe(mesesAcumulados);
-  const qAnterior = qKeyAnterior(qKey);
-  const anteriorTrimestre = etapasDe(mesesDoTrimestre(qAnterior));
-  const acumuladoBase = base(acumulado.comercial);
-  const deltaAcumulado = variacao(acumuladoBase, base(anteriorTrimestre.comercial));
-
-  const conversaoAcumulada = conversaoTotal(acumulado.sdr, acumulado.comercial);
-  const conversaoAnterior = conversaoTotal(anteriorTrimestre.sdr, anteriorTrimestre.comercial);
-  const deltaConversao =
-    conversaoAcumulada !== null && conversaoAnterior !== null ? conversaoAcumulada - conversaoAnterior : null;
-
-  // Só o comparativo cita o trimestre anterior ('vs Q2') — e sai do calendário.
-  const qAnteriorCurto = qLabel(qAnterior, false).split(' ')[0];
+    useComercialExecutivo(opJanela.from, opJanela.to);
 
   // Tetos declarados: o container é overflow-hidden, então linha excedente
   // sumiria EM SILÊNCIO. Cortar é decisão; sumir sem avisar é defeito.
-  const PRODUTOS_MAX = 4;
-  const ALERTAS_MAX = 3;
+  // 20/08: com a faixa de comparativo removida, a linha de operação ficou com
+  // os 288px inteiros (~245px úteis por bloco) — cabem 8 produtos e 6 alertas
+  // com a linha "+N"; era 4 (e a 4ª linha sobrepunha o título na faixa dupla).
+  const PRODUTOS_MAX = 8;
+  const ALERTAS_MAX = 6;
   const produtosComMeta = produtos.filter((p: ProdutoMetaRealizado) => p.metaQty > 0);
   const produtosVisiveis = produtosComMeta.slice(0, PRODUTOS_MAX);
   const produtosOcultos = produtosComMeta.length - produtosVisiveis.length;
@@ -256,9 +207,31 @@ export function ComercialTvView({
           })}
         </div>
 
-        <span className="text-[17px] font-bold font-mono px-3 py-1 rounded-lg border-2 border-primary/60 bg-primary/10 text-primary whitespace-nowrap">
-          {trimestreLabel}
-        </span>
+        {/* Seletor de trimestre: ‹ selo › — para frente o teto é o vigente */}
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setQKey(qKeyAnterior(qKey))}
+            aria-label="Trimestre anterior"
+            title="Trimestre anterior"
+            className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <span className="text-[17px] font-bold font-mono px-3 py-1 rounded-lg border-2 border-primary/60 bg-primary/10 text-primary whitespace-nowrap">
+            {trimestreLabel}
+          </span>
+          <button
+            type="button"
+            onClick={() => setQKey(qKeyProximo(qKey))}
+            disabled={noVigente}
+            aria-label="Próximo trimestre"
+            title={noVigente ? 'Já está no trimestre vigente' : 'Próximo trimestre'}
+            className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {fallbackDe && (
@@ -285,14 +258,10 @@ export function ComercialTvView({
         />
       </div>
 
-      {/* ── Duas faixas de blocos: operação em cima, comparativo embaixo.
-             Faixas separadas, e não um grid 4×2 único, porque a de baixo tem
-             largura variável: o trimestre ganha um mês por vez (jul → jul+ago
-             → jul+ago+set). Num grid fixo de 4 colunas, setembro empurraria um
-             card para uma terceira linha que não existe — e o container é
-             overflow-hidden, então ele sumiria sem avisar. ───────────── */}
-      <div className="flex-none h-[288px] max-h-[45%] flex flex-col gap-3">
-      <div className="flex-1 min-h-0 grid grid-cols-4 gap-3">
+      {/* ── Faixa única de operação (o comparativo saiu em 20/08 — decisão do
+             Igor): os 288px que eram divididos em duas linhas agora são só
+             desta, e Produtos/Alertas mostram mais itens. ─────────────── */}
+      <div className="flex-none h-[288px] max-h-[45%] grid grid-cols-4 gap-3">
         <Bloco titulo="Carteira e movimento">
           <div className="flex items-end justify-between gap-2">
             <div>
@@ -333,7 +302,11 @@ export function ComercialTvView({
           </div>
         </Bloco>
 
-        <Bloco titulo="Produtos · meta × realizado">
+        {/* Título carrega a janela ativa (regra de ouro do comercialPeriodo) e a
+            linha mostra realizado/meta — sem isso, períodos com números iguais
+            (caso real de 20/08: metas jul = ago, realizado 0) pareciam "aba não
+            reflete" quando a janela estava certa. */}
+        <Bloco titulo={`Produtos · meta × realizado · ${visao.labelCurto}`}>
           {opLoading ? (
             <p className="text-[11px] text-muted-foreground">Carregando…</p>
           ) : produtosVisiveis.length === 0 ? (
@@ -344,8 +317,11 @@ export function ComercialTvView({
                 <div key={p.nome} className="flex flex-col gap-0.5">
                   <div className="flex items-center justify-between gap-2 text-[10.5px]">
                     <span className="truncate" title={p.nome}>{p.nome}</span>
-                    <span className="font-mono tabular-nums flex-shrink-0" style={{ color: corPct(p.pct) }}>
-                      {p.pct.toFixed(0)}%
+                    <span className="flex-shrink-0 flex items-baseline gap-1.5">
+                      <span className="font-mono tabular-nums text-muted-foreground">{num(p.realQty)}/{num(p.metaQty)}</span>
+                      <span className="font-mono tabular-nums" style={{ color: corPct(p.pct) }}>
+                        {p.pct.toFixed(0)}%
+                      </span>
                     </span>
                   </div>
                   <div className="h-1 rounded-full bg-muted overflow-hidden">
@@ -392,7 +368,7 @@ export function ComercialTvView({
           </p>
         </Bloco>
 
-        <Bloco titulo="Alertas">
+        <Bloco titulo={`Alertas · ${visao.labelCurto}`}>
           {opLoading ? (
             <p className="text-[11px] text-muted-foreground">Carregando…</p>
           ) : alertasVisiveis.length === 0 ? (
@@ -414,34 +390,6 @@ export function ComercialTvView({
             </div>
           )}
         </Bloco>
-      </div>
-
-      <div
-        className="flex-1 min-h-0 grid gap-3"
-        style={{ gridTemplateColumns: `repeat(${kpisMes.length + 2}, minmax(0, 1fr))` }}
-      >
-        {kpisMes.map(k => (
-          <KpiBloco
-            key={k.key}
-            titulo={k.rotulo}
-            valor={funilLoading ? '—' : num(k.valor)}
-            legenda="fechadas"
-            delta={<DeltaChip valor={k.delta} sufixo="%" referencia={k.referencia} />}
-          />
-        ))}
-        <KpiBloco
-          titulo="Acumulado"
-          valor={funilLoading ? '—' : num(acumuladoBase)}
-          legenda="fechadas"
-          delta={<DeltaChip valor={deltaAcumulado} sufixo="%" referencia={qAnteriorCurto} />}
-        />
-        <KpiBloco
-          titulo="Taxa de conversão"
-          valor={funilLoading || conversaoAcumulada === null ? '—' : `${dec(conversaoAcumulada)}%`}
-          legenda="lead → fechado"
-          delta={<DeltaChip valor={deltaConversao} sufixo=" p.p." referencia={qAnteriorCurto} />}
-        />
-      </div>
       </div>
     </div>
   );
