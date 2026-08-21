@@ -35,7 +35,15 @@ import type {
  *   1) Resultado: os 3 cards de SLA (Nestlé · Heineken · Outras Bandeiras)
  *      com a altura inteira do telão — é o número que os gestores cobram.
  *   2) Operação: produtividade, volume por consultor/tipo/dia/sistema e
- *      incidentes declarados — listas fixas e top-N + agregado, ZERO rolagem.
+ *      incidentes declarados.
+ *
+ * A regra original era "ZERO rolagem, listas fixas com top-N + agregado". Ela
+ * caiu em 21/08/2026 (decisão do Igor, a mesma tomada no TV da Infra no mesmo
+ * dia): agregado como "Outros (+11)" escondia 11 sistemas atrás de um número
+ * só, e o card de incidentes dizia "4 declarados" mostrando 3. Sistemas e
+ * incidentes passaram a listar TUDO com rolagem; o telão fica com a lista
+ * completa e quem opera de perto rola. Segue valendo: nada essencial só em
+ * hover, e nenhum corte silencioso.
  *
  * O que a TV NÃO herda da aba de mesa: selos/rodapés "fora do filtro" (no
  * kiosk não existe filtro — a janela é sempre o mês de calendário), rolagem
@@ -55,25 +63,30 @@ const HEATMAP_MAX_DIAS = 10;
  *  excedente sumiria EM SILÊNCIO. Corta pelas menores médias e declara o corte
  *  no rodapé (mesma regra do "Outros (+N)" dos sistemas). */
 const PRODUTIVIDADE_MAX = 10;
-/** Até aqui toda barra de dia leva o valor; acima, só máx/mín/último. */
+/**
+ * Escala do valor sobre a barra de dia — desde 21/08 TODA barra leva o número,
+ * então o que cede é a tipografia. Os cortes são MEDIDOS no canvas do kiosk
+ * (trilha útil de ~399px), não estimados:
+ *   até 16 dias .... coluna ~24px · 12px cabe folgado
+ *   17 a 24 dias ... coluna ~17px · "113" a 9px mede 14,9px — cabe
+ *   acima de 24 .... coluna ~11px · nenhum tamanho legível cabe lado a lado,
+ *                    então os números alternam de altura (zigue-zague) e passam
+ *                    a dispor de duas colunas de largura cada.
+ */
 const DIA_MAX_ROTULOS = 16;
+const DIA_MAX_LADO_A_LADO = 24;
 /** Até aqui o rótulo do dia carrega o dia da semana ("seg 03"). */
 const DIA_MAX_ROTULO_LONGO = 8;
-const SISTEMAS_TOP = 8;
 const TIPOS_TOP = 6;
-/** 3 linhas de incidente cabem na linha baixa da página 2 sem espremer. */
-const INCIDENTES_MAX = 3;
 
 /**
  * Rampa categórica do DESIGN-SYSTEM §2.7a, valores do MODO ESCURO — o kiosk
  * força dark no mount. Mesma série, mesma cor nas duas telas do CS:
- * consultor = slot 3, sistema/dia = slot 1, tipo = slot 7. O agregado
- * "Outros" é neutro de propósito: não é uma série, é um resto.
+ * consultor = slot 3, sistema/dia = slot 1, tipo = slot 7.
  */
 const COR_CONSULTOR = '#199e70';
 const COR_SISTEMA = '#3987e5';
 const COR_TIPO = '#9085e9';
-const COR_OUTROS = '#33507F';
 
 /** Recorte do retorno de `useHelpdeskKpis` que a TV consome (via HelpdeskKiosk). */
 type CsTvKpis = {
@@ -859,9 +872,15 @@ function BlocoVolumeDia({ historico, k }: { historico: HistoricoEntry[]; k: CsTv
         key: h.date,
         valor: h.totalRegistros,
         alturaPct: 8 + (h.totalRegistros / max) * 78,
-        // Rótulos adaptativos (regra da TV: nunca scroll, nunca hover): com o mês
-        // cheio não cabe valor em toda barra — mantêm rótulo máx, mín e último.
-        mostraValor: n <= DIA_MAX_ROTULOS || i === idxMax || i === idxMin || i === n - 1,
+        /**
+         * TODA barra leva seu número desde 21/08 (pedido do Igor). Antes, com o
+         * mês cheio, só máx/mín/último eram rotulados — e a leitura virava
+         * adivinhação nas outras 18 barras. O que cede é o TAMANHO da fonte,
+         * não a informação; `idxMax`/`idxMin` seguem calculados porque destacam
+         * o extremo em negrito.
+         */
+        mostraValor: true,
+        destaque: i === idxMax || i === idxMin || i === n - 1,
         diaLabel:
           n <= DIA_MAX_ROTULO_LONGO ? `${sem} ${dia}`
           : n <= DIA_MAX_ROTULOS ? dia
@@ -870,19 +889,27 @@ function BlocoVolumeDia({ historico, k }: { historico: HistoricoEntry[]; k: CsTv
     });
   }, [historico]);
 
+  const cheio = barras.length > DIA_MAX_ROTULOS;
+  const zigue = barras.length > DIA_MAX_LADO_A_LADO;
+
   return (
     <BlocoTv titulo="Volume por dia" right={<span className="text-[11px] text-muted-foreground shrink-0">mês atual</span>}>
       <CorpoVolume k={k} temDados={barras.length > 0} vazioMsg="Sem série diária no mês.">
-        <div className="flex-1 min-h-0 flex items-stretch gap-1.5 pt-1">
-          {barras.map((b) => (
+        <div className={`flex-1 min-h-0 flex items-stretch pt-1 ${cheio ? 'gap-0.5' : 'gap-1.5'}`}>
+          {barras.map((b, i) => (
             <div key={b.key} className="flex-1 min-w-0 flex flex-col items-center gap-0.5">
               <div className="flex-1 w-full min-h-0 flex flex-col items-center justify-end gap-0.5">
-                {b.mostraValor && (
-                  <span className="text-[12px] font-extrabold font-mono tabular-nums leading-none">
-                    {b.valor}
-                  </span>
-                )}
-                <i className="w-[70%] rounded-t" style={{ height: `${b.alturaPct}%`, background: COR_SISTEMA }} />
+                <span
+                  className={`font-mono tabular-nums leading-none ${cheio ? 'text-[9px]' : 'text-[12px]'} ${
+                    b.destaque ? 'font-extrabold' : 'font-semibold text-muted-foreground'
+                  }`}
+                  // Mês com lançamento quase todo dia: alternar a altura dá a
+                  // cada número a largura de duas colunas, sem esconder nenhum.
+                  style={zigue && i % 2 === 1 ? { marginBottom: 11 } : undefined}
+                >
+                  {b.valor}
+                </span>
+                <i className={`rounded-t ${cheio ? 'w-[86%]' : 'w-[70%]'}`} style={{ height: `${b.alturaPct}%`, background: COR_SISTEMA }} />
               </div>
               <span className="flex-none min-h-4 text-[10px] text-muted-foreground whitespace-nowrap">
                 {b.diaLabel}
@@ -895,16 +922,22 @@ function BlocoVolumeDia({ historico, k }: { historico: HistoricoEntry[]; k: CsTv
   );
 }
 
+/**
+ * Volume por sistema — LISTA COMPLETA com rolagem (21/08/2026, pedido do Igor).
+ *
+ * Era top-8 + um agregado "Outros (+11)", pela regra de "zero rolagem" do
+ * telão. Só que o agregado escondia 11 sistemas atrás de um número só: para
+ * saber quanto o Connect Sales fez era preciso ir à tela de mesa. A rolagem
+ * volta (mesma decisão tomada no TV da Infra hoje) e cada sistema mostra a
+ * própria quantidade.
+ */
 function BlocoVolumeSistema({ sistemas, k }: { sistemas: RegistroPorGrupo[]; k: CsTvKpis }) {
-  const linhas = useMemo(() => {
-    const ordenados = [...sistemas].sort((a, b) => b.quantidade - a.quantidade);
-    const top = ordenados.slice(0, SISTEMAS_TOP);
-    const resto = ordenados.slice(SISTEMAS_TOP);
-    const outros = resto.reduce((s, g) => s + g.quantidade, 0);
-    const rows = top.map((g) => ({ nome: g.nome, valor: g.quantidade, cor: COR_SISTEMA }));
-    if (resto.length > 0) rows.push({ nome: `Outros (+${resto.length})`, valor: outros, cor: COR_OUTROS });
-    return rows;
-  }, [sistemas]);
+  const linhas = useMemo(
+    () => [...sistemas]
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .map((g) => ({ nome: g.nome, valor: g.quantidade, cor: COR_SISTEMA })),
+    [sistemas],
+  );
   const max = Math.max(...linhas.map((l) => l.valor), 1);
 
   return (
@@ -912,12 +945,12 @@ function BlocoVolumeSistema({ sistemas, k }: { sistemas: RegistroPorGrupo[]; k: 
       titulo="Volume por sistema"
       right={
         <span className="text-[11px] text-muted-foreground shrink-0">
-          {sistemas.length > SISTEMAS_TOP ? `top ${SISTEMAS_TOP} de ${sistemas.length}` : 'mês atual'}
+          {linhas.length > 0 ? `${linhas.length} sistemas · mês atual` : 'mês atual'}
         </span>
       }
     >
       <CorpoVolume k={k} temDados={linhas.length > 0} vazioMsg="Sem registros por sistema no mês.">
-        <div className="flex-1 min-h-0 flex flex-col justify-evenly">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 flex flex-col gap-1.5">
           {linhas.map((l) => (
             <BarraH
               key={l.nome}
@@ -929,10 +962,6 @@ function BlocoVolumeSistema({ sistemas, k }: { sistemas: RegistroPorGrupo[]; k: 
             />
           ))}
         </div>
-        {/* Sem rodapé "na TV nada rola" (21/08, pedido do Igor): o corte já é
-            declarado no header do card ("top 8 de N") e a linha "Outros (+N)"
-            entra no gráfico com o volume somado — dizer de novo era redundância
-            que roubava altura das barras. */}
       </CorpoVolume>
     </BlocoTv>
   );
@@ -971,14 +1000,13 @@ function BlocoIncidentes({ q }: { q: ReturnType<typeof useCsIncidentesDeclarados
               cor={corSla(d.pctDentroSla)}
             />
           </div>
-          {/* 21/08: item compactado (py-0.5, gap-0.5) e `justify-start` no lugar
-              de `justify-evenly`. Medido: com 3 títulos longos o conteúdo passava
-              22px da janela e o overflow-hidden do BlocoTv comia o rodapé do 3º
-              incidente — o mesmo defeito de "sumir em silêncio" que a lista de
-              produtividade declara com "+N". Aqui não há teto a declarar: o
-              INCIDENTES_MAX já é o corte, então o que faltava era caber. */}
-          <div className="flex-1 min-h-0 flex flex-col justify-start gap-1">
-            {d.recentes.slice(0, INCIDENTES_MAX).map((i) => (
+          {/* LISTA COMPLETA com rolagem (21/08, pedido do Igor): eram só os 3
+              mais recentes, sem dizer quantos ficavam de fora — o card afirmava
+              "4 declarados" no topo e mostrava 3. O item segue compactado
+              (py-0.5, gap-1) porque em 21/08 medimos que 3 títulos longos já
+              passavam 22px da janela. */}
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 flex flex-col justify-start gap-1">
+            {d.recentes.map((i) => (
               <div key={i.id} className="flex items-start gap-2 rounded-lg border px-2.5 py-0.5">
                 <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: COR_BUCKET[i.bucket] }} />
                 <div className="min-w-0 flex-1">
