@@ -19,7 +19,9 @@ import {
 interface SistemaVersoesCardProps {
   /** Mostra controles de CRUD (admin global ou owner da área qualidade). */
   canManage?: boolean;
-  /** Modo telão: oculta a coluna "Anterior" para a tabela caber sem scroll. */
+  /** Modo telão: oculta a coluna "Anterior" para a tabela caber sem scroll.
+   *  Até 20/08/2026 escondia também "Lançamento"; a faixa 2+1 do TV da
+   *  Qualidade deu meia tela ao card e a coluna voltou. */
   compact?: boolean;
 }
 
@@ -90,6 +92,12 @@ function DataLancamentoCell({ id, valor, onSave }: {
 export function SistemaVersoesCard({ canManage = false, compact = false }: SistemaVersoesCardProps) {
   const { data: sistemas = [], isLoading } = useQualidadeSistemaVersions();
   const { create, update, remove } = useSistemaVersaoMutations();
+
+  // Telão: célula densa (a tabela divide meia coluna com a reconciliação na
+  // faixa 2+1 de 20/08 — com o p-4/h-12 padrão do shadcn ela dobrava a janela
+  // e metade dos sistemas ficava atrás de scroll).
+  const cell = compact ? 'py-1 px-3' : '';
+  const head = compact ? 'h-7 px-3' : '';
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
@@ -266,58 +274,54 @@ export function SistemaVersoesCard({ canManage = false, compact = false }: Siste
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-xs">Sistema</TableHead>
+                <TableHead className={`text-xs ${head}`}>Sistema</TableHead>
                 {!compact && <TableHead className="text-xs">Anterior</TableHead>}
-                <TableHead className="text-xs">Atual</TableHead>
-                <TableHead className="text-xs">Nova</TableHead>
-                {!compact && <TableHead className="text-xs">Lançamento</TableHead>}
-                <TableHead className="text-xs">Ambientes</TableHead>
+                <TableHead className={`text-xs ${head}`}>Atual</TableHead>
+                <TableHead className={`text-xs ${head}`}>Nova</TableHead>
+                <TableHead className={`text-xs ${head}`}>Lançamento</TableHead>
+                <TableHead className={`text-xs ${head}`}>Ambientes</TableHead>
                 {canManage && <TableHead className="text-xs w-[80px] text-right">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {sistemas.map((s) => (
                 <TableRow key={s.id}>
-                  <TableCell className="font-medium whitespace-nowrap">{s.sistema_nome}</TableCell>
+                  <TableCell className={`font-medium whitespace-nowrap ${cell}`}>{s.sistema_nome}</TableCell>
                   {!compact && (
                     <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                       {s.versao_anterior || '—'}
                     </TableCell>
                   )}
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className={`whitespace-nowrap ${cell}`}>
                     <span className="inline-flex items-center gap-1.5">
                       <span className="font-mono font-semibold">{s.versao_atual}</span>
                       <span className="h-1.5 w-1.5 rounded-full bg-primary" title="em evidência" />
                     </span>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className={`whitespace-nowrap ${cell}`}>
                     {s.versao_nova ? (
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <ArrowRight className="h-3 w-3" />
                         <span className="font-mono text-foreground">{s.versao_nova}</span>
-                        {/* No modo compacto (TV) a data segue junto da versão — não há coluna própria. */}
-                        {compact && s.data_nova_versao && <span className="text-[10px]">· {fmtData(s.data_nova_versao)}</span>}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  {!compact && (
-                    <TableCell className="whitespace-nowrap">
-                      {canManage ? (
-                        <DataLancamentoCell
-                          id={s.id}
-                          valor={s.data_nova_versao?.slice(0, 10) ?? ''}
-                          onSave={salvaDataLancamento}
-                        />
-                      ) : s.data_nova_versao ? (
-                        <span className="font-mono text-xs">{fmtData(s.data_nova_versao)}</span>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
-                    </TableCell>
-                  )}
-                  <TableCell>
+                  <TableCell className={`whitespace-nowrap ${cell}`}>
+                    {canManage ? (
+                      <DataLancamentoCell
+                        id={s.id}
+                        valor={s.data_nova_versao?.slice(0, 10) ?? ''}
+                        onSave={salvaDataLancamento}
+                      />
+                    ) : s.data_nova_versao ? (
+                      <span className="font-mono text-xs">{fmtData(s.data_nova_versao)}</span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className={cell || undefined}>
                     {s.ambientes?.length ? (
                       <div className="flex flex-wrap gap-1">
                         {s.ambientes.map((amb) => (

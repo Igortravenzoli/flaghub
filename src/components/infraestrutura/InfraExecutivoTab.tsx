@@ -1,10 +1,10 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, LabelList, Tooltip as RTooltip,
 } from 'recharts';
 import {
   Server, GitBranch, ShieldCheck, Wrench, CalendarClock, Workflow, Activity,
-  CheckCircle2, RefreshCw, Eye,
+  CheckCircle2, ChevronDown, ChevronRight, RefreshCw, Eye, Trophy,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { BlocoCard, corMetaHigh } from '@/components/executivo/BlocoCard';
@@ -14,14 +14,27 @@ import { useBIInfraSgsi, type SgIncidenteItem, type SgRiscoItem, type SgMudancaI
 // Metas (espelham as constantes do DevopsCoberturaPanel)
 const META_PIPELINES_TRIMESTRE = 3;
 const META_COBERTURA_PCT = 80;
+// 21/08 (pedido do Igor): no TV a meta do trimestre passou a contar PROJETOS
+// automatizados (um projeto rende várias pipelines — o Decision rendeu 5 de
+// uma vez); pipelines novas vira contador informativo, sem teto. A mesa segue
+// na meta antiga de pipelines até a régua oficial mudar lá também.
+const META_PROJETOS_TRIMESTRE = 3;
+
+// Modo TV (ajuste aprovado 20/08, revisto no mesmo dia): sem popover (o texto
+// aparece por extenso em até 2 linhas), e a lista de ocorrências mantém a
+// barra de rolagem — pedido do Igor; o corte fixo com rodapé "+N" foi testado
+// e descartado.
 
 // Alvos do trimestre (planejamento) — os repositórios efetivamente atuados
 // aparecem ao lado, derivados das pipelines criadas no trimestre.
 const TV_PIPELINE_ALVOS = [
   { nome: 'Broker 3', status: 'Não iniciado' },
   { nome: 'CargaImagens', status: null },
-  // As 2 pipelines automatizadas do trimestre pertencem a este alvo → concluído.
+  // Serviço Vdesk = as 2 pipelines do Flag.Vdesk.Integracao (Gerenciador-Task).
   { nome: 'Serviço Vdesk DevOps', status: 'Concluído' },
+  // 21/08 (pedido do Igor): projeto automatizado em 13–19/08 — 5 pipelines
+  // (api-novodecision, -in, -out, Migrations, FrontEnd), todas com release.
+  { nome: 'Flag.Decision', status: 'Concluído' },
 ];
 
 interface DoneBySprint { sprintCode: string; done: number; total: number }
@@ -93,6 +106,23 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
   const pipelinesTri = useMemo(() => countPipelinesNovasTrimestre(repos), [repos]);
   // "Feito no trimestre": só os repositórios atuados (sem nome de pipeline), únicos.
   const reposAtuados = useMemo(() => [...new Set(pipelinesTri.criadas.map((c) => c.repo))], [pipelinesTri]);
+  // TV (pedido 21/08): agrupado por PROJETO DevOps — o telão fala no nível do
+  // gestor ("Flag.Decision automatizado"), com os repos como detalhe e o par
+  // Projetos × Pipelines equiparado no KPI. `repos` únicos porque um repo pode
+  // ganhar 2+ pipelines no trimestre.
+  const projetosAtuados = useMemo(() => {
+    const porProjeto = new Map<string, { projeto: string; pipelines: number; repos: string[] }>();
+    for (const c of pipelinesTri.criadas) {
+      const g = porProjeto.get(c.projeto) ?? { projeto: c.projeto, pipelines: 0, repos: [] };
+      g.pipelines += 1;
+      if (!g.repos.includes(c.repo)) g.repos.push(c.repo);
+      porProjeto.set(c.projeto, g);
+    }
+    return [...porProjeto.values()].sort((a, b) => b.pipelines - a.pipelines);
+  }, [pipelinesTri]);
+  // Semáforo da meta nova do TV: projetos automatizados vs META_PROJETOS_TRIMESTRE.
+  const corProjetos = projetosAtuados.length >= META_PROJETOS_TRIMESTRE ? '#16a34a'
+    : projetosAtuados.length > 0 ? '#f59e0b' : '#ef4444';
 
   const conclPct = kpis.total > 0 ? Math.round((kpis.concluidos / kpis.total) * 100) : 0;
   const coberturaPct = cobertura.coberturaPct ?? 0;
@@ -177,35 +207,47 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
 
   // ── Cards do layout aprovado (17/07) — KPIs empilhados à esquerda, lista na
   // lateral direita (pedido do gestor: KPIs ocupavam a tela e a lista sumia). ──
-  const KpiLinha = ({ label, valor, cor }: { label: string; valor: ReactNode; cor?: string }) => (
-    <div className="flex items-baseline justify-between gap-2 rounded-md border bg-muted/20 px-2 py-1">
-      <span className="text-[10px] text-muted-foreground truncate" title={label}>{label}</span>
+  // No TV o rótulo QUEBRA em vez de truncar (o "meta > 90%" virava "met…" no
+  // telão) e o chip é flex-none — os 3 KPIs são o resumo, nunca podem sumir.
+  const KpiLinha = ({ label, valor, cor, tv }: { label: string; valor: ReactNode; cor?: string; tv?: boolean }) => (
+    <div className={`flex items-baseline justify-between gap-2 rounded-md border bg-muted/20 px-2 py-1 ${tv ? 'flex-none' : ''}`}>
+      <span className={`text-[10px] text-muted-foreground ${tv ? 'leading-tight' : 'truncate'}`} title={label}>{label}</span>
       <span className="text-sm font-bold font-mono shrink-0" style={cor ? { color: cor } : undefined}>{valor}</span>
     </div>
   );
 
-  const cardIncidentes = (tv: boolean) => (
-    <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
-      <div className="flex items-stretch gap-4 flex-1 min-h-0">
+  const cardIncidentes = (tv: boolean) => {
+    return (
+    // Sem min-h-0 no card/miolo do TV: o mínimo passa a ser o rail de KPIs
+    // (que nunca clipa); quem cede altura é só a lista (min-h-0 interno).
+    <BlocoCard icon={Activity} titulo="Gestão de Incidentes" className={tv ? 'flex-1 overflow-hidden' : undefined}>
+      <div className="flex items-stretch gap-4 flex-1">
         {/* Esquerda: KPIs empilhados na vertical */}
-        <div className="w-[200px] shrink-0 flex flex-col gap-1.5">
+        <div className={`${tv ? 'w-[210px]' : 'w-[200px]'} shrink-0 flex flex-col gap-1.5`}>
           <div className="mb-0.5">
-            <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(incPctExec) }}>
-              {sgsiBase?.diasSem.incidentes ?? '—'}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">dias sem incidentes</p>
+            {tv ? (
+              <DiasComRecorde dias={sgsiBase?.diasSem.incidentes ?? null} cor={corSlaExec(incPctExec)}
+                label="dias sem incidentes" recorde={sgsiBase?.diasSem.maiorIntervaloIncidentes ?? null} />
+            ) : (
+              <>
+                <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(incPctExec) }}>
+                  {sgsiBase?.diasSem.incidentes ?? '—'}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">dias sem incidentes</p>
+              </>
+            )}
             {ultimoIncidente && (
               <p className="text-[10px] text-muted-foreground/80 truncate" title={ultimoIncidente.titulo}>
                 último: {fmtDia(ultimoIncidente.inicio)} · {ultimoIncidente.titulo}
               </p>
             )}
           </div>
-          <KpiLinha label={`dentro do SLA · ${slaCounts.sim}/${slaCounts.sim + slaCounts.nao} hist. · meta > 90%`} valor={incPctExec != null ? `${incPctExec}%` : '—'} cor={corSlaExec(incPctExec)} />
-          <KpiLinha label="últimos 30 dias" valor={incidentesRecentes.length} />
-          <KpiLinha label="ativos agora" valor={sgsiBase?.incidentes.ativos ?? '—'} />
+          <KpiLinha tv={tv} label={`dentro do SLA · ${slaCounts.sim}/${slaCounts.sim + slaCounts.nao} hist. · meta > 90%`} valor={incPctExec != null ? `${incPctExec}%` : '—'} cor={corSlaExec(incPctExec)} />
+          <KpiLinha tv={tv} label="últimos 30 dias" valor={incidentesRecentes.length} />
+          <KpiLinha tv={tv} label="ativos agora" valor={sgsiBase?.incidentes.ativos ?? '—'} />
         </div>
-        {/* Direita: listagem de incidentes com causa/solução (scroll além de 3) */}
-        <div className="flex-1 min-w-0 border-l pl-4 flex flex-col gap-2 overflow-hidden">
+        {/* Direita: listagem de incidentes com causa/solução (TV: altura toda, com scroll) */}
+        <div className="flex-1 min-w-0 min-h-0 border-l pl-4 flex flex-col gap-2 overflow-hidden">
           <p className="flex-none text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ocorrências recentes · incidente / solução</p>
           {incidentesRecentes.length === 0 ? (
             <p className="text-[11px] text-muted-foreground">Sem incidentes nos últimos 30 dias.</p>
@@ -222,7 +264,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                   ? `${i.titulo} · ${i.produto}`
                   : i.titulo;
                 return (
-                  <RecenteRow key={i.id} data={fmtDia(i.inicio)} texto={rotulo}
+                  <RecenteRow key={i.id} tv={tv} data={fmtDia(i.inicio)} texto={rotulo}
                     detalhe={causa}
                     solucao={i.solucao !== '—' ? i.solucao : undefined}
                     badge={ok ? 'dentro do SLA' : 'fora do SLA'} badgeCor={ok ? '#16a34a' : '#ef4444'} />
@@ -234,36 +276,45 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
       </div>
       {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-017 · análise e tratamento de incidentes</p>}
     </BlocoCard>
-  );
+    );
+  };
 
-  const cardRiscos = (tv: boolean) => (
-    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
-      <div className="flex items-stretch gap-4 flex-1 min-h-0">
+  const cardRiscos = (tv: boolean) => {
+    return (
+    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'flex-1 overflow-hidden' : undefined}>
+      <div className="flex items-stretch gap-4 flex-1">
         {/* Esquerda: KPIs empilhados na vertical */}
-        <div className="w-[200px] shrink-0 flex flex-col gap-1.5">
+        <div className={`${tv ? 'w-[210px]' : 'w-[200px]'} shrink-0 flex flex-col gap-1.5`}>
           <div className="mb-0.5">
-            <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(risco30Exec) }}>
-              {diasSemRiscos ?? '—'}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">dias sem riscos novos</p>
+            {tv ? (
+              <DiasComRecorde dias={diasSemRiscos ?? null} cor={corSlaExec(risco30Exec)}
+                label="dias sem riscos novos" recorde={sgsiBase?.diasSem.maiorIntervaloRiscos ?? null} />
+            ) : (
+              <>
+                <p className="text-4xl font-bold font-mono leading-none" style={{ color: corSlaExec(risco30Exec) }}>
+                  {diasSemRiscos ?? '—'}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">dias sem riscos novos</p>
+              </>
+            )}
           </div>
-          <KpiLinha label="resolvidos ≤ 30d · meta > 90%" valor={risco30Exec != null ? `${risco30Exec}%` : '—'} cor={corSlaExec(risco30Exec)} />
-          <KpiLinha label={`em aberto · ${riscosSg.length} SG + ${riscosDevops.length} DevOps`} valor={riscosCombinados} cor={riscosCombinados > 0 ? '#f59e0b' : undefined} />
-          <KpiLinha label="riscos mapeados" valor={sgsiBase?.riscos.total ?? '—'} />
+          <KpiLinha tv={tv} label="resolvidos ≤ 30d · meta > 90%" valor={risco30Exec != null ? `${risco30Exec}%` : '—'} cor={corSlaExec(risco30Exec)} />
+          <KpiLinha tv={tv} label={`em aberto · ${riscosSg.length} SG + ${riscosDevops.length} DevOps`} valor={riscosCombinados} cor={riscosCombinados > 0 ? '#f59e0b' : undefined} />
+          <KpiLinha tv={tv} label="riscos mapeados" valor={sgsiBase?.riscos.total ?? '—'} />
         </div>
-        {/* Direita: listagem de riscos com solução (scroll além de 3) */}
-        <div className="flex-1 min-w-0 border-l pl-4 flex flex-col gap-2 overflow-hidden">
+        {/* Direita: listagem de riscos com solução (TV: altura toda, com scroll) */}
+        <div className="flex-1 min-w-0 min-h-0 border-l pl-4 flex flex-col gap-2 overflow-hidden">
           <p className="flex-none text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Riscos · situação / solução</p>
           {riscosCombinados === 0 ? (
             <p className="text-[11px] text-muted-foreground">Sem riscos em aberto.</p>
           ) : (
             <div className={`space-y-2 pr-1 overflow-y-auto ${tv ? 'flex-1 min-h-0' : 'max-h-56'}`}>
               {riscosSg.map((r) => (
-                <RecenteRow key={`sg-${r.id}`} data={`SG #${r.id}`} texto={r.descricao}
+                <RecenteRow key={`sg-${r.id}`} tv={tv} data={`SG #${r.id}`} texto={r.descricao}
                   solucao={r.solucao !== '—' ? r.solucao : undefined} badge={r.status} />
               ))}
               {riscosDevops.map((r) => (
-                <RecenteRow key={`do-${r.id}`} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
+                <RecenteRow key={`do-${r.id}`} tv={tv} data={`DevOps #${r.id}`} texto={r.title ?? '—'} badge={r.state ?? ''} badgeCor="#3b82f6" />
               ))}
             </div>
           )}
@@ -271,7 +322,8 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
       </div>
       {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-012 · análise de riscos + board DevOps (tag #Risco)</p>}
     </BlocoCard>
-  );
+    );
+  };
 
   const cardMudancas = (tv: boolean) => {
     // No TV o bloco é vertical (coluna direita inteira) — cabem mais linhas.
@@ -363,18 +415,31 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           <p className="text-sm text-muted-foreground">Infraestrutura {periodLabel ? `· ${periodLabel}` : ''}</p>
         </div>
 
-        {/* Meta pipelines (KPI+barra à esq · alvos + feito no trimestre à dir) */}
+        {/* Meta pipelines em 3 blocos (pedido 21/08): automatizados/pipelines ·
+            Projetos · status (alvos) · Pipelines por projeto. A META agora é de
+            PROJETOS (X/3, semáforo e barra); pipelines novas é contador sem teto. */}
         <BlocoCard icon={GitBranch} titulo={`Meta · Pipelines ${pipelinesTri.trimestre}`} className="flex-none">
           <div className="flex items-stretch gap-5">
-            <div className="w-[260px] flex-shrink-0 space-y-1.5">
+            {/* 1 · Automatizados × pipelines */}
+            <div className="w-[270px] flex-shrink-0 space-y-1.5">
               <div>
-                <p className="text-4xl font-bold font-mono leading-none" style={{ color: corPipelines }}>
-                  {reposLoading ? '—' : pipelinesNovas}
-                  <span className="text-lg text-muted-foreground"> / {META_PIPELINES_TRIMESTRE}</span>
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">pipelines novas no trimestre</p>
+                <div className="flex items-end gap-4">
+                  <div>
+                    <p className="text-4xl font-bold font-mono leading-none" style={{ color: corProjetos }}>
+                      {reposLoading ? '—' : projetosAtuados.length}
+                      <span className="text-lg text-muted-foreground"> / {META_PROJETOS_TRIMESTRE}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">projetos automatizados</p>
+                  </div>
+                  <div className="border-l pl-4">
+                    <p className="text-4xl font-bold font-mono leading-none">
+                      {reposLoading ? '—' : pipelinesNovas}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">pipelines novas</p>
+                  </div>
+                </div>
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((pipelinesNovas / META_PIPELINES_TRIMESTRE) * 100, 100)}%`, backgroundColor: corPipelines }} />
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((projetosAtuados.length / META_PROJETOS_TRIMESTRE) * 100, 100)}%`, backgroundColor: corProjetos }} />
                 </div>
               </div>
               <div className="flex items-end justify-between border-t pt-1">
@@ -382,10 +447,13 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                 <span className="text-base font-bold font-mono" style={{ color: corMetaHigh(coberturaPct) }}>{reposLoading ? '—' : `${coberturaPct}%`}</span>
               </div>
             </div>
-            <div className="flex-1 border-l pl-5 space-y-1.5">
-              <div className="flex flex-wrap gap-1.5">
+
+            {/* 2 · Projetos · status (alvos do planejamento) */}
+            <div className="flex-shrink-0 border-l pl-5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Projetos · status</p>
+              <div className="flex flex-col gap-1.5">
                 {TV_PIPELINE_ALVOS.map((a) => (
-                  <span key={a.nome} className="inline-flex items-center gap-1.5 rounded-lg border bg-muted/30 px-2.5 py-1 text-xs">
+                  <span key={a.nome} className="inline-flex items-center justify-between gap-1.5 rounded-lg border bg-muted/30 px-2.5 py-1 text-xs">
                     <span className="font-semibold text-foreground">{a.nome}</span>
                     <span className={`inline-flex items-center gap-1 text-[10px] font-medium rounded px-1 py-0.5 ${
                       a.status === 'Concluído' ? 'text-emerald-500 bg-emerald-500/10'
@@ -398,20 +466,31 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
                   </span>
                 ))}
               </div>
-              {reposAtuados.length > 0 && (
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Feito no trimestre · repositórios atuados (contam na meta)</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {reposAtuados.slice(0, 6).map((repo) => (
-                      <span key={repo} className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-0.5 text-xs">
+            </div>
+
+            {/* 3 · Pipelines por projeto (feito no trimestre — sem teto, rola se crescer) */}
+            <div className="flex-1 min-w-0 border-l pl-5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Pipelines por projeto · feito no trimestre</p>
+              {projetosAtuados.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhuma pipeline criada no trimestre.</p>
+              ) : (
+                <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                  {projetosAtuados.map((p) => (
+                    <div key={p.projeto} className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border bg-muted/30 px-2.5 py-1 text-xs">
                         <GitBranch className="h-3 w-3 text-[hsl(142,71%,45%)]" />
-                        <span className="font-medium text-foreground">{repo}</span>
+                        <span className="font-semibold text-foreground">{p.projeto}</span>
+                        <span className="rounded bg-emerald-500/10 px-1 py-0.5 text-[10px] font-medium text-emerald-500">
+                          {p.pipelines} pipeline{p.pipelines > 1 ? 's' : ''}
+                        </span>
                       </span>
-                    ))}
-                    {reposAtuados.length > 6 && (
-                      <span className="text-xs text-muted-foreground self-center">+{reposAtuados.length - 6}</span>
-                    )}
-                  </div>
+                      {p.repos.map((repo) => (
+                        <span key={repo} className="inline-flex items-center rounded-full border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
+                          {repo}
+                        </span>
+                      ))}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -607,29 +686,126 @@ function LinhaOlho({ children, completo }: { children: ReactNode; completo: stri
 }
 
 // ── Linha de ocorrência recente (incidentes/riscos) ──────────────────────
-function RecenteRow({ data, texto, badge, badgeCor = '#64748b', detalhe, solucao }: {
+// `tv`: telão sem popover (tooltip nunca é a única fonte). Desde 21/08 (pedido
+// do Igor) o item é ABREVIADO em 2 linhas — título + "causa · solução" numa
+// linha truncada — para caberem mais ocorrências; clique expande o item por
+// extenso (chevron indica). Fora do TV mantém truncate + olhinho.
+
+// Título acima disto tende a truncar na coluna do TV (riscos têm descrições
+// longas e badges compridas — "Plano de Tratamento Definido" come ~150px) →
+// o item vira expansível mesmo sem causa/solução, e o expandir solta o título
+// em várias linhas. Medido no canvas: SG #142 com 47 chars já cortava.
+const TV_TEXTO_LONGO = 40;
+
+function RecenteRow({ data, texto, badge, badgeCor = '#64748b', detalhe, solucao, tv }: {
   data: string; texto: string; badge?: string; badgeCor?: string;
   /** Texto do incidente/risco (linha secundária, truncada + olhinho). */
   detalhe?: string;
   /** Solução aplicada/plano de ação (linha verde, truncada + olhinho). */
   solucao?: string;
+  tv?: boolean;
 }) {
-  return (
-    <div className="space-y-0.5">
-      <div className="flex items-start gap-1.5 text-[11px]">
-        <span className="font-mono text-muted-foreground shrink-0">{data}</span>
-        <span className="text-foreground truncate flex-1 min-w-0 font-medium" title={texto}>{texto}</span>
-        {badge && (
-          <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium" style={{ background: `${badgeCor}20`, color: badgeCor }}>
-            {badge}
-          </span>
+  const [expandido, setExpandido] = useState(false);
+  const expansivel = !!tv && (!!detalhe || !!solucao || texto.length > TV_TEXTO_LONGO);
+  const Chevron = expandido ? ChevronDown : ChevronRight;
+
+  const linha1 = (
+    <div className="flex items-start gap-1.5 text-[11px]">
+      {tv && (expansivel
+        ? <Chevron className="h-3 w-3 shrink-0 mt-0.5 text-muted-foreground/60" aria-hidden />
+        : <span className="w-3 shrink-0" aria-hidden />
+      )}
+      <span className="font-mono text-muted-foreground shrink-0">{data}</span>
+      <span
+        className={`text-foreground flex-1 min-w-0 font-medium ${tv && expandido ? 'whitespace-normal break-words' : 'truncate'}`}
+        title={texto}
+      >
+        {texto}
+      </span>
+      {badge && (
+        <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium" style={{ background: `${badgeCor}20`, color: badgeCor }}>
+          {badge}
+        </span>
+      )}
+    </div>
+  );
+
+  if (tv) {
+    return (
+      <div
+        className={`space-y-0.5 ${expansivel ? 'cursor-pointer' : ''}`}
+        role={expansivel ? 'button' : undefined}
+        tabIndex={expansivel ? 0 : undefined}
+        aria-expanded={expansivel ? expandido : undefined}
+        title={expansivel ? (expandido ? 'Recolher' : 'Expandir causa e solução') : undefined}
+        onClick={expansivel ? () => setExpandido((e) => !e) : undefined}
+        onKeyDown={expansivel ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandido((x) => !x); } } : undefined}
+      >
+        {linha1}
+        {expandido ? (
+          <div className="pl-[18px] space-y-0.5">
+            {detalhe && <p className="text-[11px] leading-snug text-muted-foreground">{detalhe}</p>}
+            {solucao && (
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                <span className="font-medium text-[hsl(142,71%,45%)]">Solução:</span> {solucao}
+              </p>
+            )}
+          </div>
+        ) : (detalhe || solucao) && (
+          <p className="pl-[18px] text-[11px] leading-snug text-muted-foreground truncate">
+            {detalhe}
+            {detalhe && solucao ? ' · ' : ''}
+            {solucao && (
+              <>
+                <span className="font-medium text-[hsl(142,71%,45%)]">Solução:</span> {solucao}
+              </>
+            )}
+          </p>
         )}
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-0.5">
+      {linha1}
       {detalhe && <LinhaOlho completo={detalhe}>{detalhe}</LinhaOlho>}
       {solucao && (
         <LinhaOlho completo={`Solução: ${solucao}`}>
           <span className="font-medium text-[hsl(142,71%,45%)]">Solução:</span> {solucao}
         </LinhaOlho>
+      )}
+    </div>
+  );
+}
+
+// ── Contador "dias sem X" com recorde lado a lado (modo TV — aprovado 20/08) ──
+// À esquerda a sequência atual; à direita o maior intervalo histórico entre
+// registros (inclui o intervalo em curso). Quando a sequência atual EMPATA com
+// o recorde, ela É o recorde — o número vira verde com o selo "recorde atual".
+function DiasComRecorde({ dias, cor, label, recorde }: {
+  dias: number | null; cor?: string; label: string; recorde: number | null;
+}) {
+  const recordeAtual = recorde != null && dias != null && dias >= recorde;
+  return (
+    <div className="flex items-end gap-3">
+      <div>
+        <p className="text-4xl font-bold font-mono leading-none" style={cor ? { color: cor } : undefined}>
+          {dias ?? '—'}
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{label}</p>
+      </div>
+      {recorde != null && (
+        <div className="border-l pl-3">
+          <p className="flex items-center gap-1 text-xl font-bold font-mono leading-none"
+            style={{ color: recordeAtual ? 'hsl(142,71%,45%)' : 'hsl(var(--primary))' }}>
+            <Trophy className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {recorde}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+            {recordeAtual ? 'recorde atual' : 'maior intervalo'}
+          </p>
+        </div>
       )}
     </div>
   );

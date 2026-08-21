@@ -70,6 +70,12 @@ export function qKeyAnterior(qKey: string): string {
   return q === 1 ? `${y - 1}-Q4` : `${y}-Q${q - 1}`;
 }
 
+/** '2025-Q4' → '2026-Q1' */
+export function qKeyProximo(qKey: string): string {
+  const [y, q] = qKey.split('-Q').map(Number);
+  return q === 4 ? `${y + 1}-Q1` : `${y}-Q${q + 1}`;
+}
+
 /** Lista de meses 'YYYY-MM' de `from` até `to`, inclusive. */
 export function mesesEntre(from: Date, to: Date): string[] {
   const out: string[] = [];
@@ -154,21 +160,21 @@ export interface VisaoTrimestre {
 }
 
 /**
- * Visões do trimestre vigente: uma por mês JÁ INICIADO, mais o acumulado.
+ * Visões de UM trimestre (vigente ou passado): uma por mês JÁ INICIADO em
+ * `ref`, mais o acumulado. Num trimestre passado os 3 meses entram inteiros.
  *
- * Em ago/2026 (Q3) devolve Julho · Agosto · Acumulado Q3 — exatamente o que o
- * modelo pede. Em setembro entra Setembro sozinho; em janeiro (Q1, mês 1) sai
- * só Janeiro. A lista sai do calendário, nunca de constante no código.
+ * É a base do seletor de trimestre do telão (20/08/2026): o operador navega
+ * ‹ Q2 › e as abas se recalculam daqui — a lista sai do calendário, nunca de
+ * constante no código.
  *
  * O acumulado só aparece com 2+ meses: no primeiro mês do trimestre ele seria
  * uma cópia idêntica da aba do mês — aba que não muda nada é ruído no telão.
  */
-export function visoesDoTrimestre(ref: Date = new Date()): VisaoTrimestre[] {
-  const qKey = qKeyDoMes(ymOf(ref));
+export function visoesDoTrimestreKey(qKey: string, ref: Date = new Date()): VisaoTrimestre[] {
   const doTrimestre = mesesDoTrimestre(qKey);
   const atual = ymOf(ref);
-  // Guarda-corpo: `ref` sempre cai dentro do próprio trimestre, então o filtro
-  // nunca devolve vazio — mas se devolvesse, o primeiro mês segura a tela.
+  // Guarda-corpo: trimestre futuro (nenhum mês iniciado) devolveria vazio —
+  // o primeiro mês segura a tela.
   const iniciados = doTrimestre.filter(m => m <= atual);
   const meses = iniciados.length > 0 ? iniciados : [doTrimestre[0]];
 
@@ -191,6 +197,11 @@ export function visoesDoTrimestre(ref: Date = new Date()): VisaoTrimestre[] {
   }
 
   return visoes;
+}
+
+/** Visões do trimestre VIGENTE — atalho de `visoesDoTrimestreKey`. */
+export function visoesDoTrimestre(ref: Date = new Date()): VisaoTrimestre[] {
+  return visoesDoTrimestreKey(qKeyDoMes(ymOf(ref)), ref);
 }
 
 /** Trimestre vigente — usado pelo modo TV (escopo fixo, sem operador no telão). */
