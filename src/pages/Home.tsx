@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Monitor, Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Wifi, WifiOff, Server } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -27,6 +27,56 @@ const KIOSK_LABELS: Record<string, string> = {
   helpdesk: 'Customer Service',
   'customer-service': 'Produtos',
 };
+
+/**
+ * Config do telão do usuário monitor, persistida em localStorage.
+ *
+ * A TV reinicia sozinha (queda de energia, atualização do SO, watchdog) e não
+ * tem ninguém por perto para reconfigurar. Guardar a última escolha faz o
+ * reboot voltar exibindo exatamente o que estava no ar, sem ação manual —
+ * enquanto o padrão (tudo, rotativo, 30s) cobre a primeira vez.
+ */
+const MONITOR_KIOSK_CONFIG_KEY = 'flaghub:monitor-kiosk-config';
+const MONITOR_INTERVALO_PADRAO = 30;
+
+interface KioskConfig {
+  selectedSlugs: string[];
+  rotateEnabled: boolean;
+  intervalSec: number;
+}
+
+function lerConfigMonitor(): KioskConfig | null {
+  try {
+    const bruto = localStorage.getItem(MONITOR_KIOSK_CONFIG_KEY);
+    if (!bruto) return null;
+    const cfg = JSON.parse(bruto) as Partial<KioskConfig>;
+    const slugs = Array.isArray(cfg.selectedSlugs)
+      ? cfg.selectedSlugs.filter((s): s is string => typeof s === 'string')
+      : [];
+    // Sem painel nenhum a TV renderiza vazio — trata como "não configurado".
+    if (slugs.length === 0) return null;
+    return {
+      selectedSlugs: slugs,
+      // Rotação só fica desligada se o operador desligou explicitamente.
+      rotateEnabled: cfg.rotateEnabled !== false,
+      intervalSec:
+        typeof cfg.intervalSec === 'number' && cfg.intervalSec > 0
+          ? cfg.intervalSec
+          : MONITOR_INTERVALO_PADRAO,
+    };
+  } catch {
+    // localStorage bloqueado ou JSON corrompido: cai no padrão, nunca quebra a TV.
+    return null;
+  }
+}
+
+function salvarConfigMonitor(cfg: KioskConfig) {
+  try {
+    localStorage.setItem(MONITOR_KIOSK_CONFIG_KEY, JSON.stringify(cfg));
+  } catch {
+    // Persistir é otimização, não requisito: seguir sem salvar.
+  }
+}
 
 interface SectorCardData {
   slug: string;
@@ -143,17 +193,17 @@ export default function Home() {
     .filter((s) => kioskSelectedSlugs.includes(s.slug))
     .map((s) => ({ slug: s.slug, name: kioskName(s) }));
 
-  // Show kiosk picker dialog for monitor user on first load
-  useEffect(() => {
-    if (isMonitor && !showMonitorKioskPicker && !kioskActive) {
-      setShowMonitorKioskPicker(true);
-    }
-  }, [isMonitor, showMonitorKioskPicker, kioskActive]);
-
   const exitKiosk = useCallback(() => {
     setKioskActive(false);
+    // Monitor: o ESC é a ÚNICA porta para a configuração — abre o diálogo e
+    // mantém a tela cheia. Sair de fullscreen aqui exigiria um clique humano
+    // para voltar, que é justamente o que a TV não tem.
+    if (isMonitor) {
+      setShowMonitorKioskPicker(true);
+      return;
+    }
     document.exitFullscreen?.().catch(() => {});
-  }, []);
+  }, [isMonitor]);
 
   // Navegação manual do kiosk (com wrap-around); reinicia o timer para não haver pulo duplo
   const kioskSectorCount = activeSectors.length;
@@ -226,7 +276,7 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handler);
   }, [kioskActive, exitKiosk]);
 
-  const startKiosk = (config: { selectedSlugs: string[]; rotateEnabled: boolean; intervalSec: number }) => {
+  const startKiosk = useCallback((config: KioskConfig) => {
     setKioskSelectedSlugs(config.selectedSlugs);
     setKioskRotate(config.rotateEnabled);
     setKioskInterval(config.intervalSec);
@@ -234,8 +284,46 @@ export default function Home() {
     setKioskPagina(0);
     setKioskPaused(false);
     setKioskActive(true);
+    if (isMonitor) salvarConfigMonitor(config);
+    // Em auto-start não há gesto do usuário e o browser recusa: por isso a TV
+    // deve subir com o Chrome em --kiosk. O catch mantém o erro silencioso.
     document.documentElement.requestFullscreen?.().catch(() => {});
-  };
+  }, [isMonitor]);
+
+  // `sectorCards` é recriado a cada render (os KPIs revalidam em background).
+  // A chave em string mantém `todosSlugs` estável e tira o efeito abaixo do
+  // ciclo de re-execução por identidade de array.
+  const slugsKey = sectorCards.map((s) => s.slug).join(',');
+  const todosSlugs = useMemo(() => slugsKey.split(','), [slugsKey]);
+
+  /**
+   * Monitor (TV): entra em rotação sozinho ao carregar, sem perguntar nada.
+   * Dispara UMA vez por carga de página — se repetisse, o ESC cairia de volta
+   * no kiosk e a configuração seria inalcançável.
+   */
+  const autoStartRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!isMonitor || autoStartRef.current) return;
+    autoStartRef.current = true;
+    startKiosk(
+      lerConfigMonitor() ?? {
+        selectedSlugs: todosSlugs,
+        rotateEnabled: true,
+        intervalSec: MONITOR_INTERVALO_PADRAO,
+      },
+    );
+  }, [isMonitor, startKiosk, todosSlugs]);
+
+  /**
+   * Monitor: o hub não é destino. Se o diálogo de configuração foi fechado sem
+   * iniciar (ESC, clique fora), a TV volta a exibir com a config vigente em vez
+   * de ficar parada numa tela de cards que ninguém está lá para clicar.
+   */
+  useLayoutEffect(() => {
+    if (!isMonitor || kioskActive || showMonitorKioskPicker) return;
+    if (kioskSelectedSlugs.length === 0) return;
+    setKioskActive(true);
+  }, [isMonitor, kioskActive, showMonitorKioskPicker, kioskSelectedSlugs.length]);
 
   if (kioskActive && activeSectors.length > 0) {
     return (
@@ -319,13 +407,18 @@ export default function Home() {
         />
       </div>
 
-      {/* Monitor user: externally-controlled kiosk picker */}
+      {/* Monitor: diálogo alcançável só pelo ESC, já preenchido com o que está no ar */}
       {isMonitor && (
         <KioskConfigDialog
           sectors={sectorCards.map((s) => ({ slug: s.slug, name: kioskName(s) }))}
           onStart={startKiosk}
           externalOpen={showMonitorKioskPicker}
           onExternalOpenChange={setShowMonitorKioskPicker}
+          initialConfig={
+            kioskSelectedSlugs.length > 0
+              ? { selectedSlugs: kioskSelectedSlugs, rotateEnabled: kioskRotate, intervalSec: kioskInterval }
+              : undefined
+          }
         />
       )}
     </div>

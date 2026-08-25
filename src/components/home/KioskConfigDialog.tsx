@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Tv, Play, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -13,15 +13,26 @@ interface SectorOption {
   name: string;
 }
 
+interface KioskConfigValues {
+  selectedSlugs: string[];
+  rotateEnabled: boolean;
+  intervalSec: number;
+}
+
 interface KioskConfigDialogProps {
   sectors: SectorOption[];
-  onStart: (config: { selectedSlugs: string[]; rotateEnabled: boolean; intervalSec: number }) => void;
+  onStart: (config: KioskConfigValues) => void;
   /** When true, dialog opens without needing the card trigger */
   externalOpen?: boolean;
   onExternalOpenChange?: (open: boolean) => void;
+  /**
+   * Config já em execução. Usado pelo telão: o ESC abre este diálogo com o que
+   * está no ar, em vez de zerar a escolha de quem só quis ajustar um detalhe.
+   */
+  initialConfig?: KioskConfigValues;
 }
 
-export default function KioskConfigDialog({ sectors, onStart, externalOpen, onExternalOpenChange }: KioskConfigDialogProps) {
+export default function KioskConfigDialog({ sectors, onStart, externalOpen, onExternalOpenChange, initialConfig }: KioskConfigDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   // TV-1: rotação DESLIGADA por padrão — quem apresenta controla pela barra
   // superior (Play e Avançar), em vez de correr atrás do telão girando sozinho.
@@ -36,12 +47,30 @@ export default function KioskConfigDialog({ sectors, onStart, externalOpen, onEx
     else setInternalOpen(v);
   };
 
-  // Reset selections when opening
+  // `sectors` chega como array novo a cada render do Home (os KPIs revalidam em
+  // background). Depender da identidade dele fazia o efeito abaixo re-executar
+  // com o diálogo aberto e remarcar TODOS os painéis, desfazendo o que o
+  // operador tinha acabado de desmarcar. A chave estável corta isso.
+  const slugsKey = sectors.map((s) => s.slug).join('|');
+
+  // initialConfig também chega como objeto novo a cada render; lemos por ref
+  // para hidratar apenas na abertura, sem entrar na lista de dependências.
+  const initialConfigRef = useRef(initialConfig);
+  initialConfigRef.current = initialConfig;
+
+  // Hidrata na abertura: com a config em execução, se houver; senão, tudo marcado.
   useEffect(() => {
-    if (open) {
-      setSelectedSlugs(sectors.map((s) => s.slug));
+    if (!open) return;
+    const atual = initialConfigRef.current;
+    if (atual) {
+      setSelectedSlugs(atual.selectedSlugs);
+      setRotateEnabled(atual.rotateEnabled);
+      setIntervalSec(String(atual.intervalSec));
+      return;
     }
-  }, [open, sectors]);
+    setSelectedSlugs(sectors.map((s) => s.slug));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- slugsKey substitui `sectors` de propósito
+  }, [open, slugsKey]);
 
   const toggleSector = (slug: string) => {
     setSelectedSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
