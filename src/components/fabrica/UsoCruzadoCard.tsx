@@ -42,6 +42,17 @@ type UsoCruzadoCardProps = {
 const OUTRAS = 'Outras';
 const COR_CRUZADO = 'hsl(28,92%,55%)';
 
+/**
+ * Teto de linhas no telão (TV). A lista cresceu ao passar a exibir capacidade
+ * também das áreas de apoio — 4 fábricas + 4 áreas (+ "Sem squad") — e não
+ * cabia mais na altura do card.
+ *
+ * O teto existe para o PRÓXIMO crescimento: telão não tem scroll nem mouse,
+ * então sumir com uma linha em silêncio é o pior desfecho. Passando daqui, o
+ * excedente é declarado como "+N" no rodapé. Com 9 nada é escondido hoje.
+ */
+const TV_MAX_LINHAS = 9;
+
 // Horas em h:mm (mesma língua do DevOps e da planilha do gestor) — src/lib/formatHoras.ts.
 
 /**
@@ -171,6 +182,29 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
   const temCapacidade = !!businessDays && GRUPOS_HORAS.some((s) => (capByHome[s] ?? 0) > 0);
 
   /**
+   * Densidade de telão. No modo TV o card divide a faixa de baixo com o
+   * DailyProgress e recebe ~210px úteis de altura; com 8 linhas + divisor +
+   * legenda o conteúdo passava de 260px e transbordava. Aqui encolhem só
+   * respiro e paddings — o TEXTO fica no tamanho original, porque telão se lê
+   * a 3–5 m e diminuir fonte seria trocar um defeito por outro.
+   */
+  const denso = compact && fill;
+
+  /**
+   * Linhas que realmente vão para a tela. Precisa ser resolvido ANTES do JSX:
+   * o teto do telão só é aplicável sobre a lista já filtrada, senão o "+N"
+   * contaria squads que nem seriam desenhadas (as sem hora e sem capacidade).
+   */
+  const gruposVisiveis = GRUPOS_HORAS.filter(
+    (home) => (squadTotals[home] || 0) !== 0 || (capByHome[home] ?? 0) !== 0,
+  );
+  // "Sem squad" também ocupa uma linha; reservar o lugar dela evita estourar
+  // justo no período em que aparece gente fora do roster.
+  const tetoGrupos = Math.max(1, TV_MAX_LINHAS - (semSquadMin > 0 ? 1 : 0));
+  const gruposExibidos = denso ? gruposVisiveis.slice(0, tetoGrupos) : gruposVisiveis;
+  const gruposOcultos = gruposVisiveis.length - gruposExibidos.length;
+
+  /**
    * Lead de cada squad. `papel='lead'` + `conta_horas` distingue os dois papéis:
    * quem só gerencia (horas fora da conta da fábrica) e quem também opera.
    * A fábrica é fixa, o lead pode mudar — por isso o nome fica num (i) discreto
@@ -208,12 +242,17 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
    * Primeira linha de área: onde entra o divisor entre fábricas de entrega e
    * áreas de apoio. Sem o selo por linha, é ele que faz a separação na leitura
    * rápida (pedido de 12/08/2026).
+   *
+   * Compara com a linha ANTERIOR JÁ EXIBIDA, não com a vizinha em
+   * GRUPOS_HORAS: uma fábrica sem hora e sem capacidade não é desenhada, e
+   * olhar para ela deixava o divisor no lugar errado (ou fora da tela).
    */
-  const abreBlocoAreas = (home: string, hi: number) => ehArea(home) && !ehArea(GRUPOS_HORAS[hi - 1] ?? '');
+  const abreBlocoAreas = (home: string, anterior: string | undefined) =>
+    ehArea(home) && !!anterior && !ehArea(anterior);
 
   const divisorAreas = (
-    <div className="flex items-center gap-2 pt-2 pb-1">
-      <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70">áreas de apoio</span>
+    <div className={`flex items-center gap-2 ${denso ? 'pt-1 pb-0.5' : 'pt-2 pb-1'}`}>
+      <span className={`text-[9px] uppercase tracking-wide text-muted-foreground/70 ${denso ? 'leading-none' : ''}`}>áreas de apoio</span>
       <span className="h-px flex-1 bg-border/60" />
     </div>
   );
@@ -255,13 +294,26 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
 
   return (
     <Card className={fill ? 'h-full flex flex-col' : undefined}>
-      <CardHeader className="pb-2">
+      <CardHeader className={denso ? 'px-4 pt-2 pb-1' : 'pb-2'}>
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <ArrowLeftRight className="h-4 w-4 text-primary" />
           Capacidade × Realizado por Squad
         </CardTitle>
       </CardHeader>
-      <CardContent className={fill ? 'flex-1 min-h-0 flex flex-col justify-center' : undefined}>
+      {/*
+        `justify-center` puro transborda para os DOIS lados quando o conteúdo
+        excede a área, e a sobra de cima cobria o título (mesma classe de bug
+        de 20/08/2026 no bloco Produtos do Comercial). `safe_center` centraliza
+        enquanto cabe e degrada para o topo quando não cabe; o overflow-hidden
+        garante que o que sobrar seja cortado embaixo, nunca por cima.
+      */}
+      <CardContent
+        className={
+          fill
+            ? `flex-1 min-h-0 flex flex-col [justify-content:safe_center] overflow-hidden ${denso ? 'px-4 pb-2' : ''}`
+            : undefined
+        }
+      >
         {rosterLoading ? (
           <p className="text-xs text-muted-foreground text-center py-8">Carregando roster das squads…</p>
         ) : rosterRows.length === 0 ? (
@@ -274,10 +326,13 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
           </p>
         ) : (
           <>
-            <div className="space-y-2.5">
-              {GRUPOS_HORAS.map((home, hi) => {
+            <div className={denso ? 'space-y-1' : 'space-y-2.5'}>
+              {gruposExibidos.map((home, idx) => {
                 const real = squadTotals[home] || 0;
-                if (real === 0 && (capByHome[home] ?? 0) === 0) return null;
+                // Cor é posicional em GRUPOS_HORAS: usar o índice da lista
+                // filtrada trocaria a cor da squad quando alguma some.
+                const hi = GRUPOS_HORAS.indexOf(home);
+                const anterior = gruposExibidos[idx - 1];
                 const cor = fabricaColor(home, hi);
                 const cross = crossTotals[home] || 0;
                 const own = real - cross;
@@ -293,7 +348,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                   const aberta = squadAberta === home;
                   return (
                     <div key={home}>
-                    {abreBlocoAreas(home, hi) && divisorAreas}
+                    {abreBlocoAreas(home, anterior) && divisorAreas}
                     <div
                       className={`grid grid-cols-[148px_1fr_176px] items-center gap-3 rounded ${podeAbrir ? 'cursor-pointer hover:bg-muted/40' : ''}`}
                       onClick={podeAbrir ? () => setSquadAberta(aberta ? null : home) : undefined}
@@ -354,7 +409,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                 const abertaSemCap = squadAberta === home;
                 return (
                   <div key={home}>
-                  {abreBlocoAreas(home, hi) && divisorAreas}
+                  {abreBlocoAreas(home, anterior) && divisorAreas}
                   <div
                     className={`grid grid-cols-[148px_1fr_150px] items-center gap-3 rounded ${podeAbrir ? 'cursor-pointer hover:bg-muted/40' : ''}`}
                     onClick={podeAbrir ? () => setSquadAberta(abertaSemCap ? null : home) : undefined}
@@ -435,6 +490,16 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
               })()}
             </div>
 
+            {/*
+              Telão não tem scroll: se alguma squad não coube, ela é DECLARADA
+              aqui. Some em silêncio = quem olha a TV lê o card como completo.
+            */}
+            {gruposOcultos > 0 && (
+              <p className="text-[10px] text-muted-foreground/80 pt-1">
+                +{gruposOcultos} {gruposOcultos === 1 ? 'squad não exibida' : 'squads não exibidas'} — sem espaço no telão
+              </p>
+            )}
+
             {/* Matriz origem → destino */}
             <div className={`mt-4 overflow-x-auto ${compact ? 'hidden' : ''}`}>
               <table className="w-full text-xs border-collapse">
@@ -448,12 +513,12 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                   </tr>
                 </thead>
                 <tbody>
-                  {[...GRUPOS_HORAS, ...(semSquadMin > 0 ? [SEM_SQUAD] : [])].map((home, hi) => {
+                  {[...GRUPOS_HORAS, ...(semSquadMin > 0 ? [SEM_SQUAD] : [])].map((home, hi, lista) => {
                     const byDest = matrix[home] ?? {};
                     const total = Object.values(byDest).reduce((s, v) => s + v, 0);
                     if (total === 0) return null;
                     return (
-                      <tr key={home} className={abreBlocoAreas(home, hi) ? 'border-t-2 border-border' : 'border-t border-border/60'}>
+                      <tr key={home} className={abreBlocoAreas(home, lista[hi - 1]) ? 'border-t-2 border-border' : 'border-t border-border/60'}>
                         <th className="text-left font-semibold py-1.5 pr-2">{home}</th>
                         {destinos.map((dest) => {
                           const min = byDest[dest] ?? 0;
@@ -477,7 +542,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
             </div>
 
             {/* Legenda enxuta: o parágrafo antigo tinha 4 linhas e competia com os dados. */}
-            <p className="text-[11px] text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className={`text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 ${denso ? 'text-[10px] mt-1' : 'text-[11px] mt-2'}`}>
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block w-2.5 h-2 rounded-sm" style={{ background: COR_CRUZADO }} />uso cruzado
               </span>
