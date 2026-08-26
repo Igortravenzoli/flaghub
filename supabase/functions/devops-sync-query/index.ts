@@ -398,17 +398,31 @@ serve(async (req) => {
       // do diff. `synced_at` passa a significar "quando este item entrou nesta
       // query", que é mais útil que "última vez que o cron rodou" — esse dado
       // já vive em devops_queries.last_synced_at (passo 9).
-      const { data: existingCurrent, error: existingCurrentErr } = await admin
-        .from('devops_query_items_current')
-        .select('work_item_id')
-        .eq('query_id', queryId)
+      // PAGINADO: o PostgREST desta instancia roda com `max_rows = 1000`. Uma
+      // query com mais de mil itens vinha truncada, e o `toDelete` calculado
+      // logo abaixo deixava de fora as sobras — item que saiu da query ficava
+      // na tabela para sempre. O insert nao sofria (protegido por
+      // `ignoreDuplicates`), mas a limpeza sim. `.order` garante ordem estavel
+      // entre as paginas. Ver analise de Disk IO de 26/08/2026.
+      const PAGINA_SNAPSHOT = 1000
+      const existingCurrent: Array<{ work_item_id: number }> = []
+      for (let inicio = 0; ; inicio += PAGINA_SNAPSHOT) {
+        const { data, error: existingCurrentErr } = await admin
+          .from('devops_query_items_current')
+          .select('work_item_id')
+          .eq('query_id', queryId)
+          .order('work_item_id')
+          .range(inicio, inicio + PAGINA_SNAPSHOT - 1)
 
-      if (existingCurrentErr) {
-        throw new Error(`Current snapshot lookup failed: ${existingCurrentErr.message}`)
+        if (existingCurrentErr) {
+          throw new Error(`Current snapshot lookup failed: ${existingCurrentErr.message}`)
+        }
+        existingCurrent.push(...((data || []) as Array<{ work_item_id: number }>))
+        if (!data || data.length < PAGINA_SNAPSHOT) break
       }
 
       const currentSet = new Set(workItemIds)
-      const existingCurrentSet = new Set((existingCurrent || []).map(row => row.work_item_id))
+      const existingCurrentSet = new Set(existingCurrent.map(row => row.work_item_id))
 
       const toInsert = workItemIds
         .filter(id => !existingCurrentSet.has(id))

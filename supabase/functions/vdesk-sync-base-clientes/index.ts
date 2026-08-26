@@ -202,15 +202,36 @@ serve(async (req) => {
 
       // Estado atual da base — alimenta o filtro de mudança E a reconciliação
       // abaixo, numa leitura só.
-      const { data: existentes, error: existentesErr } = await admin
-        .from('vdesk_clients')
-        .select('id, nome, source_hash, status')
+      //
+      // PAGINADO de propósito: o PostgREST desta instância roda com
+      // `max_rows = 1000` e a base tem 2.061 clientes. Sem paginar, o mapa vinha
+      // com os primeiros mil e os 1.061 restantes caíam no ramo "cliente novo"
+      // do filtro logo abaixo, sendo reescritos a cada ciclo — exatamente o
+      // desperdício que este patch existe para eliminar.
+      //
+      // Medido em 26/08/2026: 1.058 linhas reescritas por ciclo com TODOS os
+      // campos idênticos, `source_hash` inclusive. `.order('id')` é obrigatório:
+      // sem ordem estável a paginação pode repetir ou pular linhas.
+      const PAGINA = 1000
+      type ClienteExistente = { id: number; nome: string; source_hash: string | null; status: string | null }
+      const existentes: ClienteExistente[] = []
+      for (let inicio = 0; ; inicio += PAGINA) {
+        const { data, error } = await admin
+          .from('vdesk_clients')
+          .select('id, nome, source_hash, status')
+          .order('id')
+          .range(inicio, inicio + PAGINA - 1)
 
-      if (existentesErr) {
-        throw new Error(`Lookup de clientes existentes falhou: ${existentesErr.message}`)
+        if (error) {
+          throw new Error(`Lookup de clientes existentes falhou: ${error.message}`)
+        }
+        existentes.push(...((data || []) as ClienteExistente[]))
+        if (!data || data.length < PAGINA) break
       }
 
-      const porNome = new Map((existentes || []).map(c => [c.nome, c]))
+      console.log(`[GatewaySyncClients] ${existentes.length} clientes ja na base`)
+
+      const porNome = new Map(existentes.map(c => [c.nome, c]))
 
       // Só escreve quem mudou de fato.
       //
