@@ -178,11 +178,42 @@ serve(async (req) => {
         raw: c,
       }))
 
+      // Estado atual da base — alimenta o filtro de mudança E a reconciliação
+      // abaixo, numa leitura só.
+      const { data: existentes, error: existentesErr } = await admin
+        .from('vdesk_clients')
+        .select('id, nome, source_hash, status')
+
+      if (existentesErr) {
+        throw new Error(`Lookup de clientes existentes falhou: ${existentesErr.message}`)
+      }
+
+      const porNome = new Map((existentes || []).map(c => [c.nome, c]))
+
+      // Só escreve quem mudou de fato.
+      //
+      // `source_hash` existe desde 12/03/2026 e nunca era lido: o sync reescrevia
+      // os 2.061 clientes a cada 15 min só para recarimbar `synced_at` — 23,6
+      // milhões de UPDATEs, 11.477 por linha. Ver análise de Disk IO de 26/08/2026.
+      //
+      // A comparação de `status` é obrigatória junto com a de hash: um cliente
+      // inativado localmente pela reconciliação volta com o MESMO payload (e
+      // portanto o mesmo hash) quando reaparece na carga. Sem essa segunda
+      // condição ele nunca seria reativado.
+      const mudaram = normalized.filter(c => {
+        const atual = porNome.get(c.nome)
+        if (!atual) return true                              // cliente novo
+        if (atual.source_hash !== c.source_hash) return true  // payload mudou
+        return atual.status !== c.status                      // reativação pendente
+      })
+
+      console.log(`[GatewaySyncClients] ${mudaram.length} de ${normalized.length} clientes mudaram`)
+
       // Upsert in chunks using nome as natural key (unique index)
       let upsertedCount = 0
       let upsertErrors = 0
-      for (let i = 0; i < normalized.length; i += 100) {
-        const chunk = normalized.slice(i, i + 100)
+      for (let i = 0; i < mudaram.length; i += 100) {
+        const chunk = mudaram.slice(i, i + 100)
         const { error } = await admin.from('vdesk_clients').upsert(chunk, {
           onConflict: 'nome',
           ignoreDuplicates: false,
@@ -190,26 +221,38 @@ serve(async (req) => {
         if (error) {
           console.error(`[GatewaySyncClients] Upsert chunk error:`, error.message)
           upsertErrors++
+        } else {
+          upsertedCount += chunk.length
         }
-        upsertedCount += chunk.length
       }
 
       // Reconciliação: quem não veio na carga saiu da base VDesk — marcar Inativo.
       // Só roda com carga não-vazia e sem nenhum chunk com erro, para nunca
       // inativar em massa por falha parcial de upsert.
+      //
+      // Antes o corte era `.lt('synced_at', syncTimestamp)`, o que EXIGIA
+      // recarimbar todas as linhas a cada ciclo para funcionar — era esse
+      // requisito que sustentava os 23,6 milhões de UPDATEs. Agora o diff sai
+      // da leitura acima e só as linhas que realmente mudam de status são escritas.
       let deactivatedCount = 0
       if (normalized.length > 0 && upsertErrors === 0) {
-        const { data: deactivated, error: deactError } = await admin
-          .from('vdesk_clients')
-          .update({ status: 'Inativo' })
-          .lt('synced_at', syncTimestamp)
-          .neq('status', 'Inativo')
-          .select('id, nome')
-        if (deactError) {
-          console.error('[GatewaySyncClients] Deactivation error:', deactError.message)
-        } else if (deactivated && deactivated.length > 0) {
-          deactivatedCount = deactivated.length
-          console.log(`[GatewaySyncClients] Deactivated ${deactivatedCount} stale clients:`, deactivated.map(d => d.nome).join(', '))
+        const nomesNaCarga = new Set(normalized.map(c => c.nome))
+        const idsParaInativar = (existentes || [])
+          .filter(c => !nomesNaCarga.has(c.nome) && c.status !== 'Inativo')
+          .map(c => c.id)
+
+        for (let i = 0; i < idsParaInativar.length; i += 100) {
+          const { data: deactivated, error: deactError } = await admin
+            .from('vdesk_clients')
+            .update({ status: 'Inativo', synced_at: syncTimestamp })
+            .in('id', idsParaInativar.slice(i, i + 100))
+            .select('id, nome')
+          if (deactError) {
+            console.error('[GatewaySyncClients] Deactivation error:', deactError.message)
+          } else if (deactivated && deactivated.length > 0) {
+            deactivatedCount += deactivated.length
+            console.log(`[GatewaySyncClients] Deactivated ${deactivated.length} stale clients:`, deactivated.map(d => d.nome).join(', '))
+          }
         }
       }
 

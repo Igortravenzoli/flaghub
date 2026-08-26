@@ -386,24 +386,18 @@ serve(async (req) => {
         upsertedCount += chunk.length
       }
 
-      // 7. Update devops_query_items_current (incremental upsert + cleanup)
-      const currentItems = workItemIds.map(id => ({
-        query_id: queryId,
-        work_item_id: id,
-        synced_at: snapshotAt,
-      }))
-
-      for (let i = 0; i < currentItems.length; i += 500) {
-        const chunk = currentItems.slice(i, i + 500)
-        const { error: currentErr } = await admin
-          .from('devops_query_items_current')
-          .upsert(chunk, { onConflict: 'query_id,work_item_id' })
-
-        if (currentErr) {
-          throw new Error(`Current snapshot upsert failed: ${currentErr.message}`)
-        }
-      }
-
+      // 7. Update devops_query_items_current — só o delta (entrou / saiu)
+      //
+      // Antes: upsert das ~5.150 linhas a cada ciclo só para recarimbar
+      // `synced_at`. O par (query_id, work_item_id) É a linha inteira, então
+      // nada mais mudava — 69,8 milhões de UPDATEs numa tabela de 5.150 linhas,
+      // cada um gerando WAL + full-page image + tupla morta para o autovacuum.
+      // Ver análise de Disk IO de 26/08/2026.
+      //
+      // Agora a leitura do estado atual vem primeiro e alimenta os dois lados
+      // do diff. `synced_at` passa a significar "quando este item entrou nesta
+      // query", que é mais útil que "última vez que o cron rodou" — esse dado
+      // já vive em devops_queries.last_synced_at (passo 9).
       const { data: existingCurrent, error: existingCurrentErr } = await admin
         .from('devops_query_items_current')
         .select('work_item_id')
@@ -414,9 +408,28 @@ serve(async (req) => {
       }
 
       const currentSet = new Set(workItemIds)
-      const toDelete = (existingCurrent || [])
-        .map(row => row.work_item_id)
-        .filter(id => !currentSet.has(id))
+      const existingCurrentSet = new Set((existingCurrent || []).map(row => row.work_item_id))
+
+      const toInsert = workItemIds
+        .filter(id => !existingCurrentSet.has(id))
+        .map(id => ({ query_id: queryId, work_item_id: id, synced_at: snapshotAt }))
+
+      console.log(`[DevOpsSync] snapshot: +${toInsert.length} novos de ${workItemIds.length} (${workItemIds.length - toInsert.length} já presentes)`)
+
+      for (let i = 0; i < toInsert.length; i += 500) {
+        const chunk = toInsert.slice(i, i + 500)
+        // ignoreDuplicates protege contra corrida entre duas execuções do cron:
+        // se o item entrou entre a leitura acima e este insert, não vira UPDATE.
+        const { error: currentErr } = await admin
+          .from('devops_query_items_current')
+          .upsert(chunk, { onConflict: 'query_id,work_item_id', ignoreDuplicates: true })
+
+        if (currentErr) {
+          throw new Error(`Current snapshot insert failed: ${currentErr.message}`)
+        }
+      }
+
+      const toDelete = [...existingCurrentSet].filter(id => !currentSet.has(id))
 
       for (let i = 0; i < toDelete.length; i += 1000) {
         const chunk = toDelete.slice(i, i + 1000)
@@ -441,9 +454,35 @@ serve(async (req) => {
         console.log(`[DevOpsSync] Fetching ${missingParentIds.length} missing parents`)
         const parentItems = await fetchWorkItemsBatch(missingParentIds)
         const parentMapped = parentItems.map(mapWorkItem)
-        if (parentMapped.length > 0) {
-          await admin.from('devops_work_items').upsert(parentMapped, { onConflict: 'id' })
-          parentsFetched = parentMapped.length
+        parentsFetched = parentMapped.length
+
+        // Mesmo filtro por `rev` do passo 5. Sem ele, todo parent buscado era
+        // reescrito a cada ciclo mesmo sem nenhuma alteração no DevOps — o
+        // passo 5 fazia certo desde 12/03/2026 e este caminho, criado depois,
+        // não herdou a regra. Ver análise de Disk IO de 26/08/2026.
+        const parentRevs = new Map<number, number>()
+        for (let i = 0; i < missingParentIds.length; i += 1000) {
+          const { data: existingParents } = await admin
+            .from('devops_work_items')
+            .select('id, rev')
+            .in('id', missingParentIds.slice(i, i + 1000))
+          for (const p of (existingParents || [])) parentRevs.set(p.id, p.rev)
+        }
+
+        const parentsToUpsert = parentMapped.filter(p => {
+          const existingRev = parentRevs.get(p.id)
+          return existingRev === undefined || existingRev < p.rev
+        })
+
+        console.log(`[DevOpsSync] ${parentsToUpsert.length} parents need upsert (${parentMapped.length - parentsToUpsert.length} unchanged)`)
+
+        for (let i = 0; i < parentsToUpsert.length; i += 100) {
+          const { error: parentErr } = await admin
+            .from('devops_work_items')
+            .upsert(parentsToUpsert.slice(i, i + 100), { onConflict: 'id' })
+          if (parentErr) {
+            console.error('[DevOpsSync] Parent upsert error:', parentErr.message)
+          }
         }
       }
 
