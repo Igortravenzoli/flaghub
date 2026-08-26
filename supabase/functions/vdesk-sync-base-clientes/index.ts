@@ -165,18 +165,40 @@ serve(async (req) => {
       })
 
       // Normalize and upsert to vdesk_clients
+      //
+      // `sistemas` é ordenado antes de qualquer coisa porque o gateway devolve
+      // esse array em ordem VARIÁVEL entre coletas. A ordem da origem não
+      // carrega significado (ela muda sozinha de uma requisição para a outra),
+      // então fixá-la aqui torna determinísticos o array gravado, o
+      // `sistemas_label` e principalmente o `source_hash`.
+      //
+      // Sem isso o hash mudava a cada ciclo em todo cliente com 2+ sistemas —
+      // 1.193 dos 2.061. Medido em 26/08/2026: o primeiro ciclo após o filtro
+      // de mudança entrar ainda reescreveu 1.058 linhas só por esse motivo.
       const syncTimestamp = new Date().toISOString()
-      const normalized = allClients.map((c: any) => ({
-        nome: c.nome || c.name || c.razaoSocial || 'Desconhecido',
-        apelido: c.apelido || c.nomeFantasia || null,
-        status: c.status || c.situacao || 'ativo',
-        bandeira: c.bandeira || c.flagBandeira || null,
-        sistemas: c.sistemas || c.products || [],
-        sistemas_label: Array.isArray(c.sistemas) ? c.sistemas.join(', ') : (c.sistemasLabel || null),
-        source_hash: hashPayload(c),
-        synced_at: syncTimestamp,
-        raw: c,
-      }))
+      const normalized = allClients.map((c: any) => {
+        const brutos = c.sistemas || c.products || []
+        const sistemas = Array.isArray(brutos) ? [...brutos].sort() : brutos
+        const row = {
+          nome: c.nome || c.name || c.razaoSocial || 'Desconhecido',
+          apelido: c.apelido || c.nomeFantasia || null,
+          status: c.status || c.situacao || 'ativo',
+          bandeira: c.bandeira || c.flagBandeira || null,
+          sistemas,
+          sistemas_label: Array.isArray(sistemas) ? sistemas.join(', ') : (c.sistemasLabel || null),
+        }
+        // Hash do conteúdo normalizado, não do payload bruto: `hashPayload(c)`
+        // via JSON.stringify herdava a instabilidade de ordem acima, e ainda
+        // disparava escrita por campo do gateway que nem gravamos.
+        return {
+          ...row,
+          source_hash: hashPayload([
+            row.nome, row.apelido, row.status, row.bandeira, row.sistemas_label,
+          ]),
+          synced_at: syncTimestamp,
+          raw: c,
+        }
+      })
 
       // Estado atual da base — alimenta o filtro de mudança E a reconciliação
       // abaixo, numa leitura só.
