@@ -1134,13 +1134,37 @@ serve(async (req: Request) => {
       // ── Step 3: Children sync ──
       try {
         console.log('[DevOpsSyncAll:BG] Fetching child work items (Tasks/Bugs)...')
-        const { data: pbiItems } = await bgAdmin
-          .from('devops_work_items')
-          .select('id')
-          .in('work_item_type', ['Product Backlog Item', 'User Story', 'Feature'])
-          .limit(2000)
 
-        const pbiIds = (pbiItems || []).map((i: any) => i.id) as number[]
+        // PAGINADO de propósito: era um `.limit(2000)` numa chamada só e o
+        // PostgREST desta instância roda com `max_rows = 1000` — chegavam mil
+        // pais, sem erro nem aviso, e a outra metade nunca tinha as filhas
+        // sincronizadas. A migration 20260816140000 declara a intenção:
+        // "puxar as filhas de ~2.000 PBIs". Pior: sem `.order()` não dava nem
+        // para saber QUAIS mil vinham. Ver commit 1dc734d.
+        //
+        // `.order('id', desc)` = mais novos primeiro, para que o teto abaixo,
+        // se um dia for atingido, corte o passado e não o presente.
+        const PAGINA_PBIS = 1000
+        const PBIS_MAX = 4000
+        const pbiIds: number[] = []
+        for (let inicio = 0; inicio < PBIS_MAX; inicio += PAGINA_PBIS) {
+          const { data, error: pbiErr } = await bgAdmin
+            .from('devops_work_items')
+            .select('id')
+            .in('work_item_type', ['Product Backlog Item', 'User Story', 'Feature'])
+            .order('id', { ascending: false })
+            .range(inicio, inicio + PAGINA_PBIS - 1)
+
+          if (pbiErr) throw new Error(`Lookup de PBIs falhou: ${pbiErr.message}`)
+          pbiIds.push(...((data || []) as Array<{ id: number }>).map(r => r.id))
+          if (!data || data.length < PAGINA_PBIS) break
+        }
+
+        if (pbiIds.length >= PBIS_MAX) {
+          console.warn(`[DevOpsSyncAll:BG] Teto de ${PBIS_MAX} pais atingido — há PBIs fora desta varredura`)
+        }
+        console.log(`[DevOpsSyncAll:BG] ${pbiIds.length} pais (PBI/US/Feature) para varrer filhas`)
+
         childrenResult = await fetchChildrenOfItems(pbiIds, bgAdmin)
         console.log(`[DevOpsSyncAll:BG] Children sync: ${childrenResult.fetched} found, ${childrenResult.upserted} upserted`)
       } catch (childErr) {
