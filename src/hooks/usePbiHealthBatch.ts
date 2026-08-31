@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -59,7 +60,7 @@ export function usePbiHealthBatch(ids: Array<number | null | undefined>, enabled
 
       return { healthById, lifecycleById };
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const healthById = query.data?.healthById || new Map<number, PbiHealthSummary>();

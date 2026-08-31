@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
@@ -71,7 +72,7 @@ export function useQaReturnSummary(sprintCode?: string | null, areaPath?: string
         max_days_open: null,
       }) as QaReturnSummary
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   })
 }
@@ -84,7 +85,7 @@ export function useQaReturnBySprint() {
       if (error) throw error
       return (data ?? []) as QaReturnBySprint[]
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   })
 }
@@ -97,7 +98,7 @@ export function useQaReturnByAssignee() {
       if (error) throw error
       return (data ?? []) as QaReturnByAssignee[]
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   })
 }
@@ -110,7 +111,7 @@ export function useQaReturnItems() {
       if (error) throw error
       return (data ?? []) as QaReturnItem[]
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   })
 }

@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { qKeyDoMes, qLabel, ymLabel, ymNow } from '@/lib/comercialPeriodo';
@@ -81,7 +82,7 @@ export function useComercialFunil(escopo?: string | string[]) {
       if (error) throw error;
       return (data || []) as Omit<FunilEtapa, 'quantidade'>[];
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const lancQuery = useQuery({
@@ -94,7 +95,7 @@ export function useComercialFunil(escopo?: string | string[]) {
       if (error) throw error;
       return (data || []) as FunilLancamento[];
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const invalidate = () => {

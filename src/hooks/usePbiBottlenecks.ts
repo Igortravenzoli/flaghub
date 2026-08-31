@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { PbiBottleneckRow } from '@/types/pbi';
@@ -30,7 +31,7 @@ export function usePbiBottlenecks(filters: PbiBottleneckFilters = {}) {
       if (error) throw error;
       return (data || []) as PbiBottleneckRow[];
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const overviewQuery = useQuery({
@@ -45,7 +46,7 @@ export function usePbiBottlenecks(filters: PbiBottleneckFilters = {}) {
       if (error) throw error;
       return ((data || [])[0] || null) as PbiHealthOverview | null;
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   return {

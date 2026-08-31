@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
@@ -82,7 +83,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
         .maybeSingle();
       return fallback?.last_synced_at || null;
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const allItems = query.data || [];

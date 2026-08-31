@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -35,7 +36,7 @@ export function useDevopsOperationalQueue(queryNames: string[]) {
       if (error) throw error;
       return (data || []) as DevopsOperationalItem[];
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 

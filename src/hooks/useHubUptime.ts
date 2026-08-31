@@ -104,7 +104,11 @@ export function useHubUptime() {
         { key: 'timelog', label: 'TimeLog TechsBCN', papel: 'Horas apontadas no DevOps', x: 7, y: 45, lastBeat: timelogBeat, status: statusPorIdade(minutosDesde(timelogBeat), 24 * 60, 72 * 60) },
       ];
     },
-    staleTime: 60 * 1000,
-    refetchInterval: 2 * 60 * 1000,
+    // O painel classifica um heartbeat como atrasado só depois de 30 min
+    // (`statusPorIdade(..., 30, 120)`), e as origens que ele observa são crons
+    // de 5 a 15 min. Recarregar de 2 em 2 min era 15x mais frequente do que a
+    // própria régua do painel consegue distinguir — e o telão fica ligado 24h.
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
   });
 }

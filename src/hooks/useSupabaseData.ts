@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { 
@@ -9,6 +10,24 @@ import type {
   InternalStatus,
   TicketSeverity 
 } from '@/types/database';
+
+/**
+ * Intervalo de recarga das telas de ticket.
+ *
+ * Alinhado ao cron `sync-vdesk-helpdesk`, que popula a tabela `tickets` de 5
+ * em 5 minutos. Era 60s — quatro de cada cinco recargas devolviam bytes
+ * idênticos, porque não havia como o dado ter mudado.
+ *
+ * O custo não era teórico: as duas queries abaixo somam ~261 kB por recarga
+ * (a lista pesa 199 kB e o resumo 62 kB, dos quais 97,7% é a coluna
+ * `vdesk_payload`). A 60s, uma única aba esquecida aberta gastava ~11 GB de
+ * egress por mês, contra uma cota de 5 GB — foi o que estourou o limite da
+ * Supabase em 31/08/2026.
+ *
+ * Este número acompanha o cron. Se o `sync-vdesk-helpdesk` mudar de cadência,
+ * muda aqui junto; abaixo dela é desperdício garantido.
+ */
+const RECARGA_TICKETS_MS = 5 * 60 * 1000
 
 // Hook para buscar resumo do dashboard
 export function useDashboardSummary(networkId?: number, options?: { enabled?: boolean }) {
@@ -62,7 +81,7 @@ export function useDashboardSummary(networkId?: number, options?: { enabled?: bo
     },
     // SSO users may not have networkId; relying on RLS keeps the query area-aware.
     enabled: options?.enabled ?? true,
-    refetchInterval: 60000, // Auto-refresh a cada 60s
+    refetchInterval: RECARGA_TICKETS_MS,
   });
 }
 
@@ -80,7 +99,7 @@ export function useResolvedAreaNetwork(areaKey?: string, options?: { enabled?: b
       return (data as number | null) ?? null;
     },
     enabled: (options?.enabled ?? true) && !!areaKey,
-    staleTime: 60_000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 }
 
@@ -123,7 +142,7 @@ export function useTickets(
     enabled:
       options?.enabled ??
       (filters?.networkId !== undefined && filters.networkId !== null),
-    refetchInterval: 60000,
+    refetchInterval: RECARGA_TICKETS_MS,
   });
 }
 
