@@ -29,55 +29,41 @@ import type {
  */
 const RECARGA_TICKETS_MS = 5 * 60 * 1000
 
-// Hook para buscar resumo do dashboard
+/**
+ * Resumo do dashboard de tickets — cinco contadores.
+ *
+ * Calculado no BANCO desde 31/08/2026. Antes isto baixava até 1.000 linhas da
+ * tabela `tickets`, com o blob `vdesk_payload` incluído, e contava no
+ * navegador: 62 kB por recarga, dos quais 97,7% era o blob — trafegado só para
+ * derivar um booleano (`hasLinkedOS`). Agora a RPC devolve os cinco números:
+ * ~62 kB viram ~100 bytes.
+ *
+ * O `.limit(1000)` que existia aqui também era um bug latente e silencioso:
+ * passando de mil tickets ativos numa rede, o resumo contaria só os mil
+ * primeiros, sem erro nem aviso. Contando no banco não há teto.
+ *
+ * A regra de "tem OS vinculada" vive agora em `get_dashboard_summary`
+ * (migration 20260831170000), replicando a semântica de verdade do JavaScript.
+ * Se ela mudar aqui no front (`useTicketAnalysisDB.hasLinkedOS`), muda lá junto
+ * — senão os contadores do topo divergem da lista logo abaixo deles.
+ *
+ * `as any` no nome da RPC segue o padrão já usado em `useResolvedAreaNetwork`:
+ * os tipos gerados do Supabase ainda não conhecem a função.
+ */
 export function useDashboardSummary(networkId?: number, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['dashboard-summary', networkId],
     queryFn: async () => {
-        let query = supabase
-          .from('tickets')
-          .select('network_id, severity, has_os, os_found_in_vdesk, os_number, vdesk_payload, updated_at')
-          .eq('is_active', true);
-
-      if (networkId !== undefined && networkId !== null) {
-        query = query.eq('network_id', networkId);
-      }
-
-      const { data, error } = await query.limit(1000);
+      const { data, error } = await supabase.rpc('get_dashboard_summary' as any, {
+        p_network_id: networkId ?? null,
+      });
 
       if (error) throw error;
-      if (!data || data.length === 0) return null;
 
-      const lastUpdated = data.reduce<string | null>((latest, row) => {
-        if (!row.updated_at) return latest;
-        if (!latest) return row.updated_at;
-        return row.updated_at > latest ? row.updated_at : latest;
-      }, null);
-
-      const hasLinkedOS = (ticket: {
-        has_os: boolean | null;
-        os_found_in_vdesk: boolean | null;
-        os_number: string | null;
-        vdesk_payload: unknown;
-      }) => {
-        const hasPayloadOS = Array.isArray(ticket.vdesk_payload)
-          && ticket.vdesk_payload.some((item) => Boolean((item as { os?: unknown })?.os));
-
-        return ticket.os_found_in_vdesk === true
-          || Boolean(ticket.os_number?.trim())
-          || hasPayloadOS
-          || ticket.has_os === true;
-      };
-
-      return {
-        network_id: networkId ?? data[0].network_id,
-        total_tickets: data.length,
-        tickets_ok: data.filter((ticket) => ticket.severity === 'info' || hasLinkedOS(ticket)).length,
-        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico' && !hasLinkedOS(ticket)).length,
-        tickets_atencao: data.filter((ticket) => ticket.severity === 'atencao').length,
-        tickets_sem_os: data.filter((ticket) => !hasLinkedOS(ticket)).length,
-        last_updated: lastUpdated,
-      } as DashboardSummary;
+      // Sem linha = rede sem ticket ativo, ou sem permissão de ver. O contrato
+      // anterior devolvia null nesse caso e a tela já sabe lidar.
+      const linha = (data as DashboardSummary[] | null)?.[0];
+      return linha ?? null;
     },
     // SSO users may not have networkId; relying on RLS keeps the query area-aware.
     enabled: options?.enabled ?? true,

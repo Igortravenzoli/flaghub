@@ -35,7 +35,21 @@ function mapStatus(dbStatus: InternalStatus | null): StatusNormalizado {
   return map[dbStatus] || 'nao_mapeado';
 }
 
-function hasLinkedOS(ticket: DBTicket): boolean {
+/**
+ * Ticket tem OS vinculada.
+ *
+ * EXPORTADO PARA TESTE, e não por acaso: desde 31/08/2026 esta regra existe em
+ * DUAS implementações. Esta, que classifica linha a linha na lista, e a de
+ * `get_dashboard_summary` (migration 20260831170000), que conta os mesmos
+ * tickets no banco para os cinco números do topo da tela. Se as duas
+ * divergirem, o cabeçalho passa a contradizer a lista logo abaixo dele.
+ *
+ * O ponto delicado é o `Boolean(item.os)`: a verdade do JavaScript não é a do
+ * SQL. String vazia é falso mas `"0"` é VERDADEIRO; o número `0` é falso;
+ * objeto e array vazios são verdadeiros. `src/test/hasLinkedOS.test.ts` fixa
+ * essa tabela — se ela quebrar, o SQL do resumo também precisa mudar.
+ */
+export function hasLinkedOS(ticket: DBTicket): boolean {
   const hasPayloadOS = Array.isArray(ticket.vdesk_payload)
     && ticket.vdesk_payload.some((item) => Boolean(item?.os));
 
