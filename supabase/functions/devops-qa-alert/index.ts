@@ -6,6 +6,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { lerEmLotes } from '../_shared/leitura.ts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -491,11 +492,26 @@ async function run(
   const relatedByParent = new Map<number, RelatedWorkItem[]>()
 
   if (candidateIds.length > 0) {
-    const { data: relatedItems, error: relatedErr } = await admin
-      .from('devops_work_items')
-      .select('id, parent_id, title, work_item_type, state, web_url')
-      .in('parent_id', candidateIds)
-      .in('work_item_type', ['Product Backlog Item', 'User Story', 'Task', 'Bug'])
+    // PAGINADO. `parent_id` nao e unica: cada pai tem varios filhos, entao
+    // esta leitura devolve MAIS linhas do que ids recebe e batia no
+    // `max_rows = 1000` do PostgREST sem avisar. O efeito era um alerta de QA
+    // chegando com a lista de itens relacionados incompleta — pior que vazia,
+    // porque parece completa.
+    let relatedItems: RelatedWorkItem[] = []
+    let relatedErr: { message: string } | null = null
+    try {
+      relatedItems = await lerEmLotes<RelatedWorkItem>(
+        admin, 'devops_work_items',
+        'id, parent_id, title, work_item_type, state, web_url',
+        'parent_id', candidateIds,
+        {
+          ordem: ['id'],
+          refinar: (q) => q.in('work_item_type', ['Product Backlog Item', 'User Story', 'Task', 'Bug']),
+        },
+      )
+    } catch (e) {
+      relatedErr = { message: (e as Error).message }
+    }
 
     if (relatedErr) {
       console.error('[QAAlert] Related items query error:', relatedErr.message)

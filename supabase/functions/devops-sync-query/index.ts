@@ -2,6 +2,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { lerEmLotes } from '../_shared/leitura.ts'
 
 const DEVOPS_ORG = 'FlagIW'
 const DEVOPS_PROJECT = 'Flag.Planejamento'
@@ -356,12 +357,24 @@ serve(async (req) => {
       console.log(`[DevOpsSync] Fetched ${workItems.length} work items`)
 
       // 4. Get existing revs for dedupe
-      const { data: existingItems } = await admin
-        .from('devops_work_items')
-        .select('id, rev')
-        .in('id', workItemIds)
+      //
+      // PAGINADO. Era um `.in('id', workItemIds)` numa chamada so, e o
+      // PostgREST desta instancia corta em `max_rows = 1000`: a query
+      // "02-Devops Base Geral" traz 3.978 itens, entao chegavam mil `rev` e os
+      // outros ~2.978 caiam no `existingRev === undefined` do passo 5 — ou
+      // seja, eram reescritos a cada ciclo de cron mesmo sem nenhuma alteracao
+      // no DevOps. E exatamente o upsert cego que este branch existe para
+      // matar, e ele estava no caminho PRINCIPAL enquanto o caminho dos pais,
+      // 120 linhas abaixo, ja tinha sido corrigido em 26/08/2026.
+      //
+      // Reescrever linha sem mudanca nao e so IO desperdicado: o upsert
+      // substitui `custom_fields` inteiro, e e ali que a Qualidade guarda
+      // `qa_retorno_count` e o carimbo de sincronismo dela.
+      const existingItems = await lerEmLotes<{ id: number; rev: number }>(
+        admin, 'devops_work_items', 'id, rev', 'id', workItemIds, { ordem: ['id'] },
+      )
 
-      const existingRevs = new Map((existingItems || []).map(e => [e.id, e.rev]))
+      const existingRevs = new Map(existingItems.map(e => [e.id, e.rev]))
 
       // 5. Filter items that need upsert (rev changed)
       const mapped = workItems.map(mapWorkItem)
