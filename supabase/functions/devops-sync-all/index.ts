@@ -836,33 +836,77 @@ function countQaReturns(stateChanges: StateChange[]): number {
 // 10 min completa a cobertura gradualmente (mais recentes primeiro).
 const ITER_HISTORY_MAX_PER_RUN = 400
 
+// Orçamento de varredura: quantas linhas de `devops_work_items` a função lê,
+// da mais recente para a mais antiga, procurando candidatos.
+//
+// PAGINADO de propósito: era um `.limit(6000)` numa chamada só e o PostgREST
+// desta instância roda com `max_rows = 1000` — chegavam mil linhas, sem erro
+// nem aviso, e a varredura real era 1/6 da declarada. Item fora das mil linhas
+// mais recentes só voltava a ser visto se alguém o tocasse no DevOps: item
+// antigo e fechado nunca ganhava `iteration_history`/`state_history`.
+// Ver análise de Disk IO de 26/08/2026 e o commit 1dc734d.
+const ITER_HISTORY_SCAN_MAX = 6000
+const ITER_HISTORY_PAGINA = 1000
+
+type IterHistoryRow = {
+  id: number
+  changed_date: string | null
+  iteration_history_synced_at: string | null
+}
+
 async function processIterationHistory(admin: any): Promise<{ processed: number; withChanges: number }> {
-  const { data: pbiItems, error } = await admin
-    .from('devops_work_items')
-    .select('id, changed_date, iteration_history_synced_at')
-    .in('work_item_type', ['Product Backlog Item', 'User Story', 'Bug', 'Task'])
-    .order('changed_date', { ascending: false })
-    .limit(6000)
+  const candidates: IterHistoryRow[] = []
+  let varridas = 0
+  let paradaAntecipada = false
 
-  if (error) {
-    console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
-    return { processed: 0, withChanges: 0 }
+  for (let inicio = 0; inicio < ITER_HISTORY_SCAN_MAX; inicio += ITER_HISTORY_PAGINA) {
+    // `.order('id')` de desempate é obrigatório: `changed_date` tem empates (e
+    // nulos), e sem ordem total estável a paginação repete ou pula linhas.
+    const { data, error } = await admin
+      .from('devops_work_items')
+      .select('id, changed_date, iteration_history_synced_at')
+      .in('work_item_type', ['Product Backlog Item', 'User Story', 'Bug', 'Task'])
+      .order('changed_date', { ascending: false })
+      .order('id', { ascending: false })
+      .range(inicio, inicio + ITER_HISTORY_PAGINA - 1)
+
+    if (error) {
+      console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
+      return { processed: 0, withChanges: 0 }
+    }
+
+    const pagina = (data || []) as IterHistoryRow[]
+    varridas += pagina.length
+    for (const item of pagina) {
+      if (shouldRefreshByChange(item.changed_date, item.iteration_history_synced_at)) {
+        candidates.push(item)
+      }
+    }
+
+    // A varredura sai em `changed_date` desc e o corte abaixo é um
+    // `slice(0, N)` do começo — os candidatos já vêm na ordem final, então
+    // parar assim que o lote da rodada estiver cheio dá exatamente o mesmo
+    // conjunto com menos idas ao banco.
+    if (candidates.length >= ITER_HISTORY_MAX_PER_RUN) {
+      paradaAntecipada = true
+      break
+    }
+    if (pagina.length < ITER_HISTORY_PAGINA) break
   }
-
-  const candidates = (pbiItems || []).filter((item: any) =>
-    shouldRefreshByChange(item.changed_date, item.iteration_history_synced_at)
-  )
 
   const workItemIds = candidates
     .slice(0, ITER_HISTORY_MAX_PER_RUN)
-    .map((i: any) => i.id)
+    .map((i) => i.id)
     .filter(Boolean) as number[]
   if (workItemIds.length === 0) {
-    console.log('[IterHistory] No PBIs with changes since last iteration sync')
+    console.log(`[IterHistory] No PBIs with changes since last iteration sync (${varridas} rows scanned)`)
     return { processed: 0, withChanges: 0 }
   }
-  if (candidates.length > workItemIds.length) {
-    console.log(`[IterHistory] ${candidates.length} candidates, capped at ${workItemIds.length} this run`)
+  if (candidates.length > workItemIds.length || paradaAntecipada) {
+    console.log(
+      `[IterHistory] ${candidates.length}${paradaAntecipada ? '+' : ''} candidates in ${varridas} rows scanned, ` +
+      `capped at ${workItemIds.length} this run`
+    )
   }
 
   console.log(`[IterHistory] Processing ${workItemIds.length} PBIs for iteration + state changes`)
