@@ -9,6 +9,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
 
 // ── TechsBCN Extension Data base URL ──────────────────────────────────────────
 const TIMELOG_BASE =
@@ -80,6 +81,16 @@ async function assertAdmin(caller: string, sb: ReturnType<typeof getSupabaseAdmi
 
 // ── DevOps API helpers ────────────────────────────────────────────────────────
 
+/**
+ * Toda chamada daqui ao Azure passa por este wrapper: identifica a rotina no
+ * User-Agent e recua em 429. Escrita (o POST do documento, o DELETE da
+ * limpeza) NAO repete 5xx — o docId e gerado do nosso lado antes do POST,
+ * entao repetir cegamente duplicaria lancamento de hora no TimeLog.
+ */
+function adoFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return devopsHttp(url, init, { client: 'post-timelog' })
+}
+
 function makeAuthHeaders(pat: string) {
   return {
     'Authorization': `Basic ${btoa(`:${pat}`)}`,
@@ -95,7 +106,7 @@ async function probeCollection(pat: string): Promise<{ ok: boolean; collection: 
     const url = `${TIMELOG_BASE}/${col}/Documents?api-version=7.1-preview.1`
     console.log(`[post-timelog] probe GET ${col}`)
     try {
-      const resp = await fetch(url, { method: 'GET', headers })
+      const resp = await adoFetch(url, { method: 'GET', headers })
       console.log(`[post-timelog] probe ${col} → ${resp.status}`)
       if (resp.status === 200) {
         const body = await resp.json()
@@ -142,7 +153,7 @@ async function lookupUserId(email: string, pat: string): Promise<string> {
   if (cached !== undefined) return cached
   try {
     const url = `https://vssps.dev.azure.com/FlagIW/_apis/identities?searchFilter=MailAddress&filterValue=${encodeURIComponent(email)}&api-version=7.1-preview.1`
-    const resp = await fetch(url, { headers: makeAuthHeaders(pat) })
+    const resp = await adoFetch(url, { headers: makeAuthHeaders(pat) })
     if (resp.ok) {
       const json = await resp.json()
       const id = json?.value?.[0]?.id ?? ''
@@ -161,7 +172,7 @@ async function lookupWorkItemName(taskId: number, pat: string): Promise<string> 
   if (cached !== undefined) return cached
   try {
     const url = `https://dev.azure.com/FlagIW/_apis/wit/workitems/${taskId}?fields=System.Title&api-version=7.1-preview.3`
-    const resp = await fetch(url, { headers: makeAuthHeaders(pat) })
+    const resp = await adoFetch(url, { headers: makeAuthHeaders(pat) })
     if (resp.ok) {
       const json = await resp.json()
       const title = json?.fields?.['System.Title'] ?? ''
@@ -213,7 +224,7 @@ async function postToDevOps(
   const writeUrl = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
   console.log(`[post-timelog] POST ${collection}/Documents id=${docId} workItem=${entry.task_devops} user=${email}`)
 
-  const writeResp = await fetch(writeUrl, {
+  const writeResp = await adoFetch(writeUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify(doc),
@@ -429,7 +440,7 @@ serve(async (req) => {
 
       // List all documents
       const listUrl = `${TIMELOG_BASE}/${collection}/Documents?api-version=7.1-preview.1`
-      const listResp = await fetch(listUrl, { headers: authHdrs })
+      const listResp = await adoFetch(listUrl, { headers: authHdrs })
       const rawList = await listResp.json()
       const docs: unknown[] = Array.isArray(rawList) ? rawList
         : Array.isArray(rawList?.value) ? rawList.value : []
@@ -447,7 +458,7 @@ serve(async (req) => {
       const testIds = (body.checkIds as number[] | undefined) ?? [15345, 15374]
       const specificDocs: Record<string, unknown> = {}
       for (const id of testIds) {
-        const getResp = await fetch(
+        const getResp = await adoFetch(
           `${TIMELOG_BASE}/${collection}/Documents/${id}?api-version=7.1-preview.1`,
           { headers: authHdrs }
         )
@@ -530,7 +541,7 @@ serve(async (req) => {
 
       for (const docId of docIdsToDelete) {
         const delUrl = `${TIMELOG_BASE}/${collection}/Documents/${encodeURIComponent(docId)}?api-version=7.1-preview.1`
-        const resp = await fetch(delUrl, { method: 'DELETE', headers: authHdrs })
+        const resp = await adoFetch(delUrl, { method: 'DELETE', headers: authHdrs })
         cleanupDetails.push({
           docId,
           httpStatus: resp.status,
