@@ -358,17 +358,17 @@ serve(async (req) => {
 
       // 4. Get existing revs for dedupe
       //
-      // PAGINADO. Era um `.in('id', workItemIds)` numa chamada so, e o
-      // PostgREST desta instancia corta em `max_rows = 1000`: a query
-      // "02-Devops Base Geral" traz 3.978 itens, entao chegavam mil `rev` e os
-      // outros ~2.978 caiam no `existingRev === undefined` do passo 5 — ou
-      // seja, eram reescritos a cada ciclo de cron mesmo sem nenhuma alteracao
-      // no DevOps. E exatamente o upsert cego que este branch existe para
+      // PAGINADO. Era um `.in('id', workItemIds)` numa chamada só, e o
+      // PostgREST desta instância corta em `max_rows = 1000`: a query
+      // "02-Devops Base Geral" traz 3.978 itens, então chegavam mil `rev` e os
+      // outros ~2.978 caíam no `existingRev === undefined` do passo 5 — ou
+      // seja, eram reescritos a cada ciclo de cron mesmo sem nenhuma alteração
+      // no DevOps. É exatamente o upsert cego que este branch existe para
       // matar, e ele estava no caminho PRINCIPAL enquanto o caminho dos pais,
-      // 120 linhas abaixo, ja tinha sido corrigido em 26/08/2026.
+      // 120 linhas abaixo, já tinha sido corrigido em 26/08/2026.
       //
-      // Reescrever linha sem mudanca nao e so IO desperdicado: o upsert
-      // substitui `custom_fields` inteiro, e e ali que a Qualidade guarda
+      // Reescrever linha sem mudança não é só IO desperdiçado: o upsert
+      // substitui `custom_fields` inteiro, e é ali que a Qualidade guarda
       // `qa_retorno_count` e o carimbo de sincronismo dela.
       const existingItems = await lerEmLotes<{ id: number; rev: number }>(
         admin, 'devops_work_items', 'id, rev', 'id', workItemIds, { ordem: ['id'] },

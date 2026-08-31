@@ -543,14 +543,14 @@ async function processLifecycleAndHealth(
 
   const pbiIds = candidates.map((row: any) => row.id).filter(Boolean)
 
-  // PAGINADO, e aqui fatiar a entrada NAO bastaria: `work_item_id` nao e
-  // unica em `devops_query_items_current` — o mesmo item aparece uma vez por
-  // query que o contem. Mil ids podem casar com muito mais de mil linhas, e o
+  // PAGINADO, e aqui fatiar a entrada NÃO bastaria: `work_item_id` não é
+  // única em `devops_query_items_current` — o mesmo item aparece uma vez por
+  // query que o contém. Mil ids podem casar com muito mais de mil linhas, e o
   // `max_rows = 1000` cortaria o excedente sem avisar.
   //
-  // O prejuizo aqui nao e IO, e dado errado: as linhas perdidas somem do
-  // `sectorByWorkItem` abaixo, e o item entra no recalculo de ciclo de vida
-  // com setor vazio — silenciosamente classificado como se nao pertencesse a
+  // O prejuízo aqui não é IO, é dado errado: as linhas perdidas somem do
+  // `sectorByWorkItem` abaixo, e o item entra no recálculo de ciclo de vida
+  // com setor vazio — silenciosamente classificado como se não pertencesse a
   // query nenhuma.
   const queryRows = await lerEmLotes<{ work_item_id: number; query_id: string }>(
     admin, 'devops_query_items_current', 'work_item_id, query_id', 'work_item_id', pbiIds,

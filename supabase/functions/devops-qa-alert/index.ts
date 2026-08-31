@@ -492,7 +492,7 @@ async function run(
   const relatedByParent = new Map<number, RelatedWorkItem[]>()
 
   if (candidateIds.length > 0) {
-    // PAGINADO. `parent_id` nao e unica: cada pai tem varios filhos, entao
+    // PAGINADO. `parent_id` não é única: cada pai tem vários filhos, então
     // esta leitura devolve MAIS linhas do que ids recebe e batia no
     // `max_rows = 1000` do PostgREST sem avisar. O efeito era um alerta de QA
     // chegando com a lista de itens relacionados incompleta — pior que vazia,
