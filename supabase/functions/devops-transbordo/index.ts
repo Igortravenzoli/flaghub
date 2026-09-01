@@ -26,6 +26,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
 
 const ORG = 'FlagIW'
 const WIT_BASE = `https://dev.azure.com/${ORG}/_apis/wit/workitems`
@@ -95,12 +96,18 @@ async function assertAdmin(caller: string, sb: ReturnType<typeof getSupabaseAdmi
 
 interface PatchOp { op: string; path: string; value?: unknown }
 
+/**
+ * PATCH é escrita: o cliente compartilhado repete 429 (rejeitado, seguro) mas
+ * NÃO repete 5xx, que pode ter sido aplicado antes do erro voltar. Aqui a
+ * repetição cega seria pior que a falha — a reversão do transbordo depende de
+ * `iteration_path_anterior` gravado antes de cada PATCH.
+ */
 async function patchWorkItem(id: number, ops: PatchOp[], pat: string): Promise<{ ok: boolean; status: number; body: string }> {
-  const resp = await fetch(`${WIT_BASE}/${id}?api-version=${API_VERSION}`, {
+  const resp = await devopsHttp(`${WIT_BASE}/${id}?api-version=${API_VERSION}`, {
     method: 'PATCH',
     headers: authHeaders(pat, 'application/json-patch+json'),
     body: JSON.stringify(ops),
-  })
+  }, { client: 'transbordo' })
   const body = await resp.text()
   return { ok: resp.ok, status: resp.status, body: body.slice(0, 500) }
 }

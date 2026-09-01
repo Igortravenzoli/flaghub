@@ -2,6 +2,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
 import { lerEmLotes } from '../_shared/leitura.ts'
 
 const DEVOPS_ORG = 'FlagIW'
@@ -97,18 +98,22 @@ async function validateAuth(req: Request): Promise<string | null> {
 
 // ── DevOps API helpers ─────────────────────────────────────────────
 
+/**
+ * `retryOn5xx` ligado porque TODA chamada daqui e leitura - inclusive os POST,
+ * que so existem por exigencia do Azure (WIQL e workitemsbatch nao tem GET).
+ * Repetir nenhuma delas cria coisa alguma. Se algum dia entrar um POST/PATCH
+ * que escreve, ele precisa de um `devopsFetch` proprio sem esta opcao.
+ */
 async function devopsFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const pat = Deno.env.get('DEVOPS_PAT')!
-  const base64Pat = btoa(`:${pat}`)
   const url = path.startsWith('http') ? path : `https://dev.azure.com/${DEVOPS_ORG}/${path}`
-  return await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Basic ${base64Pat}`,
-      ...(options.headers || {}),
+  return await devopsHttp(
+    url,
+    {
+      ...options,
+      headers: { ...devopsAuthHeaders(Deno.env.get('DEVOPS_PAT')!), ...(options.headers || {}) },
     },
-  })
+    { client: 'sync-all', retryOn5xx: true },
+  )
 }
 
 interface DevOpsWorkItem {

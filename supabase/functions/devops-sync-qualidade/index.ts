@@ -1,10 +1,18 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
 
 const QUALITY_WIQL_ID = '7b0a8298-5890-42d8-b280-1121b21786da'
 const EM_TESTE_STATE = 'Em Teste'
 const QUALITY_ACTIVE_STATES = new Set(['Em Teste', 'Aguardando Deploy'])
+
+/** Teto de `/updates` por rodada. Ver o cabeçalho de `processQualityDerived`. */
+const QA_MAX_PER_RUN = 200
+/** Chamadas simultâneas ao `/updates` dentro de um lote. */
+const QA_LOTE = 10
+/** Pausa entre lotes, espelhando o `sync-all`. */
+const QA_PAUSA_LOTE_MS = 300
 
 function getSupabaseAdmin() {
   return createClient(
@@ -88,16 +96,27 @@ function countRetornos(updates: any[]): { retornos: number; retornoDetails: Arra
   return { retornos: retornoDetails.length, retornoDetails }
 }
 
+/** Só GET de leitura aqui — o recuo padrão do cliente compartilhado serve. */
 async function devopsFetch(path: string): Promise<Response> {
-  const pat = Deno.env.get('DEVOPS_PAT')!
-  const base64Pat = btoa(`:${pat}`)
   const url = path.startsWith('http') ? path : `https://dev.azure.com/FlagIW/${path}`
-  return fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Basic ${base64Pat}`,
-    },
-  })
+  return devopsHttp(
+    url,
+    { headers: devopsAuthHeaders(Deno.env.get('DEVOPS_PAT')!) },
+    { client: 'sync-qualidade' },
+  )
+}
+
+/** Mesmo critério do `devops-sync-all`: só relê quem mudou desde a última vez. */
+function precisaRevisitar(
+  changedDate: string | null | undefined,
+  syncedAt: string | null | undefined,
+): boolean {
+  if (!syncedAt) return true
+  const mudou = changedDate ? new Date(changedDate) : null
+  if (!mudou || Number.isNaN(mudou.getTime())) return false
+  const sincronizou = new Date(syncedAt)
+  if (Number.isNaN(sincronizou.getTime())) return true
+  return mudou > sincronizou
 }
 
 function extractStateChanges(updates: any[]): Array<{ oldValue: string | null; newValue: string; revisedDate: string; revisedBy: string | null }> {
@@ -137,7 +156,38 @@ function extractIterationChanges(updates: any[]): Array<{ oldValue: string; newV
   return changes
 }
 
-async function processQualityDerived(admin: any, queryId: string) {
+/**
+ * Recalcula retorno de QA, histórico de estado e de iteração da fila corrente.
+ *
+ * INCREMENTAL DESDE 31/08/2026. Antes esta rotina buscava `/updates` de TODOS
+ * os itens ativos da fila, a cada 10 minutos, sem filtro e sem pausa entre os
+ * lotes — a única das nossas syncs sem os dois. Na prática refazia a fila
+ * inteira 144 vezes por dia para descobrir que quase nada tinha mudado, e
+ * `/updates` é o endpoint mais caro em identidade que consumimos: cada revisão
+ * volta com `ChangedBy`/`AssignedTo` para o Azure resolver. Foi o que apareceu
+ * como agravante nosso na investigação do circuit breaker de identidade.
+ *
+ * Agora só revisita item cujo `changed_date` é posterior ao
+ * `custom_fields.qa_retorno_synced_at` que a própria rotina grava — carimbo
+ * que já existia, só não estava sendo lido. Nada de coluna nova.
+ *
+ * O carimbo se invalida sozinho, e isso NÃO é acidente: o `devops-sync-query`
+ * que roda logo antes daqui substitui o `custom_fields` inteiro pelo que vem
+ * do Azure, mas só nos itens cujo `rev` mudou (o filtro do passo 5 de lá).
+ * Item mexido no Azure perde o carimbo e volta para cá; item parado mantém e
+ * é pulado. Se um dia aquele upsert passar a MESCLAR `custom_fields` em vez de
+ * substituir, o `changed_date > synced_at` abaixo continua segurando a
+ * invalidação — está aqui de propósito, e não é redundância morta.
+ *
+ * O teto por rodada corta pelo mais recente primeiro: se um dia a fila mudar
+ * em massa (troca de sprint, reclassificação), o que fica para a rodada
+ * seguinte é o passado, não o presente.
+ *
+ * `force` refaz a fila inteira ignorando o carimbo. Existe para quando a
+ * extração mudar (campo novo em `countRetornos`, por exemplo) e o histórico
+ * gravado precisar ser reconstruído — não para uso rotineiro.
+ */
+async function processQualityDerived(admin: any, queryId: string, force = false) {
   const { data: queueRows, error: queueErr } = await admin
     .from('devops_query_items_current')
     .select('work_item_id, devops_work_items!inner(id, state, custom_fields, tags, iteration_path, changed_date)')
@@ -151,36 +201,81 @@ async function processQualityDerived(admin: any, queryId: string) {
     .map((row: any) => row.devops_work_items)
     .filter((item: any) => item && QUALITY_ACTIVE_STATES.has(item.state))
 
-  const workItemIds = relevant.map((item: any) => item.id as number)
+  // `avioesQa` e `currentQueue` são métricas da FILA, não do sync: continuam
+  // saindo de `relevant` (a fila inteira) mesmo quando quase nada é revisitado.
+  const avioesQa = relevant.filter((item: any) => String(item.tags || '').toUpperCase().includes('AVIAO')).length
+
+  const candidatos = force
+    ? [...relevant]
+    : relevant.filter((item: any) =>
+        precisaRevisitar(item.changed_date, item.custom_fields?.qa_retorno_synced_at))
+
+  // Mais recente primeiro, para o teto abaixo cortar o passado e não o presente.
+  candidatos.sort((a: any, b: any) =>
+    String(b.changed_date ?? '').localeCompare(String(a.changed_date ?? '')))
+
+  const workItemIds = candidatos.slice(0, QA_MAX_PER_RUN).map((item: any) => item.id as number)
+  const adiados = Math.max(0, candidatos.length - workItemIds.length)
+
+  console.log(
+    `[Qualidade] fila=${relevant.length} candidatos=${candidatos.length} ` +
+    `nesta rodada=${workItemIds.length}${adiados ? ` adiados=${adiados}` : ''}${force ? ' (force)' : ''}`
+  )
+
   if (workItemIds.length === 0) {
-    return { currentQueue: 0, retornoProcessed: 0, retornoHits: 0, avioesQa: 0, stateHistoryProcessed: 0 }
+    return {
+      currentQueue: relevant.length,
+      retornoProcessed: 0,
+      retornoHits: 0,
+      avioesQa,
+      stateHistoryProcessed: 0,
+      candidatos: 0,
+      adiados: 0,
+      falhas: 0,
+    }
   }
 
   let retornoProcessed = 0
   let retornoHits = 0
   let stateHistoryProcessed = 0
+  let falhas = 0
 
-  for (let i = 0; i < workItemIds.length; i += 10) {
-    const batch = workItemIds.slice(i, i + 10)
+  for (let i = 0; i < workItemIds.length; i += QA_LOTE) {
+    const batch = workItemIds.slice(i, i + QA_LOTE)
     const batchResults = await Promise.all(
       batch.map(async (wiId: number) => {
+        // `ok: false` marca a falha para NÃO gravar nada. Enquanto a rotina
+        // refazia a fila inteira, tratar erro como "zero retornos" era
+        // inofensivo — a rodada seguinte corrigia. Agora que o
+        // `qa_retorno_synced_at` é o carimbo que decide quem volta, gravar em
+        // cima de uma falha zeraria a contagem do item E o marcaria como
+        // sincronizado: ele só seria revisitado se mudasse de novo no Azure.
+        const vazio = { id: wiId, ok: false, retornos: 0, details: [], stateChanges: [], iterChanges: [] }
         try {
           const resp = await devopsFetch(`Flag.Planejamento/_apis/wit/workitems/${wiId}/updates?api-version=7.1`)
-          if (!resp.ok) return { id: wiId, retornos: 0, details: [], stateChanges: [], iterChanges: [] }
+          if (!resp.ok) {
+            console.warn(`[Qualidade] /updates ${wiId} → ${resp.status}; item fica para a próxima rodada`)
+            return vazio
+          }
           const data = await resp.json()
           const updates = data.value || []
           const { retornos, retornoDetails } = countRetornos(updates)
           const stateChanges = extractStateChanges(updates)
           const iterChanges = extractIterationChanges(updates)
-          return { id: wiId, retornos, details: retornoDetails, stateChanges, iterChanges }
-        } catch {
-          return { id: wiId, retornos: 0, details: [], stateChanges: [], iterChanges: [] }
+          return { id: wiId, ok: true, retornos, details: retornoDetails, stateChanges, iterChanges }
+        } catch (err) {
+          console.warn(`[Qualidade] /updates ${wiId} falhou: ${(err as Error).message}`)
+          return vazio
         }
       })
     )
 
     const nowIso = new Date().toISOString()
     for (const result of batchResults) {
+      if (!result.ok) {
+        falhas++
+        continue
+      }
       const baseItem = relevant.find((item: any) => item.id === result.id)
       const customFields = { ...((baseItem?.custom_fields || {}) as Record<string, any>) }
       customFields['qa_retorno_count'] = result.retornos
@@ -207,16 +302,22 @@ async function processQualityDerived(admin: any, queryId: string) {
       retornoProcessed++
       if (result.retornos > 0) retornoHits++
     }
+
+    // Mesma pausa do `sync-all`: espaça os lotes em vez de emendar um no outro.
+    if (i + QA_LOTE < workItemIds.length) {
+      await new Promise((r) => setTimeout(r, QA_PAUSA_LOTE_MS))
+    }
   }
 
-  const avioesQa = relevant.filter((item: any) => String(item.tags || '').toUpperCase().includes('AVIAO')).length
-
   return {
-    currentQueue: workItemIds.length,
+    currentQueue: relevant.length,
     retornoProcessed,
     retornoHits,
     avioesQa,
     stateHistoryProcessed,
+    candidatos: candidatos.length,
+    adiados,
+    falhas,
   }
 }
 
@@ -269,8 +370,13 @@ serve(async (req) => {
       throw new Error('Query oficial de Qualidade não encontrada no banco')
     }
 
+    // `{"force": true}` refaz a fila inteira ignorando o carimbo incremental.
+    // O cron manda `{}`, então a rodada de rotina segue incremental.
+    const body = await req.json().catch(() => ({} as Record<string, unknown>))
+    const force = (body as any)?.force === true
+
     const syncResult = await invokeQuerySync(qualityQuery.id)
-    const derived = await processQualityDerived(admin, qualityQuery.id)
+    const derived = await processQualityDerived(admin, qualityQuery.id, force)
 
     await admin.rpc('hub_audit_log', {
       p_action: 'devops_sync_qualidade',

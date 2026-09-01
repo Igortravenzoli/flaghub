@@ -6,6 +6,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
 
 const DEVOPS_ORG = 'FlagIW'
 const API = '7.0'
@@ -82,15 +83,12 @@ async function validateAuth(req: Request): Promise<string | null> {
 }
 
 async function devopsFetch(url: string): Promise<Response> {
-  const pat = Deno.env.get('DEVOPS_PAT')!
-  const base64Pat = btoa(`:${pat}`)
   const fullUrl = url.startsWith('http') ? url : `https://dev.azure.com/${DEVOPS_ORG}/${url}`
-  return await fetch(fullUrl, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Basic ${base64Pat}`,
-    },
-  })
+  return await devopsHttp(
+    fullUrl,
+    { headers: devopsAuthHeaders(Deno.env.get('DEVOPS_PAT')!) },
+    { client: 'sync-repos' },
+  )
 }
 
 async function devopsJson<T>(url: string): Promise<T> {

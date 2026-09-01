@@ -18,6 +18,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
 
 const TIMELOG_BASE =
   'https://extmgmt.dev.azure.com/FlagIW/_apis/ExtensionManagement/InstalledExtensions/TechsBCN/DevOps-TimeLog/Data/Scopes/Default/Current/Collections'
@@ -155,7 +156,7 @@ async function processTimeLogs(pat: string) {
   for (const col of COLLECTIONS_TO_TRY) {
     const url = `${TIMELOG_BASE}/${col}/Documents?api-version=7.1-preview.1`
     console.log(`[timelog] Trying collection: ${col}`)
-    const resp = await fetch(url, { headers: authHeaders })
+    const resp = await devopsHttp(url, { headers: authHeaders }, { client: 'sync-timelog' })
 
     if (!resp.ok) {
       console.log(`[timelog] Collection '${col}' returned ${resp.status}`)

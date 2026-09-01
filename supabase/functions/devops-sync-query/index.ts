@@ -2,6 +2,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
 import { lerEmLotes } from '../_shared/leitura.ts'
 
 const DEVOPS_ORG = 'FlagIW'
@@ -100,18 +101,17 @@ async function validateAuth(req: Request): Promise<string | null> {
   return data.claims.sub as string
 }
 
+/** Igual ao `sync-all`: so leitura aqui, incluindo o POST do WIQL. */
 async function devopsFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const pat = Deno.env.get('DEVOPS_PAT')!
-  const base64Pat = btoa(`:${pat}`)
   const url = path.startsWith('http') ? path : `https://dev.azure.com/${DEVOPS_ORG}/${path}`
-  return await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Basic ${base64Pat}`,
-      ...(options.headers || {}),
+  return await devopsHttp(
+    url,
+    {
+      ...options,
+      headers: { ...devopsAuthHeaders(Deno.env.get('DEVOPS_PAT')!), ...(options.headers || {}) },
     },
-  })
+    { client: 'sync-query', retryOn5xx: true },
+  )
 }
 
 async function runWiql(wiqlOrId: string, mode: string): Promise<number[]> {
