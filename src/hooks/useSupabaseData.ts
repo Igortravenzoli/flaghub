@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { 
@@ -10,59 +11,63 @@ import type {
   TicketSeverity 
 } from '@/types/database';
 
-// Hook para buscar resumo do dashboard
+/**
+ * Intervalo de recarga das telas de ticket.
+ *
+ * Alinhado ao cron `sync-vdesk-helpdesk`, que popula a tabela `tickets` de 5
+ * em 5 minutos. Era 60s — quatro de cada cinco recargas devolviam bytes
+ * idênticos, porque não havia como o dado ter mudado.
+ *
+ * O custo não era teórico: as duas queries abaixo somam ~261 kB por recarga
+ * (a lista pesa 199 kB e o resumo 62 kB, dos quais 97,7% é a coluna
+ * `vdesk_payload`). A 60s, uma única aba esquecida aberta gastava ~11 GB de
+ * egress por mês, contra uma cota de 5 GB — foi o que estourou o limite da
+ * Supabase em 31/08/2026.
+ *
+ * Este número acompanha o cron. Se o `sync-vdesk-helpdesk` mudar de cadência,
+ * muda aqui junto; abaixo dela é desperdício garantido.
+ */
+const RECARGA_TICKETS_MS = 5 * 60 * 1000
+
+/**
+ * Resumo do dashboard de tickets — cinco contadores.
+ *
+ * Calculado no BANCO desde 31/08/2026. Antes isto baixava até 1.000 linhas da
+ * tabela `tickets`, com o blob `vdesk_payload` incluído, e contava no
+ * navegador: 62 kB por recarga, dos quais 97,7% era o blob — trafegado só para
+ * derivar um booleano (`hasLinkedOS`). Agora a RPC devolve os cinco números:
+ * ~62 kB viram ~100 bytes.
+ *
+ * O `.limit(1000)` que existia aqui também era um bug latente e silencioso:
+ * passando de mil tickets ativos numa rede, o resumo contaria só os mil
+ * primeiros, sem erro nem aviso. Contando no banco não há teto.
+ *
+ * A regra de "tem OS vinculada" vive agora em `get_dashboard_summary`
+ * (migration 20260831170000), replicando a semântica de verdade do JavaScript.
+ * Se ela mudar aqui no front (`useTicketAnalysisDB.hasLinkedOS`), muda lá junto
+ * — senão os contadores do topo divergem da lista logo abaixo deles.
+ *
+ * `as any` no nome da RPC segue o padrão já usado em `useResolvedAreaNetwork`:
+ * os tipos gerados do Supabase ainda não conhecem a função.
+ */
 export function useDashboardSummary(networkId?: number, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['dashboard-summary', networkId],
     queryFn: async () => {
-        let query = supabase
-          .from('tickets')
-          .select('network_id, severity, has_os, os_found_in_vdesk, os_number, vdesk_payload, updated_at')
-          .eq('is_active', true);
-
-      if (networkId !== undefined && networkId !== null) {
-        query = query.eq('network_id', networkId);
-      }
-
-      const { data, error } = await query.limit(1000);
+      const { data, error } = await supabase.rpc('get_dashboard_summary' as any, {
+        p_network_id: networkId ?? null,
+      });
 
       if (error) throw error;
-      if (!data || data.length === 0) return null;
 
-      const lastUpdated = data.reduce<string | null>((latest, row) => {
-        if (!row.updated_at) return latest;
-        if (!latest) return row.updated_at;
-        return row.updated_at > latest ? row.updated_at : latest;
-      }, null);
-
-      const hasLinkedOS = (ticket: {
-        has_os: boolean | null;
-        os_found_in_vdesk: boolean | null;
-        os_number: string | null;
-        vdesk_payload: unknown;
-      }) => {
-        const hasPayloadOS = Array.isArray(ticket.vdesk_payload)
-          && ticket.vdesk_payload.some((item) => Boolean((item as { os?: unknown })?.os));
-
-        return ticket.os_found_in_vdesk === true
-          || Boolean(ticket.os_number?.trim())
-          || hasPayloadOS
-          || ticket.has_os === true;
-      };
-
-      return {
-        network_id: networkId ?? data[0].network_id,
-        total_tickets: data.length,
-        tickets_ok: data.filter((ticket) => ticket.severity === 'info' || hasLinkedOS(ticket)).length,
-        tickets_criticos: data.filter((ticket) => ticket.severity === 'critico' && !hasLinkedOS(ticket)).length,
-        tickets_atencao: data.filter((ticket) => ticket.severity === 'atencao').length,
-        tickets_sem_os: data.filter((ticket) => !hasLinkedOS(ticket)).length,
-        last_updated: lastUpdated,
-      } as DashboardSummary;
+      // Sem linha = rede sem ticket ativo, ou sem permissão de ver. O contrato
+      // anterior devolvia null nesse caso e a tela já sabe lidar.
+      const linha = (data as DashboardSummary[] | null)?.[0];
+      return linha ?? null;
     },
     // SSO users may not have networkId; relying on RLS keeps the query area-aware.
     enabled: options?.enabled ?? true,
-    refetchInterval: 60000, // Auto-refresh a cada 60s
+    refetchInterval: RECARGA_TICKETS_MS,
   });
 }
 
@@ -80,7 +85,7 @@ export function useResolvedAreaNetwork(areaKey?: string, options?: { enabled?: b
       return (data as number | null) ?? null;
     },
     enabled: (options?.enabled ?? true) && !!areaKey,
-    staleTime: 60_000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 }
 
@@ -123,7 +128,7 @@ export function useTickets(
     enabled:
       options?.enabled ??
       (filters?.networkId !== undefined && filters.networkId !== null),
-    refetchInterval: 60000,
+    refetchInterval: RECARGA_TICKETS_MS,
   });
 }
 

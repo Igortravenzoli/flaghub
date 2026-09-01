@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { PbiHealthSummary, PbiLifecycleSummary, PbiStageEvent } from '@/types/pbi';
@@ -208,7 +209,7 @@ export function usePbiLifecycle(workItemId: number | null) {
       if (error) throw error;
       return (data || null) as PbiLifecycleSummary | null;
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const healthQuery = useQuery({
@@ -223,7 +224,7 @@ export function usePbiLifecycle(workItemId: number | null) {
       if (error) throw error;
       return (data || null) as PbiHealthSummary | null;
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const eventsQuery = useQuery({
@@ -238,7 +239,7 @@ export function usePbiLifecycle(workItemId: number | null) {
       if (error) throw error;
       return (data || []) as PbiStageEvent[];
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const workItemQuery = useQuery({
@@ -253,7 +254,7 @@ export function usePbiLifecycle(workItemId: number | null) {
       if (error) throw error;
       return (data || null) as WorkItemBasic | null;
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   // Prefer enriched timeline from state_history + iteration_history over DB events

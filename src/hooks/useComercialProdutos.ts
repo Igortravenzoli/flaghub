@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -32,7 +33,7 @@ export function useComercialProdutos() {
       if (error) throw error;
       return (data ?? []) as ProdutoComercial[];
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   /** Invalida também metas e vendas — o rename muda o nome nas três tabelas. */

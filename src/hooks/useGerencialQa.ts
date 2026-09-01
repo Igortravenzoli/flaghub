@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -43,7 +44,7 @@ export function useGerencialQa(sprintCode?: string, dateStart?: string, dateEnd?
       if (error) throw error;
       return (data || []) as unknown as GerencialQaRow[];
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }
@@ -82,7 +83,7 @@ export function useQaEncerramentosPorUsuario(dateStart?: string, dateEnd?: strin
       if (error) throw error;
       return (data || []) as unknown as QaEncerramentoUsuarioRow[];
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }
@@ -112,7 +113,7 @@ export function useQaAtemporalSummary(dateStart?: string, dateEnd?: string) {
       if (error) throw error;
       return ((data || []) as unknown as QaAtemporalSummary[])[0] ?? null;
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }
@@ -141,7 +142,7 @@ export function useQaItemsAtemporal(dateStart?: string, dateEnd?: string) {
       if (error) throw error;
       return (data || []) as unknown as QaItemAtemporalRow[];
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }
@@ -201,7 +202,7 @@ export function useGerencialQaItems(sprintCode?: string, dateStart?: string, dat
       if (error) throw error;
       return (data || []) as unknown as GerencialQaItemRow[];
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }
@@ -218,7 +219,7 @@ export function useQaDesempenho(sprintCode?: string, dateStart?: string, dateEnd
       if (error) throw error;
       return (data || []) as unknown as QaDesempenhoRow[];
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }

@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -68,7 +69,7 @@ export function useComercialKpis(statusFilter: ClientStatusFilter = 'todos', dat
         .maybeSingle();
       return data?.synced_at || null;
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   const statsQuery = useQuery({

@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery } from '@tanstack/react-query';
 import { gatewayGet } from '@/services/gatewayService';
 
@@ -77,7 +78,7 @@ export function useGestaoSlaFlag() {
   return useQuery<GestaoSlaResponse>({
     queryKey: ['gestao', 'sla-flag'],
     queryFn: () => gatewayGet('/api/gestao/sla-flag'),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -86,7 +87,7 @@ export function useGestaoSlaNestle() {
   return useQuery<GestaoSlaResponse>({
     queryKey: ['gestao', 'sla-nestle'],
     queryFn: () => gatewayGet('/api/gestao/sla-nestle'),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -95,7 +96,7 @@ export function useGestaoSlaHeineken() {
   return useQuery<GestaoSlaResponse>({
     queryKey: ['gestao', 'sla-heineken'],
     queryFn: () => gatewayGet('/api/gestao/sla-heineken'),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -114,7 +115,7 @@ export function useGestaoSlaFlagDetalhe(filtro: string, enabled = false) {
     queryKey: ['gestao', 'sla-flag-detalhe', filtro],
     queryFn: () => gatewayGet(`/api/gestao/sla-flag-detalhe?filtro=${filtro}`),
     enabled,
-    staleTime: 30 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -124,7 +125,7 @@ export function useGestaoSlaNestleDetalhe(filtro: string, enabled = false) {
     queryKey: ['gestao', 'sla-nestle-detalhe', filtro],
     queryFn: () => gatewayGet(`/api/gestao/sla-nestle-detalhe?filtro=${filtro}`),
     enabled,
-    staleTime: 30 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -134,7 +135,7 @@ export function useGestaoSlaHeinekenDetalhe(filtro: string, enabled = false) {
     queryKey: ['gestao', 'sla-heineken-detalhe', filtro],
     queryFn: () => gatewayGet(`/api/gestao/sla-heineken-detalhe?filtro=${filtro}`),
     enabled,
-    staleTime: 30 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -269,7 +270,7 @@ export function useGestaoSlaMensal(segmento: SlaMensalSegmento) {
   return useQuery<GestaoSlaMensalResponse>({
     queryKey: ['gestao', 'sla-mensal', segmento],
     queryFn: () => gatewayGet(`/api/gestao/sla-mensal?segmento=${segmento}`),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }

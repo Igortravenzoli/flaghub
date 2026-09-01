@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery } from '@tanstack/react-query';
 import { gatewayGet } from '@/services/gatewayService';
 
@@ -88,7 +89,7 @@ export function useTechLeadAcumulado(dataInicio: Date, dataFim: Date) {
   return useQuery<TechLeadAcumulado>({
     queryKey: ['techlead', 'acumulado', ini, fim],
     queryFn: () => gatewayGet(`/api/techlead/acumulado?dataInicio=${ini}&dataFim=${fim}`),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -99,7 +100,7 @@ export function useTechLeadConsultorSistemas(dataInicio: Date, dataFim: Date) {
   return useQuery<TechLeadConsultorResponse>({
     queryKey: ['techlead', 'resumo-consultor', ini, fim],
     queryFn: () => gatewayGet(`/api/techlead/resumo-consultor?dataInicio=${ini}&dataFim=${fim}`),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -110,7 +111,7 @@ export function useTechLeadConsultorInfra(dataInicio: Date, dataFim: Date) {
   return useQuery<TechLeadConsultorResponse>({
     queryKey: ['techlead', 'resumo-consultor-infra', ini, fim],
     queryFn: () => gatewayGet(`/api/techlead/resumo-consultor-infra?dataInicio=${ini}&dataFim=${fim}`),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -121,7 +122,7 @@ export function useTechLeadPorDia(dataInicio: Date, dataFim: Date) {
   return useQuery<TechLeadPorDiaResponse>({
     queryKey: ['techlead', 'por-dia', ini, fim],
     queryFn: () => gatewayGet(`/api/techlead/por-dia?dataInicio=${ini}&dataFim=${fim}`),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -132,7 +133,7 @@ export function useTechLeadPorCliente(dataInicio: Date, dataFim: Date) {
   return useQuery<TechLeadPorClienteResponse>({
     queryKey: ['techlead', 'por-cliente', ini, fim],
     queryFn: () => gatewayGet(`/api/techlead/por-cliente?dataInicio=${ini}&dataFim=${fim}`),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }
@@ -143,7 +144,7 @@ export function useTechLeadPorSistema(dataInicio: Date, dataFim: Date) {
   return useQuery<TechLeadPorSistemaResponse>({
     queryKey: ['techlead', 'por-sistema', ini, fim],
     queryFn: () => gatewayGet(`/api/techlead/por-sistema?dataInicio=${ini}&dataFim=${fim}`),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
   });
 }

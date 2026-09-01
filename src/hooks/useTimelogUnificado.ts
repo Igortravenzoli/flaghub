@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery, useMutation, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
@@ -88,7 +89,7 @@ export function useTimelogUnificado(filters: TimelogFilters = {}) {
       );
       return batches.flat();
     },
-    staleTime: 3 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
     // If caller passes workItemIds=[] (still loading), skip query
     enabled: filters.workItemIds === undefined || filters.workItemIds.length > 0,

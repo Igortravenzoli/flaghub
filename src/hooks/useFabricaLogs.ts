@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 /**
  * Hooks da aba de Logs da Fábrica — rastreabilidade das rotinas automáticas.
  *
@@ -109,7 +110,7 @@ export function useQaAlertLog(days: LogPeriodDays) {
       const rows = (data ?? []) as unknown as QaAlertLogRow[];
       return { rows, truncated: rows.length >= LIMITE_LINHAS };
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }
@@ -157,7 +158,7 @@ export function useVdeskSyncRunLog(limit = 30) {
       const rows = (data ?? []) as unknown as VdeskSyncRunRow[];
       return { rows, truncated: rows.length >= limit };
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }
@@ -209,7 +210,7 @@ export function useTimelogPostLog(days: LogPeriodDays) {
       const rows = (data ?? []) as unknown as TimelogPostLogRow[];
       return { rows, truncated: rows.length >= LIMITE_LINHAS };
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }
@@ -273,7 +274,7 @@ export function useApontamentosSemEmail(days: LogPeriodDays) {
         ultima_data: r.ultima_data,
       })) as ApontamentoSemEmailRow[];
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     placeholderData: keepPreviousData,
   });
 }

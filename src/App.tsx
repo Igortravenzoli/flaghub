@@ -38,10 +38,31 @@ import ManualUploads from "@/pages/admin/ManualUploads";
 import AuditLogs from "@/pages/admin/AuditLogs";
 import EmailWebhookConfig from "@/pages/admin/EmailWebhookConfig";
 
+/**
+ * Cadência mínima em que QUALQUER tela pode ver dado novo.
+ *
+ * Todo dashboard é alimentado por cron, e o mais rápido deles é o
+ * `sync-vdesk-helpdesk`, de 5 em 5 minutos. Os de DevOps rodam a cada 10 min,
+ * os de clientes e timelog a cada 15. Refazer uma query antes disso é garantia
+ * de receber exatamente os mesmos bytes de volta.
+ *
+ * Era 2 min, e o preço aparecia no modo TV: a rotação é de 30s por parada e o
+ * telão do monitor tem ~9 paradas, ou seja, um ciclo de ~4,5 min. Como o
+ * `staleTime` era menor que o ciclo, TODO setor voltava vencido e refazia a
+ * busca inteira a cada volta — 24 horas por dia, ~360 ciclos, refazendo os
+ * ~2,6 MB de payload das telas em rotação. É a origem do estouro de egress
+ * que a Supabase sinalizou em 31/08/2026.
+ *
+ * O número não pode voltar a ficar abaixo do ciclo de rotação sem que alguém
+ * refaça essa conta. Se algum dia um cron passar a rodar mais rápido que 5
+ * min, este valor acompanha — e não o contrário.
+ */
+const CADENCIA_MINIMA_MS = 5 * 60 * 1000
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 2 * 60 * 1000, // 2 min — reduces cascading refetches across dashboards
+      staleTime: CADENCIA_MINIMA_MS,
       refetchOnWindowFocus: false,
     },
   },

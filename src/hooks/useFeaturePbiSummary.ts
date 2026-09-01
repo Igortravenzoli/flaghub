@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { FeaturePbiSummaryRow } from '@/types/pbi';
@@ -23,7 +24,7 @@ export function useFeaturePbiSummary(filters: FeatureSummaryFilters = {}) {
       if (error) throw error;
       return (data || []) as FeaturePbiSummaryRow[];
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 
   return {

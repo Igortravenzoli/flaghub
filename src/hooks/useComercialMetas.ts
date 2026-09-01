@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { MetaFormData } from '@/components/comercial/MetasFormDialog';
@@ -89,7 +90,7 @@ export function useComercialMetas() {
       if (error) throw error;
       return (data ?? []).map(mapRowToMeta) as MetaComercial[];
     },
-    staleTime: 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
   });
 }
 

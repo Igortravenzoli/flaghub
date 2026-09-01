@@ -1,3 +1,4 @@
+import { CADENCIA_MINIMA_MS } from '@/lib/cadencia';
 import { useQuery } from '@tanstack/react-query';
 import { gatewayGet } from '@/services/gatewayService';
 
@@ -99,7 +100,7 @@ export function useBICustomerDetalhe(
   return useQuery<BICustomerDetalheResponse>({
     queryKey: ['bi-customer', 'detalhe', segmento, tipo, diasMin],
     queryFn: () => gatewayGet(`/api/bi-customer/detalhe?segmento=${segmento}&tipo=${tipo}&diasMin=${diasMin}`),
-    staleTime: 2 * 60 * 1000,
+    staleTime: CADENCIA_MINIMA_MS,
     retry: 1,
     enabled: enabled && !!tipo,
   });
