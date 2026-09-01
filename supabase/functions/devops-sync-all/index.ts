@@ -2,6 +2,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { lerEmLotes } from '../_shared/leitura.ts'
 
 const DEVOPS_ORG = 'FlagIW'
 const DEVOPS_PROJECT = 'Flag.Planejamento'
@@ -542,10 +543,19 @@ async function processLifecycleAndHealth(
 
   const pbiIds = candidates.map((row: any) => row.id).filter(Boolean)
 
-  const { data: queryRows } = await admin
-    .from('devops_query_items_current')
-    .select('work_item_id, query_id')
-    .in('work_item_id', pbiIds)
+  // PAGINADO, e aqui fatiar a entrada NÃO bastaria: `work_item_id` não é
+  // única em `devops_query_items_current` — o mesmo item aparece uma vez por
+  // query que o contém. Mil ids podem casar com muito mais de mil linhas, e o
+  // `max_rows = 1000` cortaria o excedente sem avisar.
+  //
+  // O prejuízo aqui não é IO, é dado errado: as linhas perdidas somem do
+  // `sectorByWorkItem` abaixo, e o item entra no recálculo de ciclo de vida
+  // com setor vazio — silenciosamente classificado como se não pertencesse a
+  // query nenhuma.
+  const queryRows = await lerEmLotes<{ work_item_id: number; query_id: string }>(
+    admin, 'devops_query_items_current', 'work_item_id, query_id', 'work_item_id', pbiIds,
+    { ordem: ['work_item_id', 'query_id'] },
+  )
 
   const queryIds = [...new Set((queryRows || []).map((row: any) => row.query_id).filter(Boolean))]
   let queriesById = new Map<string, string>()
@@ -826,33 +836,77 @@ function countQaReturns(stateChanges: StateChange[]): number {
 // 10 min completa a cobertura gradualmente (mais recentes primeiro).
 const ITER_HISTORY_MAX_PER_RUN = 400
 
+// Orçamento de varredura: quantas linhas de `devops_work_items` a função lê,
+// da mais recente para a mais antiga, procurando candidatos.
+//
+// PAGINADO de propósito: era um `.limit(6000)` numa chamada só e o PostgREST
+// desta instância roda com `max_rows = 1000` — chegavam mil linhas, sem erro
+// nem aviso, e a varredura real era 1/6 da declarada. Item fora das mil linhas
+// mais recentes só voltava a ser visto se alguém o tocasse no DevOps: item
+// antigo e fechado nunca ganhava `iteration_history`/`state_history`.
+// Ver análise de Disk IO de 26/08/2026 e o commit 1dc734d.
+const ITER_HISTORY_SCAN_MAX = 6000
+const ITER_HISTORY_PAGINA = 1000
+
+type IterHistoryRow = {
+  id: number
+  changed_date: string | null
+  iteration_history_synced_at: string | null
+}
+
 async function processIterationHistory(admin: any): Promise<{ processed: number; withChanges: number }> {
-  const { data: pbiItems, error } = await admin
-    .from('devops_work_items')
-    .select('id, changed_date, iteration_history_synced_at')
-    .in('work_item_type', ['Product Backlog Item', 'User Story', 'Bug', 'Task'])
-    .order('changed_date', { ascending: false })
-    .limit(6000)
+  const candidates: IterHistoryRow[] = []
+  let varridas = 0
+  let paradaAntecipada = false
 
-  if (error) {
-    console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
-    return { processed: 0, withChanges: 0 }
+  for (let inicio = 0; inicio < ITER_HISTORY_SCAN_MAX; inicio += ITER_HISTORY_PAGINA) {
+    // `.order('id')` de desempate é obrigatório: `changed_date` tem empates (e
+    // nulos), e sem ordem total estável a paginação repete ou pula linhas.
+    const { data, error } = await admin
+      .from('devops_work_items')
+      .select('id, changed_date, iteration_history_synced_at')
+      .in('work_item_type', ['Product Backlog Item', 'User Story', 'Bug', 'Task'])
+      .order('changed_date', { ascending: false })
+      .order('id', { ascending: false })
+      .range(inicio, inicio + ITER_HISTORY_PAGINA - 1)
+
+    if (error) {
+      console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
+      return { processed: 0, withChanges: 0 }
+    }
+
+    const pagina = (data || []) as IterHistoryRow[]
+    varridas += pagina.length
+    for (const item of pagina) {
+      if (shouldRefreshByChange(item.changed_date, item.iteration_history_synced_at)) {
+        candidates.push(item)
+      }
+    }
+
+    // A varredura sai em `changed_date` desc e o corte abaixo é um
+    // `slice(0, N)` do começo — os candidatos já vêm na ordem final, então
+    // parar assim que o lote da rodada estiver cheio dá exatamente o mesmo
+    // conjunto com menos idas ao banco.
+    if (candidates.length >= ITER_HISTORY_MAX_PER_RUN) {
+      paradaAntecipada = true
+      break
+    }
+    if (pagina.length < ITER_HISTORY_PAGINA) break
   }
-
-  const candidates = (pbiItems || []).filter((item: any) =>
-    shouldRefreshByChange(item.changed_date, item.iteration_history_synced_at)
-  )
 
   const workItemIds = candidates
     .slice(0, ITER_HISTORY_MAX_PER_RUN)
-    .map((i: any) => i.id)
+    .map((i) => i.id)
     .filter(Boolean) as number[]
   if (workItemIds.length === 0) {
-    console.log('[IterHistory] No PBIs with changes since last iteration sync')
+    console.log(`[IterHistory] No PBIs with changes since last iteration sync (${varridas} rows scanned)`)
     return { processed: 0, withChanges: 0 }
   }
-  if (candidates.length > workItemIds.length) {
-    console.log(`[IterHistory] ${candidates.length} candidates, capped at ${workItemIds.length} this run`)
+  if (candidates.length > workItemIds.length || paradaAntecipada) {
+    console.log(
+      `[IterHistory] ${candidates.length}${paradaAntecipada ? '+' : ''} candidates in ${varridas} rows scanned, ` +
+      `capped at ${workItemIds.length} this run`
+    )
   }
 
   console.log(`[IterHistory] Processing ${workItemIds.length} PBIs for iteration + state changes`)
@@ -1080,13 +1134,37 @@ serve(async (req: Request) => {
       // ── Step 3: Children sync ──
       try {
         console.log('[DevOpsSyncAll:BG] Fetching child work items (Tasks/Bugs)...')
-        const { data: pbiItems } = await bgAdmin
-          .from('devops_work_items')
-          .select('id')
-          .in('work_item_type', ['Product Backlog Item', 'User Story', 'Feature'])
-          .limit(2000)
 
-        const pbiIds = (pbiItems || []).map((i: any) => i.id) as number[]
+        // PAGINADO de propósito: era um `.limit(2000)` numa chamada só e o
+        // PostgREST desta instância roda com `max_rows = 1000` — chegavam mil
+        // pais, sem erro nem aviso, e a outra metade nunca tinha as filhas
+        // sincronizadas. A migration 20260816140000 declara a intenção:
+        // "puxar as filhas de ~2.000 PBIs". Pior: sem `.order()` não dava nem
+        // para saber QUAIS mil vinham. Ver commit 1dc734d.
+        //
+        // `.order('id', desc)` = mais novos primeiro, para que o teto abaixo,
+        // se um dia for atingido, corte o passado e não o presente.
+        const PAGINA_PBIS = 1000
+        const PBIS_MAX = 4000
+        const pbiIds: number[] = []
+        for (let inicio = 0; inicio < PBIS_MAX; inicio += PAGINA_PBIS) {
+          const { data, error: pbiErr } = await bgAdmin
+            .from('devops_work_items')
+            .select('id')
+            .in('work_item_type', ['Product Backlog Item', 'User Story', 'Feature'])
+            .order('id', { ascending: false })
+            .range(inicio, inicio + PAGINA_PBIS - 1)
+
+          if (pbiErr) throw new Error(`Lookup de PBIs falhou: ${pbiErr.message}`)
+          pbiIds.push(...((data || []) as Array<{ id: number }>).map(r => r.id))
+          if (!data || data.length < PAGINA_PBIS) break
+        }
+
+        if (pbiIds.length >= PBIS_MAX) {
+          console.warn(`[DevOpsSyncAll:BG] Teto de ${PBIS_MAX} pais atingido — há PBIs fora desta varredura`)
+        }
+        console.log(`[DevOpsSyncAll:BG] ${pbiIds.length} pais (PBI/US/Feature) para varrer filhas`)
+
         childrenResult = await fetchChildrenOfItems(pbiIds, bgAdmin)
         console.log(`[DevOpsSyncAll:BG] Children sync: ${childrenResult.fetched} found, ${childrenResult.upserted} upserted`)
       } catch (childErr) {
