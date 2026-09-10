@@ -49,6 +49,9 @@ export interface SgMudancaItem {
   /** "Atualizações bem sucedidas" com os mesmos predicados de `simNaoOf` —
    *  o drill do KPI filtra por aqui e precisa bater com a contagem dele. */
   atualizacaoBemSucedida: 'Sim' | 'Não' | typeof DASH;
+  /** Por que a atualização foi (ou não) bem sucedida — coluna "Comentário
+   *  atualizações" da lista SG-LST-010. */
+  justificativa: string;
   /** Data de abertura da solicitação (created_sp do SharePoint). */
   criado: string;
   /** "Data e Hora conclusão" — pode vir como texto livre da lista. */
@@ -339,6 +342,9 @@ export function buildSgsiResponse(
       risco: str(i, 'Risco') || DASH,
       atualizacaoBemSucedida: isSim(i.fields['Atualizações bem sucedidas']) ? 'Sim'
         : isNao(i.fields['Atualizações bem sucedidas']) ? 'Não' : DASH,
+      // Coluna "Comentário atualizações" da lista (nome confirmado pelo Igor em
+      // 10/09/2026): é onde se registra por que a atualização falhou.
+      justificativa: str(i, 'Comentário atualizações') || DASH,
       criado: i.created_sp ?? '',
       conclusao: str(i, 'Data e Hora conclusão'),
       modificado: i.modified_sp ?? i.created_sp ?? '',
