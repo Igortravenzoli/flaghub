@@ -77,6 +77,10 @@ describe('buildSgsiResponse', () => {
     expect(r.mudancas.aguardandoTI).toBe(1);
     expect(r.mudancas.aguardandoGestor).toBe(1);
     expect(r.mudancas.atualizacoesBemSucedidas).toEqual({ sim: 1, nao: 1 });
+    // valor por item alimenta o drill do KPI (vazio vira '—', não 'Não')
+    expect(r.mudancas.itens.find(i => i.id === 11)?.atualizacaoBemSucedida).toBe('Sim');
+    expect(r.mudancas.itens.find(i => i.id === 12)?.atualizacaoBemSucedida).toBe('Não');
+    expect(r.mudancas.itens.find(i => i.id === 13)?.atualizacaoBemSucedida).toBe('—');
     // itens ordenados do mais recente para o mais antigo
     expect(r.mudancas.itens[0].id).toBe(13);
     expect(r.mudancas.itens.find(i => i.id === 11)?.chamado).toBe('MUD-0011');
@@ -94,6 +98,27 @@ describe('buildSgsiResponse', () => {
     expect(m12.solicitante).toBe('Paula');          // campo explícito vence o fallback
     expect(m12.conclusao).toBe('');                 // sem conclusão registrada
     expect(m12.aprovadorGestor).toBe('—');
+  });
+
+  it('mudanças: lista sem teto — drill Sim/Não bate com o KPI mesmo acima de 300 itens', () => {
+    // 350 mudanças no período, com texto, boolean e vazio misturados. Com o teto
+    // antigo (300) a lista perdia as 50 mais antigas e o drill contava menos.
+    const valores: unknown[] = ['Sim', 'Não', true, false, '', undefined, 'Yes', 'nao'];
+    const muitas = Array.from({ length: 350 }, (_, k) => {
+      const v = valores[k % valores.length];
+      return item('010', 1000 + k, v === undefined ? {} : { 'Atualizações bem sucedidas': v },
+        new Date(Date.UTC(2026, 0, 1) + k * 3600000).toISOString());
+    });
+    const m = buildSgsiResponse(muitas, null, NOW).mudancas;
+    // 43 ciclos completos (3 sim · 3 não · 2 vazios) + 6 sobras (2 sim · 2 não)
+    expect(m.atualizacoesBemSucedidas).toEqual({ sim: 131, nao: 131 });
+    expect(m.itens).toHaveLength(350);
+    expect(m.itens.filter(i => i.atualizacaoBemSucedida === 'Sim')).toHaveLength(131);
+    expect(m.itens.filter(i => i.atualizacaoBemSucedida === 'Não')).toHaveLength(131);
+    // por item: o boolean nativo do SharePoint não pode inverter (contagem simétrica não pegaria)
+    expect(m.itens.find(i => i.id === 1002)?.atualizacaoBemSucedida).toBe('Sim'); // k=2 → true
+    expect(m.itens.find(i => i.id === 1003)?.atualizacaoBemSucedida).toBe('Não'); // k=3 → false
+    expect(m.itens.find(i => i.id === 1004)?.atualizacaoBemSucedida).toBe('—');   // k=4 → ''
   });
 
   it('ambiente das mudanças vem do Título multi-escolha (cada valor conta)', () => {
