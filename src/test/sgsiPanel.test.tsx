@@ -22,9 +22,9 @@ const mockData: BIInfraSgsiResponse = {
     // sim + não (3) ≠ total (4): o teste distingue a base certa da base "total de mudanças"
     atualizacoesBemSucedidas: { sim: 2, nao: 1 }, validacaoTestes: { sim: 4, nao: 0 },
     itens: [
-      { id: 1, chamado: 'OS-9001', ambiente: 'PROD', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Upgrade cluster', status: 'Realizado', solicitante: 'Ana', aprovadorTI: 'Rodolfo', aprovadorGestor: 'Marcos', risco: 'Alto', atualizacaoBemSucedida: 'Sim', criado: '2026-07-01T09:00:00Z', conclusao: '2026-07-09T10:00:00Z', modificado: '2026-07-09T10:00:00Z' },
-      { id: 2, chamado: 'OS-9002', ambiente: 'DEV', tipoMudanca: 'Emergencial', categoria: 'Infra', motivo: 'Hotfix', status: 'Aguardando aprovação Gestores', solicitante: 'Bruno', aprovadorTI: '—', aprovadorGestor: '—', risco: 'Baixo', atualizacaoBemSucedida: '—', criado: '2026-07-05T09:00:00Z', conclusao: '', modificado: '2026-07-08T10:00:00Z' },
-      { id: 3, chamado: 'OS-9003', ambiente: 'HML', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Patch do SO', status: 'Realizado', solicitante: 'Carla', aprovadorTI: 'Tiago', aprovadorGestor: 'Lia', risco: 'Médio', atualizacaoBemSucedida: 'Não', criado: '2026-07-02T09:00:00Z', conclusao: '2026-07-03T10:00:00Z', modificado: '2026-07-03T10:00:00Z' },
+      { id: 1, chamado: 'OS-9001', ambiente: 'PROD', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Upgrade cluster', status: 'Realizado', solicitante: 'Ana', aprovadorTI: 'Rodolfo', aprovadorGestor: 'Marcos', risco: 'Alto', atualizacaoBemSucedida: 'Sim', justificativa: '—', criado: '2026-07-01T09:00:00Z', conclusao: '2026-07-09T10:00:00Z', modificado: '2026-07-09T10:00:00Z' },
+      { id: 2, chamado: 'OS-9002', ambiente: 'DEV', tipoMudanca: 'Emergencial', categoria: 'Infra', motivo: 'Hotfix', status: 'Aguardando aprovação Gestores', solicitante: 'Bruno', aprovadorTI: '—', aprovadorGestor: '—', risco: 'Baixo', atualizacaoBemSucedida: '—', justificativa: '—', criado: '2026-07-05T09:00:00Z', conclusao: '', modificado: '2026-07-08T10:00:00Z' },
+      { id: 3, chamado: 'OS-9003', ambiente: 'HML', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Patch do SO', status: 'Realizado', solicitante: 'Carla', aprovadorTI: 'Tiago', aprovadorGestor: 'Lia', risco: 'Médio', atualizacaoBemSucedida: 'Não', justificativa: 'Timeout no deploy; rollback aplicado', criado: '2026-07-02T09:00:00Z', conclusao: '2026-07-03T10:00:00Z', modificado: '2026-07-03T10:00:00Z' },
     ],
   },
   incidentes: {
@@ -246,4 +246,50 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
       mockData.mudancas.itens = original;
     }
   }, 15_000);
+
+  it('filtro "Não" traz a coluna Justificativa já na visão compacta', () => {
+    render(<BIInfraSgsiPanel secao="mudancas" />);
+    // sem filtro, a compacta segue sem a coluna
+    expect(screen.queryByText('Justificativa')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Não\s*33%/ }));
+    expect(screen.getByText('Justificativa')).toBeInTheDocument();
+    const linha = screen.getByText('OS-9003').closest('tr')!;
+    expect(within(linha).getByText('Timeout no deploy; rollback aplicado')).toBeInTheDocument();
+    // no filtro "Sim" a coluna sai
+    fireEvent.click(screen.getByRole('button', { name: /Sim\s*67%/ }));
+    expect(screen.queryByText('Justificativa')).not.toBeInTheDocument();
+  });
+
+  it('visão completa e drawer mostram a justificativa', () => {
+    render(<BIInfraSgsiPanel secao="mudancas" />);
+    fireEvent.click(screen.getByLabelText('Exibir todas as informações'));
+    expect(screen.getByText('Justificativa')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('OS-9003'));
+    const dialog = screen.getByRole('dialog');
+    // "Justificativa" também é cabeçalho da tabela — o rótulo do drawer fica no dialog
+    expect(within(dialog).getByText('Justificativa')).toBeInTheDocument();
+    expect(within(dialog).getByText('Timeout no deploy; rollback aplicado')).toBeInTheDocument();
+  });
+
+  it('busca global encontra a mudança pelo texto da justificativa e realça o trecho', () => {
+    render(<BIInfraSgsiPanel secao="mudancas" />);
+    fireEvent.change(screen.getByPlaceholderText(/Buscar OS, chamado, protocolo/i), { target: { value: 'rollback' } });
+    expect(screen.getByText(/1 resultado para/i)).toBeInTheDocument();
+    expect(screen.getByText('OS-9003')).toBeInTheDocument();
+    expect(screen.queryByText('OS-9001')).not.toBeInTheDocument();
+    // com o filtro "Não" a coluna aparece e o trecho buscado vem marcado
+    fireEvent.click(screen.getByRole('button', { name: /Não\s*33%/ }));
+    const linha = screen.getByText('OS-9003').closest('tr')!;
+    expect(within(linha).getByText('rollback').tagName).toBe('MARK');
+  });
+
+  it('filtro "Não" + visão completa não duplica a coluna Justificativa', () => {
+    const { container } = render(<BIInfraSgsiPanel secao="mudancas" />);
+    fireEvent.click(screen.getByRole('button', { name: /Não\s*33%/ }));
+    fireEvent.click(screen.getByLabelText('Exibir todas as informações'));
+    const cabecalhos = Array.from(container.querySelectorAll('thead th'), (th) => th.textContent);
+    expect(cabecalhos.filter((t) => t === 'Justificativa')).toHaveLength(1);
+    // na completa ela fica ao lado de "Bem sucedida"
+    expect(cabecalhos[cabecalhos.indexOf('Bem sucedida') + 1]).toBe('Justificativa');
+  });
 });

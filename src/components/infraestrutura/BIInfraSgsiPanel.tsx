@@ -442,7 +442,9 @@ function RecordSheet({ detail, onClose }: { detail: RecordDetail | null; onClose
               {detail.campos.map(({ label, value }) => (
                 <div key={label} className="grid grid-cols-[130px_1fr] gap-3 px-5 py-2.5">
                   <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground pt-0.5">{label}</dt>
-                  <dd className="text-xs text-foreground break-words">{value || '—'}</dd>
+                  {/* min-w-0: sem ele, URL ou caminho de log sem espaço alarga a
+                      trilha 1fr e o sheet inteiro rola de lado. */}
+                  <dd className="min-w-0 text-xs text-foreground break-words">{value || '—'}</dd>
                 </div>
               ))}
             </dl>
@@ -495,7 +497,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
         default: return true;
       }
     })();
-    return drillOk && hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.risco);
+    return drillOk && hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.risco, i.justificativa);
   });
   const incItens = (d?.incidentes.itens ?? []).filter((i) => {
     const drillOk = (() => {
@@ -533,7 +535,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
   const searchCounts = useMemo(() => {
     if (!q || !d) return null;
     return {
-      mudancas: d.mudancas.itens.filter((i) => hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.risco)).length,
+      mudancas: d.mudancas.itens.filter((i) => hit(q, i.chamado, i.ambiente, i.tipoMudanca, i.categoria, i.motivo, i.status, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.risco, i.justificativa)).length,
       incidentes: d.incidentes.itens.filter((i) => hit(q, i.protocolo, i.titulo, i.ativo, i.motivo, i.priorizacao, i.status, i.tipo, i.sla, i.categoria)).length,
       riscos: d.riscos.itens.filter((i) => hit(q, i.id, i.descricao, i.cid, i.categoriaAmeaca, i.tipoAmeaca, i.ativoAfetado, i.status, i.responsavelAjuste)).length,
       conformidade:
@@ -552,6 +554,13 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
   const attBase = att ? att.sim + att.nao : 0;
   const attSimPct = att && attBase > 0 ? pct(att.sim, attBase) : null;
 
+  // Justificativa da atualização (lista: "Comentário atualizações"); o texto
+  // inteiro fica no title e no drawer.
+  const colJustificativa: SgColumn<SgMudancaItem> = {
+    key: 'justificativa', header: 'Justificativa', className: 'max-w-[280px] truncate',
+    render: (r) => <span title={r.justificativa !== '—' ? r.justificativa : undefined}><Highlight text={r.justificativa} q={q} /></span>,
+  };
+
   // Colunas da tabela de mudanças — a visão completa (olho) acrescenta as
   // datas de solicitação/conclusão e os aprovadores TI/Gestor.
   const mudColumns: SgColumn<SgMudancaItem>[] = [
@@ -560,12 +569,16 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
     { key: 'tipoMudanca', header: 'Tipo' },
     { key: 'risco', header: 'Risco', render: (r) => <Badge variant={r.risco === 'Alto' ? 'destructive' : 'outline'} className="text-[10px]">{r.risco}</Badge> },
     { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
+    // Filtro "Não" ligado: a justificativa entra já na visão compacta — é o que
+    // se quer ler ao listar as atualizações que falharam.
+    ...(drill === 'mud:att-nao' && !mostrarTudo ? [colJustificativa] : []),
     ...(mostrarTudo ? [
       { key: 'criado', header: 'Data solicitação', className: 'whitespace-nowrap', render: (r) => fmtDate(r.criado) },
       // "Data e Hora conclusão" pode ser texto livre — fmtDate devolve o
       // original quando não parseia.
       { key: 'conclusao', header: 'Conclusão', className: 'whitespace-nowrap', render: (r) => fmtDate(r.conclusao) },
       { key: 'atualizacaoBemSucedida', header: 'Bem sucedida', render: (r) => <SimNaoBadge valor={r.atualizacaoBemSucedida} /> },
+      colJustificativa,
     ] as SgColumn<SgMudancaItem>[] : []),
     { key: 'solicitante', header: 'Solicitante' },
     ...(mostrarTudo ? [
@@ -711,6 +724,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
                 { label: 'Aprovador TI', value: r.aprovadorTI }, { label: 'Aprovador Gestor', value: r.aprovadorGestor },
                 { label: 'Motivo', value: r.motivo }, { label: 'Data solicitação', value: fmtDate(r.criado) },
                 { label: 'Conclusão', value: fmtDate(r.conclusao) }, { label: 'Atualização bem sucedida', value: <SimNaoBadge valor={r.atualizacaoBemSucedida} /> },
+                { label: 'Justificativa', value: <span className="whitespace-pre-line">{r.justificativa}</span> },
                 { label: 'Modificado', value: fmtDate(r.modificado) },
               ],
             })}

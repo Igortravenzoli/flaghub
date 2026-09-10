@@ -29,8 +29,8 @@ const mockSgsi: BIInfraSgsiResponse = {
     porStatus: [], porAmbiente: [], porRisco: [], porCategoria: [],
     atualizacoesBemSucedidas: vazioNV, validacaoTestes: vazioNV,
     itens: [
-      { id: 1, chamado: '770188', ambiente: 'Froneri', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Ajuste CNPJs inativos', status: 'Realizado', solicitante: 'Ana', aprovadorTI: 'Rodolfo', aprovadorGestor: 'Marcos', risco: 'Médio', atualizacaoBemSucedida: 'Sim', criado: ontemIso, conclusao: '', modificado: ontemIso },
-      { id: 2, chamado: '769846', ambiente: 'Staging Área PROD', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Liberar envio de estoque', status: 'Aprovado', solicitante: 'Bruno', aprovadorTI: '—', aprovadorGestor: '—', risco: 'Baixo', atualizacaoBemSucedida: '—', criado: ontemIso, conclusao: '', modificado: ontemIso },
+      { id: 1, chamado: '770188', ambiente: 'Froneri', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Ajuste CNPJs inativos', status: 'Realizado', solicitante: 'Ana', aprovadorTI: 'Rodolfo', aprovadorGestor: 'Marcos', risco: 'Médio', atualizacaoBemSucedida: 'Sim', justificativa: '—', criado: ontemIso, conclusao: '', modificado: ontemIso },
+      { id: 2, chamado: '769846', ambiente: 'Staging Área PROD', tipoMudanca: 'Padrão', categoria: 'Infra', motivo: 'Liberar envio de estoque', status: 'Aprovado', solicitante: 'Bruno', aprovadorTI: '—', aprovadorGestor: '—', risco: 'Baixo', atualizacaoBemSucedida: '—', justificativa: '—', criado: ontemIso, conclusao: '', modificado: ontemIso },
     ],
   },
   incidentes: {

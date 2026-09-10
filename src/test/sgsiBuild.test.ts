@@ -121,6 +121,18 @@ describe('buildSgsiResponse', () => {
     expect(m.itens.find(i => i.id === 1004)?.atualizacaoBemSucedida).toBe('—');   // k=4 → ''
   });
 
+  it('mudanças: justificativa vem só da coluna "Comentário atualizações"', () => {
+    const j = buildSgsiResponse([
+      item('010', 91, { 'Atualizações bem sucedidas': 'Não', 'Comentário atualizações': 'Rollback: pacote quebrou o login' }),
+      // os outros comentários da lista (aprovação TI/Gestor) não entram no lugar dele
+      item('010', 92, { 'Atualizações bem sucedidas': 'Não', 'Comentário TI Aprovação': 'Aprovado com ressalva', 'Comentário Gestor Aprovação': 'Ok' }),
+      item('010', 93, { 'Atualizações bem sucedidas': 'Sim' }),
+    ], null, NOW).mudancas.itens;
+    expect(j.find(i => i.id === 91)?.justificativa).toBe('Rollback: pacote quebrou o login');
+    expect(j.find(i => i.id === 92)?.justificativa).toBe('—');
+    expect(j.find(i => i.id === 93)?.justificativa).toBe('—');
+  });
+
   it('ambiente das mudanças vem do Título multi-escolha (cada valor conta)', () => {
     expect(r.mudancas.porAmbiente).toContainEqual({ name: 'Broker PROD', value: 2 }); // itens 11 e 12
     expect(r.mudancas.porAmbiente).toContainEqual({ name: 'Broker PA', value: 1 });
