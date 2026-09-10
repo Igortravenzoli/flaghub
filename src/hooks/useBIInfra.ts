@@ -46,6 +46,9 @@ export interface SgMudancaItem {
   aprovadorTI: string;
   aprovadorGestor: string;
   risco: string;
+  /** "Atualizações bem sucedidas" com os mesmos predicados de `simNaoOf` —
+   *  o drill do KPI filtra por aqui e precisa bater com a contagem dele. */
+  atualizacaoBemSucedida: 'Sim' | 'Não' | typeof DASH;
   /** Data de abertura da solicitação (created_sp do SharePoint). */
   criado: string;
   /** "Data e Hora conclusão" — pode vir como texto livre da lista. */
@@ -318,7 +321,9 @@ export function buildSgsiResponse(
     porCategoria: countBy(l010, 'Categoria da mudança', 'Categoria'),
     atualizacoesBemSucedidas: simNaoOf(l010, 'Atualizações bem sucedidas'),
     validacaoTestes: simNaoOf(l010, 'Validação e testes do pacote de atualização'),
-    itens: recentes(l010, 300).map((i) => ({
+    // Sem teto (era 300): os KPIs clicáveis contam o período inteiro e o drill
+    // filtra ESTA lista — com teto, "Não · 12 itens" abriria uma tabela com 9.
+    itens: recentes(l010, l010.length).map((i) => ({
       id: i.item_id,
       chamado: str(i, 'Número do chamado') || `#${i.item_id}`,
       ambiente: str(i, 'Ambiente', 'Título') || DASH,
@@ -332,6 +337,8 @@ export function buildSgsiResponse(
       aprovadorTI: str(i, 'Aprovador TI') || DASH,
       aprovadorGestor: str(i, 'Aprovador Gestor') || DASH,
       risco: str(i, 'Risco') || DASH,
+      atualizacaoBemSucedida: isSim(i.fields['Atualizações bem sucedidas']) ? 'Sim'
+        : isNao(i.fields['Atualizações bem sucedidas']) ? 'Não' : DASH,
       criado: i.created_sp ?? '',
       conclusao: str(i, 'Data e Hora conclusão'),
       modificado: i.modified_sp ?? i.created_sp ?? '',

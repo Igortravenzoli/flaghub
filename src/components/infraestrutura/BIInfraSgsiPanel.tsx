@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useBIInfraSgsi, NameValue, SimNao, SgMudancaItem } from '@/hooks/useBIInfra';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -102,12 +102,20 @@ function KpiTile({ label, value, sub, color, onClick, active, bare }: {
 }
 
 /** Card consolidado com título e uma grade de métricas internas (sem bordas duplas). */
-function GroupCard({ title, cols = 3, children }: { title: string; cols?: number; children: ReactNode }) {
-  const gridCols = cols === 4 ? 'grid-cols-2 lg:grid-cols-4' : cols === 2 ? 'grid-cols-2' : 'grid-cols-3';
+function GroupCard({ title, cols = 3, className, children }: {
+  title: string; cols?: number;
+  /** Posição na grade da linha (ex.: col-span por breakpoint). */
+  className?: string;
+  children: ReactNode;
+}) {
+  const titleId = useId();
+  // 3 tiles viram 2 colunas no celular: "AGUARDANDO" não cabe em 1/3 do card.
+  const gridCols = cols === 4 ? 'grid-cols-2 lg:grid-cols-4' : cols === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3';
   return (
-    <Card className="p-3 space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground px-1">{title}</p>
-      <div className={`grid ${gridCols} gap-1`}>{children}</div>
+    <Card className={`p-3 space-y-2 ${className ?? ''}`}>
+      <p id={titleId} className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground px-1">{title}</p>
+      {/* Grupo rotulado: o leitor de tela anuncia o título antes de "Sim, 67%". */}
+      <div role="group" aria-labelledby={titleId} className={`grid ${gridCols} gap-1`}>{children}</div>
     </Card>
   );
 }
@@ -315,18 +323,27 @@ function OsCell({ value, q }: { value: string; q: string }) {
   );
 }
 
+/** Teto de linhas no DOM — a tabela não virtualiza. Filtro, contagem e drill
+ *  continuam sobre a lista inteira; "Mostrar mais" monta o lote seguinte. */
+const LOTE_LINHAS = 300;
+
 function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, onRowClick, headerAction }: {
   title: string; columns: SgColumn<T>[]; rows?: T[]; isLoading: boolean;
   onRowClick?: (row: T) => void;
   /** Ação extra no cabeçalho do card (ex.: toggle compacto/completo). */
   headerAction?: ReactNode;
 }) {
+  const total = rows?.length ?? 0;
+  const [limite, setLimite] = useState(LOTE_LINHAS);
+  // Filtro ou busca mudou a contagem → volta ao primeiro lote.
+  useEffect(() => { setLimite(LOTE_LINHAS); }, [total]);
+  const restantes = total - limite;
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-2 pt-4 px-4 flex-row items-start justify-between space-y-0 gap-2">
         <div className="space-y-1 min-w-0">
           <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-          {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens{onRowClick ? ' · clique para detalhes' : ''}</p>}
+          {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens{restantes > 0 ? ` · exibindo ${limite}` : ''}{onRowClick ? ' · clique para detalhes' : ''}</p>}
         </div>
         {headerAction}
       </CardHeader>
@@ -336,6 +353,7 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, on
         ) : rows.length === 0 ? (
           <p className="text-xs text-muted-foreground py-8 text-center">Nenhum registro para o filtro/busca atual.</p>
         ) : (
+          <>
           <ScrollArea className="max-h-80">
             {/* min-width quando há muitas colunas (visão completa) → rolagem
                 horizontal dentro do card em vez de estourar/espremer células */}
@@ -346,7 +364,7 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, on
                 </tr>
               </thead>
               <tbody>
-                {rows.map(row => (
+                {rows.slice(0, limite).map(row => (
                   <tr
                     key={row.id}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -363,6 +381,17 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, on
             </table>
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
+          {restantes > 0 && (
+            <button
+              type="button"
+              onClick={() => setLimite((l) => l + LOTE_LINHAS)}
+              className="flex w-full items-center gap-1 border-t border-border/60 px-4 py-2 text-[11px] font-medium text-primary hover:underline"
+            >
+              <ChevronsUpDown className="h-3 w-3" />
+              Mostrar mais (+{Math.min(LOTE_LINHAS, restantes)})
+            </button>
+          )}
+          </>
         )}
       </CardContent>
     </Card>
@@ -374,6 +403,17 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ background: `${color}20`, color }}>
       {status}
+    </span>
+  );
+}
+
+/** Sim/Não de campo booleano da lista — verde/vermelho; vazio fica neutro. */
+function SimNaoBadge({ valor }: { valor: string }) {
+  const color = valor === 'Sim' ? '#10b981' : valor === 'Não' ? '#ef4444' : undefined;
+  if (!color) return <span className="text-muted-foreground">{valor || '—'}</span>;
+  return (
+    <span className="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ background: `${color}20`, color }}>
+      {valor}
     </span>
   );
 }
@@ -450,6 +490,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
       switch (drill) {
         case 'mud:concluidas': return /realizado|conclu/i.test(i.status);
         case 'mud:pendentes': return !/realizado|conclu|rejeitad/i.test(i.status);
+        case 'mud:att-sim': return i.atualizacaoBemSucedida === 'Sim';
+        case 'mud:att-nao': return i.atualizacaoBemSucedida === 'Não';
         default: return true;
       }
     })();
@@ -504,6 +546,12 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
 
   const drillBadge = drill ? ' · filtro do KPI ativo' : '';
 
+  // Atualizações bem sucedidas (Sim/Não) — a mesma contagem que o drill filtra.
+  // Não% = 100 − Sim%: arredondados em separado, lado a lado somariam 101%.
+  const att = d?.mudancas.atualizacoesBemSucedidas;
+  const attBase = att ? att.sim + att.nao : 0;
+  const attSimPct = att && attBase > 0 ? pct(att.sim, attBase) : null;
+
   // Colunas da tabela de mudanças — a visão completa (olho) acrescenta as
   // datas de solicitação/conclusão e os aprovadores TI/Gestor.
   const mudColumns: SgColumn<SgMudancaItem>[] = [
@@ -517,6 +565,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
       // "Data e Hora conclusão" pode ser texto livre — fmtDate devolve o
       // original quando não parseia.
       { key: 'conclusao', header: 'Conclusão', className: 'whitespace-nowrap', render: (r) => fmtDate(r.conclusao) },
+      { key: 'atualizacaoBemSucedida', header: 'Bem sucedida', render: (r) => <SimNaoBadge valor={r.atualizacaoBemSucedida} /> },
     ] as SgColumn<SgMudancaItem>[] : []),
     { key: 'solicitante', header: 'Solicitante' },
     ...(mostrarTudo ? [
@@ -608,17 +657,24 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
 
         {/* ── Mudanças (SG-LST-010) ── */}
         <TabsContent value="mudancas" className="space-y-3 mt-0">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <GroupCard title="Solicitações · Concluídas · Pendentes" cols={3}>
+          {/* lg: Solicitações ocupa a 1ª linha e Status divide a 2ª com o KPI de
+              atualizações bem sucedidas; xl: os três lado a lado. O minmax segura
+              o título do card novo numa linha com a sidebar aberta a 1280px. */}
+          <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] xl:grid-cols-[3fr_3fr_minmax(16rem,2fr)] gap-3">
+            <GroupCard title="Solicitações · Concluídas · Pendentes" cols={3} className="lg:col-span-2 xl:col-span-1">
               <KpiTile bare label="Solicitações" value={d?.mudancas.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
               <KpiTile bare label="Concluídas" value={d ? `${pct(d.mudancas.concluidos, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.concluidos} itens`} color="#10b981" onClick={() => toggleDrill('mud:concluidas')} active={drill === 'mud:concluidas'} />
               <KpiTile bare label="Pendentes" value={d ? `${pct(d.mudancas.pendentes, d.mudancas.total)}%` : '—'} sub={d && `${d.mudancas.pendentes} itens`} color="#f59e0b" onClick={() => toggleDrill('mud:pendentes')} active={drill === 'mud:pendentes'} />
             </GroupCard>
-            <GroupCard title="Status" cols={4}>
+            <GroupCard title="Status" cols={3}>
               <KpiTile bare label="Aguardando Gestor" value={d?.mudancas.aguardandoGestor ?? '—'} color="#8b5cf6" />
               <KpiTile bare label="Aguardando TI" value={d?.mudancas.aguardandoTI ?? '—'} color="#3b82f6" />
-              <KpiTile bare label="Atualização" value={d ? `${pct(d.mudancas.atualizacoesBemSucedidas.sim, d.mudancas.atualizacoesBemSucedidas.sim + d.mudancas.atualizacoesBemSucedidas.nao)}%` : '—'} color="#10b981" />
               <KpiTile bare label="Testes" value={d ? `${pct(d.mudancas.validacaoTestes.sim, d.mudancas.validacaoTestes.sim + d.mudancas.validacaoTestes.nao)}%` : '—'} color="#10b981" />
+            </GroupCard>
+            {/* Base do % = Sim + Não; campo vazio (mudança ainda não executada) fica fora. */}
+            <GroupCard title="Atualizações bem sucedidas" cols={2}>
+              <KpiTile bare label="Sim" value={attSimPct != null ? `${attSimPct}%` : '—'} sub={att && attBase > 0 ? `${att.sim} de ${attBase} itens` : undefined} color="#10b981" onClick={() => toggleDrill('mud:att-sim')} active={drill === 'mud:att-sim'} />
+              <KpiTile bare label="Não" value={attSimPct != null ? `${100 - attSimPct}%` : '—'} sub={att && attBase > 0 ? `${att.nao} de ${attBase} itens` : undefined} color="#ef4444" onClick={() => toggleDrill('mud:att-nao')} active={drill === 'mud:att-nao'} />
             </GroupCard>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -654,7 +710,8 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
                 { label: 'Status', value: <StatusBadge status={r.status} /> }, { label: 'Solicitante', value: r.solicitante },
                 { label: 'Aprovador TI', value: r.aprovadorTI }, { label: 'Aprovador Gestor', value: r.aprovadorGestor },
                 { label: 'Motivo', value: r.motivo }, { label: 'Data solicitação', value: fmtDate(r.criado) },
-                { label: 'Conclusão', value: fmtDate(r.conclusao) }, { label: 'Modificado', value: fmtDate(r.modificado) },
+                { label: 'Conclusão', value: fmtDate(r.conclusao) }, { label: 'Atualização bem sucedida', value: <SimNaoBadge valor={r.atualizacaoBemSucedida} /> },
+                { label: 'Modificado', value: fmtDate(r.modificado) },
               ],
             })}
             columns={mudColumns}
