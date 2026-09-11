@@ -11,7 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   ShieldCheck, RefreshCw, Flame, AlertTriangle, KeyRound, Lightbulb,
-  CalendarCheck, Search, X, Copy, Check, ChevronDown, ChevronsUpDown, Eye, EyeOff,
+  CalendarCheck, Search, X, Copy, Check, ChevronDown, ChevronsUpDown, Eye, EyeOff, ExternalLink,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -418,6 +418,23 @@ function SimNaoBadge({ valor }: { valor: string }) {
   );
 }
 
+/** Link para o item na lista do SharePoint; "—" sem URL. Não propaga o clique
+ *  (na tabela, a linha abre o drawer). */
+function LinkSharePoint({ href, texto }: { href: string; texto: string }) {
+  if (!href) return <span className="text-muted-foreground">—</span>;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1 whitespace-nowrap text-primary hover:underline"
+    >
+      <ExternalLink className="h-3 w-3" />{texto}
+    </a>
+  );
+}
+
 // ── Detalhe do registro (drawer) ──────────────────────────────────────
 
 interface RecordDetail {
@@ -528,7 +545,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
         default: return true;
       }
     })();
-    return drillOk && hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.status);
+    return drillOk && hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.status);
   });
 
   // ── Contadores da busca por seção (ignora drill) — para os chips cross-seção ──
@@ -541,7 +558,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
       conformidade:
         d.naoConformidades.itens.filter((i) => hit(q, i.processo, i.detalhes, i.causaRaiz, i.status, i.solicitante)).length +
         d.melhorias.itens.filter((i) => hit(q, i.oportunidade, i.processo, i.beneficios, i.status, i.solicitante)).length,
-      acessos: d.acessos.itens.filter((i) => hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.status)).length,
+      acessos: d.acessos.itens.filter((i) => hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.status)).length,
     } as Record<string, number>;
   }, [q, d]);
   const totalHits = searchCounts ? Object.values(searchCounts).reduce((s, n) => s + n, 0) : 0;
@@ -913,10 +930,12 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
               os: r.titulo, titulo: r.descricao, origem: 'SG-LST-014 · Acesso',
               campos: [
                 { label: 'Tipo', value: r.tipo }, { label: 'Projeto', value: r.projeto },
-                { label: 'Solicitante', value: r.solicitante }, { label: 'Acesso DevOps', value: r.acessoDevOps ? 'Sim' : 'Não' },
+                { label: 'Solicitante', value: r.solicitante }, { label: 'Aprovação TI', value: r.aprovadorTI },
+                { label: 'Aprovação Gestor', value: r.aprovadorGestor }, { label: 'Acesso DevOps', value: r.acessoDevOps ? 'Sim' : 'Não' },
                 { label: 'Acesso TS', value: r.acessoTS ? 'Sim' : 'Não' }, { label: 'Admin', value: r.permissoesAdmin ? 'Sim' : 'Não' },
                 { label: 'Status', value: <StatusBadge status={r.status} /> }, { label: 'Descrição', value: r.descricao },
                 { label: 'Última revisão', value: fmtDate(r.ultimaRevisao) },
+                { label: 'SharePoint', value: <LinkSharePoint href={r.link} texto="Abrir item na lista" /> },
               ],
             })}
             columns={[
@@ -924,9 +943,13 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
               { key: 'tipo', header: 'Tipo' },
               { key: 'projeto', header: 'Projeto' },
               { key: 'solicitante', header: 'Solicitante' },
+              { key: 'aprovadorTI', header: 'Aprovação TI' },
+              { key: 'aprovadorGestor', header: 'Aprovação Gestor' },
               { key: 'permissoesAdmin', header: 'Admin', render: r => r.permissoesAdmin ? <Badge variant="destructive" className="text-[10px]">Sim</Badge> : 'Não' },
               { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
               { key: 'ultimaRevisao', header: 'Última revisão', render: r => fmtDate(r.ultimaRevisao) },
+              // As colunas de senha saíram do espelho — o detalhe fica no próprio item.
+              { key: 'link', header: 'SharePoint', render: r => <LinkSharePoint href={r.link} texto="Abrir" /> },
             ]}
           />
         </TabsContent>

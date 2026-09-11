@@ -13,6 +13,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { colunaSensivel } from './sensivel.ts'
 
 const SP_HOST = 'flagcom.sharepoint.com'
 const SP_SITE_PATH = '/sites/PORTALSGSI'
@@ -131,16 +132,24 @@ async function graphJson<T>(token: string, url: string): Promise<T> {
   return await resp.json()
 }
 
-interface GraphColumn { name: string; displayName: string }
+interface GraphColumn {
+  name: string
+  displayName: string
+  /** Presente só em coluna de pessoa/grupo (Solicitante, Aprovador TI, Criado por…). */
+  personOrGroup?: unknown
+}
 interface GraphListItem {
   id: string
   createdDateTime?: string
   lastModifiedDateTime?: string
+  createdBy?: { user?: { displayName?: string } }
+  lastModifiedBy?: { user?: { displayName?: string } }
   fields?: Record<string, unknown>
 }
 
 /** Renomeia os campos internos do Graph para o displayName das colunas
- *  (igual ao que o Power BI mostra), preservando LookupIds de pessoa. */
+ *  (igual ao que o Power BI mostra), preservando LookupIds de pessoa e
+ *  descartando as colunas de credencial (ver sensivel.ts). */
 function normalizeFields(
   fields: Record<string, unknown>,
   columnMap: Map<string, string>,
@@ -152,30 +161,48 @@ function normalizeFields(
     if (key.endsWith('LookupId')) {
       const base = key.slice(0, -'LookupId'.length)
       const display = columnMap.get(base)
-      if (display) out[`${display} (lookupId)`] = value
+      if (display && !colunaSensivel(display, base)) out[`${display} (lookupId)`] = value
       continue
     }
-    out[columnMap.get(key) ?? key] = value
+    const display = columnMap.get(key)
+    if (colunaSensivel(display, key)) continue
+    out[display ?? key] = value
   }
   return out
 }
 
-/** Mapa lookupId → nome a partir da "User Information List" (lista oculta do
- *  site — pode não vir na listagem padrão, por isso o fallback por título).
+/** Id da "User Information List" (lista oculta de usuários do site).
+ *
+ *  O título é localizado: no PORTALSGSI (pt-BR) ela não se chama "User
+ *  Information List", e o endereço por esse título dava 404 em todo sync —
+ *  sem mapa, nenhum campo de pessoa ganhava nome (Solicitante, Aprovador TI,
+ *  Criado por…). O que não muda com o idioma é a URL: <site>/_catalogs/users.
+ *  Lista de sistema só aparece no /lists quando `system` está no $select. */
+async function findUserInfoListId(token: string, siteId: string): Promise<string | null> {
+  let next: string | null = `${GRAPH}/sites/${siteId}/lists?$select=id,name,displayName,webUrl,system&$top=200`
+  while (next) {
+    const page = await graphJson<{ value: { id: string; name?: string; displayName?: string; webUrl?: string; system?: unknown }[]; '@odata.nextLink'?: string }>(token, next)
+    const lists = page.value || []
+    // URL primeiro (é única); nome/título só valem para lista de sistema — uma
+    // lista comum criada com a URL "users" não pode ser confundida com ela.
+    const hit = lists.find((l) => /\/_catalogs\/users\/?$/i.test(l.webUrl ?? ''))
+      ?? lists.find((l) => l.system != null &&
+        (l.name === 'users' || /^(user information list|lista de informa[çc][õo]es do usu[áa]rio)$/i.test(l.displayName ?? '')))
+    if (hit) return hit.id
+    next = page['@odata.nextLink'] ?? null
+  }
+  return null
+}
+
+/** Mapa lookupId → nome a partir da "User Information List".
  *  Best-effort: qualquer falha loga e devolve mapa vazio, sem derrubar o sync. */
-async function fetchUserMap(
-  token: string,
-  siteId: string,
-  lists: { id: string; displayName: string }[],
-): Promise<Map<number, string>> {
+async function fetchUserMap(token: string, siteId: string): Promise<Map<number, string>> {
   const userMap = new Map<number, string>()
   try {
-    let listId = lists.find((l) => /user information list/i.test(l.displayName ?? ''))?.id
+    const listId = await findUserInfoListId(token, siteId)
     if (!listId) {
-      const info = await graphJson<{ id: string }>(
-        token, `/sites/${siteId}/lists/${encodeURIComponent('User Information List')}`
-      )
-      listId = info.id
+      console.warn('[SGSI] User Information List não encontrada (nem por _catalogs/users) — seguindo sem nomes')
+      return userMap
     }
     let next: string | null = `${GRAPH}/sites/${siteId}/lists/${listId}/items?expand=fields&$top=200`
     while (next) {
@@ -194,14 +221,19 @@ async function fetchUserMap(
   return userMap
 }
 
-/** Para cada "<Campo> (lookupId)" resolvível no mapa, grava também "<Campo>"
- *  com o nome do usuário (sem sobrescrever se a chave já existir no item). */
-function applyUserNames(fields: Record<string, unknown>, userMap: Map<number, string>): void {
+/** Para cada "<Campo> (lookupId)" de coluna de PESSOA resolvível no mapa, grava
+ *  também "<Campo>" com o nome do usuário (sem sobrescrever se a chave já existir
+ *  no item). Lookup que não é pessoa fica só com o id. */
+function applyUserNames(
+  fields: Record<string, unknown>,
+  userMap: Map<number, string>,
+  pessoaCols: Set<string>,
+): void {
   if (userMap.size === 0) return
   for (const [key, value] of Object.entries(fields)) {
     if (!key.endsWith(' (lookupId)')) continue
     const base = key.slice(0, -' (lookupId)'.length)
-    if (base in fields) continue
+    if (base in fields || !pessoaCols.has(base)) continue
     const ids = Array.isArray(value) ? value : [value]
     const names = ids
       .map((v) => userMap.get(typeof v === 'number' ? v : parseInt(String(v), 10)))
@@ -251,7 +283,7 @@ serve(async (req) => {
 
     // 1. Resolve o site e as listas SG
     const site = await graphJson<{ id: string }>(token, `/sites/${SP_HOST}:${SP_SITE_PATH}`)
-    const listsData = await graphJson<{ value: { id: string; displayName: string }[] }>(
+    const listsData = await graphJson<{ value: { id: string; displayName: string; webUrl?: string }[] }>(
       token, `/sites/${site.id}/lists?$top=200`
     )
 
@@ -284,7 +316,7 @@ serve(async (req) => {
 
     // 1b. Usuários do site: resolve lookupIds de pessoa (Solicitante,
     // Aprovador TI/Gestor, Criado por…) para nomes legíveis no espelho.
-    const userMap = await fetchUserMap(token, site.id, listsData.value || [])
+    const userMap = await fetchUserMap(token, site.id)
 
     // 2. Por lista: colunas (mapa internal→display) + itens paginados
     const resumo: Record<string, number> = {}
@@ -293,9 +325,16 @@ serve(async (req) => {
         token, `/sites/${site.id}/lists/${graphListId}/columns?$top=300`
       )
       const columnMap = new Map<string, string>()
+      // Só coluna de PESSOA ganha nome pelo mapa de usuários: um lookup comum
+      // (ex.: "Risco relacionado" da 018) aponta para item de outra lista, e o
+      // mesmo número viraria o nome de alguém.
+      const pessoaCols = new Set<string>()
       for (const col of colsData.value || []) {
         columnMap.set(col.name, col.displayName || col.name)
+        if (col.personOrGroup) pessoaCols.add(col.displayName || col.name)
       }
+      // Link do item no SharePoint — no lugar das colunas sensíveis, que não entram no espelho.
+      const listWebUrl = (listsData.value || []).find((l) => l.id === graphListId)?.webUrl?.replace(/\/+$/, '')
 
       const items: GraphListItem[] = []
       let next: string | null = `${GRAPH}/sites/${site.id}/lists/${graphListId}/items?expand=fields&$top=200`
@@ -305,9 +344,20 @@ serve(async (req) => {
         next = page['@odata.nextLink'] ?? null
       }
 
+      // Nome das colunas de autor/editor no idioma do site ("Criado por" em pt-BR).
+      const autorCol = columnMap.get('Author')
+      const editorCol = columnMap.get('Editor')
+
       const rows = items.map((item) => {
         const fields = normalizeFields(item.fields ?? {}, columnMap)
-        applyUserNames(fields, userMap)
+        applyUserNames(fields, userMap, pessoaCols)
+        // Autor e editor não dependem do mapa de usuários: o próprio item do
+        // Graph traz o nome em createdBy/lastModifiedBy.
+        const autor = item.createdBy?.user?.displayName
+        if (autorCol && autor && !(autorCol in fields)) fields[autorCol] = autor
+        const editor = item.lastModifiedBy?.user?.displayName
+        if (editorCol && editor && !(editorCol in fields)) fields[editorCol] = editor
+        if (listWebUrl) fields['_sharepoint_url'] = `${listWebUrl}/DispForm.aspx?ID=${item.id}`
         return {
           list_key: listKey,
           item_id: parseInt(item.id, 10),

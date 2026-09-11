@@ -64,7 +64,7 @@ const mockData: BIInfraSgsiResponse = {
     porStatus: [{ name: 'Pendente', value: 1 }], porTipo: [{ name: 'Novo', value: 1 }], porProjeto: [{ name: 'FlagHub', value: 1 }],
     acessoDevOps: { sim: 1, nao: 0 }, acessoTS: { sim: 0, nao: 1 }, permissoesAdmin: { sim: 1, nao: 0 },
     itens: [
-      { id: 50, titulo: 'ACS-700', descricao: 'Acesso ao repositório', motivo: 'Onboarding', tipo: 'Novo', projeto: 'FlagHub', solicitante: 'Carla', cargo: '—', status: 'Pendente', acessoDevOps: true, acessoTS: false, permissoesAdmin: true, ultimaRevisao: '2026-07-02' },
+      { id: 50, titulo: 'ACS-700', descricao: 'Acesso ao repositório', motivo: 'Onboarding', tipo: 'Novo', projeto: 'FlagHub', solicitante: 'Carla', aprovadorTI: 'Otávio', aprovadorGestor: 'Marta', cargo: '—', status: 'Pendente', acessoDevOps: true, acessoTS: false, permissoesAdmin: true, ultimaRevisao: '2026-07-02', link: 'https://flagcom.sharepoint.com/sites/PORTALSGSI/Lists/SGLST014/DispForm.aspx?ID=50' },
     ],
   },
 };
@@ -134,6 +134,26 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
     render(<BIInfraSgsiPanel secao="acessos" />);
     expect(screen.getByText('OS / Solicitação')).toBeInTheDocument();
     expect(screen.getByText('ACS-700')).toBeInTheDocument();
+  });
+
+  it('acessos: tabela e drawer mostram solicitante, aprovações TI/Gestor e o link do SharePoint', () => {
+    const LINK = 'https://flagcom.sharepoint.com/sites/PORTALSGSI/Lists/SGLST014/DispForm.aspx?ID=50';
+    render(<BIInfraSgsiPanel secao="acessos" />);
+    for (const cabecalho of ['Solicitante', 'Aprovação TI', 'Aprovação Gestor', 'SharePoint']) {
+      expect(screen.getByText(cabecalho)).toBeInTheDocument();
+    }
+    const linha = screen.getByText('ACS-700').closest('tr')!;
+    for (const nome of ['Carla', 'Otávio', 'Marta']) expect(within(linha).getByText(nome)).toBeInTheDocument();
+    const link = within(linha).getByRole('link', { name: 'Abrir' });
+    expect(link).toHaveAttribute('href', LINK);
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    fireEvent.click(screen.getByText('ACS-700'));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Aprovação TI')).toBeInTheDocument();
+    expect(within(dialog).getByText('Otávio')).toBeInTheDocument();
+    expect(within(dialog).getByText('Marta')).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'Abrir item na lista' })).toHaveAttribute('href', LINK);
   });
 
   it('KPI "Atualizações bem sucedidas" fica ao lado de Status, com Sim/Não e percentual', () => {
