@@ -205,6 +205,27 @@ export interface SgAcessoItem {
   /** Item no SharePoint (DispForm), gravado pelo sync em `_sharepoint_url`;
    *  '' quando ausente. Substitui as colunas de senha, que saíram do espelho. */
   link: string;
+  /** Caixa "<---Preenchimento TI--->": marcada = a TI validou o acesso (revogou,
+   *  alterou ou manteve). Com a data da última revisão, é evidência de auditoria. */
+  revisaoTI: 'Acesso Revisado' | 'A revisar';
+  /** Marcado como revisado, mas sem "Data ultima revisão" — sem evidência datada. */
+  revisadoSemData: boolean;
+  /** "Tipo liberação". */
+  tipoLiberacao: 'Definitiva' | 'Provisória' | typeof DASH;
+  /** "Data fim liberação provisória" (ISO); '' quando ausente. */
+  fimLiberacao: string;
+  /** Só em provisório (null nos demais). A lista não tem data de revogação, então a
+   *  revisão da TI marcada E datada vale como evidência de que o acesso foi revogado.
+   *  Rejeitado ou ainda aguardando aprovação nunca liberou acesso: "Não se aplica".
+   *  Sem evidência, quem ainda está dentro do prazo fica "No prazo"; o vencido (ou
+   *  sem data fim) fica "Sem evidência" — é o que a auditoria cobra. */
+  evidenciaRevogacao: 'Com evidência' | 'No prazo' | 'Sem evidência' | 'Não se aplica' | null;
+  /** "Categoria Liberação" (multi-escolha) normalizada — "Banco de dados", "Acesso a
+   *  servidor", "Acesso pastas", "Acesso VPN"…; [] quando vazia. */
+  categorias: string[];
+  /** Texto de "Categoria Liberação" como está na lista (achatado, sem repetir) — o
+   *  agrupamento perde detalhe ("Vpn IBM Cloud" e "Vpn Flag Local" viram "Acesso VPN"). */
+  categoriasLista: string[];
 }
 
 export interface SgAcessosBloco {
@@ -216,6 +237,21 @@ export interface SgAcessosBloco {
   acessoDevOps: SimNao;
   acessoTS: SimNao;
   permissoesAdmin: SimNao;
+  // Revisão da TI e liberação — contam os mesmos campos que o drill da tabela filtra.
+  revisados: number;
+  aRevisar: number;
+  revisadosSemData: number;
+  definitivos: number;
+  provisorios: number;
+  provisoriosComEvidencia: number;
+  provisoriosNoPrazo: number;
+  provisoriosSemEvidencia: number;
+  /** Provisórios rejeitados ou ainda aguardando aprovação: nunca liberaram acesso. */
+  provisoriosNaoAplica: number;
+  /** Tipo de acesso: itens por categoria (um item conta em cada categoria que tiver). */
+  porCategoria: NameValue[];
+  /** Itens sem nenhuma categoria preenchida. */
+  semCategoria: number;
   itens: SgAcessoItem[];
 }
 
@@ -304,7 +340,10 @@ export function buildSgsiResponse(
   const l010 = by('010');
   const l011 = by('011');
   const l012 = by('012');
-  const l014 = by('014');
+  // Acessos é estoque, não fluxo: a auditoria de revisão/revogação precisa da base
+  // inteira. Com o recorte da sprint, o provisório vencido que ninguém tocou (sem
+  // modified_sp no período) sumia da tela — justamente o que a auditoria cobra.
+  const l014 = byAll('014');
   const l017 = by('017');
   const l018 = by('018');
 
@@ -475,16 +514,60 @@ export function buildSgsiResponse(
 
   // ── 014 Acessos ──
   const STATUS_014 = ['Status solicitação', 'Status'];
-  const acessos: SgAcessosBloco = {
-    total: l014.length,
-    pendentes: l014.filter((i) => statusMatches(i, STATUS_014, /pendente|aguard|análise|analise/i)).length,
-    porStatus: countBy(l014, ...STATUS_014),
-    porTipo: countBy(l014, 'Tipo solicitação'),
-    porProjeto: countBy(l014, 'Projeto'),
-    acessoDevOps: simNaoOf(l014, 'Acesso ao DevOps'),
-    acessoTS: simNaoOf(l014, 'Acesso ao TS'),
-    permissoesAdmin: simNaoOf(l014, 'Permissões administrativas'),
-    itens: recentes(l014, 300).map((i) => ({
+  // "Data fim liberação provisória" é dia de calendário: chega como meia-noite UTC
+  // ("2026-09-09T00:00:00Z", o formato visto na 014) ou de Brasília (T03:00:00Z).
+  // Nos dois casos o dia é o do texto, e o acesso vale até o fim dele em Brasília.
+  const dentroDoPrazo = (fimIso: string): boolean => {
+    const dia = /^(\d{4}-\d{2}-\d{2})/.exec(fimIso)?.[1];
+    if (!dia) return false;
+    const fimDoDia = Date.parse(`${dia}T23:59:59.999-03:00`);
+    return Number.isFinite(fimDoDia) && now.getTime() <= fimDoDia;
+  };
+  // "Categoria Liberação" (multi-escolha) chega como array, string JSON de array e
+  // até array com JSON dentro (visto em produção); os sinônimos viram um nome só,
+  // e o texto original fica guardado para o drawer e a busca.
+  const CATEGORIAS_014: [RegExp, string][] = [
+    [/banco/i, 'Banco de dados'],
+    [/servidor/i, 'Acesso a servidor'],
+    [/pasta/i, 'Acesso pastas'],
+    [/vpn/i, 'Acesso VPN'],
+    [/c[óo]digo/i, 'Acesso ao código fonte'],
+    [/devops/i, 'DevOps'],
+    [/primeiro/i, 'Primeiro acesso'],
+  ];
+  const categoriasDe = (valor: unknown): Pick<SgAcessoItem, 'categorias' | 'categoriasLista'> => {
+    const brutos = (Array.isArray(valor) ? valor : valor == null ? [] : [valor]).flatMap((v): string[] => {
+      const s = String(v).trim();
+      if (s.startsWith('[') && s.endsWith(']')) {
+        try {
+          const arr: unknown = JSON.parse(s);
+          if (Array.isArray(arr)) return arr.map((x) => String(x).trim());
+        } catch { /* texto comum que começa com colchete */ }
+      }
+      return [s];
+    });
+    const categorias: string[] = [];
+    const categoriasLista: string[] = [];
+    for (const nome of brutos) {
+      if (!nome) continue;
+      // original sem repetir, ignorando a caixa ("Acesso pastas" = "Acesso Pastas")
+      if (!categoriasLista.some((l) => l.toLowerCase() === nome.toLowerCase())) categoriasLista.push(nome);
+      const canonico = CATEGORIAS_014.find(([re]) => re.test(nome))?.[1] ?? nome;
+      if (!categorias.includes(canonico)) categorias.push(canonico);
+    }
+    return { categorias, categoriasLista };
+  };
+  // Sem teto (era 300): a 014 passa de 700 itens e os KPIs de revisão/liberação
+  // filtram esta lista no drill — com teto, contagem e tabela divergiriam.
+  const itens014 = recentes(l014, l014.length).map((i): SgAcessoItem => {
+    const ultimaRevisao = str(i, 'Data ultima revisão', 'Data última revisão') || '';
+    // Caixa de seleção do SharePoint: chega como boolean (true = marcada).
+    const revisado = isSim(i.fields['<---Preenchimento TI--->']);
+    const tipo = str(i, 'Tipo liberação');
+    const tipoLiberacao = /provis/i.test(tipo) ? 'Provisória' : /definit/i.test(tipo) ? 'Definitiva' : DASH;
+    const fimLiberacao = str(i, 'Data fim liberação provisória') || '';
+    const status = str(i, ...STATUS_014) || DASH;
+    return {
       id: i.item_id,
       titulo: str(i, 'TItulo', 'Título', 'Title') || `#${i.item_id}`,
       descricao: str(i, 'Descrição acesso') || DASH,
@@ -495,14 +578,55 @@ export function buildSgsiResponse(
       aprovadorTI: str(i, 'Aprovador TI') || DASH,
       aprovadorGestor: str(i, 'Aprovador Gestor') || DASH,
       cargo: DASH, // jobTitle do solicitante não vem no espelho v1 (campo pessoa)
-      status: str(i, ...STATUS_014) || DASH,
+      status,
       acessoDevOps: isSim(i.fields['Acesso ao DevOps']),
       acessoTS: isSim(i.fields['Acesso ao TS']),
       permissoesAdmin: isSim(i.fields['Permissões administrativas']),
-      ultimaRevisao: str(i, 'Data ultima revisão', 'Data última revisão') || '',
+      ultimaRevisao,
       // Só https: o valor vira href na tabela e no drawer.
       link: /^https:\/\//i.test(str(i, '_sharepoint_url')) ? str(i, '_sharepoint_url') : '',
-    })),
+      revisaoTI: revisado ? 'Acesso Revisado' : 'A revisar',
+      revisadoSemData: revisado && !ultimaRevisao,
+      tipoLiberacao,
+      fimLiberacao,
+      // A lista não tem data de revogação: a revisão da TI marcada E datada é a
+      // evidência. Rejeitado ou aguardando aprovação nunca liberou acesso.
+      evidenciaRevogacao: tipoLiberacao !== 'Provisória' ? null
+        : /rejeitad|aguard/i.test(status) ? 'Não se aplica'
+          : revisado && ultimaRevisao ? 'Com evidência'
+            : dentroDoPrazo(fimLiberacao) ? 'No prazo' : 'Sem evidência',
+      ...categoriasDe(i.fields['Categoria Liberação']),
+    };
+  });
+  const conta014 = (p: (a: SgAcessoItem) => boolean) => itens014.filter(p).length;
+  const porCategoria014 = (() => {
+    const mapa = new Map<string, number>();
+    for (const a of itens014) for (const c of a.categorias) mapa.set(c, (mapa.get(c) ?? 0) + 1);
+    return [...mapa.entries()]
+      .map(([name, value]) => ({ name, value }))
+      .sort((x, y) => y.value - x.value || x.name.localeCompare(y.name, 'pt-BR'));
+  })();
+  const acessos: SgAcessosBloco = {
+    total: l014.length,
+    pendentes: l014.filter((i) => statusMatches(i, STATUS_014, /pendente|aguard|análise|analise/i)).length,
+    porStatus: countBy(l014, ...STATUS_014),
+    porTipo: countBy(l014, 'Tipo solicitação'),
+    porProjeto: countBy(l014, 'Projeto'),
+    acessoDevOps: simNaoOf(l014, 'Acesso ao DevOps'),
+    acessoTS: simNaoOf(l014, 'Acesso ao TS'),
+    permissoesAdmin: simNaoOf(l014, 'Permissões administrativas'),
+    revisados: conta014((a) => a.revisaoTI === 'Acesso Revisado'),
+    aRevisar: conta014((a) => a.revisaoTI === 'A revisar'),
+    revisadosSemData: conta014((a) => a.revisadoSemData),
+    definitivos: conta014((a) => a.tipoLiberacao === 'Definitiva'),
+    provisorios: conta014((a) => a.tipoLiberacao === 'Provisória'),
+    provisoriosComEvidencia: conta014((a) => a.evidenciaRevogacao === 'Com evidência'),
+    provisoriosNoPrazo: conta014((a) => a.evidenciaRevogacao === 'No prazo'),
+    provisoriosSemEvidencia: conta014((a) => a.evidenciaRevogacao === 'Sem evidência'),
+    provisoriosNaoAplica: conta014((a) => a.evidenciaRevogacao === 'Não se aplica'),
+    porCategoria: porCategoria014,
+    semCategoria: conta014((a) => a.categorias.length === 0),
+    itens: itens014,
   };
 
   // ── Gestão à vista: dias sem ocorrências (atemporal — ignora o período) ──

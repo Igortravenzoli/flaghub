@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
-import { useBIInfraSgsi, NameValue, SimNao, SgMudancaItem } from '@/hooks/useBIInfra';
+import { useBIInfraSgsi, NameValue, SimNao, SgMudancaItem, SgAcessoItem } from '@/hooks/useBIInfra';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +46,13 @@ function fmtDate(iso?: string | null) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso; // texto livre (ex.: "Dia: 09/10/2023 - 06h27")
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+/** Data sem hora (dia de calendário): usa o dia do texto, sem converter fuso —
+ *  "2026-09-09T00:00:00Z" é 09/09 mesmo com o navegador em Brasília. */
+function fmtDiaCalendario(iso?: string | null) {
+  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
+  return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : fmtDate(iso);
 }
 
 function pct(parte: number, todo: number) {
@@ -97,7 +104,7 @@ function KpiTile({ label, value, sub, color, onClick, active, bare }: {
     </>
   );
   return onClick
-    ? <button type="button" onClick={onClick} className={base}>{inner}</button>
+    ? <button type="button" onClick={onClick} aria-pressed={!!active} className={base}>{inner}</button>
     : <div className={base}>{inner}</div>;
 }
 
@@ -435,6 +442,46 @@ function LinkSharePoint({ href, texto }: { href: string; texto: string }) {
   );
 }
 
+/** Revisão da TI do acesso: revisado (verde), a revisar (âmbar) ou marcado sem
+ *  data (vermelho — a caixa está marcada, mas falta a evidência datada). */
+/** Tons dos selos de auditoria: texto -700 no claro (contraste AA em 10–11px sobre o
+ *  tint) e -400 no escuro. Classes inteiras, para o Tailwind não podar nenhuma. */
+const TOM_SELO = {
+  verde: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+  ambar: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  azul: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
+  vermelho: 'bg-red-500/15 text-red-700 dark:text-red-400',
+  cinza: 'bg-slate-500/15 text-slate-600 dark:text-slate-400',
+} as const;
+
+function RevisaoTIBadge({ acesso }: { acesso: Pick<SgAcessoItem, 'revisaoTI' | 'revisadoSemData'> }) {
+  const [texto, tom] = acesso.revisadoSemData ? ['Revisado sem data', TOM_SELO.vermelho]
+    : acesso.revisaoTI === 'Acesso Revisado' ? ['Acesso Revisado', TOM_SELO.verde] : ['A revisar', TOM_SELO.ambar];
+  return (
+    <span className={`inline-block whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium ${tom}`}>
+      {texto}
+    </span>
+  );
+}
+
+/** Tipo de liberação; no provisório, a situação da evidência de revogação. */
+function LiberacaoBadge({ acesso }: { acesso: Pick<SgAcessoItem, 'tipoLiberacao' | 'evidenciaRevogacao'> }) {
+  if (acesso.tipoLiberacao !== 'Provisória' || !acesso.evidenciaRevogacao) {
+    return <span className="whitespace-nowrap">{acesso.tipoLiberacao}</span>;
+  }
+  const tom = acesso.evidenciaRevogacao === 'Com evidência' ? TOM_SELO.verde
+    : acesso.evidenciaRevogacao === 'No prazo' ? TOM_SELO.azul
+      : acesso.evidenciaRevogacao === 'Não se aplica' ? TOM_SELO.cinza : TOM_SELO.vermelho;
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      Provisória
+      <span className={`rounded px-1 py-0.5 text-[10px] font-medium ${tom}`}>
+        {acesso.evidenciaRevogacao}
+      </span>
+    </span>
+  );
+}
+
 // ── Detalhe do registro (drawer) ──────────────────────────────────────
 
 interface RecordDetail {
@@ -539,13 +586,25 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
   );
   const acessoItens = (d?.acessos.itens ?? []).filter((i) => {
     const drillOk = (() => {
+      // Barra "Tipo de acesso": uma categoria, ou os itens sem nenhuma.
+      if (drill?.startsWith('acs:cat:')) {
+        const categoria = drill.slice('acs:cat:'.length);
+        return categoria === 'Sem categoria' ? i.categorias.length === 0 : i.categorias.includes(categoria);
+      }
       switch (drill) {
         case 'acs:pendentes': return /pendente|aguard|análise|analise/i.test(i.status);
         case 'acs:admin': return i.permissoesAdmin;
+        // Auditoria: os mesmos campos que as contagens do hook usam.
+        case 'acs:revisado': return i.revisaoTI === 'Acesso Revisado';
+        case 'acs:a-revisar': return i.revisaoTI === 'A revisar';
+        case 'acs:sem-data': return i.revisadoSemData;
+        case 'acs:definitiva': return i.tipoLiberacao === 'Definitiva';
+        case 'acs:provisoria': return i.tipoLiberacao === 'Provisória';
+        case 'acs:prov-sem-evidencia': return i.evidenciaRevogacao === 'Sem evidência';
         default: return true;
       }
     })();
-    return drillOk && hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.status);
+    return drillOk && hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.status, i.revisadoSemData ? 'Revisado sem data' : i.revisaoTI, i.tipoLiberacao, i.evidenciaRevogacao, ...i.categoriasLista);
   });
 
   // ── Contadores da busca por seção (ignora drill) — para os chips cross-seção ──
@@ -558,7 +617,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
       conformidade:
         d.naoConformidades.itens.filter((i) => hit(q, i.processo, i.detalhes, i.causaRaiz, i.status, i.solicitante)).length +
         d.melhorias.itens.filter((i) => hit(q, i.oportunidade, i.processo, i.beneficios, i.status, i.solicitante)).length,
-      acessos: d.acessos.itens.filter((i) => hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.status)).length,
+      acessos: d.acessos.itens.filter((i) => hit(q, i.titulo, i.descricao, i.tipo, i.projeto, i.solicitante, i.aprovadorTI, i.aprovadorGestor, i.status, i.revisadoSemData ? 'Revisado sem data' : i.revisaoTI, i.tipoLiberacao, i.evidenciaRevogacao, ...i.categoriasLista)).length,
     } as Record<string, number>;
   }, [q, d]);
   const totalHits = searchCounts ? Object.values(searchCounts).reduce((s, n) => s + n, 0) : 0;
@@ -678,9 +737,13 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
         <secaoAtiva.Icon className="h-4 w-4 text-primary shrink-0" />
         <span className="text-sm font-bold tracking-tight">{secaoAtiva.label}</span>
         <span className="font-mono text-[10px] text-muted-foreground/70">SG-LST-{secaoAtiva.badge}</span>
+        {activeSecao === 'acessos' && (
+          <span className="text-[11px] text-muted-foreground">· base completa — o filtro de sprint não se aplica aos acessos</span>
+        )}
       </div>
 
-      {d && d.totalItens === 0 && d.totalItensBase > 0 ? (
+      {/* Acessos usa a base completa: período vazio não esconde a seção. */}
+      {d && d.totalItens === 0 && d.totalItensBase > 0 && activeSecao !== 'acessos' ? (
         <DashboardEmptyState description={`Nenhuma atividade SG no período selecionado (${d.totalItensBase} itens no histórico). Selecione "Todas as Sprints" para ver o panorama completo.`} />
       ) : (
       <Tabs value={activeSecao}>
@@ -913,9 +976,47 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
             <KpiTile label="Pendentes" value={d?.acessos.pendentes ?? '—'} color="#f59e0b" onClick={() => toggleDrill('acs:pendentes')} active={drill === 'acs:pendentes'} />
             <KpiTile label="Permissões admin" value={d?.acessos.permissoesAdmin.sim ?? '—'} sub="exigem revisão" color="#ef4444" onClick={() => toggleDrill('acs:admin')} active={drill === 'acs:admin'} />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <MiniStat label="Acesso DevOps" value={d?.acessos.acessoDevOps.sim ?? '—'} tone="#3b82f6" />
-            <MiniStat label="Acesso TS" value={d?.acessos.acessoTS.sim ?? '—'} tone="#8b5cf6" />
+          {/* Tipo de acesso ("Categoria Liberação"); clique filtra a tabela, como os KPIs. */}
+          <div role="group" aria-label="Tipo de acesso" className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <span className="mr-1 text-[11px] font-medium text-muted-foreground">Tipo de acesso</span>
+            {isLoading || !d ? <Skeleton className="h-5 w-64" /> : (
+              [...d.acessos.porCategoria, ...(d.acessos.semCategoria > 0 ? [{ name: 'Sem categoria', value: d.acessos.semCategoria }] : [])].map((c) => {
+                const chave = `acs:cat:${c.name}`;
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() => toggleDrill(chave)}
+                    aria-pressed={drill === chave}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${drill === chave ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card hover:bg-muted/40'} ${c.name === 'Sem categoria' && drill !== chave ? 'text-muted-foreground' : ''}`}
+                  >
+                    {c.name}
+                    <span className="font-mono font-bold">{c.value}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {/* Auditoria de acessos. A caixa "<---Preenchimento TI--->" marcada, com a data da
+              última revisão, é a evidência de que a TI validou o acesso (revogou, alterou ou
+              manteve). Nos provisórios — a lista não tem data de revogação — ela vale como
+              evidência de que foram revogados; o provisório ainda no prazo não é cobrado.
+              Lado a lado só em xl: em lg, com a sidebar aberta, os tiles ficavam com ~80px. */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <GroupCard title="Revisão TI" cols={3}>
+              <KpiTile bare label="Acesso revisado" value={d?.acessos.revisados ?? '—'} sub={d && `${pct(d.acessos.revisados, d.acessos.total)}% do total`} color="#10b981" onClick={() => toggleDrill('acs:revisado')} active={drill === 'acs:revisado'} />
+              {/* 100 − revisados: arredondados em separado, lado a lado somariam 101%. */}
+              <KpiTile bare label="A revisar" value={d?.acessos.aRevisar ?? '—'} sub={d && `${d.acessos.total > 0 ? 100 - pct(d.acessos.revisados, d.acessos.total) : 0}% do total`} color="#f59e0b" onClick={() => toggleDrill('acs:a-revisar')} active={drill === 'acs:a-revisar'} />
+              <KpiTile bare label="Revisado sem data" value={d?.acessos.revisadosSemData ?? '—'} sub="caixa marcada sem data" color={d && d.acessos.revisadosSemData > 0 ? '#ef4444' : '#10b981'} onClick={() => toggleDrill('acs:sem-data')} active={drill === 'acs:sem-data'} />
+            </GroupCard>
+            <GroupCard title="Liberação · evidência de revogação" cols={3}>
+              <KpiTile bare label="Definitivos" value={d?.acessos.definitivos ?? '—'} sub={d && `${pct(d.acessos.definitivos, d.acessos.total)}% do total`} color="#3b82f6" onClick={() => toggleDrill('acs:definitiva')} active={drill === 'acs:definitiva'} />
+              {/* % sobre os provisórios que já exigiam revogação (com + sem evidência): os
+                  rejeitados/aguardando nunca liberaram acesso e os no prazo ainda não venceram. */}
+              <KpiTile bare label="Provisórios" value={d?.acessos.provisorios ?? '—'} sub={d && d.acessos.provisoriosComEvidencia + d.acessos.provisoriosSemEvidencia > 0 ? `${pct(d.acessos.provisoriosComEvidencia, d.acessos.provisoriosComEvidencia + d.acessos.provisoriosSemEvidencia)}% com evidência` : undefined} color="#8b5cf6" onClick={() => toggleDrill('acs:provisoria')} active={drill === 'acs:provisoria'} />
+              {/* "Sem evidência" (e não "vencidos"): inclui provisório sem data fim registrada. */}
+              <KpiTile bare label="Sem evidência" value={d?.acessos.provisoriosSemEvidencia ?? '—'} sub={d && `${d.acessos.provisoriosNoPrazo} no prazo · ${d.acessos.provisoriosNaoAplica} não liberados`} color={d && d.acessos.provisoriosSemEvidencia > 0 ? '#ef4444' : '#10b981'} onClick={() => toggleDrill('acs:prov-sem-evidencia')} active={drill === 'acs:prov-sem-evidencia'} />
+            </GroupCard>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             <MiniDonut title="Por status" data={d?.acessos.porStatus} isLoading={isLoading} onSelect={setQ} />
@@ -934,7 +1035,14 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
                 { label: 'Aprovação Gestor', value: r.aprovadorGestor }, { label: 'Acesso DevOps', value: r.acessoDevOps ? 'Sim' : 'Não' },
                 { label: 'Acesso TS', value: r.acessoTS ? 'Sim' : 'Não' }, { label: 'Admin', value: r.permissoesAdmin ? 'Sim' : 'Não' },
                 { label: 'Status', value: <StatusBadge status={r.status} /> }, { label: 'Descrição', value: r.descricao },
-                { label: 'Última revisão', value: fmtDate(r.ultimaRevisao) },
+                { label: 'Última revisão', value: r.revisadoSemData ? <span className="font-medium text-red-500">sem data</span> : fmtDate(r.ultimaRevisao) },
+                { label: 'Revisão TI', value: <RevisaoTIBadge acesso={r} /> },
+                { label: 'Liberação', value: <LiberacaoBadge acesso={r} /> },
+                { label: 'Tipo de acesso', value: r.categorias.length > 0 ? r.categorias.join(', ') : '—' },
+                // Texto original da lista: o agrupamento em categorias canônicas não pode esconder o que foi pedido.
+                { label: 'Categoria na lista', value: r.categoriasLista.length > 0 ? r.categoriasLista.join(', ') : '—' },
+                // Data de calendário (sem fuso): "até 11/06" não pode virar 10/06 no fuso de Brasília.
+                ...(r.tipoLiberacao === 'Provisória' ? [{ label: 'Fim da liberação', value: fmtDiaCalendario(r.fimLiberacao) }] : []),
                 { label: 'SharePoint', value: <LinkSharePoint href={r.link} texto="Abrir item na lista" /> },
               ],
             })}
@@ -947,7 +1055,10 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
               { key: 'aprovadorGestor', header: 'Aprovação Gestor' },
               { key: 'permissoesAdmin', header: 'Admin', render: r => r.permissoesAdmin ? <Badge variant="destructive" className="text-[10px]">Sim</Badge> : 'Não' },
               { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
-              { key: 'ultimaRevisao', header: 'Última revisão', render: r => fmtDate(r.ultimaRevisao) },
+              { key: 'tipoLiberacao', header: 'Liberação', render: r => <LiberacaoBadge acesso={r} /> },
+              { key: 'revisaoTI', header: 'Revisão TI', render: r => <RevisaoTIBadge acesso={r} /> },
+              // Marcado como revisado sem data: a evidência de auditoria está incompleta.
+              { key: 'ultimaRevisao', header: 'Última revisão', render: r => r.revisadoSemData ? <span className="font-medium text-red-500">sem data</span> : fmtDate(r.ultimaRevisao) },
               // As colunas de senha saíram do espelho — o detalhe fica no próprio item.
               { key: 'link', header: 'SharePoint', render: r => <LinkSharePoint href={r.link} texto="Abrir" /> },
             ]}
