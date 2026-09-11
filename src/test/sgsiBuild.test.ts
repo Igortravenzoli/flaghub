@@ -226,6 +226,75 @@ describe('buildSgsiResponse', () => {
     expect(a).toMatchObject({ total: 2, provisorios: 2, provisoriosComEvidencia: 1, provisoriosSemEvidencia: 1 });
   });
 
+  it('acessos: o calendário recorta pela vigência — pedido até o fim do período e sem fim comprovado antes do início', () => {
+    const PTI = '<---Preenchimento TI--->';
+    const REV = 'Data ultima revisão';
+    const FIM = 'Data fim liberação provisória';
+    const def = (status: string, extra: Record<string, unknown> = {}) => ({ 'Tipo liberação': 'Definitiva', 'Status solicitação': status, ...extra });
+    const prov = (status: string, extra: Record<string, unknown> = {}) => ({ 'Tipo liberação': 'Provisória', 'Status solicitação': status, ...extra });
+    // 01/06 a 10/06/2026, como o seletor entrega: meia-noite local de cada dia
+    const periodo = { from: new Date(2026, 5, 1), to: new Date(2026, 5, 10) };
+    const rows = [
+      item('014', 501, def('Realizado'), '2024-01-10T12:00:00Z'),                                                    // definitivo ativo antigo
+      item('014', 502, def('Revogado', { [PTI]: true, [REV]: '2026-05-20T15:00:00Z' }), '2025-01-10T12:00:00Z'),     // revogado antes do período
+      item('014', 503, def('Revogado', { [PTI]: true, [REV]: '2026-06-03T15:00:00Z' }), '2025-01-10T12:00:00Z'),     // revogado durante
+      item('014', 504, def('Revogado', { [PTI]: false, [REV]: '2026-05-20T15:00:00Z' }), '2025-01-10T12:00:00Z'),    // sem a caixa: revogação não comprovada
+      item('014', 505, prov('Revogado', { [PTI]: true, [REV]: '2026-05-15T15:00:00Z', [FIM]: '2026-05-10T00:00:00Z' }), '2026-05-01T12:00:00Z'), // encerrado antes
+      item('014', 506, prov('Revogado', { [PTI]: true, [REV]: '2026-06-01T15:00:00Z', [FIM]: '2026-05-10T00:00:00Z' }), '2026-05-01T12:00:00Z'), // vencido, revogado no 1º dia
+      item('014', 507, prov('Revogado', { [PTI]: true, [REV]: '2026-04-20T15:00:00Z', [FIM]: '2026-06-01T00:00:00Z' }), '2026-04-01T12:00:00Z'), // fim no 1º dia: vale o dia todo
+      item('014', 508, prov('Realizado', { [PTI]: false, [FIM]: '2026-03-01T00:00:00Z' }), '2026-02-01T12:00:00Z'), // vencido sem evidência: continua aparecendo
+      item('014', 509, def('Realizado'), '2026-06-11T02:00:00Z'),                                                    // 23:00 de 10/06 em Brasília: último dia
+      item('014', 510, def('Realizado'), '2026-06-11T04:00:00Z'),                                                    // 01:00 de 11/06: depois do período
+      item('014', 511, def('Rejeitado'), '2026-05-01T12:00:00Z'),                                                    // rejeitado antes: nunca liberou
+      item('014', 512, prov('Rejeitado', { [FIM]: '2026-06-30T00:00:00Z' }), '2026-06-05T12:00:00Z'),              // rejeitado no período: pedido do período
+      item('014', 513, def('Aguardando aprovação TI'), '2026-01-05T12:00:00Z'),                                    // pedido em aberto desde janeiro
+      // borda do início (00:00 de 01/06 em Brasília = 03:00Z) e ramos da regra
+      item('014', 514, def('Revogado', { [PTI]: true, [REV]: '2026-06-01T02:59:59Z' }), '2025-01-10T12:00:00Z'), // revogado às 23:59:59 de 31/05: fora
+      item('014', 515, def('Revogado', { [PTI]: true, [REV]: '2026-06-01T03:00:00Z' }), '2025-01-10T12:00:00Z'), // revogado à 00:00 de 01/06: dentro
+      item('014', 516, prov('Revogado', { [PTI]: true, [REV]: '2026-05-20T15:00:00Z', [FIM]: '2026-05-31T00:00:00Z' }), '2026-05-01T12:00:00Z'), // fim na véspera: fora
+      item('014', 517, prov('Aprovado', { [PTI]: true, [REV]: '2026-05-20T15:00:00Z', [FIM]: '2026-05-10T00:00:00Z' }), '2026-05-01T12:00:00Z'), // Aprovado liberou: encerra como os outros
+      item('014', 518, prov('Aguardando aprovação TI', { [PTI]: true, [REV]: '2026-05-20T15:00:00Z', [FIM]: '2026-05-10T00:00:00Z' }), '2026-05-01T12:00:00Z'), // aguardando: a caixa não encerra pedido aberto
+      item('014', 519, prov('Revogado', { [PTI]: true, [REV]: '2026-05-20T15:00:00Z' }), '2026-05-01T12:00:00Z'), // com evidência e sem data fim: encerra na revisão
+      item('014', 520, def('Revogado', { [PTI]: true, [REV]: 'n/d' }), '2025-01-10T12:00:00Z'), // revisão ilegível: fim não comprovado
+    ];
+    const VIGENTES = [501, 503, 504, 506, 507, 508, 509, 512, 513, 515, 518, 520];
+    const a = buildSgsiResponse(rows, null, NOW, undefined, periodo).acessos;
+    expect(a.itens.map(i => i.id).sort()).toEqual(VIGENTES);
+    // contagens e gráficos saem do mesmo recorte da tabela
+    expect(a.total).toBe(12);
+    expect(a.porStatus.reduce((s, x) => s + x.value, 0)).toBe(12);
+    expect(a).toMatchObject({ definitivos: 7, provisorios: 5, provisoriosComEvidencia: 2, provisoriosSemEvidencia: 1, provisoriosNaoAplica: 2 });
+    // no formato da chamada real do hook (range + período de acessos) a 014 não pode
+    // voltar a seguir o recorte por criação/modificação dos outros blocos
+    expect(buildSgsiResponse(rows, null, NOW, periodo, periodo).acessos.itens.map(i => i.id).sort()).toEqual(VIGENTES);
+    // selos na base completa: Aprovado com evidência conta como evidência; aguardando não se aplica
+    const base = buildSgsiResponse(rows, null, NOW).acessos;
+    expect(base.itens.find(i => i.id === 517)?.evidenciaRevogacao).toBe('Com evidência');
+    expect(base.itens.find(i => i.id === 518)?.evidenciaRevogacao).toBe('Não se aplica');
+    // só com a sprint (range sem período de acessos) a 014 segue inteira
+    expect(buildSgsiResponse(rows, null, NOW, periodo).acessos.total).toBe(20);
+  });
+
+  it('acessos: o calendário usa o dia de Brasília mesmo com o navegador em outro fuso', () => {
+    // Quem roda a suíte está em Brasília: sem trocar o fuso, um recorte por
+    // "meia-noite local" passaria igual. Em UTC ele erraria as duas bordas.
+    const fusoOriginal = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      const periodo = { from: new Date(2026, 5, 1), to: new Date(2026, 5, 10) };
+      expect(periodo.from.toISOString()).toBe('2026-06-01T00:00:00.000Z'); // o fuso trocou mesmo
+      const a = buildSgsiResponse([
+        item('014', 601, { 'Tipo liberação': 'Definitiva', 'Status solicitação': 'Revogado', '<---Preenchimento TI--->': true, 'Data ultima revisão': '2026-06-01T02:59:59Z' }, '2025-01-10T12:00:00Z'), // 23:59:59 de 31/05 em Brasília: fora
+        item('014', 602, { 'Tipo liberação': 'Definitiva', 'Status solicitação': 'Realizado' }, '2026-06-11T02:00:00Z'), // 23:00 de 10/06 em Brasília: dentro
+        item('014', 603, { 'Tipo liberação': 'Definitiva', 'Status solicitação': 'Realizado' }, '2026-06-11T04:00:00Z'), // 01:00 de 11/06: fora
+      ], null, NOW, undefined, periodo).acessos;
+      expect(a.itens.map(i => i.id)).toEqual([602]);
+    } finally {
+      if (fusoOriginal === undefined) delete process.env.TZ;
+      else process.env.TZ = fusoOriginal;
+    }
+  });
+
   it('acessos: data fim é dia de calendário — vale até o fim do dia em Brasília', () => {
     const provisorio = (fimIso: string) => ({ 'Tipo liberação': 'Provisória', 'Status solicitação': 'Realizado', 'Data fim liberação provisória': fimIso });
     const situacao = (fimIso: string, agora: string) =>

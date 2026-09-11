@@ -120,9 +120,12 @@ export default function InfraestruturaDashboard() {
       ? (effectiveSprints[0].split('\\').pop() || effectiveSprints[0])
       : `${effectiveSprints.length} sprints`;
 
+  // Fallback estável: um `new Date()` a cada render mudava o período a cada render e
+  // fazia o SGSI remontar (select) enquanto os itens do DevOps não chegam.
+  const hoje = useMemo(() => new Date(), []);
   const effectiveRange = customActive && customRange
     ? customRange
-    : sprintUnionRange || { from: minDate || new Date(), to: maxDate || new Date() };
+    : sprintUnionRange || { from: minDate || hoje, to: maxDate || hoje };
 
   const scoped = useInfraestruturaKpis(effectiveRange.from, effectiveRange.to, isAllSprints ? 'all' : effectiveSprints);
 
@@ -138,7 +141,9 @@ export default function InfraestruturaDashboard() {
     () => scoped.items.filter((i) => i.id && ['Product Backlog Item', 'User Story', 'Bug'].includes(i.work_item_type || '')).map((i) => i.id as number),
     [scoped.items]
   );
-  const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0);
+  // Só a aba Esteira / Saúde lê a saúde dos PBIs. Buscar em qualquer aba baixava
+  // pbi_health_summary e pbi_lifecycle_summary a cada período testado (egress).
+  const pbiHealthBatch = usePbiHealthBatch(pbiHealthIds, pbiHealthIds.length > 0 && activeTab === 'esteira-saude');
 
   const toggleKpi = (f: InfraKpiFilter) => setKpiFilter(prev => prev === f ? 'all' : f);
   const toggleHealth = (f: InfraHealthFilter) => setHealthFilter(prev => prev === f ? 'all' : f);
@@ -244,10 +249,14 @@ export default function InfraestruturaDashboard() {
           presets={[]}
           dateFrom={effectiveRange.from}
           dateTo={effectiveRange.to}
-          minDate={minDate}
-          maxDate={maxDate}
-          availableDateKeys={availableDateKeys}
-          onCustomRange={(from, to) => { setCustomRange({ from, to }); setCustomActive(true); setKpiFilter('all'); }}
+          /* Os dias liberados vêm da atividade no DevOps. Na Gestão SG isso não diz
+             nada: um semestre de acessos começa em 01/01 mesmo sem work item no dia. */
+          minDate={activeTab === 'gestao-sg' ? undefined : minDate}
+          maxDate={activeTab === 'gestao-sg' ? undefined : maxDate}
+          availableDateKeys={activeTab === 'gestao-sg' ? undefined : availableDateKeys}
+          // O período do calendário sobrepõe a sprint também nos dados do DevOps: com a
+          // sprint ainda marcada, os KPIs seguiam nela sob o rótulo "Custom".
+          onCustomRange={(from, to) => { setCustomRange({ from, to }); setCustomActive(true); setSprintSelection([]); setKpiFilter('all'); }}
           onExportCSV={handleExportCSV}
           onExportPDF={handleExportPDF}
         />
@@ -460,7 +469,8 @@ export default function InfraestruturaDashboard() {
               <DashboardKpiCard label="Crítica" value={pbiHealthBatch.overview.vermelho} icon={AlertTriangle} isLoading={pbiHealthBatch.isLoading} accent="bg-destructive" onClick={() => toggleHealth('vermelho')} active={healthFilter === 'vermelho'} />
             </div>
 
-            {!isLoading && healthFilteredItems.length === 0 ? (
+            {/* Com filtro de saúde e a busca ainda carregando, lista vazia é espera, não resultado. */}
+            {!isLoading && !(healthFilter !== 'all' && pbiHealthBatch.isLoading) && healthFilteredItems.length === 0 ? (
               <DashboardEmptyState description="Nenhum item monitorável na esteira de Infraestrutura para o filtro selecionado." />
             ) : (
               <DashboardDataTable
@@ -482,9 +492,10 @@ export default function InfraestruturaDashboard() {
           <TabsContent value="gestao-sg" className="mt-0">
             {(() => {
               // Sprint selecionada (ou range custom) limita o SGSI por data de
-              // criação/modificação; "Todas as Sprints" mostra tudo.
+              // criação/modificação; "Todas as Sprints" mostra tudo. Acessos só
+              // aceita o período do calendário, e recorta pela vigência do acesso.
               const sgsiRange = customActive && customRange ? customRange : sprintUnionRange;
-              return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} secao={sgsiSecao} onSecaoChange={setSgsiSecao} />;
+              return <BIInfraSgsiPanel dateFrom={sgsiRange?.from} dateTo={sgsiRange?.to} periodoDoCalendario={customActive && !!customRange} secao={sgsiSecao} onSecaoChange={setSgsiSecao} />;
             })()}
           </TabsContent>
 
@@ -493,7 +504,10 @@ export default function InfraestruturaDashboard() {
           </TabsContent>
 
           <TabsContent value="timelog" className="mt-0">
-            <InfraTimelogTab dateFrom={effectiveRange.from} dateTo={effectiveRange.to} items={scoped.items} />
+            {/* Com o calendário, os itens do escopo são cortados pelas próprias datas de
+                criação/alteração — e o item aberto antes do período, trabalhado nele, perdia
+                as horas. Os apontamentos já vêm filtrados por log_date no servidor. */}
+            <InfraTimelogTab dateFrom={effectiveRange.from} dateTo={effectiveRange.to} items={customActive ? allItems : scoped.items} />
           </TabsContent>
 
           <TabsContent value="hub-uptime" className="mt-0">

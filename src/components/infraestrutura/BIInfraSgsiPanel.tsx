@@ -48,6 +48,11 @@ function fmtDate(iso?: string | null) {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
+/** Dia escolhido no seletor de período (meia-noite local) em dd/mm/aa. */
+function fmtDiaLocal(d: Date) {
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
 /** Data sem hora (dia de calendário): usa o dia do texto, sem converter fuso —
  *  "2026-09-09T00:00:00Z" é 09/09 mesmo com o navegador em Brasília. */
 function fmtDiaCalendario(iso?: string | null) {
@@ -521,14 +526,16 @@ function RecordSheet({ detail, onClose }: { detail: RecordDetail | null; onClose
 
 // ── Painel principal ──────────────────────────────────────────────────
 
-export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecaoChange }: {
+export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false, secao = 'mudancas', onSecaoChange }: {
   dateFrom?: Date; dateTo?: Date;
+  /** O período veio do calendário, e não da sprint: só então Acessos é recortado (pela vigência). */
+  periodoDoCalendario?: boolean;
   /** Seção inicial — semeada pelo dropdown da aba Gestão SG no dashboard */
   secao?: string;
   /** Mantém o dropdown da aba em sincronia quando as pills trocam de seção */
   onSecaoChange?: (secao: string) => void;
 }) {
-  const { data, isLoading, isError, refetch } = useBIInfraSgsi(dateFrom, dateTo);
+  const { data, isLoading, isError, refetch } = useBIInfraSgsi(dateFrom, dateTo, periodoDoCalendario);
 
   // Seção controlada pelo painel (pills); semeada e sincronizada com o prop.
   const [activeSecao, setActiveSecao] = useState(secao);
@@ -733,18 +740,27 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, secao = 'mudancas', onSecao
       )}
 
       {/* ── Rótulo da seção ativa (troca de seção pelo dropdown ▼ da aba Gestão SG) ── */}
-      <div className="flex items-center gap-2 border-b border-border pb-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-border pb-2">
         <secaoAtiva.Icon className="h-4 w-4 text-primary shrink-0" />
         <span className="text-sm font-bold tracking-tight">{secaoAtiva.label}</span>
         <span className="font-mono text-[10px] text-muted-foreground/70">SG-LST-{secaoAtiva.badge}</span>
         {activeSecao === 'acessos' && (
-          <span className="text-[11px] text-muted-foreground">· base completa — o filtro de sprint não se aplica aos acessos</span>
+          <span className="text-[11px] text-muted-foreground">
+            {periodoDoCalendario && dateFrom && dateTo
+              ? `· vigentes de ${fmtDiaLocal(dateFrom)} a ${fmtDiaLocal(dateTo)}: pedidos até o fim do período e sem revogação comprovada antes do início`
+              : dateFrom && dateTo
+                ? '· base completa — a sprint não recorta os acessos; use o calendário para ver os vigentes num período'
+                : '· base completa'}
+          </span>
         )}
       </div>
 
-      {/* Acessos usa a base completa: período vazio não esconde a seção. */}
+      {/* Acessos não segue o recorte dos outros blocos: período sem atividade SG não esconde a seção. */}
       {d && d.totalItens === 0 && d.totalItensBase > 0 && activeSecao !== 'acessos' ? (
-        <DashboardEmptyState description={`Nenhuma atividade SG no período selecionado (${d.totalItensBase} itens no histórico). Selecione "Todas as Sprints" para ver o panorama completo.`} />
+        <DashboardEmptyState description={periodoDoCalendario && dateFrom && dateTo
+          // Com o calendário a sprint já fica em "Todas as Sprints": o convite é trocar o período.
+          ? `Nenhuma atividade SG de ${fmtDiaLocal(dateFrom)} a ${fmtDiaLocal(dateTo)} (${d.totalItensBase} itens no histórico). Escolha outro período no calendário, ou clique em "Todas as Sprints" para voltar ao panorama completo.`
+          : `Nenhuma atividade SG no período selecionado (${d.totalItensBase} itens no histórico). Selecione "Todas as Sprints" para ver o panorama completo.`} />
       ) : (
       <Tabs value={activeSecao}>
 
