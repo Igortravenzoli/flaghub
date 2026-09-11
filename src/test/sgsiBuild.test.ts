@@ -148,6 +148,106 @@ describe('buildSgsiResponse', () => {
     expect(a72.link).toBe('');
   });
 
+  it('acessos: revisão TI, liberação e evidência de revogação dos provisórios (NOW = 11/06/2026)', () => {
+    const PTI = '<---Preenchimento TI--->';
+    const REV = 'Data ultima revisão';
+    const FIM = 'Data fim liberação provisória';
+    const a = buildSgsiResponse([
+      item('014', 81, { 'Tipo liberação': 'Definitiva', [PTI]: true, [REV]: '2026-06-01T10:00:00Z' }),
+      item('014', 82, { 'Tipo liberação': 'Definitiva', [PTI]: true }),                                   // marcado sem data
+      item('014', 83, { 'Tipo liberação': 'Provisória', [PTI]: 'Sim', [REV]: '2026-06-06T10:00:00Z', [FIM]: '2026-06-05T00:00:00Z' }),
+      item('014', 84, { 'Tipo liberação': 'Provisória', [PTI]: false, [REV]: '2026-05-01T10:00:00Z', [FIM]: '2026-06-05T00:00:00Z' }), // vencido
+      item('014', 85, { 'Tipo liberação': 'Provisória', [PTI]: false, [FIM]: '2026-06-11T00:00:00Z' }),  // vence hoje: ainda no prazo
+      item('014', 86, { 'Tipo liberação': 'Provisória', [PTI]: true, [FIM]: '2026-06-01T00:00:00Z' }),   // marcado sem data não é evidência
+      item('014', 87, { 'Tipo liberação': 'Provisória' }),                                                // sem caixa e sem data fim
+      item('014', 88, { 'Status solicitação': 'Aprovado' }),                                              // sem tipo de liberação
+      // nunca liberaram acesso: não entram na conta de evidência
+      item('014', 89, { 'Tipo liberação': 'Provisória', 'Status solicitação': 'Rejeitado', [PTI]: false, [FIM]: '2026-06-01T00:00:00Z' }),
+      item('014', 90, { 'Tipo liberação': 'Provisória', 'Status solicitação': 'Aguardando Gestor', [FIM]: '2026-06-01T00:00:00Z' }),
+    ], null, NOW).acessos;
+
+    const por = (id: number) => a.itens.find(i => i.id === id)!;
+    expect(por(81)).toMatchObject({ revisaoTI: 'Acesso Revisado', revisadoSemData: false, tipoLiberacao: 'Definitiva', evidenciaRevogacao: null });
+    expect(por(82)).toMatchObject({ revisaoTI: 'Acesso Revisado', revisadoSemData: true });
+    expect(por(83)).toMatchObject({ revisaoTI: 'Acesso Revisado', tipoLiberacao: 'Provisória', evidenciaRevogacao: 'Com evidência', fimLiberacao: '2026-06-05T00:00:00Z' });
+    expect(por(84)).toMatchObject({ revisaoTI: 'A revisar', evidenciaRevogacao: 'Sem evidência' });
+    expect(por(85)).toMatchObject({ revisaoTI: 'A revisar', evidenciaRevogacao: 'No prazo' });
+    expect(por(86)).toMatchObject({ revisadoSemData: true, evidenciaRevogacao: 'Sem evidência' });
+    expect(por(87)).toMatchObject({ revisaoTI: 'A revisar', evidenciaRevogacao: 'Sem evidência' });
+    expect(por(88)).toMatchObject({ tipoLiberacao: '—', evidenciaRevogacao: null });
+    expect(por(89)).toMatchObject({ tipoLiberacao: 'Provisória', evidenciaRevogacao: 'Não se aplica' });
+    expect(por(90)).toMatchObject({ evidenciaRevogacao: 'Não se aplica' });
+
+    expect(a).toMatchObject({
+      total: 10, revisados: 4, aRevisar: 6, revisadosSemData: 2,
+      definitivos: 2, provisorios: 7, provisoriosComEvidencia: 1, provisoriosNoPrazo: 1, provisoriosSemEvidencia: 3, provisoriosNaoAplica: 2,
+    });
+  });
+
+  it('acessos: tipo de acesso vem de "Categoria Liberação" (multi-escolha, JSON aninhado e sinônimos)', () => {
+    const a = buildSgsiResponse([
+      item('014', 91, { 'Categoria Liberação': ['Banco de dados', 'Acesso a servidor'] }),
+      item('014', 92, { 'Categoria Liberação': ['["Acesso DevOps ","Acesso Banco de dados","Vpn Flag Local"]'] }), // JSON dentro do array (visto em prod)
+      item('014', 93, { 'Categoria Liberação': '["Acesso Servidor"]' }),
+      item('014', 94, { 'Categoria Liberação': ['Acesso pastas', 'Acesso Pastas'] }),                             // repetido com outra caixa
+      item('014', 95, { 'Categoria Liberação': ['Fiddler ou Wireshark'] }),                                       // fora do vocabulário: mantém
+      item('014', 96, {}),
+    ], null, NOW).acessos;
+    const por = (id: number) => a.itens.find(i => i.id === id)!;
+    expect(por(91).categorias).toEqual(['Banco de dados', 'Acesso a servidor']);
+    expect(por(92).categorias).toEqual(['DevOps', 'Banco de dados', 'Acesso VPN']);
+    expect(por(93).categorias).toEqual(['Acesso a servidor']);
+    expect(por(94).categorias).toEqual(['Acesso pastas']);
+    expect(por(95).categorias).toEqual(['Fiddler ou Wireshark']);
+    expect(por(96).categorias).toEqual([]);
+    expect(a.porCategoria).toEqual([
+      { name: 'Acesso a servidor', value: 2 },
+      { name: 'Banco de dados', value: 2 },
+      { name: 'Acesso pastas', value: 1 },
+      { name: 'Acesso VPN', value: 1 },
+      { name: 'DevOps', value: 1 },
+      { name: 'Fiddler ou Wireshark', value: 1 },
+    ]);
+    expect(a.semCategoria).toBe(1);
+    // o texto da lista não se perde no agrupamento (VPN IBM Cloud ≠ VPN local)
+    expect(por(92).categoriasLista).toEqual(['Acesso DevOps', 'Acesso Banco de dados', 'Vpn Flag Local']);
+    expect(por(94).categoriasLista).toEqual(['Acesso pastas']);
+  });
+
+  it('acessos: a auditoria usa a base inteira — o recorte da sprint não esconde o provisório vencido e parado', () => {
+    const range = { from: new Date('2026-06-01T00:00:00Z'), to: new Date('2026-06-10T23:59:59Z') };
+    const a = buildSgsiResponse([
+      // criado em março e nunca mais tocado: vencido e sem revisão
+      item('014', 301, { 'Tipo liberação': 'Provisória', 'Status solicitação': 'Realizado', '<---Preenchimento TI--->': false, 'Data fim liberação provisória': '2026-05-20T00:00:00Z' }, '2026-03-01T10:00:00Z'),
+      // revisado dentro do período
+      item('014', 302, { 'Tipo liberação': 'Provisória', 'Status solicitação': 'Revogado', '<---Preenchimento TI--->': true, 'Data ultima revisão': '2026-06-05T10:00:00Z', 'Data fim liberação provisória': '2026-06-01T00:00:00Z' }, '2026-03-01T10:00:00Z', '2026-06-05T10:00:00Z'),
+    ], null, NOW, range).acessos;
+    expect(a.itens.map(i => i.id).sort()).toEqual([301, 302]);
+    expect(a).toMatchObject({ total: 2, provisorios: 2, provisoriosComEvidencia: 1, provisoriosSemEvidencia: 1 });
+  });
+
+  it('acessos: data fim é dia de calendário — vale até o fim do dia em Brasília', () => {
+    const provisorio = (fimIso: string) => ({ 'Tipo liberação': 'Provisória', 'Status solicitação': 'Realizado', 'Data fim liberação provisória': fimIso });
+    const situacao = (fimIso: string, agora: string) =>
+      buildSgsiResponse([item('014', 400, provisorio(fimIso))], null, new Date(agora)).acessos.itens[0].evidenciaRevogacao;
+    // gravado como meia-noite UTC (formato visto em produção)
+    expect(situacao('2026-06-11T00:00:00Z', '2026-06-12T01:00:00Z')).toBe('No prazo');      // 22:00 de 11/06 em Brasília
+    expect(situacao('2026-06-11T00:00:00Z', '2026-06-12T03:30:00Z')).toBe('Sem evidência'); // 00:30 de 12/06
+    // gravado como meia-noite de Brasília (03:00Z): mesmo dia
+    expect(situacao('2026-06-11T03:00:00Z', '2026-06-12T01:00:00Z')).toBe('No prazo');
+  });
+
+  it('acessos: lista sem teto — o drill da tabela bate com os KPIs acima de 300 itens', () => {
+    const muitos = Array.from({ length: 320 }, (_, k) => item('014', 2000 + k,
+      { 'Tipo liberação': k % 2 ? 'Provisória' : 'Definitiva', '<---Preenchimento TI--->': k % 3 === 0 },
+      new Date(Date.UTC(2026, 0, 1) + k * 3600000).toISOString()));
+    const a = buildSgsiResponse(muitos, null, NOW).acessos;
+    expect(a.itens).toHaveLength(320);
+    expect(a.itens.filter(i => i.revisaoTI === 'A revisar')).toHaveLength(a.aRevisar);
+    expect(a.itens.filter(i => i.tipoLiberacao === 'Provisória')).toHaveLength(a.provisorios);
+    expect(a.aRevisar).toBe(213); // 320 − 107 múltiplos de 3
+  });
+
   it('ambiente das mudanças vem do Título multi-escolha (cada valor conta)', () => {
     expect(r.mudancas.porAmbiente).toContainEqual({ name: 'Broker PROD', value: 2 }); // itens 11 e 12
     expect(r.mudancas.porAmbiente).toContainEqual({ name: 'Broker PA', value: 1 });

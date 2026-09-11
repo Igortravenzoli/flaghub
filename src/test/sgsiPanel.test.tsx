@@ -60,11 +60,22 @@ const mockData: BIInfraSgsiResponse = {
     ],
   },
   acessos: {
-    total: 1, pendentes: 1,
+    total: 6, pendentes: 1,
     porStatus: [{ name: 'Pendente', value: 1 }], porTipo: [{ name: 'Novo', value: 1 }], porProjeto: [{ name: 'FlagHub', value: 1 }],
     acessoDevOps: { sim: 1, nao: 0 }, acessoTS: { sim: 0, nao: 1 }, permissoesAdmin: { sim: 1, nao: 0 },
+    // coerente com os itens abaixo: 3 revisados (1 sem data) e 3 a revisar; 2 definitivos e
+    // 4 provisórios (com evidência, sem evidência, no prazo e rejeitado = não se aplica)
+    revisados: 3, aRevisar: 3, revisadosSemData: 1,
+    definitivos: 2, provisorios: 4, provisoriosComEvidencia: 1, provisoriosNoPrazo: 1, provisoriosSemEvidencia: 1, provisoriosNaoAplica: 1,
+    porCategoria: [{ name: 'Acesso a servidor', value: 2 }, { name: 'Banco de dados', value: 2 }, { name: 'Acesso pastas', value: 1 }, { name: 'Acesso VPN', value: 1 }],
+    semCategoria: 1,
     itens: [
-      { id: 50, titulo: 'ACS-700', descricao: 'Acesso ao repositório', motivo: 'Onboarding', tipo: 'Novo', projeto: 'FlagHub', solicitante: 'Carla', aprovadorTI: 'Otávio', aprovadorGestor: 'Marta', cargo: '—', status: 'Pendente', acessoDevOps: true, acessoTS: false, permissoesAdmin: true, ultimaRevisao: '2026-07-02', link: 'https://flagcom.sharepoint.com/sites/PORTALSGSI/Lists/SGLST014/DispForm.aspx?ID=50' },
+      { id: 50, titulo: 'ACS-700', descricao: 'Acesso ao repositório', motivo: 'Onboarding', tipo: 'Novo', projeto: 'FlagHub', solicitante: 'Carla', aprovadorTI: 'Otávio', aprovadorGestor: 'Marta', cargo: '—', status: 'Pendente', acessoDevOps: true, acessoTS: false, permissoesAdmin: true, ultimaRevisao: '2026-07-02', link: 'https://flagcom.sharepoint.com/sites/PORTALSGSI/Lists/SGLST014/DispForm.aspx?ID=50', revisaoTI: 'Acesso Revisado', revisadoSemData: false, tipoLiberacao: 'Definitiva', fimLiberacao: '', evidenciaRevogacao: null, categorias: [], categoriasLista: [] },
+      { id: 51, titulo: 'ACS-701', descricao: 'Banco de produção', motivo: 'Suporte', tipo: 'Novas permissões', projeto: 'Heineken', solicitante: 'Bruna', aprovadorTI: 'Paulo', aprovadorGestor: 'Rita', cargo: '—', status: 'Revogado', acessoDevOps: false, acessoTS: false, permissoesAdmin: false, ultimaRevisao: '2026-07-05T12:00:00Z', link: '', revisaoTI: 'Acesso Revisado', revisadoSemData: false, tipoLiberacao: 'Provisória', fimLiberacao: '2026-07-04T00:00:00Z', evidenciaRevogacao: 'Com evidência', categorias: ['Banco de dados'], categoriasLista: ['Banco de dados'] },
+      { id: 52, titulo: 'ACS-702', descricao: 'Servidor de homologação', motivo: 'Teste', tipo: 'Novas permissões', projeto: 'Nespresso', solicitante: 'Caio', aprovadorTI: 'Paulo', aprovadorGestor: 'Rita', cargo: '—', status: 'Realizado', acessoDevOps: false, acessoTS: false, permissoesAdmin: false, ultimaRevisao: '2026-06-20T12:00:00Z', link: '', revisaoTI: 'A revisar', revisadoSemData: false, tipoLiberacao: 'Provisória', fimLiberacao: '2026-06-30T00:00:00Z', evidenciaRevogacao: 'Sem evidência', categorias: ['Banco de dados', 'Acesso a servidor'], categoriasLista: ['Banco de dados', 'Acesso a servidor'] },
+      { id: 53, titulo: 'ACS-703', descricao: 'Pasta financeira', motivo: 'Rotina', tipo: 'Novas permissões', projeto: 'VDesk', solicitante: 'Dora', aprovadorTI: 'Paulo', aprovadorGestor: 'Rita', cargo: '—', status: 'Realizado', acessoDevOps: false, acessoTS: false, permissoesAdmin: false, ultimaRevisao: '', link: '', revisaoTI: 'Acesso Revisado', revisadoSemData: true, tipoLiberacao: 'Definitiva', fimLiberacao: '', evidenciaRevogacao: null, categorias: ['Acesso pastas'], categoriasLista: ['Acesso Pastas'] },
+      { id: 54, titulo: 'ACS-704', descricao: 'VPN do cliente', motivo: 'Projeto', tipo: 'Novas permissões', projeto: 'SuiteFlexx', solicitante: 'Enzo', aprovadorTI: 'Paulo', aprovadorGestor: 'Rita', cargo: '—', status: 'Aprovado', acessoDevOps: false, acessoTS: false, permissoesAdmin: false, ultimaRevisao: '', link: '', revisaoTI: 'A revisar', revisadoSemData: false, tipoLiberacao: 'Provisória', fimLiberacao: '2026-12-31T00:00:00Z', evidenciaRevogacao: 'No prazo', categorias: ['Acesso VPN'], categoriasLista: ['Vpn IBM Cloud'] },
+      { id: 55, titulo: 'ACS-705', descricao: 'Servidor de testes', motivo: 'Teste de carga', tipo: 'Novas permissões', projeto: 'Heineken', solicitante: 'Fábio', aprovadorTI: 'Paulo', aprovadorGestor: 'Rita', cargo: '—', status: 'Rejeitado', acessoDevOps: false, acessoTS: false, permissoesAdmin: false, ultimaRevisao: '2026-06-02T12:00:00Z', link: '', revisaoTI: 'A revisar', revisadoSemData: false, tipoLiberacao: 'Provisória', fimLiberacao: '2026-06-15T00:00:00Z', evidenciaRevogacao: 'Não se aplica', categorias: ['Acesso a servidor'], categoriasLista: ['Acesso Servidor'] },
     ],
   },
 };
@@ -311,5 +322,98 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
     expect(cabecalhos.filter((t) => t === 'Justificativa')).toHaveLength(1);
     // na completa ela fica ao lado de "Bem sucedida"
     expect(cabecalhos[cabecalhos.indexOf('Bem sucedida') + 1]).toBe('Justificativa');
+  });
+
+  // Linhas da tabela de acessos visíveis agora (mock com ACS-700 a ACS-705).
+  const visiveis = () => ['ACS-700', 'ACS-701', 'ACS-702', 'ACS-703', 'ACS-704', 'ACS-705'].filter((os) => screen.queryByText(os));
+
+  it('acessos: cards de Revisão TI e de liberação com contagem e percentual', () => {
+    render(<BIInfraSgsiPanel secao="acessos" />);
+    const revisao = screen.getByRole('group', { name: 'Revisão TI' });
+    // A revisar = 100 − revisados: lado a lado nunca somam 101%
+    expect(within(revisao).getByRole('button', { name: /Acesso revisado\s*3\s*50% do total/ })).toBeInTheDocument();
+    expect(within(revisao).getByRole('button', { name: /A revisar\s*3\s*50% do total/ })).toBeInTheDocument();
+    expect(within(revisao).getByRole('button', { name: /Revisado sem data\s*1/ })).toBeInTheDocument();
+    const liberacao = screen.getByRole('group', { name: 'Liberação · evidência de revogação' });
+    expect(within(liberacao).getByRole('button', { name: /Definitivos\s*2\s*33% do total/ })).toBeInTheDocument();
+    // % sobre os que já exigiam revogação (com + sem evidência) = 1 de 2. Sobre o total
+    // daria 25%; descontando só os não liberados, 33%.
+    expect(within(liberacao).getByRole('button', { name: /Provisórios\s*4\s*50% com evidência/ })).toBeInTheDocument();
+    expect(within(liberacao).getByRole('button', { name: /Sem evidência\s*1\s*1 no prazo · 1 não liberados/ })).toBeInTheDocument();
+  });
+
+  it('acessos: a seção avisa que usa a base completa, sem o recorte da sprint', () => {
+    render(<BIInfraSgsiPanel secao="acessos" dateFrom={new Date('2026-07-01T00:00:00Z')} dateTo={new Date('2026-07-10T23:59:59Z')} />);
+    expect(screen.getByText(/base completa/i)).toBeInTheDocument();
+  });
+
+  it('acessos: barra "Tipo de acesso" lista as categorias, filtra a tabela e marca o filtro ativo', () => {
+    render(<BIInfraSgsiPanel secao="acessos" />);
+    // substituiu a barra "Acesso DevOps / Acesso TS"
+    expect(screen.queryByText('Acesso DevOps')).not.toBeInTheDocument();
+    const barra = screen.getByRole('group', { name: 'Tipo de acesso' });
+    expect(within(barra).getByRole('button', { name: /Acesso a servidor\s*2/ })).toBeInTheDocument();
+    expect(within(barra).getByRole('button', { name: /Banco de dados\s*2/ })).toBeInTheDocument();
+    expect(within(barra).getByRole('button', { name: /Acesso VPN\s*1/ })).toBeInTheDocument();
+    expect(within(barra).getByRole('button', { name: /Sem categoria\s*1/ })).toBeInTheDocument();
+    fireEvent.click(within(barra).getByRole('button', { name: /Banco de dados/ }));
+    expect(visiveis()).toEqual(['ACS-701', 'ACS-702']);
+    expect(within(barra).getByRole('button', { name: /Banco de dados/, pressed: true })).toBeInTheDocument();
+    fireEvent.click(within(barra).getByRole('button', { name: /Sem categoria/ }));
+    expect(visiveis()).toEqual(['ACS-700']);
+    fireEvent.click(within(barra).getByRole('button', { name: /Sem categoria/ }));
+    expect(visiveis()).toHaveLength(6);
+  });
+
+  it('acessos: clicar nos cards filtra a tabela com os mesmos critérios das contagens', () => {
+    render(<BIInfraSgsiPanel secao="acessos" />);
+    const clica = (nome: RegExp) => fireEvent.click(screen.getByRole('button', { name: nome }));
+    clica(/A revisar\s*3/);
+    expect(visiveis()).toEqual(['ACS-702', 'ACS-704', 'ACS-705']);
+    // o rejeitado não entra em "Sem evidência": nunca liberou acesso
+    clica(/Sem evidência\s*1/);
+    expect(visiveis()).toEqual(['ACS-702']);
+    clica(/Revisado sem data/);
+    expect(visiveis()).toEqual(['ACS-703']);
+    clica(/Acesso revisado\s*3/);
+    expect(visiveis()).toEqual(['ACS-700', 'ACS-701', 'ACS-703']);
+    clica(/Definitivos\s*2/);
+    expect(visiveis()).toEqual(['ACS-700', 'ACS-703']);
+    clica(/Provisórios\s*4/);
+    expect(visiveis()).toEqual(['ACS-701', 'ACS-702', 'ACS-704', 'ACS-705']);
+    clica(/Provisórios\s*4/);
+    expect(visiveis()).toHaveLength(6);
+  });
+
+  it('acessos: tabela mostra liberação e revisão TI; drawer traz o fim da liberação e a categoria da lista', () => {
+    render(<BIInfraSgsiPanel secao="acessos" />);
+    for (const cabecalho of ['Liberação', 'Revisão TI']) {
+      expect(screen.getAllByText(cabecalho).some((el) => el.tagName === 'TH')).toBe(true);
+    }
+    const linha = (os: string) => screen.getByText(os).closest('tr')!;
+    expect(within(linha('ACS-701')).getByText('Com evidência')).toBeInTheDocument();
+    expect(within(linha('ACS-701')).getByText('Acesso Revisado')).toBeInTheDocument();
+    expect(within(linha('ACS-702')).getByText('Sem evidência')).toBeInTheDocument();
+    expect(within(linha('ACS-702')).getByText('A revisar')).toBeInTheDocument();
+    expect(within(linha('ACS-705')).getByText('Não se aplica')).toBeInTheDocument();
+    // marcado sem data: o badge avisa e a coluna da data também
+    expect(within(linha('ACS-703')).getByText('Revisado sem data')).toBeInTheDocument();
+    expect(within(linha('ACS-703')).getByText('sem data')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('ACS-704'));
+    const dialog = screen.getByRole('dialog');
+    // "2026-12-31T00:00:00Z" é dia de calendário: 31/12 em qualquer fuso
+    expect(within(dialog).getByText('31/12/26')).toBeInTheDocument();
+    expect(within(dialog).getByText('No prazo')).toBeInTheDocument();
+    expect(within(dialog).getByText('Acesso VPN')).toBeInTheDocument();
+    expect(within(dialog).getByText('Vpn IBM Cloud')).toBeInTheDocument();
+  });
+
+  it('acessos: a busca acha o que a tela mostra — "sem data" e o texto original da categoria', () => {
+    render(<BIInfraSgsiPanel secao="acessos" />);
+    const busca = screen.getByPlaceholderText(/Buscar OS, chamado, protocolo/i);
+    fireEvent.change(busca, { target: { value: 'sem data' } });
+    expect(visiveis()).toEqual(['ACS-703']);
+    fireEvent.change(busca, { target: { value: 'IBM' } });
+    expect(visiveis()).toEqual(['ACS-704']);
   });
 });

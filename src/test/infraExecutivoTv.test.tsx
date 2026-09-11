@@ -62,7 +62,7 @@ const mockSgsi: BIInfraSgsiResponse = {
   },
   naoConformidades: { total: 0, recorrentes: 0, porStatus: [], porCausaRaiz: [], tratamentoEficaz: vazioNV, itens: [] },
   melhorias: { total: 0, eficazes: 0, porStatus: [], porAmbiente: [], itens: [] },
-  acessos: { total: 0, pendentes: 0, porStatus: [], porTipo: [], porProjeto: [], acessoDevOps: vazioNV, acessoTS: vazioNV, permissoesAdmin: vazioNV, itens: [] },
+  acessos: { total: 0, pendentes: 0, porStatus: [], porTipo: [], porProjeto: [], acessoDevOps: vazioNV, acessoTS: vazioNV, permissoesAdmin: vazioNV, revisados: 0, aRevisar: 0, revisadosSemData: 0, definitivos: 0, provisorios: 0, provisoriosComEvidencia: 0, provisoriosNoPrazo: 0, provisoriosSemEvidencia: 0, provisoriosNaoAplica: 0, porCategoria: [], semCategoria: 0, itens: [] },
 };
 
 vi.mock('@/hooks/useBIInfra', async (orig) => ({
