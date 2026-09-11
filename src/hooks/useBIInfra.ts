@@ -192,12 +192,19 @@ export interface SgAcessoItem {
   tipo: string;
   projeto: string;
   solicitante: string;
+  /** "Aprovador TI" — coluna de pessoa: o nome vem resolvido pelo sync. */
+  aprovadorTI: string;
+  /** "Aprovador Gestor" — na 014 é texto (já chega com o nome). */
+  aprovadorGestor: string;
   cargo: string;
   status: string;
   acessoDevOps: boolean;
   acessoTS: boolean;
   permissoesAdmin: boolean;
   ultimaRevisao: string;
+  /** Item no SharePoint (DispForm), gravado pelo sync em `_sharepoint_url`;
+   *  '' quando ausente. Substitui as colunas de senha, que saíram do espelho. */
+  link: string;
 }
 
 export interface SgAcessosBloco {
@@ -485,12 +492,16 @@ export function buildSgsiResponse(
       tipo: str(i, 'Tipo solicitação') || DASH,
       projeto: str(i, 'Projeto') || DASH,
       solicitante: str(i, 'Solicitante') || DASH,
+      aprovadorTI: str(i, 'Aprovador TI') || DASH,
+      aprovadorGestor: str(i, 'Aprovador Gestor') || DASH,
       cargo: DASH, // jobTitle do solicitante não vem no espelho v1 (campo pessoa)
       status: str(i, ...STATUS_014) || DASH,
       acessoDevOps: isSim(i.fields['Acesso ao DevOps']),
       acessoTS: isSim(i.fields['Acesso ao TS']),
       permissoesAdmin: isSim(i.fields['Permissões administrativas']),
       ultimaRevisao: str(i, 'Data ultima revisão', 'Data última revisão') || '',
+      // Só https: o valor vira href na tabela e no drawer.
+      link: /^https:\/\//i.test(str(i, '_sharepoint_url')) ? str(i, '_sharepoint_url') : '',
     })),
   };
 

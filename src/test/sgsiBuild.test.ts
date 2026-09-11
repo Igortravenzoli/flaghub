@@ -133,6 +133,21 @@ describe('buildSgsiResponse', () => {
     expect(j.find(i => i.id === 93)?.justificativa).toBe('—');
   });
 
+  it('acessos: solicitante, aprovadores (TI é pessoa resolvida pelo sync; Gestor é texto) e link do item', () => {
+    const LINK = 'https://flagcom.sharepoint.com/sites/PORTALSGSI/Lists/SGLST014/DispForm.aspx?ID=71';
+    const a = buildSgsiResponse([
+      item('014', 71, { 'Status solicitação': 'Realizado', Solicitante: 'Carla Souza', 'Solicitante (lookupId)': '41', 'Aprovador TI': 'Rodolfo Lima', 'Aprovador TI (lookupId)': '19', 'Aprovador Gestor': 'Marta Gestora', _sharepoint_url: LINK }),
+      // nome não resolvido (só o lookupId) → traço, nunca o número; link fora de https é descartado
+      item('014', 72, { 'Status solicitação': 'Aprovado', 'Solicitante (lookupId)': '51', 'Aprovador TI (lookupId)': '19', _sharepoint_url: 'javascript:alert(1)' }),
+    ], null, NOW).acessos.itens;
+    const a71 = a.find(i => i.id === 71)!;
+    expect([a71.solicitante, a71.aprovadorTI, a71.aprovadorGestor]).toEqual(['Carla Souza', 'Rodolfo Lima', 'Marta Gestora']);
+    expect(a71.link).toBe(LINK);
+    const a72 = a.find(i => i.id === 72)!;
+    expect([a72.solicitante, a72.aprovadorTI, a72.aprovadorGestor]).toEqual(['—', '—', '—']);
+    expect(a72.link).toBe('');
+  });
+
   it('ambiente das mudanças vem do Título multi-escolha (cada valor conta)', () => {
     expect(r.mudancas.porAmbiente).toContainEqual({ name: 'Broker PROD', value: 2 }); // itens 11 e 12
     expect(r.mudancas.porAmbiente).toContainEqual({ name: 'Broker PA', value: 1 });
