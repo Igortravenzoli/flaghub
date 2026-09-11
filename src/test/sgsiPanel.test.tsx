@@ -80,8 +80,13 @@ const mockData: BIInfraSgsiResponse = {
   },
 };
 
+// Argumentos de cada chamada do hook: o painel decide se Acessos é recortado.
+const mockChamadasHook: unknown[][] = [];
 vi.mock('@/hooks/useBIInfra', () => ({
-  useBIInfraSgsi: () => ({ data: mockData, isLoading: false, isError: false, refetch: vi.fn() }),
+  useBIInfraSgsi: (...args: unknown[]) => {
+    mockChamadasHook.push(args);
+    return { data: mockData, isLoading: false, isError: false, refetch: vi.fn() };
+  },
 }));
 
 import { BIInfraSgsiPanel } from '@/components/infraestrutura/BIInfraSgsiPanel';
@@ -342,9 +347,38 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
     expect(within(liberacao).getByRole('button', { name: /Sem evidência\s*1\s*1 no prazo · 1 não liberados/ })).toBeInTheDocument();
   });
 
-  it('acessos: a seção avisa que usa a base completa, sem o recorte da sprint', () => {
-    render(<BIInfraSgsiPanel secao="acessos" dateFrom={new Date('2026-07-01T00:00:00Z')} dateTo={new Date('2026-07-10T23:59:59Z')} />);
-    expect(screen.getByText(/base completa/i)).toBeInTheDocument();
+  it('acessos: sem período a seção avisa que mostra a base completa', () => {
+    render(<BIInfraSgsiPanel secao="acessos" />);
+    expect(screen.getByText('· base completa')).toBeInTheDocument();
+  });
+
+  it('acessos: com a sprint a seção usa a base completa e aponta o calendário', () => {
+    mockChamadasHook.length = 0;
+    render(<BIInfraSgsiPanel secao="acessos" dateFrom={new Date(2026, 6, 1)} dateTo={new Date(2026, 6, 10)} />);
+    expect(screen.getByText(/base completa — a sprint não recorta os acessos; use o calendário/i)).toBeInTheDocument();
+    expect(mockChamadasHook.length).toBeGreaterThan(0);
+    expect(mockChamadasHook.every((args) => args[2] === false)).toBe(true);
+  });
+
+  it('acessos: com o calendário a seção mostra os vigentes do período e pede o recorte ao hook', () => {
+    mockChamadasHook.length = 0;
+    render(<BIInfraSgsiPanel secao="acessos" dateFrom={new Date(2026, 6, 1)} dateTo={new Date(2026, 6, 10)} periodoDoCalendario />);
+    expect(screen.getByText(/vigentes de 01\/07\/26 a 10\/07\/26/)).toBeInTheDocument();
+    expect(screen.queryByText(/base completa/i)).not.toBeInTheDocument();
+    expect(mockChamadasHook.length).toBeGreaterThan(0);
+    expect(mockChamadasHook.every((args) => args[2] === true)).toBe(true);
+  });
+
+  it('período do calendário sem atividade SG sugere trocar o período (a sprint já está em "Todas as Sprints")', () => {
+    const totalOriginal = mockData.totalItens;
+    try {
+      mockData.totalItens = 0;
+      render(<BIInfraSgsiPanel secao="mudancas" dateFrom={new Date(2026, 6, 1)} dateTo={new Date(2026, 6, 10)} periodoDoCalendario />);
+      expect(screen.getByText(/Nenhuma atividade SG de 01\/07\/26 a 10\/07\/26 \(12 itens no histórico\)\. Escolha outro período no calendário/)).toBeInTheDocument();
+      expect(screen.queryByText(/Selecione "Todas as Sprints"/)).not.toBeInTheDocument();
+    } finally {
+      mockData.totalItens = totalOriginal;
+    }
   });
 
   it('acessos: barra "Tipo de acesso" lista as categorias, filtra a tabela e marca o filtro ativo', () => {

@@ -1,4 +1,5 @@
-﻿import { useQuery } from '@tanstack/react-query';
+﻿import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
 import {
@@ -320,12 +321,15 @@ function maiorIntervaloDias(items: SgsiRawItem[], now: Date): number | null {
 
 /** Monta a resposta SGSI completa a partir das linhas espelhadas do SharePoint.
  *  `range` (sprint/período do dashboard) filtra os blocos por data de criação
- *  ou modificação; os contadores "dias sem" são sempre atemporais. */
+ *  ou modificação; os contadores "dias sem" são sempre atemporais. Acessos (014)
+ *  ignora `range`: só `periodoAcessos` — o período do calendário — recorta a
+ *  lista, pela vigência do acesso (regra no bloco 014). */
 export function buildSgsiResponse(
   rows: SgsiRawItem[],
   syncedAt: string | null,
   now: Date = new Date(),
   range?: { from: Date; to: Date },
+  periodoAcessos?: { from: Date; to: Date },
 ): BIInfraSgsiResponse {
   const inRange = (iso: string | null): boolean => {
     if (!range || !iso) return !range;
@@ -340,10 +344,6 @@ export function buildSgsiResponse(
   const l010 = by('010');
   const l011 = by('011');
   const l012 = by('012');
-  // Acessos é estoque, não fluxo: a auditoria de revisão/revogação precisa da base
-  // inteira. Com o recorte da sprint, o provisório vencido que ninguém tocou (sem
-  // modified_sp no período) sumia da tela — justamente o que a auditoria cobra.
-  const l014 = byAll('014');
   const l017 = by('017');
   const l018 = by('018');
 
@@ -517,12 +517,71 @@ export function buildSgsiResponse(
   // "Data fim liberação provisória" é dia de calendário: chega como meia-noite UTC
   // ("2026-09-09T00:00:00Z", o formato visto na 014) ou de Brasília (T03:00:00Z).
   // Nos dois casos o dia é o do texto, e o acesso vale até o fim dele em Brasília.
-  const dentroDoPrazo = (fimIso: string): boolean => {
-    const dia = /^(\d{4}-\d{2}-\d{2})/.exec(fimIso)?.[1];
-    if (!dia) return false;
-    const fimDoDia = Date.parse(`${dia}T23:59:59.999-03:00`);
-    return Number.isFinite(fimDoDia) && now.getTime() <= fimDoDia;
+  const fimDoDia = (iso: string): number | null => {
+    const dia = /^(\d{4}-\d{2}-\d{2})/.exec(iso)?.[1];
+    if (!dia) return null;
+    const fim = Date.parse(`${dia}T23:59:59.999-03:00`);
+    return Number.isFinite(fim) ? fim : null;
   };
+  const dentroDoPrazo = (fimIso: string): boolean => {
+    const fim = fimDoDia(fimIso);
+    return fim !== null && now.getTime() <= fim;
+  };
+  // Leitura única dos campos que decidem revisão, liberação e vigência: o recorte
+  // do calendário e os itens da tela não podem divergir na interpretação.
+  const leitura014 = (i: SgsiRawItem) => {
+    const ultimaRevisao = str(i, 'Data ultima revisão', 'Data última revisão') || '';
+    // Caixa de seleção do SharePoint: chega como boolean (true = marcada).
+    const revisado = isSim(i.fields['<---Preenchimento TI--->']);
+    const tipo = str(i, 'Tipo liberação');
+    const status = str(i, ...STATUS_014) || DASH;
+    const tipoLiberacao: SgAcessoItem['tipoLiberacao'] = /provis/i.test(tipo) ? 'Provisória' : /definit/i.test(tipo) ? 'Definitiva' : DASH;
+    return {
+      ultimaRevisao,
+      revisado,
+      tipoLiberacao,
+      fimLiberacao: str(i, 'Data fim liberação provisória') || '',
+      status,
+      // A lista não tem data de revogação: a revisão da TI marcada E datada é a evidência.
+      comEvidencia: revisado && !!ultimaRevisao,
+      // Rejeitado ou aguardando aprovação nunca liberou acesso.
+      naoLiberado: /rejeitad|aguard/i.test(status),
+    };
+  };
+  // Acessos é estoque, não fluxo: a auditoria de revisão/revogação precisa da base
+  // inteira. Com o recorte da sprint, o provisório vencido que ninguém tocou (sem
+  // modified_sp no período) sumia da tela — justamente o que a auditoria cobra.
+  // Por isso a sprint não recorta a 014. O calendário recorta pela VIGÊNCIA: entra
+  // o acesso pedido até o último dia do período e sem fim comprovado antes do
+  // primeiro (dias de calendário em Brasília). Sem data de revogação na lista, só a
+  // revisão da TI com evidência comprova o fim:
+  //  • rejeitado nunca liberou — conta só no período em que foi pedido;
+  //  • aguardando aprovação é pedido em aberto até hoje;
+  //  • provisório com evidência vale até a data fim ou a revisão, o que vier depois;
+  //  • definitivo revogado com evidência vale até a revisão;
+  //  • o resto (definitivo ativo, provisório sem evidência) segue vigente — o
+  //    provisório vencido sem evidência aparece em todo período posterior.
+  const todos014 = byAll('014');
+  const l014 = (() => {
+    if (!periodoAcessos) return todos014;
+    const dia = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    // O seletor entrega meia-noite local do dia escolhido: vale o dia, não a hora.
+    const inicio = Date.parse(`${dia(periodoAcessos.from)}T00:00:00.000-03:00`);
+    const fim = Date.parse(`${dia(periodoAcessos.to)}T23:59:59.999-03:00`);
+    return todos014.filter((i) => {
+      const pedido = i.created_sp ? Date.parse(i.created_sp) : NaN;
+      if (pedido > fim) return false;
+      const l = leitura014(i);
+      const revisao = Date.parse(l.ultimaRevisao);
+      let encerrado: number | null = null; // null = sem fim comprovado
+      if (/rejeitad/i.test(l.status)) encerrado = Number.isFinite(pedido) ? pedido : null;
+      else if (!l.naoLiberado && l.comEvidencia && Number.isFinite(revisao)) {
+        if (l.tipoLiberacao === 'Provisória') encerrado = Math.max(revisao, fimDoDia(l.fimLiberacao) ?? revisao);
+        else if (/revog/i.test(l.status)) encerrado = revisao;
+      }
+      return encerrado === null || encerrado >= inicio;
+    });
+  })();
   // "Categoria Liberação" (multi-escolha) chega como array, string JSON de array e
   // até array com JSON dentro (visto em produção); os sinônimos viram um nome só,
   // e o texto original fica guardado para o drawer e a busca.
@@ -560,13 +619,7 @@ export function buildSgsiResponse(
   // Sem teto (era 300): a 014 passa de 700 itens e os KPIs de revisão/liberação
   // filtram esta lista no drill — com teto, contagem e tabela divergiriam.
   const itens014 = recentes(l014, l014.length).map((i): SgAcessoItem => {
-    const ultimaRevisao = str(i, 'Data ultima revisão', 'Data última revisão') || '';
-    // Caixa de seleção do SharePoint: chega como boolean (true = marcada).
-    const revisado = isSim(i.fields['<---Preenchimento TI--->']);
-    const tipo = str(i, 'Tipo liberação');
-    const tipoLiberacao = /provis/i.test(tipo) ? 'Provisória' : /definit/i.test(tipo) ? 'Definitiva' : DASH;
-    const fimLiberacao = str(i, 'Data fim liberação provisória') || '';
-    const status = str(i, ...STATUS_014) || DASH;
+    const { ultimaRevisao, revisado, tipoLiberacao, fimLiberacao, status, comEvidencia, naoLiberado } = leitura014(i);
     return {
       id: i.item_id,
       titulo: str(i, 'TItulo', 'Título', 'Title') || `#${i.item_id}`,
@@ -589,11 +642,10 @@ export function buildSgsiResponse(
       revisadoSemData: revisado && !ultimaRevisao,
       tipoLiberacao,
       fimLiberacao,
-      // A lista não tem data de revogação: a revisão da TI marcada E datada é a
-      // evidência. Rejeitado ou aguardando aprovação nunca liberou acesso.
+      // Evidência e "nunca liberou" vêm da leitura014 — a mesma do recorte do calendário.
       evidenciaRevogacao: tipoLiberacao !== 'Provisória' ? null
-        : /rejeitad|aguard/i.test(status) ? 'Não se aplica'
-          : revisado && ultimaRevisao ? 'Com evidência'
+        : naoLiberado ? 'Não se aplica'
+          : comEvidencia ? 'Com evidência'
             : dentroDoPrazo(fimLiberacao) ? 'No prazo' : 'Sem evidência',
       ...categoriasDe(i.fields['Categoria Liberação']),
     };
@@ -664,11 +716,28 @@ export function buildSgsiResponse(
 
 // ── Hook ───────────────────────────────────────────────────────────────
 
-export function useBIInfraSgsi(dateFrom?: Date, dateTo?: Date) {
-  const fromStr = dateFrom ? dateFrom.toISOString().split('T')[0] : null;
-  const toStr = dateTo ? dateTo.toISOString().split('T')[0] : null;
-  return useQuery<BIInfraSgsiResponse>({
-    queryKey: ['bi-infra', 'sgsi', fromStr, toStr],
+/** Espelho bruto do SGSI: baixado uma vez e compartilhado por todos os períodos. */
+interface SgsiEspelho {
+  items: SgsiRawItem[];
+  syncedAt: string | null;
+  /** Marca de cada busca: força o select a remontar com a hora atual. */
+  fetchedAt: number;
+}
+
+export function useBIInfraSgsi(dateFrom?: Date, dateTo?: Date, acessosNoPeriodo = false) {
+  const fromMs = dateFrom?.getTime();
+  const toMs = dateTo?.getTime();
+  // O período muda a montagem, não o download. Com o período na chave, cada troca
+  // de sprint/calendário — e a Visão Executiva ao lado da Gestão SG — baixava o
+  // espelho inteiro de novo (egress, com a cota da Supabase no limite).
+  const montar = useCallback((espelho: SgsiEspelho): BIInfraSgsiResponse => {
+    const range = fromMs !== undefined && toMs !== undefined ? { from: new Date(fromMs), to: new Date(toMs) } : undefined;
+    // Só o período do calendário recorta Acessos (pela vigência); a sprint não.
+    return buildSgsiResponse(espelho.items, espelho.syncedAt, new Date(), range, acessosNoPeriodo ? range : undefined);
+  }, [fromMs, toMs, acessosNoPeriodo]);
+  return useQuery<SgsiEspelho, Error, BIInfraSgsiResponse>({
+    queryKey: ['bi-infra', 'sgsi-rows'],
+    select: montar,
     queryFn: async () => {
       // Paginado: o espelho passa de 3,7k itens e o PostgREST limita 1000/request.
       const items = await fetchAllRows<SgsiRawItem>((from, to) =>
@@ -686,12 +755,10 @@ export function useBIInfraSgsi(dateFrom?: Date, dateTo?: Date) {
         .order('synced_at', { ascending: false })
         .limit(1);
 
-      return buildSgsiResponse(
-        items,
-        lists?.[0]?.synced_at ?? null,
-        new Date(),
-        dateFrom && dateTo ? { from: dateFrom, to: dateTo } : undefined,
-      );
+      // fetchedAt: um refetch com as mesmas linhas devolveria o MESMO objeto (structural
+      // sharing) e o select não rodaria — "No prazo" e "dias sem" ficariam com a hora
+      // da montagem anterior. Com a marca, cada busca remonta com a hora atual.
+      return { items, syncedAt: lists?.[0]?.synced_at ?? null, fetchedAt: Date.now() };
     },
     staleTime: 5 * 60 * 1000,
     retry: 1,
