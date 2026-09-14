@@ -1,6 +1,7 @@
-import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Profile } from "@/types/database";
@@ -581,12 +582,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  /**
+   * Cache do React Query × sessão (14/09/2026). Várias queryKeys não levam o id
+   * do usuário e hooks com staleTime longo nem rebuscam ao montar, então o
+   * próximo usuário da aba veria as linhas do anterior. O signOut limpa; aqui,
+   * limpa quando entra um usuário DIFERENTE do último autenticado:
+   *   • ninguém → usuário (primeiro login, F5): não limpa;
+   *   • mesmo id (TOKEN_REFRESHED, SIGNED_IN ao voltar à aba, re-hidratação, telão
+   *     que perde a sessão e volta com o monitor): não limpa — no telão, limpar é
+   *     rebaixar todos os setores;
+   *   • sessão que cai por evento (outra aba, refresh falhou) guarda o dono para
+   *     comparar com quem entrar depois.
+   * Layout effect, e não useEffect: efeitos passivos dos filhos rodam antes dos do
+   * pai, e é num deles (`observer.setOptions`) que cada useQuery se religa ao
+   * cache. Limpando depois, a tela montada ficaria presa à query destruída, com
+   * as linhas do usuário anterior.
+   */
+  const queryClient = useQueryClient();
+  const userId = state.user?.id ?? null;
+  const cacheOwnerRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!userId) return;
+    const previousOwner = cacheOwnerRef.current;
+    cacheOwnerRef.current = userId;
+    if (previousOwner !== null && previousOwner !== userId) {
+      console.log("[Auth] Different user on this tab; clearing query cache");
+      queryClient.clear();
+    }
+  }, [userId, queryClient]);
+
   const signOut = useCallback(async () => {
     console.log("[Auth] signOut called");
 
     // IMPORTANT: sempre finalizar o estado local primeiro (nunca ficar preso aguardando rede)
     clearSupabaseAuthStorage();
     setSignedOut();
+    queryClient.clear();
 
     try {
       const { error } = await withTimeout(
@@ -599,7 +630,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn("[Auth] signOut timed out/failed (state already cleared):", error);
       return { error: error ?? null };
     }
-  }, [setSignedOut]);
+  }, [setSignedOut, queryClient]);
 
   const signInWithAzure = useCallback(async () => {
     return await supabase.auth.signInWithOAuth({
