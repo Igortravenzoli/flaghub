@@ -67,6 +67,7 @@ vi.mock('@/components/home/KioskOverlay', () => ({
 }));
 
 import Home from '@/pages/Home';
+import { definirPoliticaTelao, politicaTelaoAtiva } from '@/lib/politicaCacheTelao';
 
 const TITULO_CONFIG = 'Configurar Modo Kiosk';
 
@@ -166,6 +167,60 @@ describe('Usuário comum — comportamento inalterado', () => {
 
     expect(screen.queryByTestId('kiosk')).not.toBeInTheDocument();
     expect(screen.getByText('FLAG Hub')).toBeInTheDocument();
+    expect(localStorage.getItem(MONITOR_KIOSK_CONFIG_KEY)).toBeNull();
+  });
+});
+
+/**
+ * Política de cache do telão (egress, 14/09/2026): quem liga é o Home, e só para
+ * o monitor ou com o modo TV aberto. Telas de mesa nunca podem herdá-la.
+ */
+describe('Política de cache do telão', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    definirPoliticaTelao(false);
+  });
+
+  it('monitor liga a política já no primeiro render', () => {
+    isMonitorMock = true;
+    render(<Home />);
+    expect(politicaTelaoAtiva()).toBe(true);
+  });
+
+  it('monitor no diálogo do ESC segue com a política (a TV continua sendo TV)', () => {
+    isMonitorMock = true;
+    render(<Home />);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(politicaTelaoAtiva()).toBe(true);
+  });
+
+  it('usuário comum no hub não liga a política', () => {
+    isMonitorMock = false;
+    render(<Home />);
+    expect(politicaTelaoAtiva()).toBe(false);
+  });
+
+  it('sair do Home desliga a política', () => {
+    isMonitorMock = true;
+    const { unmount } = render(<Home />);
+    unmount();
+    expect(politicaTelaoAtiva()).toBe(false);
+  });
+
+  it('usuário de mesa que abre e fecha o Modo TV liga e desliga a política', () => {
+    isMonitorMock = false;
+    render(<Home />);
+    expect(politicaTelaoAtiva()).toBe(false);
+
+    fireEvent.click(screen.getByText('Modo Kiosk / TV'));
+    fireEvent.click(screen.getByRole('button', { name: /Abrir Dashboard/ }));
+    expect(screen.getByTestId('kiosk')).toBeInTheDocument();
+    expect(politicaTelaoAtiva()).toBe(true);
+
+    fireEvent.click(screen.getByText('sair'));
+    expect(screen.queryByTestId('kiosk')).not.toBeInTheDocument();
+    expect(politicaTelaoAtiva()).toBe(false);
+    // Usuário de mesa não grava config de telão.
     expect(localStorage.getItem(MONITOR_KIOSK_CONFIG_KEY)).toBeNull();
   });
 });

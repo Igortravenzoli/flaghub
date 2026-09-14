@@ -22,5 +22,10 @@
  *
  * Isto NÃO atrasa tela após edição do usuário: `invalidateQueries` ignora
  * `staleTime` e refaz na hora. A constante só governa releitura especulativa.
+ *
+ * DESDE 14/09/2026 o telão não depende mais desta conta: com o usuário monitor
+ * (ou o modo TV aberto), `src/lib/politicaCacheTelao.ts` impõe piso de 30 min
+ * (6 h no SGSI, 4 h no Comercial), pausa fora do expediente e gcTime de 2 h.
+ * Esta constante segue valendo para as telas de mesa.
  */
 export const CADENCIA_MINIMA_MS = 5 * 60 * 1000
