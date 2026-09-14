@@ -11,9 +11,6 @@ const fallbackComponents: Record<string, React.ComponentType> = {
   tickets_os: Dashboard,
 };
 
-/** Refresh interval: 3 minutes */
-const REFRESH_INTERVAL_MS = 180_000;
-
 interface KioskSector {
   slug: string;
   name: string;
@@ -56,7 +53,6 @@ export default function KioskOverlay({
   /** Setor corrente tem páginas internas (hoje só a Fábrica). */
   const temPaginas = paginas > 1;
   const prevThemeRef = useRef<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
   const [now, setNow] = useState(new Date());
 
   // Force dark theme in kiosk mode
@@ -77,14 +73,12 @@ export default function KioskOverlay({
     return () => clearInterval(iv);
   }, []);
 
-  // Smart auto-refresh: trigger refetch every 3 minutes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      window.dispatchEvent(new Event('focus'));
-      setLastRefresh(new Date());
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, []);
+  // Sem "auto-refresh" aqui, de propósito (14/09/2026). O antigo
+  // `dispatchEvent(new Event('focus'))` a cada 3 min não fazia nada no TanStack
+  // Query v5 — o focusManager só ouve `visibilitychange` — e, se
+  // `refetchOnWindowFocus` voltasse a ser ligado, viraria uma onda de releitura
+  // de todo setor montado. A cadência do telão é da política de cache
+  // (src/lib/politicaCacheTelao.ts).
 
   // Teclado: setas navegam, espaço pausa/retoma (ESC continua tratado pelo Home).
   // Vale também com um setor só, desde que ele tenha páginas internas.

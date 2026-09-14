@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { instalarPoliticaTelao } from "@/lib/politicaCacheTelao";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
@@ -59,14 +60,21 @@ import EmailWebhookConfig from "@/pages/admin/EmailWebhookConfig";
  */
 const CADENCIA_MINIMA_MS = 5 * 60 * 1000
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: CADENCIA_MINIMA_MS,
-      refetchOnWindowFocus: false,
+/**
+ * Telão (14/09/2026): a política de cache só age enquanto o Home a liga
+ * (usuário monitor ou modo TV aberto) e, fora disso, os defaults saem idênticos
+ * aos de cima. Piso, pausa noturna e o porquê em src/lib/politicaCacheTelao.ts.
+ */
+const queryClient = instalarPoliticaTelao(
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: CADENCIA_MINIMA_MS,
+        refetchOnWindowFocus: false,
+      },
     },
-  },
-});
+  }),
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

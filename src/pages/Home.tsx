@@ -17,6 +17,8 @@ import { useInfraestruturaKpis } from '@/hooks/useInfraestruturaKpis';
 import { useSprintFilter } from '@/hooks/useSprintFilter';
 import { getCurrentOfficialSprintCode, extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 import { useAuth } from '@/hooks/useAuth';
+import { definirPoliticaTelao } from '@/lib/politicaCacheTelao';
+import { useRecargaAutomaticaTelao } from '@/lib/recargaTelao';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Package, TrendingUp, LayoutGrid, Factory, ShieldCheck, Headphones, Server,
@@ -106,6 +108,29 @@ export default function Home() {
   const [kioskPaginas, setKioskPaginas] = useState(1);
   const [kioskSelectedSlugs, setKioskSelectedSlugs] = useState<string[]>([]);
   const [showMonitorKioskPicker, setShowMonitorKioskPicker] = useState(false);
+
+  /**
+   * Política de cache do telão (egress, 14/09/2026 — src/lib/politicaCacheTelao.ts).
+   * Ligada durante o render, e não só num efeito: os hooks logo abaixo e os
+   * setores que o kiosk monta calculam as opções do QueryClient NESTE render, e
+   * um efeito chegaria depois da primeira montagem. A atribuição é idempotente;
+   * o efeito cobre a saída do Home (e o duplo mount do StrictMode).
+   */
+  const politicaTelao = isMonitor || kioskActive;
+  definirPoliticaTelao(politicaTelao);
+  const politicaTelaoRef = useRef(politicaTelao);
+  politicaTelaoRef.current = politicaTelao;
+  useEffect(() => {
+    // Só a SAÍDA do Home desliga. Um efeito com dependência desligaria e
+    // religaria a cada troca, e os setores montados nesse mesmo commit (efeitos
+    // dos filhos rodam antes do religar do pai) consultariam a política desligada.
+    definirPoliticaTelao(politicaTelaoRef.current);
+    return () => definirPoliticaTelao(false);
+  }, []);
+
+  // Telão sem operador: recarrega sozinho quando sai build nova (fora do
+  // expediente). Com alguém no diálogo do ESC (kiosk parado), não recarrega.
+  useRecargaAutomaticaTelao(isMonitor && kioskActive);
 
   // Real data hooks
   const comercial = useComercialKpis();
