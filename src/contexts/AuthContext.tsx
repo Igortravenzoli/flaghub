@@ -237,6 +237,47 @@ async function fetchUserData(userId: string): Promise<{
   }
 }
 
+const AREA_MEMBERSHIP_TIMEOUT_MS = 3000;
+const AREA_MEMBERSHIP_RETRY_DELAY_MS = 500;
+
+/**
+ * Memberships ativas em hub_area_members — é o que separa "aprovado" de "aguardando
+ * aprovação" no papel auto-provisionado. Devolve null quando a contagem não
+ * respondeu. O supabase-js NÃO lança em erro de PostgREST/HTTP (57014, 503, rede
+ * caída): devolve `{ count: null, error }`. Ler isso como zero marcava o telão como
+ * pendente e o mandava para /pending-approval, de onde ele não sai sozinho.
+ * null é "não sei", nunca 0.
+ *
+ * Timeout por tentativa porque a própria lib refaz o HEAD em 503/520/rede, com esperas
+ * de 1 + 2 + 4 s, antes de devolver o erro. Duas tentativas de até 3 s: somadas à 1ª
+ * tentativa da hidratação (3,5 s) ficam abaixo dos 12 s do ProtectedRoute.
+ */
+async function countActiveAreaMemberships(userId: string): Promise<number | null> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt > 1) {
+      await new Promise((r) => setTimeout(r, AREA_MEMBERSHIP_RETRY_DELAY_MS));
+    }
+    try {
+      const { count, error } = await withTimeout(
+        Promise.resolve(
+          supabase
+            .from("hub_area_members")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", userId)
+            .eq("is_active", true)
+        ),
+        AREA_MEMBERSHIP_TIMEOUT_MS,
+        `hub_area_members count (attempt ${attempt})`
+      );
+      if (!error && typeof count === "number") return count;
+      console.warn(`[Auth] hub_area_members count without result (attempt ${attempt}):`, error);
+    } catch (error) {
+      console.warn(`[Auth] hub_area_members count failed (attempt ${attempt}):`, error);
+    }
+  }
+  return null;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -321,22 +362,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const obfuscatedRole = mergedRoleCode;
 
-        // Check if user has active hub_area_members (means admin approved)
-        let hasAreaMemberships = false;
-        try {
-          const { count } = await supabase
-            .from('hub_area_members')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', session.user.id)
-            .eq('is_active', true);
-          hasAreaMemberships = (count ?? 0) > 0;
-        } catch (e) {
-          console.warn('[Auth] Failed to check hub_area_members:', e);
+        // Aguardando aprovação = papel auto-provisionado (nenhum ou s4), com perfil e
+        // sem membership ativa (o admin aprova criando a membership). Os demais papéis
+        // não dependem disso e nem consultam a contagem. null = contagem sem resposta:
+        // não decide nada e mantém o que já estava (no boot, não pendente).
+        const isAutoProvisioned = !obfuscatedRole || obfuscatedRole === 's4';
+        let isPending: boolean | null = false;
+        if (isAutoProvisioned && userData.profile != null) {
+          const activeMemberships = await countActiveAreaMemberships(session.user.id);
+          isPending = activeMemberships === null ? null : activeMemberships === 0;
         }
 
-        // User is pending if: has profile, no active area memberships, AND either no role or auto-provisioned operacional
-        const isAutoProvisioned = !obfuscatedRole || obfuscatedRole === 's4';
-        const isPending = isAutoProvisioned && userData.profile != null && !hasAreaMemberships;
+        if (opId !== opIdRef.current) {
+          console.log("[Auth] hydration aborted - newer operation in progress");
+          return false;
+        }
+
+        if (isPending === null) {
+          console.warn("[Auth] Area memberships unknown; keeping previous pendingApproval");
+        }
 
         setState((prev) => {
           const nextRoleCode = obfuscatedRole ?? prev.roleCode;
@@ -352,7 +396,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             roleCode: nextRoleCode,
             networkId: nextNetworkId,
             mfaRequired: prev.mfaRequired,
-            pendingApproval: isPending && !prev.roleCode,
+            pendingApproval: isPending === null ? prev.pendingApproval : isPending && !prev.roleCode,
           };
         });
 
