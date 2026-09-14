@@ -15,8 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *   (a) INITIAL_SESSION chega depois do timeout de 6 s do AuthContext: o boot
  *       desiste, o ProtectedRoute manda para /login, e quando a sessão aparece o
  *       Login não redirecionava. A TV ficava no formulário para sempre.
- *   (b) a hidratação passa dos 12 s do ProtectedRoute (contagem de
- *       hub_area_members sem timeout): o timeout chamava signOut(), que apaga o
+ *   (b) a hidratação passa dos 12 s do ProtectedRoute (sessão tardia e
+ *       PostgREST lento): o timeout chamava signOut(), que apaga o
  *       sb-*-auth-token. A TV era deslogada e não voltava.
  *
  * E o que não pode mudar para o usuário comum: MFA e aprovação continuam
@@ -246,25 +246,48 @@ describe('(a) sessão restaurada depois do timeout de 6 s do AuthContext', () =>
 });
 
 describe('(b) hidratação acima do timeout de 12 s do ProtectedRoute', () => {
+  /*
+   * Linha do tempo, a partir do render. Não depende da contagem de
+   * hub_area_members (que pode ter timeout próprio e nem roda para s1–s3): o que
+   * passa dos 12 s são as tentativas de hidratação sob sessão tardia e PostgREST lento.
+   *    4,0 s  a sessão chega (refresh do token lento; antes dos 6 s do AuthContext)
+   *    7,5 s  a 1ª tentativa estoura (claims em 3 s, perfil em 3,5 s)
+   *    8,5 s  a 2ª tentativa começa
+   *   12,0 s  timeout do ProtectedRoute, já com sessão
+   *   13,5 s  o perfil responde (5 s, dentro dos 6 s): a hidratação termina
+   *   18,5 s  a checagem de MFA termina (mfa_exempt também espera o perfil)
+   */
+  const SESSAO_CHEGA_MS = 4_000;
+  const DEPOIS_DO_TIMEOUT_MS = TIMEOUT_PROTECTED_ROUTE_MS + 500;
+  const FIM_DO_BOOT_MS = 22_000;
+
   beforeEach(() => {
-    // A contagem de hub_area_members não tem timeout: sob PostgREST lento é ela
-    // que empurra a hidratação para além dos 12 s.
-    sb.estado.latencia['from:hub_area_members'] = 15_000;
+    // Fallback do getSession preso: quem entrega a sessão é o INITIAL_SESSION.
+    sb.estado.getSession = () => new Promise(() => {});
+    sb.estado.latencia['rpc:auth_network_id'] = 4_000;
+    sb.estado.latencia['from:profiles'] = 5_000;
   });
 
-  it('monitor: a sessão não é apagada e a TV passa a exibir sem esperar a hidratação', async () => {
+  /** Renderiza, entrega a sessão em SESSAO_CHEGA_MS e para 500 ms depois do timeout. */
+  async function bootarLento(email: string) {
     render(<Portal />);
+    await avancar(SESSAO_CHEGA_MS);
     // A sessão chega DEPOIS de o timer ser armado — o timeout tem que enxergá-la.
-    await emitir('INITIAL_SESSION', MONITOR);
+    await emitir('INITIAL_SESSION', email);
+    await avancar(DEPOIS_DO_TIMEOUT_MS - SESSAO_CHEGA_MS);
+  }
 
-    await avancar(TIMEOUT_PROTECTED_ROUTE_MS + 500);
+  const terminarBoot = () => avancar(FIM_DO_BOOT_MS - DEPOIS_DO_TIMEOUT_MS);
+
+  it('monitor: a sessão não é apagada e a TV passa a exibir sem esperar a hidratação', async () => {
+    await bootarLento(MONITOR);
 
     expect(sb.estado.saidas).toBe(0);
     expect(localStorage.getItem(CHAVE_SESSAO)).not.toBeNull();
     expect(noFormularioDeLogin()).toBe(false);
     expect(screen.getByText('rota protegida')).toBeInTheDocument();
 
-    await avancar(3_000);
+    await terminarBoot();
     expect(screen.getByText('rota protegida')).toBeInTheDocument();
     expect(sb.estado.saidas).toBe(0);
   });
@@ -272,10 +295,7 @@ describe('(b) hidratação acima do timeout de 12 s do ProtectedRoute', () => {
   it('usuário comum: sessão mantida, rota segue barrada e o MFA ainda é cobrado ao fim', async () => {
     sb.estado.papel = 's2';
     sb.estado.aal = { currentLevel: 'aal1', nextLevel: 'aal2' };
-    render(<Portal />);
-    await emitir('INITIAL_SESSION', 'gestora@flag.com.br');
-
-    await avancar(TIMEOUT_PROTECTED_ROUTE_MS + 500);
+    await bootarLento('gestora@flag.com.br');
 
     expect(sb.estado.saidas).toBe(0);
     expect(localStorage.getItem(CHAVE_SESSAO)).not.toBeNull();
@@ -284,23 +304,21 @@ describe('(b) hidratação acima do timeout de 12 s do ProtectedRoute', () => {
     expect(screen.getByText(/demorando para carregar/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sair' })).toBeInTheDocument();
 
-    await avancar(3_000);
+    await terminarBoot();
     expect(screen.getByText('tela de MFA')).toBeInTheDocument();
   });
 
   it('usuário recém-provisionado: sessão mantida e ainda cai na aprovação', async () => {
     sb.estado.papel = 's4';
     sb.estado.membros = 0;
-    render(<Portal />);
-    await emitir('INITIAL_SESSION', 'novo@flag.com.br');
-
-    await avancar(TIMEOUT_PROTECTED_ROUTE_MS + 500);
+    await bootarLento('novo@flag.com.br');
 
     expect(sb.estado.saidas).toBe(0);
     expect(localStorage.getItem(CHAVE_SESSAO)).not.toBeNull();
     expect(screen.queryByText('rota protegida')).not.toBeInTheDocument();
+    expect(screen.getByText(/demorando para carregar/)).toBeInTheDocument();
 
-    await avancar(3_000);
+    await terminarBoot();
     expect(screen.getByText('aguardando aprovação')).toBeInTheDocument();
   });
 
