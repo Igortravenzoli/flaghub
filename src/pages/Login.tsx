@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
@@ -18,7 +18,7 @@ const LOCKOUT_SECONDS = 60;
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signInWithAzure, isLoading } = useAuth();
+  const { signIn, signInWithAzure, isLoading, isAuthenticated } = useAuth();
   
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -168,6 +168,15 @@ export default function Login() {
       setIsSubmitting(false);
     }
   };
+
+  // Sessão que chega depois de o boot desistir (INITIAL_SESSION após o timeout de
+  // 6 s do AuthContext) já encontra esta tela: sem o redirect, o formulário ficava
+  // no ar para sempre — e o telão não tem quem clique. Mesmo contrato do Welcome.
+  // Durante o login interativo quem escolhe o destino é o handleLogin (admin vai
+  // para /mfa), então o redirect não disputa a navegação com ele.
+  if (!isLoading && isAuthenticated && !isSubmitting) {
+    return <Navigate to={from} replace />;
+  }
 
   if (isLoading) {
     return (
