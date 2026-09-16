@@ -358,9 +358,6 @@ interface SgColumn<T> {
    *  ReactNode (badge, link, data formatada) e não serve de chave — sem isto o
    *  funil de uma coluna de data listaria ISO cru. Padrão: o valor de `row[key]`. */
   valor?: (row: T) => string;
-  /** Coluna sem funil (identificador único: a lista de opções seria do tamanho
-   *  da tabela e não filtra nada de útil). */
-  semFiltro?: boolean;
 }
 
 const DASH_CELULA = '—';
@@ -372,28 +369,20 @@ function textoDaCelula<T>(c: SgColumn<T>, row: T): string {
   return v == null || v === '' ? DASH_CELULA : String(v);
 }
 
-/** Funil + ordenação de UMA coluna. As opções vêm das linhas que passam pelos
- *  filtros das OUTRAS colunas (comportamento de planilha): filtrar Status não
- *  pode fazer sumir da lista de Responsável quem ainda está visível. */
-function ColunaMenu<T>({ coluna, opcoes, selecionados, ordem, onOrdenar, onFiltrar }: {
+/** Funil + ordenação de UMA coluna — em TODAS as colunas, identificadores
+ *  inclusive: a ordenação mora neste menu, e coluna sem funil ficava sem
+ *  ordenar. A busca do menu torna navegável a lista longa de um ID. */
+function ColunaMenu<T>({ coluna, obterOpcoes, selecionados, ordem, onOrdenar, onFiltrar }: {
   coluna: SgColumn<T>;
-  opcoes: string[];
+  /** Chamado só com o menu ABERTO (ver `ColunaMenuValores`). */
+  obterOpcoes: () => string[];
   /** `undefined` = coluna sem filtro (tudo passa). */
   selecionados?: string[];
   ordem?: 'asc' | 'desc';
   onOrdenar: (dir: 'asc' | 'desc') => void;
   onFiltrar: (valores: string[] | undefined) => void;
 }) {
-  const [busca, setBusca] = useState('');
-  const visiveis = opcoes.filter((o) => hit(busca, o));
   const ativo = selecionados != null;
-  const marcado = (o: string) => !selecionados || selecionados.includes(o);
-  const alternar = (o: string) => {
-    const base = selecionados ?? opcoes;
-    const proximo = base.includes(o) ? base.filter((v) => v !== o) : [...base, o];
-    // Tudo marcado = sem filtro: evita guardar uma lista que não recorta nada.
-    onFiltrar(proximo.length === opcoes.length ? undefined : proximo);
-  };
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -417,40 +406,68 @@ function ColunaMenu<T>({ coluna, opcoes, selecionados, ordem, onOrdenar, onFiltr
               <ArrowUpAZ className="h-3.5 w-3.5" /> Ordenar de Z a A
             </button>
           </div>
-          <div className="p-1.5">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
-              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={`Buscar em ${coluna.header}…`}
-                className="h-7 pl-7 text-xs" aria-label={`Buscar valores de ${coluna.header}`} />
-            </div>
-          </div>
-          <ScrollArea className="max-h-52">
-            <div className="px-1.5 pb-1.5 space-y-0.5">
-              {visiveis.length === 0 && <p className="px-2 py-3 text-center text-[11px] text-muted-foreground">Nenhum valor.</p>}
-              {visiveis.map((o) => (
-                <button key={o} type="button" onClick={() => alternar(o)}
-                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted">
-                  <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${marcado(o) ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>
-                    {marcado(o) && <Check className="h-2.5 w-2.5" />}
-                  </span>
-                  <span className="truncate" title={o}>{o}</span>
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
-          <div className="flex items-center justify-between border-t border-border p-1">
-            <button type="button" onClick={() => onFiltrar(undefined)}
-              className="rounded px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-              Selecionar tudo
-            </button>
-            <button type="button" onClick={() => onFiltrar([])}
-              className="rounded px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-              Limpar
-            </button>
-          </div>
+          <ColunaMenuValores coluna={coluna} obterOpcoes={obterOpcoes} selecionados={selecionados} onFiltrar={onFiltrar} />
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** Lista de valores do funil. Existe à parte para as opções serem calculadas
+ *  AQUI: o Radix só monta o conteúdo do popover aberto, então a passada pela
+ *  tabela acontece ao abrir o menu — não a cada render da tabela, que roda a
+ *  cada tecla da busca global, para todas as colunas. Também zera a busca do
+ *  menu a cada abertura. */
+function ColunaMenuValores<T>({ coluna, obterOpcoes, selecionados, onFiltrar }: {
+  coluna: SgColumn<T>;
+  obterOpcoes: () => string[];
+  selecionados?: string[];
+  onFiltrar: (valores: string[] | undefined) => void;
+}) {
+  const [busca, setBusca] = useState('');
+  const opcoes = obterOpcoes();
+  const visiveis = opcoes.filter((o) => hit(busca, o));
+  const marcado = (o: string) => !selecionados || selecionados.includes(o);
+  const alternar = (o: string) => {
+    const base = selecionados ?? opcoes;
+    const proximo = base.includes(o) ? base.filter((v) => v !== o) : [...base, o];
+    // Tudo marcado = sem filtro: evita guardar uma lista que não recorta nada.
+    onFiltrar(proximo.length === opcoes.length ? undefined : proximo);
+  };
+  return (
+    <>
+      <div className="p-1.5">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={`Buscar em ${coluna.header}…`}
+            className="h-7 pl-7 text-xs" aria-label={`Buscar valores de ${coluna.header}`} />
+        </div>
+      </div>
+      <ScrollArea className="max-h-52">
+        <div className="px-1.5 pb-1.5 space-y-0.5">
+          {visiveis.length === 0 && <p className="px-2 py-3 text-center text-[11px] text-muted-foreground">Nenhum valor.</p>}
+          {visiveis.map((o) => (
+            <button key={o} type="button" onClick={() => alternar(o)}
+              className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted">
+              <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${marcado(o) ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>
+                {marcado(o) && <Check className="h-2.5 w-2.5" />}
+              </span>
+              <span className="truncate" title={o}>{o}</span>
+            </button>
+          ))}
+        </div>
+      </ScrollArea>
+      <div className="flex items-center justify-between border-t border-border p-1">
+        <button type="button" onClick={() => onFiltrar(undefined)}
+          className="rounded px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          Selecionar tudo
+        </button>
+        <button type="button" onClick={() => onFiltrar([])}
+          className="rounded px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          Limpar
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -580,16 +597,14 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, on
                     <th key={c.key} className="py-2 px-3 text-left font-medium whitespace-nowrap">
                       <span className="inline-flex items-center gap-1">
                         {c.header}
-                        {!c.semFiltro && (
-                          <ColunaMenu
-                            coluna={c}
-                            opcoes={opcoesDa(c)}
-                            selecionados={filtros[c.key]}
-                            ordem={ordem?.key === c.key ? ordem.dir : undefined}
-                            onOrdenar={(dir) => setOrdem({ key: c.key, dir })}
-                            onFiltrar={(valores) => setFiltros((f) => ({ ...f, [c.key]: valores }))}
-                          />
-                        )}
+                        <ColunaMenu
+                          coluna={c}
+                          obterOpcoes={() => opcoesDa(c)}
+                          selecionados={filtros[c.key]}
+                          ordem={ordem?.key === c.key ? ordem.dir : undefined}
+                          onOrdenar={(dir) => setOrdem({ key: c.key, dir })}
+                          onFiltrar={(valores) => setFiltros((f) => ({ ...f, [c.key]: valores }))}
+                        />
                       </span>
                     </th>
                   ))}
@@ -871,7 +886,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
   // Colunas da tabela de mudanças — a visão completa (olho) acrescenta as
   // datas de solicitação/conclusão e os aprovadores TI/Gestor.
   const mudColumns: SgColumn<SgMudancaItem>[] = [
-    { key: 'chamado', header: 'OS / Chamado', semFiltro: true, render: (r) => <OsCell value={r.chamado} q={q} /> },
+    { key: 'chamado', header: 'OS / Chamado', render: (r) => <OsCell value={r.chamado} q={q} /> },
     { key: 'ambiente', header: 'Ambiente' },
     { key: 'tipoMudanca', header: 'Tipo' },
     { key: 'risco', header: 'Risco', render: (r) => <Badge variant={r.risco === 'Alto' ? 'destructive' : 'outline'} className="text-[10px]">{r.risco}</Badge> },
@@ -1092,7 +1107,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
               ],
             })}
             columns={[
-              { key: 'protocolo', header: 'OS / Protocolo', semFiltro: true, render: r => <OsCell value={r.protocolo} q={q} /> },
+              { key: 'protocolo', header: 'OS / Protocolo', render: r => <OsCell value={r.protocolo} q={q} /> },
               { key: 'titulo', header: 'Título', className: 'max-w-[220px] truncate', render: r => <Highlight text={r.titulo} q={q} /> },
               { key: 'ativo', header: 'Ativo' },
               { key: 'priorizacao', header: 'Prioridade', render: r => <Badge variant={r.priorizacao === 'Alta' ? 'destructive' : 'outline'} className="text-[10px]">{r.priorizacao}</Badge> },
@@ -1160,7 +1175,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
               ],
             })}
             columns={[
-              { key: 'id', header: 'ID', semFiltro: true, valor: r => String(r.id), render: r => <OsCell value={`#${r.id}`} q={q} /> },
+              { key: 'id', header: 'ID', valor: r => `#${r.id}`, render: r => <OsCell value={`#${r.id}`} q={q} /> },
               { key: 'descricao', header: 'Risco', className: 'max-w-[240px] truncate', render: r => <Highlight text={r.descricao} q={q} /> },
               { key: 'cid', header: 'CID' },
               { key: 'categoriaAmeaca', header: 'Categoria' },
@@ -1319,7 +1334,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
               ],
             })}
             columns={[
-              { key: 'titulo', header: 'OS / Solicitação', semFiltro: true, render: r => <OsCell value={r.titulo} q={q} /> },
+              { key: 'titulo', header: 'OS / Solicitação', render: r => <OsCell value={r.titulo} q={q} /> },
               { key: 'tipo', header: 'Tipo' },
               { key: 'projeto', header: 'Projeto' },
               { key: 'solicitante', header: 'Solicitante' },

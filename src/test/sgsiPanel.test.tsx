@@ -102,7 +102,7 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
       dataLimite: '', eficaz: '—', solucao: '—',
     });
     Object.assign(mockData.riscos, {
-      itens: [risco(3, 'Charlie', 'Encerrado', 'Ana'), risco(1, 'Alfa', 'Rejeitado', 'Bruno'), risco(2, 'Bravo', 'Encerrado', 'Ana')],
+      itens: [risco(10, 'Charlie', 'Encerrado', 'Ana'), risco(9, 'Alfa', 'Rejeitado', 'Bruno'), risco(2, 'Bravo', 'Encerrado', 'Ana')],
     });
     try {
       const { container } = render(<BIInfraSgsiPanel secao="riscos" />);
@@ -126,6 +126,14 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
       fireEvent.click(screen.getByText(/limpar 1 filtro/));
       expect(corpo()).toHaveLength(3);
       expect(primeiroRisco()).toBe('Alfa'); // ordenação A→Z sobrevive à limpeza
+
+      // ── identificador também tem funil (a ordenação mora nele), e a ordem é
+      //    NUMÉRICA: #2, #9, #10 — a lexicográfica daria #10, #2, #9.
+      //    Último dialog = o menu aberto por último (o portal anexa ao fim do body).
+      fireEvent.click(screen.getByLabelText('Ordenar e filtrar por ID'));
+      const menus = screen.getAllByRole('dialog');
+      fireEvent.click(within(menus[menus.length - 1]).getByText('Ordenar de A a Z'));
+      expect(corpo().map((tr) => tr.querySelectorAll('td')[0].textContent)).toEqual(['#2', '#9', '#10']);
     } finally {
       Object.assign(mockData.riscos, original);
     }
