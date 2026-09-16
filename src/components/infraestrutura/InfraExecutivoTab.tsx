@@ -281,9 +281,13 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
     );
   };
 
+  // Este card inteiro sai de `sgsiBase` (useBIInfraSgsi SEM período): é histórico
+  // completo e IGNORA o "Intervalo" do topo da página. A Gestão SG mostra o mesmo
+  // indicador recortado — sem dizer o escopo, as duas abas exibem números
+  // diferentes sob um nome idêntico, e o auditor acha a divergência sozinho.
   const cardRiscos = (tv: boolean) => {
     return (
-    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
+    <BlocoCard icon={ShieldCheck} titulo="Gestão de Riscos · histórico completo" className={tv ? 'flex-1 min-h-0 overflow-hidden' : undefined}>
       <div className="flex items-stretch gap-4 flex-1 min-h-0">
         {/* Esquerda: KPIs empilhados na vertical */}
         <div className={`${tv ? 'w-[210px]' : 'w-[200px]'} shrink-0 flex flex-col gap-1.5`}>
@@ -302,7 +306,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           </div>
           <KpiLinha tv={tv} label="resolvidos ≤ 30d · meta > 90%" valor={risco30Exec != null ? `${risco30Exec}%` : '—'} cor={corSlaExec(risco30Exec)} />
           <KpiLinha tv={tv} label={`em aberto · ${riscosSg.length} SG + ${riscosDevops.length} DevOps`} valor={riscosCombinados} cor={riscosCombinados > 0 ? '#f59e0b' : undefined} />
-          <KpiLinha tv={tv} label="riscos mapeados" valor={sgsiBase?.riscos.total ?? '—'} />
+          <KpiLinha tv={tv} label="riscos mapeados · histórico" valor={sgsiBase?.riscos.total ?? '—'} />
         </div>
         {/* Direita: listagem de riscos com solução (TV: altura toda, com scroll) */}
         <div className="flex-1 min-w-0 min-h-0 border-l pl-4 flex flex-col gap-2 overflow-hidden">
@@ -322,7 +326,7 @@ export function InfraExecutivoTab({ kpis, dateFrom, dateTo, periodLabel, tvMode 
           )}
         </div>
       </div>
-      {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-012 · análise de riscos + board DevOps (tag #Risco)</p>}
+      {!tv && <p className="text-[10px] text-muted-foreground/70 border-t pt-1.5">SG-LST-012 · análise de riscos + board DevOps (tag #Risco) — histórico completo, não recortado pelo intervalo do topo</p>}
     </BlocoCard>
     );
   };

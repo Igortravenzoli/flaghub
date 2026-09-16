@@ -9,9 +9,11 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   ShieldCheck, RefreshCw, Flame, AlertTriangle, KeyRound, Lightbulb,
   CalendarCheck, Search, X, Copy, Check, ChevronDown, ChevronsUpDown, Eye, EyeOff, ExternalLink,
+  Filter, FilterX, ArrowDownAZ, ArrowUpAZ,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -269,21 +271,64 @@ function MiniBars({ title, data, isLoading, topN = 5, onSelect }: {
   );
 }
 
-function SimNaoTile({ label, valor, isLoading }: { label: string; valor?: SimNao; isLoading: boolean }) {
+/** Meta de eficácia do SGSI (SG-LST-001 · SG-PR-004 item 10.5). O limiar de 80
+ *  já regia a COR deste tile desde sempre — só nunca apareceu escrito, e número
+ *  sem régua é número, não indicador. */
+const META_EFICACIA_PCT = 80;
+
+function SimNaoTile({ label, valor, isLoading, meta, cobertura }: {
+  label: string; valor?: SimNao; isLoading: boolean;
+  /** Régua do indicador: carimbada no rótulo e usada no selo de conformidade. */
+  meta?: number;
+  /** Quantos DEVERIAM ter respondido, contra os que responderam. `valor` só
+   *  conta quem respondeu Sim/Não, então sozinho ele exibe "100%" sem revelar
+   *  os silenciosos — que o auditor acha sozinho ao abrir a lista. Mostrar
+   *  primeiro é a diferença entre uma OM e uma NC. */
+  cobertura?: { elegiveis: number; respondidos: number; emTratamento: number; proximoLimite: string | null };
+}) {
   const total = valor ? valor.sim + valor.nao : 0;
   const p = valor ? pct(valor.sim, total) : 0;
+  const alvo = meta ?? META_EFICACIA_PCT;
+  const conforme = total > 0 && p >= alvo;
+  const pCobertura = cobertura ? pct(cobertura.respondidos, cobertura.elegiveis) : 0;
   return (
     <div className="rounded-xl border border-border bg-card px-4 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground mb-1.5">{label}</p>
+      <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground mb-1.5">
+        {label}{meta != null && <> · meta ≥ {meta}%</>}
+      </p>
       {isLoading || !valor ? <Skeleton className="h-10 w-full" /> : (
         <>
-          <div className="flex items-end justify-between mb-1.5">
-            <span className={`text-2xl font-bold font-mono leading-none ${p >= 80 ? 'text-emerald-500' : p >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{p}%</span>
-            <span className="text-[11px] text-muted-foreground">{valor.sim} sim · {valor.nao} não</span>
+          <div className="flex items-end justify-between gap-2 mb-1.5">
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span className={`text-2xl font-bold font-mono leading-none ${p >= alvo ? 'text-emerald-500' : p >= alvo - 20 ? 'text-amber-500' : 'text-red-500'}`}>{p}%</span>
+              {meta != null && total > 0 && (
+                <span className={`text-[10px] font-medium shrink-0 ${conforme ? 'text-emerald-500' : 'text-red-500'}`}>
+                  {conforme ? '✓ conforme' : '✗ abaixo da meta'}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] text-muted-foreground shrink-0">{valor.sim} sim · {valor.nao} não</span>
           </div>
           <div className="h-1.5 rounded-full bg-red-500/25 overflow-hidden">
             <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${p}%` }} />
           </div>
+          {cobertura && (
+            <div className="mt-2 border-t border-border/60 pt-1.5 space-y-0.5">
+              <p className="text-[11px] text-muted-foreground">
+                Cobertura da avaliação:{' '}
+                <span className={`font-mono font-bold ${pCobertura >= 100 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                  {cobertura.respondidos} de {cobertura.elegiveis}
+                </span>{' '}
+                encerrados avaliados{cobertura.elegiveis > 0 && <> · {pCobertura}%</>}
+              </p>
+              {cobertura.emTratamento > 0 && (
+                <p className="text-[10px] text-muted-foreground/80">
+                  {cobertura.emTratamento} em tratamento, fora do cálculo — prazo em aberto
+                  {cobertura.proximoLimite && <> · limite {fmtDiaCalendario(cobertura.proximoLimite)}</>}
+                </p>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -309,6 +354,104 @@ interface SgColumn<T> {
   header: string;
   className?: string;
   render?: (row: T) => ReactNode;
+  /** Texto puro da célula, usado para ORDENAR e FILTRAR. `render` devolve
+   *  ReactNode (badge, link, data formatada) e não serve de chave — sem isto o
+   *  funil de uma coluna de data listaria ISO cru. Padrão: o valor de `row[key]`. */
+  valor?: (row: T) => string;
+  /** Coluna sem funil (identificador único: a lista de opções seria do tamanho
+   *  da tabela e não filtra nada de útil). */
+  semFiltro?: boolean;
+}
+
+const DASH_CELULA = '—';
+
+/** Texto de uma célula para ordenação/filtro — nunca ReactNode. */
+function textoDaCelula<T>(c: SgColumn<T>, row: T): string {
+  if (c.valor) return c.valor(row);
+  const v = (row as Record<string, unknown>)[c.key];
+  return v == null || v === '' ? DASH_CELULA : String(v);
+}
+
+/** Funil + ordenação de UMA coluna. As opções vêm das linhas que passam pelos
+ *  filtros das OUTRAS colunas (comportamento de planilha): filtrar Status não
+ *  pode fazer sumir da lista de Responsável quem ainda está visível. */
+function ColunaMenu<T>({ coluna, opcoes, selecionados, ordem, onOrdenar, onFiltrar }: {
+  coluna: SgColumn<T>;
+  opcoes: string[];
+  /** `undefined` = coluna sem filtro (tudo passa). */
+  selecionados?: string[];
+  ordem?: 'asc' | 'desc';
+  onOrdenar: (dir: 'asc' | 'desc') => void;
+  onFiltrar: (valores: string[] | undefined) => void;
+}) {
+  const [busca, setBusca] = useState('');
+  const visiveis = opcoes.filter((o) => hit(busca, o));
+  const ativo = selecionados != null;
+  const marcado = (o: string) => !selecionados || selecionados.includes(o);
+  const alternar = (o: string) => {
+    const base = selecionados ?? opcoes;
+    const proximo = base.includes(o) ? base.filter((v) => v !== o) : [...base, o];
+    // Tudo marcado = sem filtro: evita guardar uma lista que não recorta nada.
+    onFiltrar(proximo.length === opcoes.length ? undefined : proximo);
+  };
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Ordenar e filtrar por ${coluna.header}`}
+          className={`shrink-0 rounded p-0.5 transition-colors ${ativo || ordem ? 'text-primary' : 'text-muted-foreground/40 hover:text-foreground'}`}
+        >
+          {ativo ? <FilterX className="h-3 w-3" /> : <Filter className="h-3 w-3" />}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-60 p-0">
+        <div className="flex flex-col">
+          <div className="border-b border-border p-1">
+            <button type="button" onClick={() => onOrdenar('asc')}
+              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors hover:bg-muted ${ordem === 'asc' ? 'text-primary font-medium' : ''}`}>
+              <ArrowDownAZ className="h-3.5 w-3.5" /> Ordenar de A a Z
+            </button>
+            <button type="button" onClick={() => onOrdenar('desc')}
+              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors hover:bg-muted ${ordem === 'desc' ? 'text-primary font-medium' : ''}`}>
+              <ArrowUpAZ className="h-3.5 w-3.5" /> Ordenar de Z a A
+            </button>
+          </div>
+          <div className="p-1.5">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+              <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={`Buscar em ${coluna.header}…`}
+                className="h-7 pl-7 text-xs" aria-label={`Buscar valores de ${coluna.header}`} />
+            </div>
+          </div>
+          <ScrollArea className="max-h-52">
+            <div className="px-1.5 pb-1.5 space-y-0.5">
+              {visiveis.length === 0 && <p className="px-2 py-3 text-center text-[11px] text-muted-foreground">Nenhum valor.</p>}
+              {visiveis.map((o) => (
+                <button key={o} type="button" onClick={() => alternar(o)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted">
+                  <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${marcado(o) ? 'border-primary bg-primary text-primary-foreground' : 'border-border'}`}>
+                    {marcado(o) && <Check className="h-2.5 w-2.5" />}
+                  </span>
+                  <span className="truncate" title={o}>{o}</span>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+          <div className="flex items-center justify-between border-t border-border p-1">
+            <button type="button" onClick={() => onFiltrar(undefined)}
+              className="rounded px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+              Selecionar tudo
+            </button>
+            <button type="button" onClick={() => onFiltrar([])}
+              className="rounded px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+              Limpar
+            </button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 /** Célula "OS" — identificador destacado, monoespaçado, com cópia rápida. */
@@ -345,45 +488,126 @@ function SgTable<T extends { id: number }>({ title, columns, rows, isLoading, on
   /** Ação extra no cabeçalho do card (ex.: toggle compacto/completo). */
   headerAction?: ReactNode;
 }) {
-  const total = rows?.length ?? 0;
   const [limite, setLimite] = useState(LOTE_LINHAS);
-  // Filtro ou busca mudou a contagem → volta ao primeiro lote.
-  useEffect(() => { setLimite(LOTE_LINHAS); }, [total]);
-  const restantes = total - limite;
+  const [ordem, setOrdem] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+  // `undefined` numa coluna = sem filtro; `[]` = nada selecionado (zero linhas).
+  const [filtros, setFiltros] = useState<Record<string, string[] | undefined>>({});
+
+  // Uma linha passa se atende ao filtro de TODAS as colunas — menos a que está
+  // sendo aberta, para a lista de opções dela não se autolimitar.
+  const passa = (row: T, exceto?: string) =>
+    columns.every((c) => {
+      if (c.key === exceto) return true;
+      const sel = filtros[c.key];
+      return !sel || sel.includes(textoDaCelula(c, row));
+    });
+
+  const opcoesDa = (c: SgColumn<T>) =>
+    [...new Set((rows ?? []).filter((r) => passa(r, c.key)).map((r) => textoDaCelula(c, r)))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' }));
+
+  const linhas = (() => {
+    const base = (rows ?? []).filter((r) => passa(r));
+    const col = ordem ? columns.find((c) => c.key === ordem.key) : undefined;
+    if (!col || !ordem) return base;
+    const fator = ordem.dir === 'asc' ? 1 : -1;
+    return [...base].sort((a, b) => {
+      const va = textoDaCelula(col, a);
+      const vb = textoDaCelula(col, b);
+      // Vazio vai SEMPRE para o fim, nas duas direções: em auditoria o que
+      // falta preencher é o que interessa achar, não o que atrapalha a ordem.
+      const va0 = va === DASH_CELULA || va === '';
+      const vb0 = vb === DASH_CELULA || vb === '';
+      if (va0 !== vb0) return va0 ? 1 : -1;
+      return fator * va.localeCompare(vb, 'pt-BR', { numeric: true, sensitivity: 'base' });
+    });
+  })();
+
+  const total = rows?.length ?? 0;
+  const filtrado = linhas.length;
+  const colunasFiltradas = columns.filter((c) => filtros[c.key] != null).length;
+  // Filtro, busca ou ordenação mudou a contagem → volta ao primeiro lote.
+  useEffect(() => { setLimite(LOTE_LINHAS); }, [filtrado]);
+  const restantes = filtrado - limite;
+  // Sem largura mínima as colunas se espremem e a rolagem horizontal nunca
+  // aparece; com ela, o card rola de lado e mostra a linha inteira.
+  const larguraMin = Math.max(720, columns.length * 148);
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-2 pt-4 px-4 flex-row items-start justify-between space-y-0 gap-2">
         <div className="space-y-1 min-w-0">
           <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-          {!isLoading && rows && <p className="text-xs text-muted-foreground">{rows.length} itens{restantes > 0 ? ` · exibindo ${limite}` : ''}{onRowClick ? ' · clique para detalhes' : ''}</p>}
+          {!isLoading && rows && (
+            <p className="text-xs text-muted-foreground">
+              {filtrado} itens{colunasFiltradas > 0 ? ` de ${total}` : ''}
+              {restantes > 0 ? ` · exibindo ${limite}` : ''}
+              {onRowClick ? ' · clique para detalhes' : ''}
+              {colunasFiltradas > 0 && (
+                <>
+                  {' · '}
+                  <button type="button" onClick={() => setFiltros({})} className="text-primary hover:underline">
+                    limpar {colunasFiltradas} filtro{colunasFiltradas > 1 ? 's' : ''}
+                  </button>
+                </>
+              )}
+            </p>
+          )}
         </div>
         {headerAction}
       </CardHeader>
       <CardContent className="p-0">
         {isLoading || !rows ? (
           <div className="p-4 space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
-        ) : rows.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-8 text-center">Nenhum registro para o filtro/busca atual.</p>
+        ) : linhas.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-8 text-center">
+            Nenhum registro para o filtro/busca atual.
+            {colunasFiltradas > 0 && (
+              <>
+                {' '}
+                <button type="button" onClick={() => setFiltros({})} className="text-primary hover:underline">Limpar os filtros de coluna</button>.
+              </>
+            )}
+          </p>
         ) : (
           <>
           <ScrollArea className="max-h-80">
-            {/* min-width quando há muitas colunas (visão completa) → rolagem
-                horizontal dentro do card em vez de estourar/espremer células */}
-            <table className={`w-full text-xs ${columns.length > 8 ? 'min-w-[960px]' : ''}`}>
+            {/* Largura mínima SEMPRE (não só na visão completa): é ela que faz o
+                card rolar de lado em vez de espremer a célula até truncar. */}
+            <table className="w-full text-xs" style={{ minWidth: larguraMin }}>
               <thead className="sticky top-0 bg-card/95 backdrop-blur border-b border-border z-10">
                 <tr className="text-muted-foreground text-[11px]">
-                  {columns.map(c => <th key={c.key} className={`py-2 px-3 text-left font-medium ${c.className ?? ''}`}>{c.header}</th>)}
+                  {columns.map(c => (
+                    <th key={c.key} className="py-2 px-3 text-left font-medium whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1">
+                        {c.header}
+                        {!c.semFiltro && (
+                          <ColunaMenu
+                            coluna={c}
+                            opcoes={opcoesDa(c)}
+                            selecionados={filtros[c.key]}
+                            ordem={ordem?.key === c.key ? ordem.dir : undefined}
+                            onOrdenar={(dir) => setOrdem({ key: c.key, dir })}
+                            onFiltrar={(valores) => setFiltros((f) => ({ ...f, [c.key]: valores }))}
+                          />
+                        )}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, limite).map(row => (
+                {linhas.slice(0, limite).map(row => (
                   <tr
                     key={row.id}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                     className={`border-b border-border/40 transition-colors ${onRowClick ? 'cursor-pointer hover:bg-primary/5' : 'hover:bg-muted/30'}`}
                   >
                     {columns.map(c => (
-                      <td key={c.key} className={`py-2 px-3 ${c.className ?? ''}`}>
+                      // `title` nas colunas que truncam: a rolagem lateral mostra a
+                      // COLUNA inteira, mas não o texto cortado por `max-w` — o
+                      // hover (e o clique, que abre o drawer) resolvem o resto.
+                      <td key={c.key} className={`py-2 px-3 ${c.className ?? ''}`}
+                        title={c.className?.includes('truncate') ? textoDaCelula(c, row) : undefined}>
                         {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? '—')}
                       </td>
                     ))}
@@ -647,7 +871,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
   // Colunas da tabela de mudanças — a visão completa (olho) acrescenta as
   // datas de solicitação/conclusão e os aprovadores TI/Gestor.
   const mudColumns: SgColumn<SgMudancaItem>[] = [
-    { key: 'chamado', header: 'OS / Chamado', render: (r) => <OsCell value={r.chamado} q={q} /> },
+    { key: 'chamado', header: 'OS / Chamado', semFiltro: true, render: (r) => <OsCell value={r.chamado} q={q} /> },
     { key: 'ambiente', header: 'Ambiente' },
     { key: 'tipoMudanca', header: 'Tipo' },
     { key: 'risco', header: 'Risco', render: (r) => <Badge variant={r.risco === 'Alto' ? 'destructive' : 'outline'} className="text-[10px]">{r.risco}</Badge> },
@@ -656,10 +880,10 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
     // se quer ler ao listar as atualizações que falharam.
     ...(drill === 'mud:att-nao' && !mostrarTudo ? [colJustificativa] : []),
     ...(mostrarTudo ? [
-      { key: 'criado', header: 'Data solicitação', className: 'whitespace-nowrap', render: (r) => fmtDate(r.criado) },
+      { key: 'criado', header: 'Data solicitação', className: 'whitespace-nowrap', valor: (r) => fmtDate(r.criado), render: (r) => fmtDate(r.criado) },
       // "Data e Hora conclusão" pode ser texto livre — fmtDate devolve o
       // original quando não parseia.
-      { key: 'conclusao', header: 'Conclusão', className: 'whitespace-nowrap', render: (r) => fmtDate(r.conclusao) },
+      { key: 'conclusao', header: 'Conclusão', className: 'whitespace-nowrap', valor: (r) => fmtDate(r.conclusao), render: (r) => fmtDate(r.conclusao) },
       { key: 'atualizacaoBemSucedida', header: 'Bem sucedida', render: (r) => <SimNaoBadge valor={r.atualizacaoBemSucedida} /> },
       colJustificativa,
     ] as SgColumn<SgMudancaItem>[] : []),
@@ -668,7 +892,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
       { key: 'aprovadorTI', header: 'Aprovador TI' },
       { key: 'aprovadorGestor', header: 'Aprovador Gestor' },
     ] as SgColumn<SgMudancaItem>[] : []),
-    { key: 'modificado', header: 'Modificado', className: 'whitespace-nowrap', render: (r) => fmtDate(r.modificado) },
+    { key: 'modificado', header: 'Modificado', className: 'whitespace-nowrap', valor: (r) => fmtDate(r.modificado), render: (r) => fmtDate(r.modificado) },
   ];
 
   if (isError) return <DashboardEmptyState variant="error" onRetry={() => refetch()} />;
@@ -744,6 +968,15 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
         <secaoAtiva.Icon className="h-4 w-4 text-primary shrink-0" />
         <span className="text-sm font-bold tracking-tight">{secaoAtiva.label}</span>
         <span className="font-mono text-[10px] text-muted-foreground/70">SG-LST-{secaoAtiva.badge}</span>
+        {/* Riscos declara o recorte ao lado do título, como Acessos já fazia:
+            é por essa linha que o auditor reproduz os 'Riscos mapeados'. */}
+        {activeSecao === 'riscos' && (
+          <span className="text-[11px] text-muted-foreground">
+            {dateFrom && dateTo
+              ? <>· recorte por data de CRIAÇÃO (dia em que a linha entrou na lista), de {fmtDiaLocal(dateFrom)} a {fmtDiaLocal(dateTo)} — reproduza filtrando “Criado” na SG-LST-012</>
+              : <>· base completa — sem recorte de período</>}
+          </span>
+        )}
         {activeSecao === 'acessos' && (
           <span className="text-[11px] text-muted-foreground">
             {periodoDoCalendario && dateFrom && dateTo
@@ -859,13 +1092,13 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
               ],
             })}
             columns={[
-              { key: 'protocolo', header: 'OS / Protocolo', render: r => <OsCell value={r.protocolo} q={q} /> },
+              { key: 'protocolo', header: 'OS / Protocolo', semFiltro: true, render: r => <OsCell value={r.protocolo} q={q} /> },
               { key: 'titulo', header: 'Título', className: 'max-w-[220px] truncate', render: r => <Highlight text={r.titulo} q={q} /> },
               { key: 'ativo', header: 'Ativo' },
               { key: 'priorizacao', header: 'Prioridade', render: r => <Badge variant={r.priorizacao === 'Alta' ? 'destructive' : 'outline'} className="text-[10px]">{r.priorizacao}</Badge> },
               { key: 'sla', header: 'SLA', render: r => <StatusBadge status={r.sla} /> },
               { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
-              { key: 'inicio', header: 'Início', render: r => fmtDate(r.inicio) },
+              { key: 'inicio', header: 'Início', valor: r => fmtDate(r.inicio), render: r => fmtDate(r.inicio) },
             ]}
           />
         </TabsContent>
@@ -873,9 +1106,32 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
         {/* ── Riscos (SG-LST-012) ── */}
         <TabsContent value="riscos" className="space-y-3 mt-0">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <KpiTile label="Riscos mapeados" value={d?.riscos.total ?? '—'} onClick={() => setDrill(null)} active={!drill} />
-            <KpiTile label="Em aberto" value={d?.riscos.abertos ?? '—'} color="#f59e0b" onClick={() => toggleDrill('risco:abertos')} active={drill === 'risco:abertos'} />
-            <SimNaoTile label="Plano de tratamento eficaz" valor={d?.riscos.tratamentoEficaz} isLoading={isLoading} />
+            {/* O `sub` não é enfeite: sem o critério no próprio card o auditor
+                refaz a conta na lista e chega noutro número na frente de você. */}
+            <KpiTile
+              label="Riscos mapeados"
+              value={d?.riscos.total ?? '—'}
+              sub={dateFrom && dateTo
+                ? <>SG-LST-012 · criados de {fmtDiaLocal(dateFrom)} a {fmtDiaLocal(dateTo)}</>
+                : <>SG-LST-012 · base completa</>}
+              onClick={() => setDrill(null)}
+              active={!drill}
+            />
+            <KpiTile
+              label="Em aberto"
+              value={d?.riscos.abertos ?? '—'}
+              sub={<>nem encerrados nem rejeitados</>}
+              color="#f59e0b"
+              onClick={() => toggleDrill('risco:abertos')}
+              active={drill === 'risco:abertos'}
+            />
+            <SimNaoTile
+              label="Plano de tratamento eficaz"
+              valor={d?.riscos.tratamentoEficaz}
+              isLoading={isLoading}
+              meta={META_EFICACIA_PCT}
+              cobertura={d?.riscos.eficaciaCobertura}
+            />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <MiniDonut title="Por status" data={d?.riscos.porStatus} isLoading={isLoading} onSelect={setQ} />
@@ -904,13 +1160,13 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
               ],
             })}
             columns={[
-              { key: 'id', header: 'ID', render: r => <OsCell value={`#${r.id}`} q={q} /> },
+              { key: 'id', header: 'ID', semFiltro: true, valor: r => String(r.id), render: r => <OsCell value={`#${r.id}`} q={q} /> },
               { key: 'descricao', header: 'Risco', className: 'max-w-[240px] truncate', render: r => <Highlight text={r.descricao} q={q} /> },
               { key: 'cid', header: 'CID' },
               { key: 'categoriaAmeaca', header: 'Categoria' },
               { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
               { key: 'responsavelAjuste', header: 'Responsável' },
-              { key: 'dataLimite', header: 'Limite', render: r => fmtDate(r.dataLimite) },
+              { key: 'dataLimite', header: 'Limite', valor: r => fmtDate(r.dataLimite), render: r => fmtDate(r.dataLimite) },
             ]}
           />
         </TabsContent>
@@ -947,7 +1203,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
                   { key: 'causaRaiz', header: 'Causa raiz', className: 'max-w-[160px] truncate' },
                   { key: 'recorrente', header: 'Recorrente', render: r => r.recorrente ? <Badge variant="destructive" className="text-[10px]">Sim</Badge> : 'Não' },
                   { key: 'status', header: 'Status', render: r => <StatusBadge status={r.status} /> },
-                  { key: 'criado', header: 'Criado', render: r => fmtDate(r.criado) },
+                  { key: 'criado', header: 'Criado', valor: r => fmtDate(r.criado), render: r => fmtDate(r.criado) },
                 ]}
               />
             </div>
@@ -1063,7 +1319,7 @@ export function BIInfraSgsiPanel({ dateFrom, dateTo, periodoDoCalendario = false
               ],
             })}
             columns={[
-              { key: 'titulo', header: 'OS / Solicitação', render: r => <OsCell value={r.titulo} q={q} /> },
+              { key: 'titulo', header: 'OS / Solicitação', semFiltro: true, render: r => <OsCell value={r.titulo} q={q} /> },
               { key: 'tipo', header: 'Tipo' },
               { key: 'projeto', header: 'Projeto' },
               { key: 'solicitante', header: 'Solicitante' },

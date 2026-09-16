@@ -389,4 +389,41 @@ describe('buildSgsiResponse', () => {
     expect(f.diasSem.incidentes).toBe(5);
     expect(f.diasSem.naoConformidades).toBe(90); // NC de 13/03, fora do período
   });
+
+  // Auditoria: o número de "Riscos mapeados" tem de ser reproduzível filtrando
+  // "Criado" na própria SG-LST-012. Com criação-OU-modificação ele não era —
+  // qualquer edição num risco antigo o puxava para dentro da janela, e o mesmo
+  // filtro devolvia conjunto diferente a cada rodada. Decisão do Igor, 16/09/2026.
+  it('012 recorta só por "Criado": modificar risco antigo não o traz para a janela', () => {
+    const range = { from: new Date('2026-06-01T00:00:00Z'), to: new Date('2026-06-10T23:59:59Z') };
+    // criado em março e MODIFICADO dentro da janela (anexo de evidência, correção)
+    const riscoTocado = item('012', 90, { 'Status solicitação': 'Encerrado' }, '2026-03-02T00:00:00Z', '2026-06-05T00:00:00Z');
+    // mesma situação numa MUDANÇA: os outros blocos seguem criação OU modificação
+    const mudancaTocada = item('010', 91, { Status: 'Realizado' }, '2026-03-02T00:00:00Z', '2026-06-05T00:00:00Z');
+    const f = buildSgsiResponse([...rows, riscoTocado, mudancaTocada], null, NOW, range);
+
+    expect(f.riscos.itens.map((i) => i.id)).not.toContain(90);
+    expect(f.riscos.total).toBe(1); // só o item 31, criado em 09/06
+    expect(f.mudancas.itens.map((i) => i.id)).toContain(91);
+  });
+
+  // O card exibia "100% · 4 sim · 0 não" sem dizer quantos DEVERIAM ter
+  // respondido: `simNaoOf` pula o campo vazio, então encerrado mudo some da
+  // conta em vez de derrubá-la.
+  it('eficácia: cobertura separa quem respondeu de quem deveria responder', () => {
+    const c = buildSgsiResponse([
+      item('012', 41, { 'Status solicitação': 'Encerrado', 'O plano de tratamento de risco foi eficaz?': 'Sim' }, '2026-05-01T00:00:00Z'),
+      item('012', 42, { 'Status solicitação': 'Encerrado' }, '2026-05-02T00:00:00Z'), // encerrado e MUDO
+      item('012', 43, { 'Status solicitação': 'Rejeitado' }, '2026-05-03T00:00:00Z'), // nunca tratado
+      item('012', 44, { 'Status solicitação': 'Plano de Tratamento Definido', 'Data limite solução': '2026-10-10' }, '2026-05-04T00:00:00Z'),
+    ], null, NOW).riscos;
+
+    expect(c.tratamentoEficaz).toEqual({ sim: 1, nao: 0 }); // 100% pelo campo
+    expect(c.eficaciaCobertura.elegiveis).toBe(2);          // os DOIS encerrados
+    expect(c.eficaciaCobertura.respondidos).toBe(1);        // só um respondeu
+    expect(c.eficaciaCobertura.emTratamento).toBe(1);       // prazo ainda correndo
+    expect(c.eficaciaCobertura.proximoLimite).toBe('2026-10-10');
+    // o rejeitado não entra em nenhum dos dois lados da conta
+    expect(c.total).toBe(4);
+  });
 });

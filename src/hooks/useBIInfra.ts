@@ -138,6 +138,20 @@ export interface SgRiscosBloco {
   porTipoAmeaca: NameValue[];
   porAtivoAfetado: NameValue[];
   tratamentoEficaz: SimNao;
+  /** Cobertura da avaliação de eficácia (campo "O plano de tratamento de risco
+   *  foi eficaz?"). `tratamentoEficaz` so conta quem RESPONDEU Sim/Nao — sozinho
+   *  ele exibe "100%" sem dizer quantos deveriam ter respondido. O auditor abre a
+   *  lista e acha os silenciosos; melhor o painel os mostrar primeiro. */
+  eficaciaCobertura: {
+    /** Encerrados no recorte: quem já deve ter veredito de eficácia. */
+    elegiveis: number;
+    /** Responderam Sim ou Não — é o denominador do % exibido. */
+    respondidos: number;
+    /** Ainda em tratamento: prazo em aberto, fora do denominador por direito. */
+    emTratamento: number;
+    /** Menor "Data limite solução" entre os em tratamento (ISO), ou null. */
+    proximoLimite: string | null;
+  };
   itens: SgRiscoItem[];
 }
 
@@ -343,7 +357,16 @@ export function buildSgsiResponse(
   const byAll = (key: string) => rows.filter((r) => r.list_key === key);
   const l010 = by('010');
   const l011 = by('011');
-  const l012 = by('012');
+  // 012 recorta SÓ por `created_sp` — o dia em que a linha entrou na lista.
+  // Os outros blocos seguem criação OU modificação; o risco não pode, porque
+  // `modified_sp` é volátil: anexar evidência ou corrigir um texto puxaria o
+  // registro para dentro da janela sem que risco nenhum tivesse mudado, e o
+  // mesmo filtro devolveria um conjunto diferente a cada auditoria. Com
+  // `created_sp` o auditor reproduz a conta filtrando "Criado" na própria
+  // SG-LST-012. Decisão do Igor, 16/09/2026.
+  const l012 = range
+    ? rows.filter((r) => r.list_key === '012' && inRange(r.created_sp))
+    : rows.filter((r) => r.list_key === '012');
   const l017 = by('017');
   const l018 = by('018');
 
@@ -437,9 +460,14 @@ export function buildSgsiResponse(
   // Em monitoramento TI. Aberto = nem encerrado/tratado nem rejeitado.
   // "Ativo afetado" não existe na lista — o campo real é "O que este risco afeta".
   const STATUS_012 = ['Status solicitação', 'Status'];
+  const ENCERRADO_012 = /tratad|encerr|conclu|finaliz/i;
+  // Em tratamento: nem encerrado nem rejeitado — prazo ainda correndo, então
+  // fica FORA do denominador da eficácia por direito, não por omissão.
+  const emTratamento012 = l012.filter((i) => !statusMatches(i, STATUS_012, /tratad|encerr|conclu|finaliz|rejeitad/i));
+  const eficaz012 = simNaoOf(l012, 'O plano de tratamento de risco foi eficaz?');
   const riscos: SgRiscosBloco = {
     total: l012.length,
-    abertos: l012.filter((i) => !statusMatches(i, STATUS_012, /tratad|encerr|conclu|finaliz|rejeitad/i)).length,
+    abertos: emTratamento012.length,
     pctResolvido30d: (() => {
       const resolv = l012.filter((i) => statusMatches(i, STATUS_012, /encerr|conclu|finaliz|tratad/i));
       const within = resolv.filter((i) => {
@@ -455,7 +483,16 @@ export function buildSgsiResponse(
     porCategoriaAmeaca: countBy(l012, 'Categoria Ameaça'),
     porTipoAmeaca: countBy(l012, 'Tipo ameaça', 'Tipo da ameaça'),
     porAtivoAfetado: countBy(l012, 'Ativo afetado', 'O que este risco afeta'),
-    tratamentoEficaz: simNaoOf(l012, 'O plano de tratamento de risco foi eficaz?'),
+    tratamentoEficaz: eficaz012,
+    eficaciaCobertura: {
+      elegiveis: l012.filter((i) => statusMatches(i, STATUS_012, ENCERRADO_012)).length,
+      respondidos: eficaz012.sim + eficaz012.nao,
+      emTratamento: emTratamento012.length,
+      proximoLimite: emTratamento012
+        .map((i) => str(i, 'Data limite solução'))
+        .filter((v) => /^\d{4}-\d{2}-\d{2}/.test(v))
+        .sort()[0] ?? null,
+    },
     itens: recentes(l012, 150).map((i) => ({
       id: i.item_id,
       descricao: str(i, 'Informações adicionais', 'Título', 'Title') || DASH,
@@ -702,7 +739,9 @@ export function buildSgsiResponse(
     success: true,
     message: 'sgsi-mirror',
     atualizadoEm: syncedAt,
-    totalItens: scoped.length,
+    // O 012 tem recorte próprio (só `created_sp`): contá-lo pelo `scoped` faria
+    // o cabeçalho "N de M itens" discordar da soma das seções.
+    totalItens: scoped.filter((r) => r.list_key !== '012').length + l012.length,
     totalItensBase: rows.length,
     diasSem,
     mudancas,
