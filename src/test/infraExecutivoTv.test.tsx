@@ -53,6 +53,7 @@ const mockSgsi: BIInfraSgsiResponse = {
     total: 59, abertos: 2, pctResolvido30d: 9,
     porStatus: [], porAmbiente: [], porCID: [], porCategoriaAmeaca: [], porTipoAmeaca: [], porAtivoAfetado: [],
     tratamentoEficaz: vazioNV,
+    eficaciaCobertura: { elegiveis: 57, respondidos: 0, emTratamento: 2, proximoLimite: null },
     itens: [
       { id: 20, descricao: 'Emails falsos (eng. social)', ambiente: 'Corp', cid: 'Confidencialidade', categoriaAmeaca: 'Humana', tipoAmeaca: 'Externa', ativoAfetado: 'Pessoas', status: 'Em monitoramento TI', responsavelAjuste: 'Igor', dataLimite: '', eficaz: '—', solucao: 'Campanha de conscientização e bloqueio de domínios' },
       // Descrição LONGA sem solução: expansível pelo comprimento (21/08) — o
@@ -178,7 +179,11 @@ describe('InfraExecutivoTab — modo TV (layout aprovado)', () => {
     renderTv(<InfraExecutivoTab kpis={kpis} tvMode />);
     expect(screen.getByText('últimos 30 dias')).toBeInTheDocument();
     expect(screen.getByText('ativos agora')).toBeInTheDocument();
-    expect(screen.getByText('riscos mapeados')).toBeInTheDocument();
+    // "· histórico" faz parte do rótulo de propósito: a Gestão SG mostra o MESMO
+    // indicador recortado pelo período, e este card sai de `sgsiBase` (sem
+    // recorte). Sem o sufixo, as duas abas exibem números diferentes sob nomes
+    // idênticos — não afrouxe esta asserção para só 'riscos mapeados'.
+    expect(screen.getByText('riscos mapeados · histórico')).toBeInTheDocument();
   });
 
   it('Meta · Pipelines em 3 blocos: meta de PROJETOS, alvos e pipelines por projeto', () => {

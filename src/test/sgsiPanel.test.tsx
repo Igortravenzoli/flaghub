@@ -40,6 +40,7 @@ const mockData: BIInfraSgsiResponse = {
     porCID: [{ name: 'Confidencialidade', value: 1 }], porCategoriaAmeaca: [{ name: 'Humana', value: 1 }],
     porTipoAmeaca: [{ name: 'Interna', value: 1 }], porAtivoAfetado: [{ name: 'Banco de dados', value: 1 }],
     tratamentoEficaz: { sim: 0, nao: 1 },
+    eficaciaCobertura: { elegiveis: 1, respondidos: 1, emTratamento: 1, proximoLimite: '2026-08-01' },
     itens: [
       { id: 20, descricao: 'Vazamento de credenciais', ambiente: 'PROD', cid: 'Confidencialidade', categoriaAmeaca: 'Humana', tipoAmeaca: 'Interna', ativoAfetado: 'Banco de dados', status: 'Em monitoramento TI', responsavelAjuste: 'Igor', dataLimite: '2026-08-01', eficaz: 'Não', solucao: 'Rotacionar credenciais e habilitar MFA' },
     ],
@@ -92,6 +93,85 @@ vi.mock('@/hooks/useBIInfra', () => ({
 import { BIInfraSgsiPanel } from '@/components/infraestrutura/BIInfraSgsiPanel';
 
 describe('BIInfraSgsiPanel — IA refatorada', () => {
+  // Grid analítico: funil por coluna (filtro multi-valor) + ordenação A→Z.
+  it('grid: o funil filtra a coluna e "A a Z" ordena o que sobrou', () => {
+    const original = { ...mockData.riscos };
+    const risco = (id: number, descricao: string, status: string, responsavel: string) => ({
+      id, descricao, ambiente: 'PROD', cid: 'Confidencialidade', categoriaAmeaca: 'Humana',
+      tipoAmeaca: 'Interna', ativoAfetado: 'Dados', status, responsavelAjuste: responsavel,
+      dataLimite: '', eficaz: '—', solucao: '—',
+    });
+    Object.assign(mockData.riscos, {
+      itens: [risco(10, 'Charlie', 'Encerrado', 'Ana'), risco(9, 'Alfa', 'Rejeitado', 'Bruno'), risco(2, 'Bravo', 'Encerrado', 'Ana')],
+    });
+    try {
+      const { container } = render(<BIInfraSgsiPanel secao="riscos" />);
+      const corpo = () => [...container.querySelectorAll('tbody tr')];
+      const primeiroRisco = () => corpo()[0].querySelectorAll('td')[1].textContent;
+      expect(corpo()).toHaveLength(3);
+
+      // ── funil: desmarcar "Rejeitado" na coluna Status tira a linha da Alfa
+      fireEvent.click(screen.getByLabelText('Ordenar e filtrar por Status'));
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Rejeitado'));
+      expect(corpo()).toHaveLength(2);
+      expect(corpo().map((tr) => tr.querySelectorAll('td')[1].textContent)).toEqual(['Charlie', 'Bravo']);
+
+      // ── ordenação: A→Z na coluna Risco reordena o conjunto JÁ filtrado
+      fireEvent.click(screen.getByLabelText('Ordenar e filtrar por Risco'));
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Ordenar de A a Z'));
+      expect(primeiroRisco()).toBe('Bravo');
+      expect(corpo()).toHaveLength(2); // ordenar não desfaz o filtro
+
+      // ── o cabeçalho confessa o recorte e oferece desfazer
+      fireEvent.click(screen.getByText(/limpar 1 filtro/));
+      expect(corpo()).toHaveLength(3);
+      expect(primeiroRisco()).toBe('Alfa'); // ordenação A→Z sobrevive à limpeza
+
+      // ── identificador também tem funil (a ordenação mora nele), e a ordem é
+      //    NUMÉRICA: #2, #9, #10 — a lexicográfica daria #10, #2, #9.
+      //    Último dialog = o menu aberto por último (o portal anexa ao fim do body).
+      fireEvent.click(screen.getByLabelText('Ordenar e filtrar por ID'));
+      const menus = screen.getAllByRole('dialog');
+      fireEvent.click(within(menus[menus.length - 1]).getByText('Ordenar de A a Z'));
+      expect(corpo().map((tr) => tr.querySelectorAll('td')[0].textContent)).toEqual(['#2', '#9', '#10']);
+    } finally {
+      Object.assign(mockData.riscos, original);
+    }
+  });
+
+  // Auditoria (16/09/2026): três coisas que o auditor procura e o card escondia
+  // — por qual campo de data a conta foi feita, contra que meta, e quantos
+  // DEVERIAM ter respondido a eficácia. Os números espelham a SG-LST-012 de
+  // produção: 12 no recorte, 8 encerrados, 4 avaliados, 2 ainda em tratamento.
+  it('riscos: o card declara filtro, meta e cobertura da avaliação', () => {
+    const original = { ...mockData.riscos };
+    Object.assign(mockData.riscos, {
+      total: 12,
+      abertos: 2,
+      tratamentoEficaz: { sim: 4, nao: 0 },
+      eficaciaCobertura: { elegiveis: 8, respondidos: 4, emTratamento: 2, proximoLimite: '2026-10-10' },
+    });
+    try {
+      render(<BIInfraSgsiPanel secao="riscos" dateFrom={new Date(2025, 8, 15)} dateTo={new Date(2026, 8, 15)} />);
+
+      // 1. o critério de data — no próprio card e ao lado do título da seção
+      expect(screen.getByText('SG-LST-012 · criados de 15/09/25 a 15/09/26')).toBeInTheDocument();
+      expect(screen.getByText(/recorte por data de CRIAÇÃO/)).toBeInTheDocument();
+      expect(screen.getByText(/reproduza filtrando .Criado. na SG-LST-012/)).toBeInTheDocument();
+
+      // 2. a régua: meta no rótulo + selo de conformidade
+      expect(screen.getByText(/Plano de tratamento eficaz · meta ≥ 80%/)).toBeInTheDocument();
+      expect(screen.getByText('✓ conforme')).toBeInTheDocument();
+
+      // 3. o denominador aberto: 4 de 8 encerrados, e os 2 em tratamento COM prazo
+      expect(screen.getByText('4 de 8')).toBeInTheDocument();
+      expect(screen.getByText(/encerrados avaliados · 50%/)).toBeInTheDocument();
+      expect(screen.getByText(/2 em tratamento, fora do cálculo — prazo em aberto · limite 10\/10\/26/)).toBeInTheDocument();
+    } finally {
+      Object.assign(mockData.riscos, original);
+    }
+  });
+
   it('renderiza cabeçalho, busca global e rótulo da seção ativa', () => {
     render(<BIInfraSgsiPanel secao="mudancas" />);
     expect(screen.getByText('Gestão SG · Listas SharePoint')).toBeInTheDocument();
@@ -422,7 +502,9 @@ describe('BIInfraSgsiPanel — IA refatorada', () => {
   it('acessos: tabela mostra liberação e revisão TI; drawer traz o fim da liberação e a categoria da lista', () => {
     render(<BIInfraSgsiPanel secao="acessos" />);
     for (const cabecalho of ['Liberação', 'Revisão TI']) {
-      expect(screen.getAllByText(cabecalho).some((el) => el.tagName === 'TH')).toBe(true);
+      // `closest('th')` e não `tagName`: o texto do cabeçalho vive num <span>
+      // dentro do <th>, ao lado do funil de ordenar/filtrar da coluna.
+      expect(screen.getAllByText(cabecalho).some((el) => el.closest('th') !== null)).toBe(true);
     }
     const linha = (os: string) => screen.getByText(os).closest('tr')!;
     expect(within(linha('ACS-701')).getByText('Com evidência')).toBeInTheDocument();
