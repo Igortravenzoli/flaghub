@@ -51,6 +51,20 @@ function toDateOrNull(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+// PGRST202 = o PostgREST não achou a função no schema cache. Nas RPCs da EG-2
+// isso quer dizer edge publicada ANTES da migration 20260921120000_eg2_sync_all_rpcs:
+// os passos 2 e 3 param por inteiro, a cada rodada, e o único sinal é o log.
+// A mensagem diz isso com todas as letras para não passar por falha transitória.
+function migrationEg2Ausente(err: { code?: string } | null | undefined): boolean {
+  return err?.code === 'PGRST202'
+}
+
+function motivoFalhaRpc(err: { code?: string; message: string }): string {
+  return migrationEg2Ausente(err)
+    ? `migration EG-2 ausente (20260921120000_eg2_sync_all_rpcs) — ${err.message}`
+    : err.message
+}
+
 function getSupabaseAdmin() {
   return createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -267,8 +281,12 @@ async function fetchChildrenOfItems(parentIds: number[], admin: any): Promise<{ 
   // Se o devops-sync-query gravar uma rev mais nova no meio, ela é vista e o
   // item é pulado, em vez de sobrescrito com o dado mais velho deste lote.
   //
-  // Se a RPC falhar, grava tudo: é o que acontecia antes quando a leitura dos
-  // revs falhava (o erro era ignorado e nenhum item contava como existente).
+  // Se a RPC falhar, grava tudo. Equivale à falha TOTAL da leitura antiga, que
+  // ignorava o erro e tratava o item como novo. A falha de UM lote, lá, regravava
+  // no máximo as 1000 filhas daquele lote; aqui é uma chamada só, então uma
+  // falha transitória manda as ~8,3 mil para o upsert — com WAL mesmo sem
+  // mudança (análise de Disk IO de 26/08). Pular a rodada seria mais seguro,
+  // mas muda comportamento: ficou como sugestão no PR da EG-2.
   let toUpsert = mapped
   if (mapped.length > 0) {
     const { data: staleIds, error: staleErr } = await admin.rpc('rpc_devops_stale_ids', {
@@ -276,7 +294,7 @@ async function fetchChildrenOfItems(parentIds: number[], admin: any): Promise<{ 
       p_revs: mapped.map(m => m.rev),
     })
     if (staleErr) {
-      console.warn('[ChildrenSync] rpc_devops_stale_ids failed, upserting all:', staleErr.message)
+      console.error('[ChildrenSync] rpc_devops_stale_ids failed, upserting all:', motivoFalhaRpc(staleErr))
     } else {
       const stale = new Set<number>((staleIds || []) as number[])
       toUpsert = mapped.filter(m => stale.has(m.id))
@@ -860,7 +878,8 @@ async function processIterationHistory(admin: any): Promise<{ processed: number;
   })
 
   if (error) {
-    console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
+    if (migrationEg2Ausente(error)) console.error('[IterHistory] Failed to fetch PBIs:', motivoFalhaRpc(error))
+    else console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
     return { processed: 0, withChanges: 0 }
   }
 
@@ -1114,7 +1133,7 @@ serve(async (req: Request) => {
         const { data: pbiData, error: pbiErr } = await bgAdmin
           .rpc('rpc_devops_parent_ids', { p_max: PBIS_MAX })
 
-        if (pbiErr) throw new Error(`Lookup de PBIs falhou: ${pbiErr.message}`)
+        if (pbiErr) throw new Error(`Lookup de PBIs falhou: ${motivoFalhaRpc(pbiErr)}`)
         const pbiIds = (pbiData || []) as number[]
 
         if (pbiIds.length >= PBIS_MAX) {
