@@ -51,18 +51,6 @@ function toDateOrNull(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-function shouldRefreshByChange(
-  changedDate: string | null | undefined,
-  lastSyncedAt: string | null | undefined
-): boolean {
-  if (!lastSyncedAt) return true
-  const changed = toDateOrNull(changedDate)
-  if (!changed) return false
-  const synced = toDateOrNull(lastSyncedAt)
-  if (!synced) return true
-  return changed > synced
-}
-
 function getSupabaseAdmin() {
   return createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -265,28 +253,35 @@ async function fetchChildrenOfItems(parentIds: number[], admin: any): Promise<{ 
 
   console.log(`[ChildrenSync] Total unique children: ${allChildIds.length} (Task/Bug)`)
 
-  // Check existing revs for dedup
-  let existingRevs = new Map<number, number>()
-  for (let i = 0; i < allChildIds.length; i += 1000) {
-    const chunk = allChildIds.slice(i, i + 1000)
-    const { data: existingItems } = await admin
-      .from('devops_work_items')
-      .select('id, rev')
-      .in('id', chunk)
-    for (const e of (existingItems || [])) {
-      existingRevs.set(e.id, e.rev)
-    }
-  }
-
   // Fetch from DevOps API
   const childItems = await fetchWorkItemsBatch(allChildIds)
   const mapped = childItems.map(mapWorkItem)
 
-  // Filter only changed items
-  const toUpsert = mapped.filter(m => {
-    const existingRev = existingRevs.get(m.id)
-    return existingRev === undefined || existingRev < m.rev
-  })
+  // Filtra só quem mudou. O diff de rev roda no banco: a edge manda (id, rev)
+  // do DevOps e recebe só os ids a gravar. Antes ela baixava (id, rev) das
+  // ~8,3 mil filhas, em lotes de 1000, a cada rodada — ~30 MB/dia de egress
+  // para gravar 5 filhas no dia inteiro (20–21/09/2026). A regra — sem linha
+  // no banco, ou rev do banco MENOR — vive em `rpc_devops_stale_ids`.
+  //
+  // O rev do banco agora é lido DEPOIS da busca no DevOps (antes era antes).
+  // Se o devops-sync-query gravar uma rev mais nova no meio, ela é vista e o
+  // item é pulado, em vez de sobrescrito com o dado mais velho deste lote.
+  //
+  // Se a RPC falhar, grava tudo: é o que acontecia antes quando a leitura dos
+  // revs falhava (o erro era ignorado e nenhum item contava como existente).
+  let toUpsert = mapped
+  if (mapped.length > 0) {
+    const { data: staleIds, error: staleErr } = await admin.rpc('rpc_devops_stale_ids', {
+      p_ids: mapped.map(m => m.id),
+      p_revs: mapped.map(m => m.rev),
+    })
+    if (staleErr) {
+      console.warn('[ChildrenSync] rpc_devops_stale_ids failed, upserting all:', staleErr.message)
+    } else {
+      const stale = new Set<number>((staleIds || []) as number[])
+      toUpsert = mapped.filter(m => stale.has(m.id))
+    }
+  }
 
   console.log(`[ChildrenSync] ${toUpsert.length} children need upsert (${mapped.length - toUpsert.length} unchanged)`)
 
@@ -489,6 +484,31 @@ async function processLifecycleAndHealth(
   const maxMs = opts.maxMs ?? 8000
   const batchLimit = opts.limit ?? 200
 
+  // Bug entra aqui desde 03/08/2026 (SN-7). Sem ele, `pbi_lifecycle_summary` e
+  // `pbi_health_summary` só recebiam bug via backfill manual — o último foi em
+  // 01/07/2026, e a partir daí NENHUM bug novo ganhou linha (90 bugs criados em
+  // julho, 5 com linha). A fotografia de sprint já não depende dessa tabela
+  // para montar o escopo, mas health e lead-time dependem, e sem bug eles
+  // cobriam menos da metade do quadro. O filtro de tipo vive na RPC.
+  const { data: candidateRows, error: candErr } = await admin
+    .rpc('rpc_lifecycle_refresh_candidates', { p_limit: batchLimit })
+
+  if (candErr) {
+    console.error('[LifecycleHealth] Failed to fetch refresh queue:', candErr.message)
+    return { processed: 0, skippedTimeout: 0, queued: 0 }
+  }
+
+  const candidates = (candidateRows || []) as any[]
+  // total_pendentes vem repetido em toda linha (window count da fila inteira)
+  const queued = Number(candidates[0]?.total_pendentes ?? 0)
+
+  if (candidates.length === 0) {
+    console.log('[LifecycleHealth] Queue empty — every PBI summary is up to date')
+    return { processed: 0, skippedTimeout: 0, queued: 0 }
+  }
+
+  // Configuração só depois da fila (EG-2): em 20–21/09/2026 a fila veio vazia
+  // em 262 de 289 chamadas, e as três tabelas eram baixadas em todas.
   const [{ data: configRows, error: configErr }, { data: leadRows, error: leadErr }, { data: thresholdRows, error: thresholdErr }] = await Promise.all([
     admin
       .from('pbi_stage_config')
@@ -521,29 +541,6 @@ async function processLifecycleAndHealth(
       warn: Number(row.warn_days || 0),
       critical: Number(row.critical_days || 0),
     })
-  }
-
-  // Bug entra aqui desde 03/08/2026 (SN-7). Sem ele, `pbi_lifecycle_summary` e
-  // `pbi_health_summary` só recebiam bug via backfill manual — o último foi em
-  // 01/07/2026, e a partir daí NENHUM bug novo ganhou linha (90 bugs criados em
-  // julho, 5 com linha). A fotografia de sprint já não depende dessa tabela
-  // para montar o escopo, mas health e lead-time dependem, e sem bug eles
-  // cobriam menos da metade do quadro. O filtro de tipo vive na RPC.
-  const { data: candidateRows, error: candErr } = await admin
-    .rpc('rpc_lifecycle_refresh_candidates', { p_limit: batchLimit })
-
-  if (candErr) {
-    console.error('[LifecycleHealth] Failed to fetch refresh queue:', candErr.message)
-    return { processed: 0, skippedTimeout: 0, queued: 0 }
-  }
-
-  const candidates = (candidateRows || []) as any[]
-  // total_pendentes vem repetido em toda linha (window count da fila inteira)
-  const queued = Number(candidates[0]?.total_pendentes ?? 0)
-
-  if (candidates.length === 0) {
-    console.log('[LifecycleHealth] Queue empty — every PBI summary is up to date')
-    return { processed: 0, skippedTimeout: 0, queued: 0 }
   }
 
   const pbiIds = candidates.map((row: any) => row.id).filter(Boolean)
@@ -841,75 +838,40 @@ function countQaReturns(stateChanges: StateChange[]): number {
 // 10 min completa a cobertura gradualmente (mais recentes primeiro).
 const ITER_HISTORY_MAX_PER_RUN = 400
 
-// Orçamento de varredura: quantas linhas de `devops_work_items` a função lê,
-// da mais recente para a mais antiga, procurando candidatos.
+// Orçamento de varredura: quantas linhas de `devops_work_items` entram na
+// janela, da mais recente para a mais antiga, na busca por candidatos.
 //
-// PAGINADO de propósito: era um `.limit(6000)` numa chamada só e o PostgREST
-// desta instância roda com `max_rows = 1000` — chegavam mil linhas, sem erro
-// nem aviso, e a varredura real era 1/6 da declarada. Item fora das mil linhas
-// mais recentes só voltava a ser visto se alguém o tocasse no DevOps: item
-// antigo e fechado nunca ganhava `iteration_history`/`state_history`.
-// Ver análise de Disk IO de 26/08/2026 e o commit 1dc734d.
+// A janela era PAGINADA aqui (6 páginas de 1000, por causa do `max_rows = 1000`
+// do PostgREST — ver commit 1dc734d) e cada rodada baixava as 6.000 linhas para
+// descobrir, quase sempre, zero candidatos: ~107 MB/dia de egress, 112 de 144
+// rodadas sem nada a fazer em 20–21/09/2026. Desde EG-2 a janela, a regra de
+// "mudou desde o último sync" e o corte em ITER_HISTORY_MAX_PER_RUN rodam em
+// `rpc_iter_history_candidates`, que devolve só os ids, já na ordem de
+// processamento, como `integer[]` (escalar: o `max_rows` não corta).
+//
+// A regra vive agora na RPC (migration 20260921120000_eg2_sync_all_rpcs) —
+// mudar critério de candidato é mudar a função, não este arquivo.
 const ITER_HISTORY_SCAN_MAX = 6000
-const ITER_HISTORY_PAGINA = 1000
-
-type IterHistoryRow = {
-  id: number
-  changed_date: string | null
-  iteration_history_synced_at: string | null
-}
 
 async function processIterationHistory(admin: any): Promise<{ processed: number; withChanges: number }> {
-  const candidates: IterHistoryRow[] = []
-  let varridas = 0
-  let paradaAntecipada = false
+  const { data, error } = await admin.rpc('rpc_iter_history_candidates', {
+    p_limit: ITER_HISTORY_MAX_PER_RUN,
+    p_scan: ITER_HISTORY_SCAN_MAX,
+  })
 
-  for (let inicio = 0; inicio < ITER_HISTORY_SCAN_MAX; inicio += ITER_HISTORY_PAGINA) {
-    // `.order('id')` de desempate é obrigatório: `changed_date` tem empates (e
-    // nulos), e sem ordem total estável a paginação repete ou pula linhas.
-    const { data, error } = await admin
-      .from('devops_work_items')
-      .select('id, changed_date, iteration_history_synced_at')
-      .in('work_item_type', ['Product Backlog Item', 'User Story', 'Bug', 'Task'])
-      .order('changed_date', { ascending: false })
-      .order('id', { ascending: false })
-      .range(inicio, inicio + ITER_HISTORY_PAGINA - 1)
-
-    if (error) {
-      console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
-      return { processed: 0, withChanges: 0 }
-    }
-
-    const pagina = (data || []) as IterHistoryRow[]
-    varridas += pagina.length
-    for (const item of pagina) {
-      if (shouldRefreshByChange(item.changed_date, item.iteration_history_synced_at)) {
-        candidates.push(item)
-      }
-    }
-
-    // A varredura sai em `changed_date` desc e o corte abaixo é um
-    // `slice(0, N)` do começo — os candidatos já vêm na ordem final, então
-    // parar assim que o lote da rodada estiver cheio dá exatamente o mesmo
-    // conjunto com menos idas ao banco.
-    if (candidates.length >= ITER_HISTORY_MAX_PER_RUN) {
-      paradaAntecipada = true
-      break
-    }
-    if (pagina.length < ITER_HISTORY_PAGINA) break
-  }
-
-  const workItemIds = candidates
-    .slice(0, ITER_HISTORY_MAX_PER_RUN)
-    .map((i) => i.id)
-    .filter(Boolean) as number[]
-  if (workItemIds.length === 0) {
-    console.log(`[IterHistory] No PBIs with changes since last iteration sync (${varridas} rows scanned)`)
+  if (error) {
+    console.warn('[IterHistory] Failed to fetch PBIs:', error.message)
     return { processed: 0, withChanges: 0 }
   }
-  if (candidates.length > workItemIds.length || paradaAntecipada) {
+
+  const workItemIds = ((data || []) as number[]).filter(Boolean)
+  if (workItemIds.length === 0) {
+    console.log(`[IterHistory] No PBIs with changes since last iteration sync (${ITER_HISTORY_SCAN_MAX}-row window)`)
+    return { processed: 0, withChanges: 0 }
+  }
+  if (workItemIds.length >= ITER_HISTORY_MAX_PER_RUN) {
     console.log(
-      `[IterHistory] ${candidates.length}${paradaAntecipada ? '+' : ''} candidates in ${varridas} rows scanned, ` +
+      `[IterHistory] ${workItemIds.length}+ candidates in the ${ITER_HISTORY_SCAN_MAX}-row window, ` +
       `capped at ${workItemIds.length} this run`
     )
   }
@@ -1140,30 +1102,20 @@ serve(async (req: Request) => {
       try {
         console.log('[DevOpsSyncAll:BG] Fetching child work items (Tasks/Bugs)...')
 
-        // PAGINADO de propósito: era um `.limit(2000)` numa chamada só e o
-        // PostgREST desta instância roda com `max_rows = 1000` — chegavam mil
-        // pais, sem erro nem aviso, e a outra metade nunca tinha as filhas
-        // sincronizadas. A migration 20260816140000 declara a intenção:
-        // "puxar as filhas de ~2.000 PBIs". Pior: sem `.order()` não dava nem
-        // para saber QUAIS mil vinham. Ver commit 1dc734d.
+        // `rpc_devops_parent_ids` devolve os ids como `integer[]` — um valor
+        // escalar, que o `max_rows = 1000` do PostgREST não corta. Era um
+        // `.limit(2000)` que chegava com mil pais sem erro nem aviso (commit
+        // 1dc734d), depois páginas de [{id}]; o array é o mesmo conjunto, na
+        // mesma ordem, em menos bytes e numa ida só.
         //
-        // `.order('id', desc)` = mais novos primeiro, para que o teto abaixo,
-        // se um dia for atingido, corte o passado e não o presente.
-        const PAGINA_PBIS = 1000
+        // id DESC = mais novos primeiro, para que o teto abaixo, se um dia for
+        // atingido, corte o passado e não o presente.
         const PBIS_MAX = 4000
-        const pbiIds: number[] = []
-        for (let inicio = 0; inicio < PBIS_MAX; inicio += PAGINA_PBIS) {
-          const { data, error: pbiErr } = await bgAdmin
-            .from('devops_work_items')
-            .select('id')
-            .in('work_item_type', ['Product Backlog Item', 'User Story', 'Feature'])
-            .order('id', { ascending: false })
-            .range(inicio, inicio + PAGINA_PBIS - 1)
+        const { data: pbiData, error: pbiErr } = await bgAdmin
+          .rpc('rpc_devops_parent_ids', { p_max: PBIS_MAX })
 
-          if (pbiErr) throw new Error(`Lookup de PBIs falhou: ${pbiErr.message}`)
-          pbiIds.push(...((data || []) as Array<{ id: number }>).map(r => r.id))
-          if (!data || data.length < PAGINA_PBIS) break
-        }
+        if (pbiErr) throw new Error(`Lookup de PBIs falhou: ${pbiErr.message}`)
+        const pbiIds = (pbiData || []) as number[]
 
         if (pbiIds.length >= PBIS_MAX) {
           console.warn(`[DevOpsSyncAll:BG] Teto de ${PBIS_MAX} pais atingido — há PBIs fora desta varredura`)
