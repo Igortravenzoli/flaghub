@@ -297,12 +297,16 @@ serve(async (req) => {
       })
     }
 
-    // Find associated sync job
+    // Run próprio só se houver job dedicado, buscado por job_key como no
+    // devops-sync-all e no devops-sync-timelog. Hoje não existe: a rodada já
+    // fica no run do devops-sync-all, que chama esta função, e no hub_audit_log
+    // abaixo. A busca antiga usava a integração 'azure_devops' (a key real é
+    // 'devops') e devolvia 406 + 400 em toda chamada; com a key certa, o
+    // limit(1) sem ordem gravaria as rodadas no job do devops-sync-all.
     const { data: syncJob } = await admin
       .from('hub_sync_jobs')
       .select('id')
-      .eq('integration_id', (await admin.from('hub_integrations').select('id').eq('key', 'azure_devops').single()).data?.id ?? '')
-      .limit(1)
+      .eq('job_key', 'devops-sync-query')
       .maybeSingle()
 
     const jobId = syncJob?.id
