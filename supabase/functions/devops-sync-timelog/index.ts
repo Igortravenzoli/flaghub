@@ -1,4 +1,8 @@
-// devops-sync-timelog v3.3 — Background processing via EdgeRuntime.waitUntil()
+// devops-sync-timelog v3.4 — Background processing via EdgeRuntime.waitUntil()
+// v3.4: órfãos reconciliados no banco (rpc_timelog_reconciliar_orfaos, migration
+//       20260921130000): a base não desce mais inteira a cada 15 min (~125 MB/dia
+//       de egress), payload vazio/< 50% da base não marca órfão e vira erro no
+//       hub_sync_runs, e sai o insert em hub_raw_ingestions que o CHECK barrava.
 // v3.0: Respond immediately, process in background to avoid CPU limits
 // v3.1: fix ext_entry_id — o caller passava entry.id como docId, anulando o
 //       teste `entry.id !== docId` e deixando TODAS as linhas sem id oficial
@@ -131,6 +135,23 @@ function normalizeEntry(entry: TimeLogEntry, docId: string): NormalizedRow | nul
       : null,
     raw: entry,
   }
+}
+
+/** Retorno de rpc_timelog_reconciliar_orfaos (jsonb, ~120 bytes). */
+interface ReconciliacaoOrfaos {
+  /** ids distintos enviados */
+  payload: number
+  /** linhas de devops_time_logs com ext_entry_id */
+  base: number
+  /** base ∩ payload */
+  presentes: number
+  /** base fora do payload: órfãos novos + os que já eram */
+  ausentes: number
+  /** true = payload não confiável, nenhum órfão marcado nesta execução */
+  guarda: boolean
+  orfaos_novos: number
+  voltaram: number
+  orfaos_total: number
 }
 
 /** Build a dedup key for a normalized row */
@@ -287,49 +308,40 @@ async function processTimeLogs(pat: string) {
    * O sync nunca apaga, então lançamento excluído no DevOps ficava na base para
    * sempre: em 12/08/2026 a extensão devolvia 7.137 e a base tinha 7.175.
    *
-   * A diferença é calculada aqui, em memória, e só ela é gravada
-   * (devops_time_log_orphans). Carimbar cada linha com "visto nesta coleta" era
-   * o caminho óbvio e está errado: o trigger `trg_time_log_revision` cancela o
-   * update quando nenhuma coluna de conteúdo muda, justamente para não gerar 7
-   * mil updates a cada 15 minutos.
+   * Só a diferença é gravada (devops_time_log_orphans). Carimbar cada linha com
+   * "visto nesta coleta" era o caminho óbvio e está errado: o trigger
+   * `trg_time_log_revision` cancela o update quando nenhuma coluna de conteúdo
+   * muda, justamente para não gerar 7 mil updates a cada 15 minutos.
+   *
+   * v3.4: o diff sai do banco. Antes a base inteira descia em 9 páginas a cada
+   * execução (~1,3 MB × 96/dia = ~125 MB/dia de egress) para achar dezenas de
+   * órfãos; agora sobem os ids do payload e voltam só as contagens. A RPC
+   * também tem a guarda que faltava: payload vazio ou cobrindo menos de 50% da
+   * base (PAT expirado, 401 em todas as coleções) NÃO marca órfão — antes toda
+   * a base virava órfã e as horas da Fábrica zeravam até a próxima coleta boa.
+   * Ver 20260921130000_eg3_timelog_orfaos_rpc.sql.
    */
-  const idsNoPayload = new Set(
+  const idsNoPayload = [...new Set(
     allRows.map(r => r.ext_entry_id).filter((id): id is string => id != null)
-  )
-  const orfaos: Array<{ ext_entry_id: string; work_item_id: number | null; log_date: string; user_name: string | null; time_minutes: number | null }> = []
-  const PAGINA_ORFAOS = 1000
-  let fromOrfao = 0
-  for (;;) {
-    const { data, error } = await sb
-      .from('devops_time_logs')
-      .select('ext_entry_id, work_item_id, log_date, user_name, time_minutes')
-      .not('ext_entry_id', 'is', null)
-      .range(fromOrfao, fromOrfao + PAGINA_ORFAOS - 1)
-    if (error) { console.warn(`[timelog] Órfãos: leitura falhou: ${error.message}`); break }
-    const chunk = data || []
-    for (const r of chunk) {
-      if (!idsNoPayload.has(r.ext_entry_id as string)) orfaos.push(r as typeof orfaos[number])
+  )]
+  let orfaos: ReconciliacaoOrfaos | null = null
+  // Vai para hub_sync_runs.error: guarda armada ou reconciliação que não rodou.
+  let falhaOrfaos: string | null = null
+  const { data: rec, error: recErr } = await sb.rpc('rpc_timelog_reconciliar_orfaos', { p_ids: idsNoPayload })
+  if (recErr) {
+    falhaOrfaos = `Órfãos: reconciliação falhou: ${recErr.message}`
+    console.warn(`[timelog] ${falhaOrfaos}`)
+  } else {
+    orfaos = rec as ReconciliacaoOrfaos
+    if (orfaos.guarda) {
+      falhaOrfaos =
+        `Guarda de órfãos: o payload (${orfaos.payload} ids, coleção '${usedCollection || 'nenhuma'}') ` +
+        `cobre ${orfaos.presentes} de ${orfaos.base} lançamentos da base, abaixo de 50%. ` +
+        `Nenhum órfão marcado (${orfaos.ausentes} ficariam órfãos) — conferir DEVOPS_PAT e a extensão TimeLog.`
+      console.warn(`[timelog] ${falhaOrfaos}`)
     }
-    if (chunk.length < PAGINA_ORFAOS) break
-    fromOrfao += PAGINA_ORFAOS
+    console.log(`[timelog] Órfãos (na base, fora do payload): ${orfaos.ausentes} (${orfaos.orfaos_novos} novos, ${orfaos.orfaos_total} no total); voltaram: ${orfaos.voltaram}`)
   }
-
-  if (orfaos.length > 0) {
-    // insert-only: `first_missing_at` tem que preservar a PRIMEIRA ausência.
-    const { error } = await sb
-      .from('devops_time_log_orphans')
-      .upsert(orfaos, { onConflict: 'ext_entry_id', ignoreDuplicates: true })
-    if (error) console.warn(`[timelog] Órfãos: gravação falhou: ${error.message}`)
-  }
-  // Lançamento que reapareceu deixa de ser órfão.
-  const { data: jaOrfaos } = await sb.from('devops_time_log_orphans').select('ext_entry_id')
-  const voltaram = (jaOrfaos || [])
-    .map(o => o.ext_entry_id as string)
-    .filter(id => idsNoPayload.has(id))
-  if (voltaram.length > 0) {
-    await sb.from('devops_time_log_orphans').delete().in('ext_entry_id', voltaram)
-  }
-  console.log(`[timelog] Órfãos (na base, fora do payload): ${orfaos.length}; voltaram: ${voltaram.length}`)
 
   // ── Phase B: content-based insert-only for entries without official IDs ─────
   const existingKeys = new Set<string>()
@@ -388,25 +400,13 @@ async function processTimeLogs(pat: string) {
   const unchanged = allRows.length - upserted - newRows.length
   console.log(`[timelog] Sync complete: ${upserted} upserted (Phase A), ${inserted} inserted (Phase B), ~${unchanged} unchanged in ${durationMs}ms`)
 
-  // ── Audit ────────────────────────────────────────────────────
-  await sb.from('hub_raw_ingestions').insert({
-    source_type: 'devops_timelog',
-    source_key: 'TechsBCN/DevOps-TimeLog',
-    payload: {
-      entry_count: allRows.length,
-      skipped,
-      dedupSkipped,
-      phase_a_upserted: upserted,
-      phase_b_inserted: inserted,
-      unchanged,
-      collection: usedCollection,
-      duration_ms: durationMs,
-    },
-    status: 'processed',
-    processed_at: new Date().toISOString(),
-  })
-
   // ── Persist sync run status to hub_sync_runs / hub_sync_jobs ──
+  // A auditoria que ia para hub_raw_ingestions (source_type 'devops_timelog')
+  // nunca foi gravada: o CHECK da tabela só aceita devops/api_gateway/vdesk/
+  // manual_file, e eram 96 respostas 400 por dia. Trocar para 'devops' faria o
+  // timelog contar como batimento do "Azure DevOps" no HubUptime
+  // (useHubUptime.ts) e mascarar a queda do sync de work items. Os números vão
+  // para `meta` do run, que já registra esta execução.
   const { data: syncJob } = await sb
     .from('hub_sync_jobs')
     .select('id')
@@ -416,12 +416,24 @@ async function processTimeLogs(pat: string) {
   if (syncJob?.id) {
     await sb.from('hub_sync_runs').insert({
       job_id: syncJob.id,
-      status: 'ok',
+      // Guarda armada (coleta não confiável) ou reconciliação que falhou: erro
+      // visível no SyncCentral, com o motivo em `error`.
+      status: falhaOrfaos ? 'error' : 'ok',
+      error: falhaOrfaos,
       started_at: new Date(Date.now() - durationMs).toISOString(),
       finished_at: new Date().toISOString(),
       duration_ms: durationMs,
       items_found: allRows.length,
       items_upserted: upserted + inserted,
+      meta: {
+        collection: usedCollection,
+        skipped,
+        dedup_skipped: dedupSkipped,
+        phase_a_upserted: upserted,
+        phase_b_inserted: inserted,
+        unchanged,
+        orfaos,
+      },
     })
     await sb.from('hub_sync_jobs').update({ last_run_at: new Date().toISOString() }).eq('id', syncJob.id)
   }
