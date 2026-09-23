@@ -113,7 +113,11 @@ CREATE TRIGGER set_kpi_plano_acao_updated_at
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.kpi_plano_acao ENABLE ROW LEVEL SECURITY;
 
-REVOKE ALL ON TABLE public.kpi_plano_acao FROM PUBLIC, anon;
+-- O default privilege do Supabase concede TUDO (inclusive DELETE e TRUNCATE) a
+-- anon e authenticated em toda tabela nova do schema public. Por isso o REVOKE
+-- precisa citar `authenticated` também: TRUNCATE não passa por RLS, então deixar
+-- o privilégio seria um buraco que nenhuma política fecha.
+REVOKE ALL ON TABLE public.kpi_plano_acao FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.kpi_plano_acao TO authenticated;
 
 -- Leitura: admin ou quem tem a área (a mesma régua das outras telas do setor)
