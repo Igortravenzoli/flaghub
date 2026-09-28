@@ -1,4 +1,11 @@
-// devops-sync-timelog v3.4 — Background processing via EdgeRuntime.waitUntil()
+// devops-sync-timelog v3.5 — Background processing via EdgeRuntime.waitUntil()
+// v3.5: grava só o que mudou (migration 20260928120000, EG-4). A Fase A reenviava
+//       os ~8,6 mil lançamentos a cada 15 min — 483 MB/dia de upload, mais o WAL
+//       do ON CONFLICT — para o trigger cancelar quase tudo. Agora a edge manda
+//       um resumo por balde (~8 KB) e só detalha os baldes que divergem; o banco
+//       devolve o que gravar e reconcilia os órfãos na mesma chamada.
+//       {"modo":"completo"} regrava tudo, como antes: use depois de mudar a
+//       normalização (a impressão cobre o raw, não as colunas derivadas).
 // v3.4: órfãos reconciliados no banco (rpc_timelog_reconciliar_orfaos, migration
 //       20260921130000): a base não desce mais inteira a cada 15 min (~125 MB/dia
 //       de egress), payload vazio/< 50% da base não marca órfão e vira erro no
@@ -23,6 +30,12 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
+import {
+  baldeDoLancamento,
+  IMPRESSAO_ENVIADA,
+  impressaoLancamento,
+  resumirPorBalde,
+} from '../_shared/timelogImpressao.ts'
 
 const TIMELOG_BASE =
   'https://extmgmt.dev.azure.com/FlagIW/_apis/ExtensionManagement/InstalledExtensions/TechsBCN/DevOps-TimeLog/Data/Scopes/Default/Current/Collections'
@@ -137,7 +150,10 @@ function normalizeEntry(entry: TimeLogEntry, docId: string): NormalizedRow | nul
   }
 }
 
-/** Retorno de rpc_timelog_reconciliar_orfaos (jsonb, ~120 bytes). */
+/**
+ * Contagens de órfãos: retorno de rpc_timelog_reconciliar_orfaos (EG-3) e parte
+ * do retorno de rpc_timelog_sincronizar_baldes (EG-4) — mesma semântica.
+ */
 interface ReconciliacaoOrfaos {
   /** ids distintos enviados */
   payload: number
@@ -154,13 +170,154 @@ interface ReconciliacaoOrfaos {
   orfaos_total: number
 }
 
+/** 'diff' = só o que mudou (cron); 'completo' = regrava tudo, como até a v3.4. */
+type ModoSync = 'diff' | 'completo'
+
+/** Retorno de rpc_timelog_baldes_divergentes (rodada 1). */
+interface Rodada1 {
+  divergentes: string[]
+  /** linhas de devops_time_logs com ext_entry_id */
+  base: number
+  /** base sem os órfãos: o que o payload deveria trazer */
+  ativos: number
+  orfaos_total: number
+}
+
+/** Retorno de rpc_timelog_sincronizar_baldes (rodada 2). */
+interface Rodada2 extends ReconciliacaoOrfaos {
+  /** ids novos ou com raw diferente: os únicos que vão para o upsert */
+  alterados: string[]
+  baldes: number
+  enviados: number
+}
+
+interface PlanoGravacao {
+  paraGravar: NormalizedRow[]
+  orfaos: ReconciliacaoOrfaos | null
+  /** motivo para o run sair como erro no hub_sync_runs (além da guarda) */
+  falha: string | null
+  diff: {
+    modo: 'baldes' | 'completo' | 'legado'
+    baldes: number
+    divergentes: number
+    enviados: number
+    alterados: number
+  }
+}
+
+type SupabaseAdmin = ReturnType<typeof getSupabaseAdmin>
+
+// PGRST202 = o PostgREST não achou a função: edge publicada ANTES da migration.
+function motivoFalhaRpc(err: { code?: string; message: string }): string {
+  return err.code === 'PGRST202'
+    ? `migration EG-4 ausente (20260928120000_eg4_timelog_diff_por_balde) — ${err.message}`
+    : err.message
+}
+
+/**
+ * Decide o que gravar sem reenviar a base (EG-4).
+ *
+ * Rodada 1: resumo por balde (2 primeiros caracteres do id) — quantidade e soma
+ * das impressões. O banco refaz a conta sobre a base ativa e devolve os baldes
+ * que divergem. Sem divergência, nada a gravar e nenhum órfão a mexer: o
+ * payload tem exatamente as linhas ativas.
+ *
+ * Rodada 2: só os baldes divergentes sobem, com id + 64 bits da impressão. O
+ * banco devolve os ids novos ou alterados e reconcilia os órfãos com a regra do
+ * EG-3, guarda inclusa. A impressão é calculada igual nos dois lados
+ * (_shared/timelogImpressao.ts ↔ public.timelog_impressao).
+ */
+async function planejarGravacao(sb: SupabaseAdmin, rowsWithId: NormalizedRow[], modo: ModoSync): Promise<PlanoGravacao> {
+  const itens = await Promise.all(rowsWithId.map(async (row) => {
+    const id = row.ext_entry_id as string
+    return { row, id, impressao: await impressaoLancamento(id, row.raw) }
+  }))
+  const resumo = resumirPorBalde(itens)
+
+  const { data: d1, error: e1 } = await sb.rpc('rpc_timelog_baldes_divergentes', {
+    p_baldes: resumo.baldes,
+    p_qtds: resumo.qtds,
+    p_somas: resumo.somas,
+  })
+  if (e1) return caminhoLegado(sb, rowsWithId, `rodada 1: ${motivoFalhaRpc(e1)}`)
+  const r1 = d1 as Rodada1
+
+  // No modo completo todo balde vai para a rodada 2, inclusive os que só existem
+  // na base (a rodada 1 já os devolve como divergentes).
+  const divergentes = modo === 'completo'
+    ? [...new Set([...resumo.baldes, ...r1.divergentes])].sort()
+    : r1.divergentes
+
+  if (divergentes.length === 0) {
+    return {
+      paraGravar: [],
+      orfaos: {
+        payload: itens.length,
+        base: r1.base,
+        presentes: r1.ativos,
+        ausentes: r1.base - r1.ativos,
+        guarda: false,
+        orfaos_novos: 0,
+        voltaram: 0,
+        orfaos_total: r1.orfaos_total,
+      },
+      falha: null,
+      diff: { modo: 'baldes', baldes: resumo.baldes.length, divergentes: 0, enviados: 0, alterados: 0 },
+    }
+  }
+
+  const naRodada2 = new Set(divergentes)
+  const enviados = itens.filter((x) => naRodada2.has(baldeDoLancamento(x.id)))
+  const { data: d2, error: e2 } = await sb.rpc('rpc_timelog_sincronizar_baldes', {
+    p_baldes: divergentes,
+    p_ids: enviados.map((x) => x.id),
+    p_impressoes: enviados.map((x) => x.impressao.slice(0, IMPRESSAO_ENVIADA)),
+    p_total_payload: itens.length,
+  })
+  if (e2) return caminhoLegado(sb, rowsWithId, `rodada 2: ${motivoFalhaRpc(e2)}`)
+  const { alterados, baldes: _baldes, enviados: _enviados, ...orfaos } = d2 as Rodada2
+  const gravar = new Set(alterados)
+
+  return {
+    paraGravar: modo === 'completo' ? rowsWithId : rowsWithId.filter((r) => gravar.has(r.ext_entry_id as string)),
+    orfaos,
+    falha: null,
+    diff: {
+      modo: modo === 'completo' ? 'completo' : 'baldes',
+      baldes: resumo.baldes.length,
+      divergentes: divergentes.length,
+      enviados: enviados.length,
+      alterados: gravar.size,
+    },
+  }
+}
+
+/**
+ * Caminho da v3.4: regrava tudo (o trigger cancela o que não mudou) e reconcilia
+ * os órfãos com os ids do payload inteiro (EG-3). Só roda quando o diff por
+ * balde falha; o run sai como erro para aparecer no SyncCentral, porque a
+ * economia de upload sumiu.
+ */
+async function caminhoLegado(sb: SupabaseAdmin, rowsWithId: NormalizedRow[], motivo: string): Promise<PlanoGravacao> {
+  console.error(`[timelog] Diff por balde indisponível, regravando tudo: ${motivo}`)
+  const ids = [...new Set(rowsWithId.map((r) => r.ext_entry_id as string))]
+  const { data, error } = await sb.rpc('rpc_timelog_reconciliar_orfaos', { p_ids: ids })
+  return {
+    paraGravar: rowsWithId,
+    orfaos: error ? null : (data as ReconciliacaoOrfaos),
+    falha: `Diff por balde indisponível (${motivo}); a execução regravou tudo.` +
+      (error ? ` Órfãos: reconciliação falhou: ${error.message}` : ''),
+    diff: { modo: 'legado', baldes: 0, divergentes: 0, enviados: ids.length, alterados: rowsWithId.length },
+  }
+}
+
 /** Build a dedup key for a normalized row */
 function dedupKey(row: NormalizedRow): string {
   return `${row.work_item_id}|${row.log_date}|${row.user_name || ''}|${row.start_time || ''}|${row.time_minutes}`
 }
 
 /** Background processing — runs after response is sent */
-async function processTimeLogs(pat: string) {
+async function processTimeLogs(pat: string, modo: ModoSync) {
   const startMs = Date.now()
   const base64Pat = btoa(`:${pat}`)
   const authHeaders = {
@@ -258,8 +415,8 @@ async function processTimeLogs(pat: string) {
   console.log(`[timelog] Normalized ${allRows.length} entries (${skipped} invalid, ${dedupSkipped} in-memory dupes)`)
 
   // ── Two-phase upsert ────────────────────────────────────────────────────────
-  // Phase A — rows WITH ext_entry_id: UPSERT on the unique index.
-  //   Handles both new and updated entries (e.g. admin edits time_minutes).
+  // Phase A — rows WITH ext_entry_id: UPSERT on the unique index, só as que o
+  //   diff por balde apontou como novas ou alteradas (v3.5).
   // Phase B — rows WITHOUT ext_entry_id: content-based insert-only dedup.
   //   Fetches existing content keys in bulk, inserts only truly new rows.
   const sb = getSupabaseAdmin()
@@ -273,8 +430,28 @@ async function processTimeLogs(pat: string) {
 
   console.log(`[timelog] ${rowsWithId.length} rows with ext_entry_id (UPSERT), ${rowsWithoutId.length} without (content dedup)`)
 
-  for (let i = 0; i < rowsWithId.length; i += BATCH_SIZE) {
-    const batch = rowsWithId.slice(i, i + BATCH_SIZE).map(row => ({
+  /**
+   * ── Exclusão na origem e o que gravar ─────────────────────────────────────
+   *
+   * O sync nunca apaga, então lançamento excluído no DevOps ficaria na base para
+   * sempre (7.137 no payload contra 7.175 na base em 12/08/2026). A diferença vai
+   * para devops_time_log_orphans. Carimbar cada linha com "visto nesta coleta"
+   * não serve: o trigger `trg_time_log_revision` cancela o update sem mudança.
+   *
+   * v3.4 levou o diff de órfãos para o banco (EG-3); v3.5 leva junto a decisão
+   * do que gravar (EG-4) e manda só o resumo por balde. A guarda continua:
+   * payload vazio ou cobrindo menos de 50% da base (PAT expirado, 401 em todas
+   * as coleções) NÃO marca órfão e o run sai como erro.
+   */
+  const plano = await planejarGravacao(sb, rowsWithId, modo)
+  const { diff } = plano
+  console.log(
+    `[timelog] Diff (${diff.modo}): ${diff.divergentes} de ${diff.baldes} baldes divergentes, ` +
+    `${diff.enviados} lançamentos enviados, ${plano.paraGravar.length} para gravar`,
+  )
+
+  for (let i = 0; i < plano.paraGravar.length; i += BATCH_SIZE) {
+    const batch = plano.paraGravar.slice(i, i + BATCH_SIZE).map(row => ({
       work_item_id: row.work_item_id,
       log_date:     row.log_date,
       start_time:   row.start_time,
@@ -302,43 +479,18 @@ async function processTimeLogs(pat: string) {
     }
   }
 
-  /**
-   * ── Exclusão na origem ────────────────────────────────────────────────────
-   *
-   * O sync nunca apaga, então lançamento excluído no DevOps ficava na base para
-   * sempre: em 12/08/2026 a extensão devolvia 7.137 e a base tinha 7.175.
-   *
-   * Só a diferença é gravada (devops_time_log_orphans). Carimbar cada linha com
-   * "visto nesta coleta" era o caminho óbvio e está errado: o trigger
-   * `trg_time_log_revision` cancela o update quando nenhuma coluna de conteúdo
-   * muda, justamente para não gerar 7 mil updates a cada 15 minutos.
-   *
-   * v3.4: o diff sai do banco. Antes a base inteira descia em 9 páginas a cada
-   * execução (~1,3 MB × 96/dia = ~125 MB/dia de egress) para achar dezenas de
-   * órfãos; agora sobem os ids do payload e voltam só as contagens. A RPC
-   * também tem a guarda que faltava: payload vazio ou cobrindo menos de 50% da
-   * base (PAT expirado, 401 em todas as coleções) NÃO marca órfão — antes toda
-   * a base virava órfã e as horas da Fábrica zeravam até a próxima coleta boa.
-   * Ver 20260921130000_eg3_timelog_orfaos_rpc.sql.
-   */
-  const idsNoPayload = [...new Set(
-    allRows.map(r => r.ext_entry_id).filter((id): id is string => id != null)
-  )]
-  let orfaos: ReconciliacaoOrfaos | null = null
-  // Vai para hub_sync_runs.error: guarda armada ou reconciliação que não rodou.
-  let falhaOrfaos: string | null = null
-  const { data: rec, error: recErr } = await sb.rpc('rpc_timelog_reconciliar_orfaos', { p_ids: idsNoPayload })
-  if (recErr) {
-    falhaOrfaos = `Órfãos: reconciliação falhou: ${recErr.message}`
-    console.warn(`[timelog] ${falhaOrfaos}`)
-  } else {
-    orfaos = rec as ReconciliacaoOrfaos
+  const { orfaos } = plano
+  // Vai para hub_sync_runs.error: guarda armada, diff indisponível ou
+  // reconciliação que não rodou.
+  let falhaOrfaos: string | null = plano.falha
+  if (orfaos) {
     if (orfaos.guarda) {
-      falhaOrfaos =
+      const guarda =
         `Guarda de órfãos: o payload (${orfaos.payload} ids, coleção '${usedCollection || 'nenhuma'}') ` +
         `cobre ${orfaos.presentes} de ${orfaos.base} lançamentos da base, abaixo de 50%. ` +
         `Nenhum órfão marcado (${orfaos.ausentes} ficariam órfãos) — conferir DEVOPS_PAT e a extensão TimeLog.`
-      console.warn(`[timelog] ${falhaOrfaos}`)
+      falhaOrfaos = falhaOrfaos ? `${falhaOrfaos} ${guarda}` : guarda
+      console.warn(`[timelog] ${guarda}`)
     }
     console.log(`[timelog] Órfãos (na base, fora do payload): ${orfaos.ausentes} (${orfaos.orfaos_novos} novos, ${orfaos.orfaos_total} no total); voltaram: ${orfaos.voltaram}`)
   }
@@ -433,6 +585,7 @@ async function processTimeLogs(pat: string) {
         phase_b_inserted: inserted,
         unchanged,
         orfaos,
+        diff,
       },
     })
     await sb.from('hub_sync_jobs').update({ last_run_at: new Date().toISOString() }).eq('id', syncJob.id)
@@ -481,10 +634,14 @@ serve(async (req) => {
       })
     }
 
+    // O cron e os botões mandam {} (diff). {"modo":"completo"} regrava tudo.
+    const corpo = await req.json().catch(() => null) as { modo?: unknown } | null
+    const modo: ModoSync = corpo?.modo === 'completo' ? 'completo' : 'diff'
+
     // Start background processing (non-blocking)
     // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
     EdgeRuntime.waitUntil(
-      processTimeLogs(pat).catch(err => {
+      processTimeLogs(pat, modo).catch(err => {
         console.error('[timelog] Background processing error:', err)
       })
     )
@@ -492,6 +649,7 @@ serve(async (req) => {
     // Return immediately
     return new Response(JSON.stringify({
       ok: true,
+      modo,
       message: 'TimeLogs sync started in background. Check logs for results.',
     }), {
       headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
