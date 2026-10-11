@@ -156,6 +156,70 @@ function extractIterationChanges(updates: any[]): Array<{ oldValue: string; newV
   return changes
 }
 
+// PGRST202 = o PostgREST não achou a função no schema cache: edge publicada
+// ANTES da migration 20261011130000_eg6_vdesk_qa_qualidade_rpcs. Aí a edge cai
+// na leitura legada da fila inteira — gasta egress, mas decide igual.
+function migrationEg6Ausente(err: { code?: string } | null | undefined): boolean {
+  return err?.code === 'PGRST202'
+}
+
+type FilaQualidade = {
+  /** Itens da fila em estado ativo — `relevant.length` de antes. */
+  total: number
+  /** Tags a contar com `toUpperCase().includes('AVIAO')`. */
+  tags: Array<string | null>
+  /** Superconjunto de quem `precisaRevisitar` (todos, com `force`), linha completa. */
+  linhas: any[]
+}
+
+/**
+ * A fila da Qualidade, resumida no banco (EG-6).
+ *
+ * Antes a edge baixava a fila inteira com `custom_fields` (119 itens, ~54 kB)
+ * 143 vezes por dia — ~7,7 MB/dia crus, medido em 10–11/10/2026 — para, quase
+ * sempre, não revisitar ninguém. `rpc_qualidade_fila` conta a fila, devolve só
+ * as tags que PODEM ter "AVIAO" e só as linhas que PODEM precisar de revisita.
+ * As duas listas são superconjuntos garantidos (a prova está na migration) e
+ * as regras originais continuam aqui, aplicadas em cima delas.
+ */
+async function carregarFila(admin: any, queryId: string, force: boolean): Promise<FilaQualidade> {
+  const { data, error } = await admin.rpc('rpc_qualidade_fila', {
+    p_query_id: queryId,
+    p_estados: [...QUALITY_ACTIVE_STATES],
+    p_force: force,
+  })
+
+  if (!error) {
+    return {
+      total: Number(data?.fila ?? 0),
+      tags: (data?.tags_suspeitas ?? []) as Array<string | null>,
+      linhas: (data?.candidatos ?? []) as any[],
+    }
+  }
+  if (!migrationEg6Ausente(error)) {
+    throw new Error(`Falha ao carregar fila atual da Qualidade: ${error.message}`)
+  }
+
+  console.error(
+    '[Qualidade] rpc_qualidade_fila ausente, usando a leitura legada: ' +
+    `migration EG-6 ausente (20261011130000_eg6_vdesk_qa_qualidade_rpcs) — ${error.message}`,
+  )
+  const { data: queueRows, error: queueErr } = await admin
+    .from('devops_query_items_current')
+    .select('work_item_id, devops_work_items!inner(id, state, custom_fields, tags, iteration_path, changed_date)')
+    .eq('query_id', queryId)
+
+  if (queueErr) {
+    throw new Error(`Falha ao carregar fila atual da Qualidade: ${queueErr.message}`)
+  }
+
+  const relevant = (queueRows || [])
+    .map((row: any) => row.devops_work_items)
+    .filter((item: any) => item && QUALITY_ACTIVE_STATES.has(item.state))
+
+  return { total: relevant.length, tags: relevant.map((item: any) => item.tags), linhas: relevant }
+}
+
 /**
  * Recalcula retorno de QA, histórico de estado e de iteração da fila corrente.
  *
@@ -188,26 +252,17 @@ function extractIterationChanges(updates: any[]): Array<{ oldValue: string; newV
  * gravado precisar ser reconstruído — não para uso rotineiro.
  */
 async function processQualityDerived(admin: any, queryId: string, force = false) {
-  const { data: queueRows, error: queueErr } = await admin
-    .from('devops_query_items_current')
-    .select('work_item_id, devops_work_items!inner(id, state, custom_fields, tags, iteration_path, changed_date)')
-    .eq('query_id', queryId)
-
-  if (queueErr) {
-    throw new Error(`Falha ao carregar fila atual da Qualidade: ${queueErr.message}`)
-  }
-
-  const relevant = (queueRows || [])
-    .map((row: any) => row.devops_work_items)
-    .filter((item: any) => item && QUALITY_ACTIVE_STATES.has(item.state))
+  const fila = await carregarFila(admin, queryId, force)
 
   // `avioesQa` e `currentQueue` são métricas da FILA, não do sync: continuam
-  // saindo de `relevant` (a fila inteira) mesmo quando quase nada é revisitado.
-  const avioesQa = relevant.filter((item: any) => String(item.tags || '').toUpperCase().includes('AVIAO')).length
+  // valendo para a fila inteira mesmo quando quase nada é revisitado.
+  const avioesQa = fila.tags.filter((tags) => String(tags || '').toUpperCase().includes('AVIAO')).length
 
+  // A regra de sempre, agora sobre o superconjunto que o banco devolveu (com
+  // `force`, o banco já devolve a fila inteira).
   const candidatos = force
-    ? [...relevant]
-    : relevant.filter((item: any) =>
+    ? [...fila.linhas]
+    : fila.linhas.filter((item: any) =>
         precisaRevisitar(item.changed_date, item.custom_fields?.qa_retorno_synced_at))
 
   // Mais recente primeiro, para o teto abaixo cortar o passado e não o presente.
@@ -218,13 +273,13 @@ async function processQualityDerived(admin: any, queryId: string, force = false)
   const adiados = Math.max(0, candidatos.length - workItemIds.length)
 
   console.log(
-    `[Qualidade] fila=${relevant.length} candidatos=${candidatos.length} ` +
+    `[Qualidade] fila=${fila.total} candidatos=${candidatos.length} ` +
     `nesta rodada=${workItemIds.length}${adiados ? ` adiados=${adiados}` : ''}${force ? ' (force)' : ''}`
   )
 
   if (workItemIds.length === 0) {
     return {
-      currentQueue: relevant.length,
+      currentQueue: fila.total,
       retornoProcessed: 0,
       retornoHits: 0,
       avioesQa,
@@ -276,7 +331,8 @@ async function processQualityDerived(admin: any, queryId: string, force = false)
         falhas++
         continue
       }
-      const baseItem = relevant.find((item: any) => item.id === result.id)
+      // `candidatos` tem a linha completa de todo id processado (é dele que saem).
+      const baseItem = candidatos.find((item: any) => item.id === result.id)
       const customFields = { ...((baseItem?.custom_fields || {}) as Record<string, any>) }
       customFields['qa_retorno_count'] = result.retornos
       customFields['qa_retorno_details'] = result.details
@@ -310,7 +366,7 @@ async function processQualityDerived(admin: any, queryId: string, force = false)
   }
 
   return {
-    currentQueue: relevant.length,
+    currentQueue: fila.total,
     retornoProcessed,
     retornoHits,
     avioesQa,

@@ -433,6 +433,85 @@ function buildWebhookCard(
   }
 }
 
+// ── Leituras (EG-6) ───────────────────────────────────────────────────────────
+
+const ESTADO_CANDIDATO = 'Em desenvolvimento'
+const COLUNAS_CANDIDATO =
+  'id, title, work_item_type, area_path, iteration_path, ' +
+  'assigned_to_display, assigned_to_unique, state, tags, web_url, state_history'
+
+// PGRST202 = o PostgREST não achou a função no schema cache: edge publicada
+// ANTES da migration 20261011130000_eg6_vdesk_qa_qualidade_rpcs. Aí cada
+// leitura cai no caminho legado, que gasta egress mas decide igual.
+function migrationEg6Ausente(err: { code?: string } | null | undefined): boolean {
+  return err?.code === 'PGRST202'
+}
+
+function avisarMigrationEg6Ausente(rpc: string, err: { message: string }) {
+  console.error(
+    `[QAAlert] ${rpc} ausente, usando a leitura legada: ` +
+    `migration EG-6 ausente (20261011130000_eg6_vdesk_qa_qualidade_rpcs) — ${err.message}`,
+  )
+}
+
+/**
+ * Itens em desenvolvimento que podem ter retorno de QA e não têm evento aberto.
+ * Superconjunto do que o loop de `run` alerta; o loop reaplica a regra inteira.
+ * Erro na leitura derruba a rodada, como a leitura antiga derrubava.
+ */
+async function carregarCandidatos(admin: any): Promise<WorkItem[]> {
+  const { data, error } = await admin.rpc('rpc_qa_retorno_candidatos', { p_estado: ESTADO_CANDIDATO })
+  if (!error) return (data ?? []) as WorkItem[]
+  if (!migrationEg6Ausente(error)) throw new Error(`Fetch candidates: ${error.message}`)
+
+  avisarMigrationEg6Ausente('rpc_qa_retorno_candidatos', error)
+  const { data: legado, error: legadoErr } = await admin
+    .from('devops_work_items')
+    .select(COLUNAS_CANDIDATO)
+    .eq('state', ESTADO_CANDIDATO)
+  if (legadoErr) throw new Error(`Fetch candidates: ${legadoErr.message}`)
+  return (legado ?? []) as WorkItem[]
+}
+
+type EventoAberto = { id: number; work_item_id: number; wi: { state: string | null } | null }
+
+/**
+ * Eventos abertos com o estado atual do item (`wi` nulo = item não existe).
+ *
+ * Falha na leitura da lista = nenhum evento resolvido nesta rodada, como antes
+ * (o `data` nulo da lista antiga pulava o loop). No caminho legado o erro de
+ * uma leitura de estado continua virando `wi` nulo, e o evento é fechado —
+ * comportamento antigo, preservado de propósito no fallback.
+ */
+async function carregarEventosAbertos(admin: any): Promise<EventoAberto[]> {
+  const { data, error } = await admin.rpc('rpc_qa_eventos_abertos')
+  if (!error) {
+    return ((data ?? []) as { id: number; work_item_id: number; existe: boolean; state: string | null }[])
+      .map((e) => ({ id: e.id, work_item_id: e.work_item_id, wi: e.existe ? { state: e.state } : null }))
+  }
+  if (!migrationEg6Ausente(error)) {
+    console.error('[QAAlert] Open events query error:', error.message)
+    return []
+  }
+
+  avisarMigrationEg6Ausente('rpc_qa_eventos_abertos', error)
+  const { data: abertos } = await admin
+    .from('devops_qa_return_events')
+    .select('id, work_item_id')
+    .eq('is_open', true)
+
+  const eventos: EventoAberto[] = []
+  for (const evt of (abertos ?? []) as { id: number; work_item_id: number }[]) {
+    const { data: wi } = await admin
+      .from('devops_work_items')
+      .select('state')
+      .eq('id', evt.work_item_id)
+      .maybeSingle()
+    eventos.push({ id: evt.id, work_item_id: evt.work_item_id, wi: wi ?? null })
+  }
+  return eventos
+}
+
 // ── Main logic ────────────────────────────────────────────────────────────────
 
 async function run(
@@ -477,55 +556,51 @@ async function run(
   }
 
   // ── 1. Candidatos: state = "Em desenvolvimento" ───────────────────────────
-  const { data: candidates, error: candidatesErr } = await admin
-    .from('devops_work_items')
-    .select(
-      'id, title, work_item_type, area_path, iteration_path, ' +
-      'assigned_to_display, assigned_to_unique, state, tags, web_url, state_history',
-    )
-    .eq('state', 'Em desenvolvimento')
+  //
+  // DESDE A EG-6 vem de `rpc_qa_retorno_candidatos`: só itens SEM evento aberto
+  // e com POSSÍVEL evidência de retorno (superconjunto garantido — a prova está
+  // na migration). A regra de verdade continua aqui embaixo, inalterada. Antes
+  // os 33 itens em desenvolvimento desciam com `state_history` em toda rodada,
+  // 144 por dia, e em 11/10/2026 nenhum passava no filtro.
+  const candidates = await carregarCandidatos(admin)
 
-  if (candidatesErr) throw new Error(`Fetch candidates: ${candidatesErr.message}`)
-
-  // Pré-carrega itens relacionados (filhos) para enriquecer a notificação visual.
-  const candidateIds = ((candidates ?? []) as WorkItem[]).map((wi) => wi.id)
+  // Itens relacionados (filhos) para enriquecer a notificação visual.
+  //
+  // SOB DEMANDA desde a EG-6: só são lidos quando um alerta vai de fato ser
+  // montado, e só os filhos daquele item. Antes eram ~156 filhos de TODOS os
+  // candidatos, pré-carregados em toda rodada (~5 MB/dia) para um cartão que
+  // sai poucas vezes por semana. O resultado para o item alertado é o mesmo:
+  // a leitura é a mesma, com o mesmo filtro, restrita ao `parent_id` dele.
   const relatedByParent = new Map<number, RelatedWorkItem[]>()
+  async function relacionadosDe(parentId: number): Promise<RelatedWorkItem[]> {
+    const cache = relatedByParent.get(parentId)
+    if (cache) return cache
 
-  if (candidateIds.length > 0) {
     // PAGINADO. `parent_id` não é única: cada pai tem vários filhos, então
     // esta leitura devolve MAIS linhas do que ids recebe e batia no
     // `max_rows = 1000` do PostgREST sem avisar. O efeito era um alerta de QA
     // chegando com a lista de itens relacionados incompleta — pior que vazia,
     // porque parece completa.
     let relatedItems: RelatedWorkItem[] = []
-    let relatedErr: { message: string } | null = null
     try {
       relatedItems = await lerEmLotes<RelatedWorkItem>(
         admin, 'devops_work_items',
         'id, parent_id, title, work_item_type, state, web_url',
-        'parent_id', candidateIds,
+        'parent_id', [parentId],
         {
           ordem: ['id'],
           refinar: (q) => q.in('work_item_type', ['Product Backlog Item', 'User Story', 'Task', 'Bug']),
         },
       )
     } catch (e) {
-      relatedErr = { message: (e as Error).message }
+      console.error('[QAAlert] Related items query error:', (e as Error).message)
+      relatedItems = []
     }
-
-    if (relatedErr) {
-      console.error('[QAAlert] Related items query error:', relatedErr.message)
-    } else {
-      for (const rel of (relatedItems ?? []) as RelatedWorkItem[]) {
-        if (rel.parent_id == null) continue
-        const bucket = relatedByParent.get(rel.parent_id) ?? []
-        bucket.push(rel)
-        relatedByParent.set(rel.parent_id, bucket)
-      }
-    }
+    relatedByParent.set(parentId, relatedItems)
+    return relatedItems
   }
 
-  for (const item of (candidates ?? []) as WorkItem[]) {
+  for (const item of candidates) {
     const history = (item.state_history ?? []) as StateChange[]
     const transitions = findQaReturnTransitions(history)
     const hasTag = hasQaReturnTag(item.tags)
@@ -597,7 +672,7 @@ async function run(
     }
 
     // ── Enviar alerta ────────────────────────────────────────────────────────
-    const relatedItems = relatedByParent.get(item.id) ?? []
+    const relatedItems = await relacionadosDe(item.id)
     const adaptiveCard = buildAdaptiveCard(item, sprintCode, relatedItems)
     let alertStatus = 'skipped'
     let alertChannelType = 'none'
@@ -672,17 +747,14 @@ async function run(
   }
 
   // ── 2. Auto-resolver: marcar is_open=false para itens que saíram de "Em desenvolvimento" ──
-  const { data: openEvents } = await admin
-    .from('devops_qa_return_events')
-    .select('id, work_item_id')
-    .eq('is_open', true)
+  //
+  // DESDE A EG-6 a lista de abertos já vem com o estado do item
+  // (`rpc_qa_eventos_abertos`): uma leitura em vez de 1 + N. A decisão é a de
+  // sempre, aqui, sobre o mesmo `wi?.state`.
+  const openEvents = await carregarEventosAbertos(admin)
 
-  for (const evt of (openEvents ?? []) as { id: number; work_item_id: number }[]) {
-    const { data: wi } = await admin
-      .from('devops_work_items')
-      .select('state')
-      .eq('id', evt.work_item_id)
-      .maybeSingle()
+  for (const evt of openEvents) {
+    const wi = evt.wi
 
     const stillInDev = wi?.state?.toLowerCase().includes('em desenvolvimento')
     if (!wi || !stillInDev) {
