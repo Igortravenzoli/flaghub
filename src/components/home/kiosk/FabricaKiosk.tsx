@@ -15,7 +15,11 @@ export default function FabricaKiosk() {
    * O `range` CONTINUA sendo passado de propósito: ele não escopa mais os itens,
    * mas é o que alimenta horas/capacidade (`rpc_devops_timelog_agg` sem datas
    * devolve o histórico inteiro) e o ritmo da sprint na view.
+   *
+   * `telao`: baixa só a sprint vigente (PBI/US/Bug, colunas que a tela lê) e a
+   * hierarquia dos itens com apontamento — egress, EG-8 (11/10/2026). O que esta
+   * view mostra sai igual ao perfil de mesa (src/test/fabricaPerfilTelao.test.tsx).
    */
-  const fab = useFabricaKpis(range?.from, range?.to, code ?? 'all', { includeTimeLogs: true });
+  const fab = useFabricaKpis(range?.from, range?.to, code ?? 'all', { includeTimeLogs: true, telao: true });
   return <FabricaTvView fab={fab} sprintCode={code} periodLabel={code ?? 'Sprint atual'} dateFrom={range?.from ?? null} dateTo={range?.to ?? null} />;
 }

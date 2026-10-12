@@ -184,6 +184,136 @@ export interface TimelogFabricaScope {
 interface UseFabricaKpisOptions {
   includeTimeLogs?: boolean;
   includeWorkItemMeta?: boolean;
+  /**
+   * Lê da `vw_fabrica_kpis` só as colunas de `VW_FABRICA_COLUNAS_ENXUTAS` (cache
+   * próprio). Para quem usa só contagens e sprints: os cards do Home com a
+   * política do telão ligada. Implícito em `telao`.
+   */
+  visaoEnxuta?: boolean;
+  /**
+   * Perfil do telão (FabricaKiosk) — egress, EG-8 (11/10/2026). Com o código da
+   * sprint vigente em `sprintFilter`:
+   *   • work items: só a sprint vigente, só PBI/US/Bug e só as colunas que o
+   *     telão lê, em vez da tabela inteira (≈12 mil linhas, ~7,8 MB por carga);
+   *   • hierarquia (task → PBI → … → Epic) só dos itens com apontamento no
+   *     período, para as horas por fábrica da página 2;
+   *   • sem os apontamentos por DIA e sem o VDESK: o telão não mostra jornada
+   *     nem horas consolidadas (só `horasPorFabricaFull`, que é DevOps).
+   * O que o telão mostra (`total`, `done`, `inProgress`, `entregue`, `toDo`,
+   * `kpiItems`, `horasPorFabricaFull`) sai idêntico ao perfil de mesa — há teste.
+   * Os demais campos devolvidos NÃO têm essa garantia neste perfil.
+   */
+  telao?: boolean;
+}
+
+/** Todas as colunas da `vw_fabrica_kpis` — as telas de mesa usam todas. */
+export const VW_FABRICA_COLUNAS =
+  'id, title, work_item_type, state, assigned_to_display, priority, effort, iteration_path, created_date, changed_date, parent_id, parent_title, parent_type, web_url, tags, count_in_kpi';
+
+/**
+ * As colunas da `vw_fabrica_kpis` que o telão e os cards do Home leem.
+ * Fora: web_url, parent_title, parent_type (drawer/exportação da Fábrica),
+ * priority e effort (tabelas e lead time da mesa) — ~34% dos bytes da view.
+ * `created_date`/`changed_date` ficam: são o recorte de fallback quando o código
+ * da sprint não casa com nenhum item.
+ */
+export const VW_FABRICA_COLUNAS_ENXUTAS =
+  'id, title, work_item_type, state, assigned_to_display, iteration_path, created_date, changed_date, parent_id, tags, count_in_kpi';
+
+/**
+ * Colunas de `devops_work_items` lidas pela mesa. `area_path` saiu em 11/10/2026:
+ * nada no front lê (≈5% dos bytes da carga).
+ */
+export const WI_COLUNAS_MESA =
+  'id, tags, title, parent_id, assigned_to_display, work_item_type, iteration_history, state, iteration_path, priority, effort, created_date, changed_date, web_url';
+
+/**
+ * Colunas de `devops_work_items` no perfil do telão: as que decidem escopo e KPI
+ * (tipo, estado, sprint, responsável/roster, título/pai para [INFRA] e épicos
+ * fora da Fábrica, tags para a classificação Priorizado/Bug/Retorno/Avião).
+ */
+export const WI_COLUNAS_TELAO =
+  'id, title, work_item_type, state, assigned_to_display, iteration_path, parent_id, tags';
+
+/** Colunas da hierarquia (subida até o Epic) no perfil do telão. */
+export const WI_COLUNAS_HIERARQUIA = 'id, parent_id, work_item_type, title';
+
+/** Linha de `devops_work_items` como o hook a usa (colunas ausentes = null). */
+export interface WorkItemMeta {
+  id: number;
+  tags: string | null;
+  title: string | null;
+  parent_id: number | null;
+  assigned_to_display: string | null;
+  work_item_type: string | null;
+  iteration_history: any;
+  state: string | null;
+  iteration_path: string | null;
+  priority: number | null;
+  effort: number | null;
+  created_date: string | null;
+  changed_date: string | null;
+  web_url: string | null;
+}
+
+const WI_VAZIO: Omit<WorkItemMeta, 'id'> = {
+  tags: null, title: null, parent_id: null, assigned_to_display: null, work_item_type: null,
+  iteration_history: null, state: null, iteration_path: null, priority: null, effort: null,
+  created_date: null, changed_date: null, web_url: null,
+};
+
+/** Completa com null as colunas que um select enxuto não trouxe. */
+export function completarWorkItem(parcial: Partial<WorkItemMeta> & { id: number }): WorkItemMeta {
+  return { ...WI_VAZIO, ...parcial };
+}
+
+const FABRICA_ITEM_VAZIO: Omit<FabricaItem, 'id'> = {
+  title: null, work_item_type: null, state: null, assigned_to_display: null, priority: null,
+  effort: null, iteration_path: null, created_date: null, changed_date: null, parent_id: null,
+  parent_title: null, parent_type: null, web_url: null,
+};
+
+/** Idem para a linha da `vw_fabrica_kpis` lida com `VW_FABRICA_COLUNAS_ENXUTAS`. */
+export function completarFabricaItem(parcial: Partial<FabricaItem>): FabricaItem {
+  return { ...FABRICA_ITEM_VAZIO, id: null, ...parcial };
+}
+
+/**
+ * Filtro de servidor da sprint no perfil do telão: `ilike '%S15-2026%'` é
+ * SUPERCONJUNTO do casamento do cliente (`extractSprintCodeFromPath` acha o
+ * primeiro `S\d+-\d{4}`, sem diferenciar caixa — se ele devolve S15-2026, o
+ * texto contém "S15-2026"). O hook refiltra no cliente pelo código exato.
+ */
+export function padraoSprintServidor(codigo: string): string {
+  return `%${codigo}%`;
+}
+
+/**
+ * Sobe a cadeia de pais a partir de `ids`, nível a nível, até não haver pai novo
+ * ou `profundidadeMax` níveis. `findEpic` visita até 11 nós (profundidade 0..10),
+ * daí o default. `buscar` recebe lotes de ids e devolve as linhas existentes.
+ */
+export async function buscarAncestrais<T extends { id: number; parent_id: number | null }>(
+  ids: number[],
+  buscar: (lote: number[]) => Promise<T[]>,
+  profundidadeMax = 11,
+  tamanhoLote = 300,
+): Promise<T[]> {
+  const achados = new Map<number, T>();
+  const pedidos = new Set<number>();
+  let fila = [...new Set(ids)];
+  for (let nivel = 0; nivel < profundidadeMax && fila.length > 0; nivel++) {
+    for (const id of fila) pedidos.add(id);
+    const proximos = new Set<number>();
+    for (let i = 0; i < fila.length; i += tamanhoLote) {
+      for (const linha of await buscar(fila.slice(i, i + tamanhoLote))) {
+        achados.set(linha.id, linha);
+        if (linha.parent_id != null && !pedidos.has(linha.parent_id)) proximos.add(linha.parent_id);
+      }
+    }
+    fila = [...proximos];
+  }
+  return [...achados.values()];
 }
 
 function isInRange(dateStr: string | null, from: Date, to: Date): boolean {
@@ -375,13 +505,21 @@ export function useFabricaKpis(
 ) {
   const includeTimeLogs = options?.includeTimeLogs ?? true;
   const includeWorkItemMeta = options?.includeWorkItemMeta ?? true;
+  const telao = options?.telao ?? false;
+  const visaoEnxuta = telao || (options?.visaoEnxuta ?? false);
 
   const query = useQuery({
-    queryKey: ['fabrica', 'kpis'],
+    // Cache próprio para a leitura enxuta: com a mesma chave, a tela de mesa
+    // receberia linhas sem web_url/parent_title.
+    queryKey: visaoEnxuta ? ['fabrica', 'kpis', 'enxuta'] : ['fabrica', 'kpis'],
     queryFn: async () => {
-      return fetchAllRows<FabricaItem>((from, to) =>
-        supabase.from('vw_fabrica_kpis').select('*').range(from, to)
+      const linhas = await fetchAllRows<FabricaItem>((from, to) =>
+        supabase
+          .from('vw_fabrica_kpis')
+          .select(visaoEnxuta ? VW_FABRICA_COLUNAS_ENXUTAS : VW_FABRICA_COLUNAS)
+          .range(from, to) as unknown as PromiseLike<{ data: FabricaItem[] | null; error: unknown }>
       );
+      return visaoEnxuta ? linhas.map(completarFabricaItem) : linhas;
     },
     staleTime: 5 * 60 * 1000,
     placeholderData: keepPreviousData,
@@ -451,7 +589,8 @@ export function useFabricaKpis(
         time_minutes: number | null;
       }>;
     },
-    enabled: includeTimeLogs,
+    // Telão: a régua de jornada (`diasSobrecarga`) não aparece no modo TV.
+    enabled: includeTimeLogs && !telao,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -477,38 +616,8 @@ export function useFabricaKpis(
         tempo_segundos: number;
       }>;
     },
-    enabled: includeTimeLogs,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // Work items with tags for product mapping & iteration_history
-  const workItemsQuery = useQuery({
-    queryKey: ['fabrica', 'work-items-tags', includeWorkItemMeta],
-    queryFn: async () => {
-      return fetchAllRows<{
-        id: number;
-        tags: string | null;
-        title: string | null;
-        parent_id: number | null;
-        assigned_to_display: string | null;
-        area_path: string | null;
-        work_item_type: string | null;
-        iteration_history: any;
-        state: string | null;
-        iteration_path: string | null;
-        priority: number | null;
-        effort: number | null;
-        created_date: string | null;
-        changed_date: string | null;
-        web_url: string | null;
-      }>((from, to) =>
-        supabase
-          .from('devops_work_items')
-          .select('id, tags, title, parent_id, assigned_to_display, area_path, work_item_type, iteration_history, state, iteration_path, priority, effort, created_date, changed_date, web_url')
-          .range(from, to)
-      );
-    },
-    enabled: includeWorkItemMeta,
+    // Telão: `horasPorFabricaFull` é só DevOps; nada do VDESK aparece no modo TV.
+    enabled: includeTimeLogs && !telao,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -540,15 +649,6 @@ export function useFabricaKpis(
     ? nonInfraItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
     : nonInfraItems;
 
-  const nonInfraWorkItems = (workItemsQuery.data || []).filter((wi) => {
-    if (isEpicForaDaFabrica(wi.id, wi.parent_id)) return false;
-    return !wi.title?.startsWith(INFRA_PREFIX);
-  });
-
-  const dateScopedWorkItems = (dateFrom && dateTo)
-    ? nonInfraWorkItems.filter((wi) => isInRange(wi.created_date, dateFrom, dateTo) || isInRange(wi.changed_date, dateFrom, dateTo))
-    : nonInfraWorkItems;
-
   const effectiveSprintFilter = Array.isArray(sprintFilter)
     ? sprintFilter.filter(Boolean)
     : (sprintFilter === '__pending__' ? 'all' : sprintFilter);
@@ -575,7 +675,111 @@ export function useFabricaKpis(
     !!filtroCodigo && extractSprintCodeFromPath(path)?.toUpperCase() === filtroCodigo;
 
   const itemsPorCodigo = filtroCodigo ? nonInfraItems.filter((i) => casaCodigo(i.iteration_path)) : [];
-  const wiPorCodigo = filtroCodigo ? nonInfraWorkItems.filter((wi) => casaCodigo(wi.iteration_path)) : [];
+
+  const naoInfra = (wi: WorkItemMeta): boolean =>
+    !isEpicForaDaFabrica(wi.id, wi.parent_id) && !wi.title?.startsWith(INFRA_PREFIX);
+
+  // ── Work items ──
+  // Perfil do telão só com o código da sprint em mãos; sem ele, a carga de mesa.
+  const codigoTelao = telao ? filtroCodigo : null;
+
+  const workItemsTelaoQuery = useQuery({
+    queryKey: ['fabrica', 'work-items-telao', codigoTelao],
+    queryFn: async () => {
+      const linhas = await fetchAllRows<Partial<WorkItemMeta> & { id: number }>((from, to) =>
+        supabase
+          .from('devops_work_items')
+          .select(WI_COLUNAS_TELAO)
+          .in('work_item_type', [...FABRICA_MANAGER_ITEM_TYPES])
+          .ilike('iteration_path', padraoSprintServidor(codigoTelao as string))
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: Array<Partial<WorkItemMeta> & { id: number }> | null; error: unknown }>
+      );
+      return linhas.map(completarWorkItem);
+    },
+    enabled: includeWorkItemMeta && codigoTelao !== null,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const wiTelaoPorCodigo = (workItemsTelaoQuery.data || [])
+    .filter(naoInfra)
+    .filter((wi) => casaCodigo(wi.iteration_path));
+
+  /**
+   * Única situação em que o recorte do telão divergiria da mesa: nem a view nem
+   * os PBI/US/Bug da sprint casam o código (virada de sprint, base vazia). Aí a
+   * mesa ainda resolveria pelo código se houvesse Task/Epic na sprint, ou cairia
+   * na janela de datas sobre a tabela INTEIRA — então o telão baixa a tabela
+   * inteira, exatamente como antes.
+   */
+  const telaoPrecisaCargaCompleta = codigoTelao !== null
+    && query.isSuccess && workItemsTelaoQuery.isSuccess
+    && itemsPorCodigo.length === 0 && wiTelaoPorCodigo.length === 0;
+  const perfilTelaoAtivo = codigoTelao !== null && !telaoPrecisaCargaCompleta;
+
+  // Work items with tags for product mapping & iteration_history (mesa)
+  const workItemsQuery = useQuery({
+    queryKey: ['fabrica', 'work-items-tags', includeWorkItemMeta],
+    queryFn: async () => {
+      return fetchAllRows<WorkItemMeta>((from, to) =>
+        supabase
+          .from('devops_work_items')
+          .select(WI_COLUNAS_MESA)
+          .range(from, to) as unknown as PromiseLike<{ data: WorkItemMeta[] | null; error: unknown }>
+      );
+    },
+    enabled: includeWorkItemMeta && (codigoTelao === null || telaoPrecisaCargaCompleta),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  /**
+   * Hierarquia do telão: a subida até o Epic (`findEpic`) dos itens com
+   * apontamento no período — é o que `horasPorFabricaFull` (Uso cruzado, página
+   * 2) precisa. Os nós são os mesmos da tabela inteira, então o Epic achado é o
+   * mesmo; só não se baixa o resto.
+   */
+  const idsApontados: number[] = (() => {
+    if (!perfilTelaoAtivo) return [];
+    const set = new Set<number>();
+    for (const tl of (timeLogsQuery.data || []) as Array<{ work_item_id: number | null }>) {
+      if (tl.work_item_id != null) set.add(tl.work_item_id);
+    }
+    return [...set].sort((a, b) => a - b);
+  })();
+  const hierarquiaTelaoQuery = useQuery({
+    queryKey: ['fabrica', 'wi-hierarquia', idsApontados.join(',')],
+    queryFn: async () => {
+      const linhas = await buscarAncestrais(idsApontados, async (lote) => {
+        const { data, error } = await supabase
+          .from('devops_work_items')
+          .select(WI_COLUNAS_HIERARQUIA)
+          .in('id', lote);
+        if (error) throw error;
+        return (data || []) as Array<Partial<WorkItemMeta> & { id: number; parent_id: number | null }>;
+      });
+      return linhas.map(completarWorkItem);
+    },
+    enabled: includeWorkItemMeta && perfilTelaoAtivo && idsApontados.length > 0,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+
+  /** Linhas que decidem ESCOPO (sprint, fallback, roster). */
+  const linhasEscopo: WorkItemMeta[] = perfilTelaoAtivo
+    ? (workItemsTelaoQuery.data || [])
+    : (workItemsQuery.data || []);
+  /** Linhas para subir a cadeia de pais (Epic, produto, PBI raiz). Mesa: as mesmas. */
+  const linhasHierarquia: WorkItemMeta[] = perfilTelaoAtivo
+    ? [...new Map([...(hierarquiaTelaoQuery.data || []), ...linhasEscopo].map((wi) => [wi.id, wi] as const)).values()]
+    : linhasEscopo;
+
+  const nonInfraWorkItems = linhasEscopo.filter(naoInfra);
+
+  const dateScopedWorkItems = (dateFrom && dateTo)
+    ? nonInfraWorkItems.filter((wi) => isInRange(wi.created_date, dateFrom, dateTo) || isInRange(wi.changed_date, dateFrom, dateTo))
+    : nonInfraWorkItems;
+
+  const wiPorCodigo =filtroCodigo ? nonInfraWorkItems.filter((wi) => casaCodigo(wi.iteration_path)) : [];
   const codigoResolveu = filtroCodigo !== null && (itemsPorCodigo.length > 0 || wiPorCodigo.length > 0);
 
   // Sprint is the primary filter. In custom mode (all sprints), date range scopes work items.
@@ -762,7 +966,7 @@ export function useFabricaKpis(
    * `managerIdByTaskId`, `timelogScopeIds` e `horasPorPbi` — nenhum KPI de squad
    * passa por aqui (esses saem de `filteredItems`).
    */
-  const guardaChuvaTimelog: FabricaItem[] = (workItemsQuery.data || [])
+  const guardaChuvaTimelog: FabricaItem[] = linhasHierarquia
     .filter((wi) => EPICS_FORA_DA_FABRICA.has(wi.id))
     .map((wi) => ({
       id: wi.id,
@@ -797,7 +1001,7 @@ export function useFabricaKpis(
   // managerIdByTaskId: task id → PBI/Bug raiz no escopo gerencial.
   const managerIdByTaskId: Record<number, number> = (() => {
     const out: Record<number, number> = {};
-    const allWis = workItemsQuery.data || [];
+    const allWis = linhasHierarquia;
     const parentById = new Map<number, number | null>();
     for (const wi of allWis) parentById.set(wi.id, wi.parent_id);
     for (const wi of allWis) {
@@ -899,9 +1103,9 @@ export function useFabricaKpis(
   const hasTimeLogsFull = completeTimeLogs.length > 0;
 
   // Build work item lookup
-  const wiMap = new Map<number, { tags: string | null; title: string | null; parent_id: number | null; assigned_to_display: string | null; area_path: string | null; work_item_type: string | null; iteration_history: any; state?: string | null; web_url?: string | null }>();
+  const wiMap = new Map<number, WorkItemMeta>();
   const tagsByWorkItemId: Record<number, string> = {};
-  for (const wi of (workItemsQuery.data || [])) {
+  for (const wi of linhasHierarquia) {
     wiMap.set(wi.id, wi);
     if (wi.tags) tagsByWorkItemId[wi.id] = wi.tags;
   }

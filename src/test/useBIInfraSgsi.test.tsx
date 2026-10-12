@@ -6,17 +6,56 @@ import type { SgsiRawItem } from '@/lib/sgsiFields';
 
 // O hook de verdade, com o Supabase trocado: garante que sprint e calendário montam
 // Acessos de jeitos diferentes a partir de UM download do espelho.
+//
+// Desde o EG-8 (11/10/2026) um download é feito em LOTES (010 e 014 com campos
+// projetados, as listas pequenas inteiras, o resto sem fields). O falso
+// PostgREST abaixo aplica os filtros e a projeção fN:fields->"Campo" de cada
+// lote sobre estado.linhas; um download = uma leitura de sgsi_lists.
+const estado = vi.hoisted(() => ({ linhas: [] as Array<Record<string, any>>, downloads: 0 }));
 const mockFetchAllRows = vi.fn();
 vi.mock('@/lib/fetchAllRows', () => ({
   fetchAllRows: (...args: unknown[]) => mockFetchAllRows(...args),
 }));
-vi.mock('@/integrations/supabase/client', () => ({
-  supabase: {
-    from: () => ({
-      select: () => ({ order: () => ({ limit: async () => ({ data: [{ synced_at: '2026-06-11T11:00:00Z' }] }) }) }),
-    }),
-  },
-}));
+vi.mock('@/integrations/supabase/client', () => {
+  const projetar = (linha: Record<string, any>, select: string) => {
+    const out: Record<string, unknown> = {
+      list_key: linha.list_key, item_id: linha.item_id, created_sp: linha.created_sp, modified_sp: linha.modified_sp,
+    };
+    if (/(^|,\s*)fields\s*(,|$)/.test(select)) out.fields = linha.fields;
+    for (const [, alias, campo] of select.matchAll(/(f\d+):fields->"([^"]+)"/g)) out[alias] = linha.fields[campo] ?? null;
+    return out;
+  };
+  const sgsiItems = () => {
+    const filtros: Array<(l: Record<string, any>) => boolean> = [];
+    let select = '';
+    const b: Record<string, unknown> = {
+      select: (s: string) => { select = s; return b; },
+      eq: (col: string, v: unknown) => { filtros.push((l) => l[col] === v); return b; },
+      in: (col: string, vs: unknown[]) => { filtros.push((l) => vs.includes(l[col])); return b; },
+      not: (col: string, _op: string, lista: string) => {
+        const vs = lista.slice(1, -1).split(',');
+        filtros.push((l) => !vs.includes(l[col]));
+        return b;
+      },
+      order: () => b,
+      range: async () => ({
+        data: estado.linhas.filter((l) => filtros.every((f) => f(l))).map((l) => projetar(l, select)),
+        error: null,
+      }),
+    };
+    return b;
+  };
+  return {
+    supabase: {
+      from: (tabela: string) => tabela === 'sgsi_items' ? sgsiItems() : ({
+        select: () => ({ order: () => ({ limit: async () => {
+          estado.downloads++;
+          return { data: [{ synced_at: '2026-06-11T11:00:00Z' }] };
+        } }) }),
+      }),
+    },
+  };
+});
 
 import { useBIInfraSgsi } from '@/hooks/useBIInfra';
 
@@ -44,8 +83,12 @@ const ids = (d: { acessos: { itens: { id: number }[] } } | undefined) => d?.aces
 
 describe('useBIInfraSgsi', () => {
   beforeEach(() => {
+    estado.linhas = JSON.parse(JSON.stringify(ROWS));
+    estado.downloads = 0;
     mockFetchAllRows.mockReset();
-    mockFetchAllRows.mockImplementation(async () => JSON.parse(JSON.stringify(ROWS)));
+    // Uma página basta: as fixtures têm poucas linhas.
+    mockFetchAllRows.mockImplementation(async (pagina: (de: number, ate: number) => PromiseLike<{ data: unknown[] }>) =>
+      (await pagina(0, 999)).data);
   });
 
   it('sprint mantém Acessos na base completa; calendário recorta pela vigência', async () => {
@@ -83,7 +126,7 @@ describe('useBIInfraSgsi', () => {
     });
     expect(ids(base.result.current.data)).toEqual([1, 2]);
     expect(ids(calendario.result.current.data)).toEqual([2]);
-    expect(mockFetchAllRows).toHaveBeenCalledTimes(1);
+    expect(estado.downloads).toBe(1);
   });
 
   it('trocar período ou modo remonta a resposta sem baixar o espelho de novo', async () => {
@@ -97,7 +140,7 @@ describe('useBIInfraSgsi', () => {
     // em maio o definitivo ainda valia (revogado em 20/05)
     rerender({ de: MAIO.from, ate: MAIO.to, cal: true });
     await waitFor(() => expect(ids(result.current.data)).toEqual([1, 2]));
-    expect(mockFetchAllRows).toHaveBeenCalledTimes(1);
+    expect(estado.downloads).toBe(1);
   });
 
   it('refetch com as mesmas linhas remonta com a hora atual ("No prazo" vira "Sem evidência")', async () => {
@@ -105,14 +148,14 @@ describe('useBIInfraSgsi', () => {
     try {
       vi.setSystemTime(new Date('2026-09-10T23:00:00Z')); // 20:00 de 10/09 em Brasília
       const vence = [item('014', 3, { 'Tipo liberação': 'Provisória', 'Status solicitação': 'Realizado', 'Data fim liberação provisória': '2026-09-10T00:00:00Z' }, '2026-09-01T12:00:00Z')];
-      mockFetchAllRows.mockImplementation(async () => JSON.parse(JSON.stringify(vence)));
+      estado.linhas = JSON.parse(JSON.stringify(vence));
       const { result } = renderHook(() => useBIInfraSgsi(), { wrapper: novoWrapper() });
       await waitFor(() => expect(result.current.data?.acessos.itens[0]?.evidenciaRevogacao).toBe('No prazo'));
 
       vi.setSystemTime(new Date('2026-09-11T04:00:00Z')); // 01:00 de 11/09: o prazo acabou
       await act(async () => { await result.current.refetch(); });
       await waitFor(() => expect(result.current.data?.acessos.itens[0]?.evidenciaRevogacao).toBe('Sem evidência'));
-      expect(mockFetchAllRows).toHaveBeenCalledTimes(2);
+      expect(estado.downloads).toBe(2);
     } finally {
       vi.useRealTimers();
     }

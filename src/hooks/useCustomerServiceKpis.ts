@@ -53,6 +53,29 @@ function extractProduct(tags: string | null): string | null {
   return products.length > 0 ? products.join(', ') : null;
 }
 
+/**
+ * Enriquecimento dos itens DevOps da fila: sprint, e-mail do responsável e a
+ * descrição. A descrição vinha lendo `raw` INTEIRO (o documento do DevOps) para
+ * usar um campo só; `->` devolve o valor JSON com o tipo preservado, então a
+ * regra abaixo é a mesma de antes sobre `raw.fields`.
+ */
+export const CS_ENRIQUECIMENTO_SELECT =
+  'id, iteration_path, assigned_to_unique, desc_sistema:raw->fields->"System.Description", desc_campo:raw->fields->description';
+
+export interface CsEnriquecimentoLinha {
+  id: number;
+  iteration_path: string | null;
+  assigned_to_unique: string | null;
+  desc_sistema?: unknown;
+  desc_campo?: unknown;
+}
+
+/** `raw.fields['System.Description'] ?? raw.fields.description`, só se for texto. */
+export function descricaoDoEnriquecimento(row: CsEnriquecimentoLinha): string | null {
+  const desc = row.desc_sistema ?? row.desc_campo ?? null;
+  return typeof desc === 'string' ? desc : null;
+}
+
 export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string = 'all') {
   const query = useQuery({
     queryKey: ['customer-service', 'kpis'],
@@ -109,17 +132,17 @@ export function useCustomerServiceKpis(dateFrom?: Date, dateTo?: Date, sprintFil
       const map = new Map<number, { iteration_path: string | null; description: string | null; assigned_to_unique: string | null }>();
       for (let i = 0; i < devopsIds.length; i += 1000) {
         const chunk = devopsIds.slice(i, i + 1000);
-        const { data } = await supabase
+        // Só a descrição sai de `raw` (jsonb do DevOps, ~3 KB por item e até
+        // 160 KB): projetada no PostgREST em vez do documento inteiro (EG-8).
+        const { data } = await (supabase as any)
           .from('devops_work_items')
-          .select('id, iteration_path, assigned_to_unique, raw')
-          .in('id', chunk);
+          .select(CS_ENRIQUECIMENTO_SELECT)
+          .in('id', chunk) as { data: CsEnriquecimentoLinha[] | null };
 
         for (const row of (data || [])) {
-          const rawObj = row.raw as Record<string, any> | null;
-          const desc = rawObj?.fields?.['System.Description'] ?? rawObj?.fields?.description ?? null;
           map.set(row.id, {
             iteration_path: row.iteration_path,
-            description: typeof desc === 'string' ? desc : null,
+            description: descricaoDoEnriquecimento(row),
             assigned_to_unique: row.assigned_to_unique ?? null,
           });
         }

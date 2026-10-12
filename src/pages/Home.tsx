@@ -138,9 +138,12 @@ export default function Home() {
   const helpdesk = useHelpdeskKpis();
 
   // Fábrica: use official current sprint
+  // Com a política do telão, a leitura enxuta da vw_fabrica_kpis — a mesma do
+  // FabricaKiosk, então o telão baixa a view UMA vez e sem as colunas de mesa.
   const fabricaAll = useFabricaKpis(undefined, undefined, 'all', {
     includeTimeLogs: false,
     includeWorkItemMeta: false,
+    visaoEnxuta: politicaTelao,
   });
   const fabricaOfficialSprint = (() => {
     const officialCode = getCurrentOfficialSprintCode();
@@ -152,6 +155,7 @@ export default function Home() {
   const fabrica = useFabricaKpis(undefined, undefined, fabricaOfficialSprint, {
     includeTimeLogs: false,
     includeWorkItemMeta: false,
+    visaoEnxuta: politicaTelao,
   });
 
   const qualidadeBase = useQualidadeKpis();
@@ -159,9 +163,12 @@ export default function Home() {
   const qualidade = useQualidadeKpis(undefined, undefined, qualidadeSprint || 'all');
 
   const cs = useCustomerServiceKpis();
-  const infraBase = useInfraestruturaKpis();
+  // O card lê só total/emAndamento: sem histórico de sprint (transbordo) e, com a
+  // política do telão, a leitura enxuta da view — a mesma do InfraestruturaKiosk.
+  const opcoesInfraCard = { visaoEnxuta: politicaTelao, transbordo: 'nenhum' } as const;
+  const infraBase = useInfraestruturaKpis(undefined, undefined, 'all', opcoesInfraCard);
   const { currentSprint: infraSprint } = useSprintFilter(infraBase.allItems);
-  const infra = useInfraestruturaKpis(undefined, undefined, infraSprint || 'all');
+  const infra = useInfraestruturaKpis(undefined, undefined, infraSprint || 'all', opcoesInfraCard);
 
   // Build sector cards with real data
   const sectorCards: SectorCardData[] = [
