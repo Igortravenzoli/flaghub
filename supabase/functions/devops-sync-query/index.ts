@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { devopsAuthHeaders, devopsFetch as devopsHttp } from '../_shared/devops.ts'
 import { lerEmLotes } from '../_shared/leitura.ts'
+import { diffSnapshotNoBanco, itensParaGravar, MIGRATION_EG2, MIGRATION_EG5 } from './diff.ts'
 
 const DEVOPS_ORG = 'FlagIW'
 const DEVOPS_PROJECT = 'Flag.Planejamento'
@@ -360,32 +361,38 @@ serve(async (req) => {
       const workItems = await fetchWorkItemsBatch(workItemIds)
       console.log(`[DevOpsSync] Fetched ${workItems.length} work items`)
 
-      // 4. Get existing revs for dedupe
+      // 4 + 5. Itens que precisam de upsert (rev nova ou item novo) — no banco
       //
-      // PAGINADO. Era um `.in('id', workItemIds)` numa chamada só, e o
-      // PostgREST desta instância corta em `max_rows = 1000`: a query
-      // "02-Devops Base Geral" traz 3.978 itens, então chegavam mil `rev` e os
-      // outros ~2.978 caíam no `existingRev === undefined` do passo 5 — ou
-      // seja, eram reescritos a cada ciclo de cron mesmo sem nenhuma alteração
-      // no DevOps. É exatamente o upsert cego que este branch existe para
-      // matar, e ele estava no caminho PRINCIPAL enquanto o caminho dos pais,
-      // 120 linhas abaixo, já tinha sido corrigido em 26/08/2026.
+      // A regra é a de sempre — sem linha no banco, ou rev do banco MENOR — e
+      // continua sendo o único filtro: reescrever linha sem mudança não é só IO
+      // desperdiçado, o upsert substitui `custom_fields` inteiro, e é ali que a
+      // Qualidade guarda `qa_retorno_count` e o carimbo de sincronismo dela.
       //
-      // Reescrever linha sem mudança não é só IO desperdiçado: o upsert
-      // substitui `custom_fields` inteiro, e é ali que a Qualidade guarda
-      // `qa_retorno_count` e o carimbo de sincronismo dela.
-      const existingItems = await lerEmLotes<{ id: number; rev: number }>(
-        admin, 'devops_work_items', 'id, rev', 'id', workItemIds, { ordem: ['id'] },
-      )
-
-      const existingRevs = new Map(existingItems.map(e => [e.id, e.rev]))
-
-      // 5. Filter items that need upsert (rev changed)
+      // EG-5: a comparação roda em `rpc_devops_stale_ids` (a do EG-2, reusada).
+      // A edge manda (id, rev) do que veio do Azure e recebe só os ids a gravar.
+      // Antes baixava (id, rev) de todos os itens da query em lotes de 500 —
+      // ~4,1 mil requests e ~40 MB/dia de resposta para, na rodada típica,
+      // nenhum item a gravar (ver diff.ts). O momento da leitura não muda:
+      // continua depois da busca no DevOps e antes do upsert.
+      //
+      // RPC ausente (PGRST202) → leitura antiga paginada (lerEmLotes, que nasceu
+      // do corte silencioso em max_rows = 1000). Outro erro → lança, como a
+      // leitura antiga lançava: sem rev conhecida, gravar tudo seria o upsert cego.
       const mapped = workItems.map(mapWorkItem)
-      const toUpsert = mapped.filter(m => {
-        const existingRev = existingRevs.get(m.id)
-        return existingRev === undefined || existingRev < m.rev
-      })
+      const { itens: toUpsert, via: viaRev } = await itensParaGravar(
+        admin,
+        mapped,
+        async () => {
+          const existingItems = await lerEmLotes<{ id: number; rev: number }>(
+            admin, 'devops_work_items', 'id, rev', 'id', workItemIds, { ordem: ['id'] },
+          )
+          return new Map(existingItems.map(e => [e.id, e.rev]))
+        },
+        (err) => { throw new Error(`Rev lookup failed: ${err.message}`) },
+      )
+      if (viaRev === 'fallback') {
+        console.error(`[DevOpsSync] rpc_devops_stale_ids ausente — migration ausente (${MIGRATION_EG2}); usando a leitura antiga de (id, rev)`)
+      }
 
       console.log(`[DevOpsSync] ${toUpsert.length} items need upsert (${mapped.length - toUpsert.length} unchanged)`)
 
@@ -415,34 +422,43 @@ serve(async (req) => {
       // do diff. `synced_at` passa a significar "quando este item entrou nesta
       // query", que é mais útil que "última vez que o cron rodou" — esse dado
       // já vive em devops_queries.last_synced_at (passo 9).
-      // PAGINADO: o PostgREST desta instancia roda com `max_rows = 1000`. Uma
-      // query com mais de mil itens vinha truncada, e o `toDelete` calculado
-      // logo abaixo deixava de fora as sobras — item que saiu da query ficava
-      // na tabela para sempre. O insert nao sofria (protegido por
-      // `ignoreDuplicates`), mas a limpeza sim. `.order` garante ordem estavel
-      // entre as paginas. Ver analise de Disk IO de 26/08/2026.
+      //
+      // EG-5: o diff roda em `rpc_devops_query_snapshot_diff`. A edge manda os
+      // ids do WIQL e recebe {inserir, remover}. Antes ela baixava o snapshot
+      // inteiro da query, em páginas de 1000 — ~2,5 mil requests e ~43 MB/dia
+      // de resposta, 12 páginas por rodada só na "02-Devops Base Geral" — para,
+      // na rodada típica, nada entrar nem sair (ver diff.ts).
+      //
+      // RPC ausente (PGRST202) → a leitura antiga abaixo, que continua PAGINADA:
+      // o PostgREST desta instancia roda com `max_rows = 1000`, e uma query com
+      // mais de mil itens vinha truncada — o `toDelete` deixava de fora as
+      // sobras e item que saiu da query ficava na tabela para sempre. `.order`
+      // garante ordem estavel entre as paginas. Ver analise de Disk IO de
+      // 26/08/2026. Outro erro da RPC lança, como a leitura antiga lançava.
       const PAGINA_SNAPSHOT = 1000
-      const existingCurrent: Array<{ work_item_id: number }> = []
-      for (let inicio = 0; ; inicio += PAGINA_SNAPSHOT) {
-        const { data, error: existingCurrentErr } = await admin
-          .from('devops_query_items_current')
-          .select('work_item_id')
-          .eq('query_id', queryId)
-          .order('work_item_id')
-          .range(inicio, inicio + PAGINA_SNAPSHOT - 1)
+      const diff = await diffSnapshotNoBanco(admin, queryId, workItemIds, async () => {
+        const existingCurrent: number[] = []
+        for (let inicio = 0; ; inicio += PAGINA_SNAPSHOT) {
+          const { data, error: existingCurrentErr } = await admin
+            .from('devops_query_items_current')
+            .select('work_item_id')
+            .eq('query_id', queryId)
+            .order('work_item_id')
+            .range(inicio, inicio + PAGINA_SNAPSHOT - 1)
 
-        if (existingCurrentErr) {
-          throw new Error(`Current snapshot lookup failed: ${existingCurrentErr.message}`)
+          if (existingCurrentErr) {
+            throw new Error(`Current snapshot lookup failed: ${existingCurrentErr.message}`)
+          }
+          existingCurrent.push(...((data || []) as Array<{ work_item_id: number }>).map(row => row.work_item_id))
+          if (!data || data.length < PAGINA_SNAPSHOT) break
         }
-        existingCurrent.push(...((data || []) as Array<{ work_item_id: number }>))
-        if (!data || data.length < PAGINA_SNAPSHOT) break
+        return existingCurrent
+      })
+      if (diff.via === 'fallback') {
+        console.error(`[DevOpsSync] rpc_devops_query_snapshot_diff ausente — migration ausente (${MIGRATION_EG5}); usando a leitura antiga do snapshot`)
       }
 
-      const currentSet = new Set(workItemIds)
-      const existingCurrentSet = new Set(existingCurrent.map(row => row.work_item_id))
-
-      const toInsert = workItemIds
-        .filter(id => !existingCurrentSet.has(id))
+      const toInsert = diff.inserir
         .map(id => ({ query_id: queryId, work_item_id: id, synced_at: snapshotAt }))
 
       console.log(`[DevOpsSync] snapshot: +${toInsert.length} novos de ${workItemIds.length} (${workItemIds.length - toInsert.length} já presentes)`)
@@ -460,7 +476,7 @@ serve(async (req) => {
         }
       }
 
-      const toDelete = [...existingCurrentSet].filter(id => !currentSet.has(id))
+      const toDelete = diff.remover
 
       for (let i = 0; i < toDelete.length; i += 1000) {
         const chunk = toDelete.slice(i, i + 1000)
@@ -491,19 +507,34 @@ serve(async (req) => {
         // reescrito a cada ciclo mesmo sem nenhuma alteração no DevOps — o
         // passo 5 fazia certo desde 12/03/2026 e este caminho, criado depois,
         // não herdou a regra. Ver análise de Disk IO de 26/08/2026.
-        const parentRevs = new Map<number, number>()
-        for (let i = 0; i < missingParentIds.length; i += 1000) {
-          const { data: existingParents } = await admin
-            .from('devops_work_items')
-            .select('id, rev')
-            .in('id', missingParentIds.slice(i, i + 1000))
-          for (const p of (existingParents || [])) parentRevs.set(p.id, p.rev)
+        //
+        // EG-5: o filtro roda em `rpc_devops_stale_ids`, como o do passo 5
+        // (~950 requests/dia a menos). RPC ausente (PGRST202) → a leitura
+        // antiga abaixo. Outro erro → grava todos os pais buscados: é o que a
+        // leitura antiga fazia quando falhava, porque ignorava o erro e tratava
+        // o pai como novo.
+        const { itens: parentsToUpsert, via: viaPais } = await itensParaGravar(
+          admin,
+          parentMapped,
+          async () => {
+            const parentRevs = new Map<number, number>()
+            for (let i = 0; i < missingParentIds.length; i += 1000) {
+              const { data: existingParents } = await admin
+                .from('devops_work_items')
+                .select('id, rev')
+                .in('id', missingParentIds.slice(i, i + 1000))
+              for (const p of (existingParents || [])) parentRevs.set(p.id, p.rev)
+            }
+            return parentRevs
+          },
+          (err) => {
+            console.error('[DevOpsSync] rpc_devops_stale_ids failed for parents, upserting all:', err.message)
+            return parentMapped
+          },
+        )
+        if (viaPais === 'fallback') {
+          console.error(`[DevOpsSync] rpc_devops_stale_ids ausente — migration ausente (${MIGRATION_EG2}); usando a leitura antiga dos pais`)
         }
-
-        const parentsToUpsert = parentMapped.filter(p => {
-          const existingRev = parentRevs.get(p.id)
-          return existingRev === undefined || existingRev < p.rev
-        })
 
         console.log(`[DevOpsSync] ${parentsToUpsert.length} parents need upsert (${parentMapped.length - parentsToUpsert.length} unchanged)`)
 
