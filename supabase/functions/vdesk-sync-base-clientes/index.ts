@@ -63,6 +63,101 @@ function hashPayload(obj: any): string {
   return hash.toString(36)
 }
 
+type ClienteCarga = { nome: any; status: any; source_hash: string }
+type DiffClientes = { gravar: number[]; inativar: number[]; naBase: number; viaRpc: boolean }
+
+// PGRST202 = o PostgREST não achou a função no schema cache: edge publicada
+// ANTES da migration 20261011130000_eg6_vdesk_qa_qualidade_rpcs. Aí a edge cai
+// na leitura legada (a base inteira, paginada) em vez de parar — gasta egress,
+// mas sincroniza igual. A mensagem diz isso para não passar por falha transitória.
+function migrationEg6Ausente(err: { code?: string } | null | undefined): boolean {
+  return err?.code === 'PGRST202'
+}
+
+/**
+ * Posições da carga a gravar e ids a inativar, calculados contra o estado da
+ * base ANTES de qualquer escrita desta rodada.
+ *
+ * As regras são as de sempre (ver o comentário no ponto de chamada); a
+ * comparação é que mora em `rpc_vdesk_clientes_diff`. Nome ou status que não
+ * são texto não têm equivalente em SQL, então ficam com o JavaScript:
+ *   · nome não-texto vai como NULL, que nunca casa — no JS `Map.get(123)` e
+ *     `Set.has` com número também nunca casavam com o texto do banco;
+ *   · status não-texto é "mudou" sempre — no JS `texto !== número` é sempre
+ *     verdadeiro. A união abaixo garante isso sem depender do banco.
+ */
+async function diffClientes(admin: any, carga: ClienteCarga[]): Promise<DiffClientes> {
+  const { data, error } = await admin.rpc('rpc_vdesk_clientes_diff', {
+    p_nomes: carga.map(c => (typeof c.nome === 'string' ? c.nome : null)),
+    p_hashes: carga.map(c => c.source_hash),
+    p_status: carga.map(c => (typeof c.status === 'string' ? c.status : null)),
+  })
+
+  if (error) {
+    if (!migrationEg6Ausente(error)) {
+      throw new Error(`Diff de clientes falhou: ${error.message}`)
+    }
+    console.error(
+      '[GatewaySyncClients] rpc_vdesk_clientes_diff ausente, usando a leitura legada: ' +
+      `migration EG-6 ausente (20261011130000_eg6_vdesk_qa_qualidade_rpcs) — ${error.message}`,
+    )
+    return diffClientesLegado(admin, carga)
+  }
+
+  const gravar = new Set<number>((data?.gravar ?? []) as number[])
+  carga.forEach((c, i) => { if (typeof c.status !== 'string') gravar.add(i) })
+
+  return {
+    gravar: [...gravar].sort((a, b) => a - b),
+    inativar: (data?.inativar ?? []) as number[],
+    naBase: Number(data?.na_base ?? 0),
+    viaRpc: true,
+  }
+}
+
+/**
+ * O caminho anterior à EG-6, intacto, para a janela entre publicar a edge e
+ * aplicar a migration.
+ *
+ * PAGINADO de propósito: o PostgREST desta instância roda com
+ * `max_rows = 1000` e a base tem 2.061 clientes. Sem paginar, o mapa vinha
+ * com os primeiros mil e os 1.061 restantes caíam no ramo "cliente novo",
+ * sendo reescritos a cada ciclo. `.order('id')` é obrigatório: sem ordem
+ * estável a paginação pode repetir ou pular linhas.
+ */
+async function diffClientesLegado(admin: any, carga: ClienteCarga[]): Promise<DiffClientes> {
+  const PAGINA = 1000
+  type ClienteExistente = { id: number; nome: string; source_hash: string | null; status: string | null }
+  const existentes: ClienteExistente[] = []
+  for (let inicio = 0; ; inicio += PAGINA) {
+    const { data, error } = await admin
+      .from('vdesk_clients')
+      .select('id, nome, source_hash, status')
+      .order('id')
+      .range(inicio, inicio + PAGINA - 1)
+
+    if (error) {
+      throw new Error(`Lookup de clientes existentes falhou: ${error.message}`)
+    }
+    existentes.push(...((data || []) as ClienteExistente[]))
+    if (!data || data.length < PAGINA) break
+  }
+
+  const porNome = new Map(existentes.map(c => [c.nome, c]))
+  const gravar: number[] = []
+  carga.forEach((c, i) => {
+    const atual = porNome.get(c.nome)
+    if (!atual || atual.source_hash !== c.source_hash || atual.status !== c.status) gravar.push(i)
+  })
+
+  const nomesNaCarga = new Set(carga.map(c => c.nome))
+  const inativar = existentes
+    .filter(c => !nomesNaCarga.has(c.nome) && c.status !== 'Inativo')
+    .map(c => c.id)
+
+  return { gravar, inativar, naBase: existentes.length, viaRpc: false }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders(req) })
@@ -200,40 +295,7 @@ serve(async (req) => {
         }
       })
 
-      // Estado atual da base — alimenta o filtro de mudança E a reconciliação
-      // abaixo, numa leitura só.
-      //
-      // PAGINADO de propósito: o PostgREST desta instância roda com
-      // `max_rows = 1000` e a base tem 2.061 clientes. Sem paginar, o mapa vinha
-      // com os primeiros mil e os 1.061 restantes caíam no ramo "cliente novo"
-      // do filtro logo abaixo, sendo reescritos a cada ciclo — exatamente o
-      // desperdício que este patch existe para eliminar.
-      //
-      // Medido em 26/08/2026: 1.058 linhas reescritas por ciclo com TODOS os
-      // campos idênticos, `source_hash` inclusive. `.order('id')` é obrigatório:
-      // sem ordem estável a paginação pode repetir ou pular linhas.
-      const PAGINA = 1000
-      type ClienteExistente = { id: number; nome: string; source_hash: string | null; status: string | null }
-      const existentes: ClienteExistente[] = []
-      for (let inicio = 0; ; inicio += PAGINA) {
-        const { data, error } = await admin
-          .from('vdesk_clients')
-          .select('id, nome, source_hash, status')
-          .order('id')
-          .range(inicio, inicio + PAGINA - 1)
-
-        if (error) {
-          throw new Error(`Lookup de clientes existentes falhou: ${error.message}`)
-        }
-        existentes.push(...((data || []) as ClienteExistente[]))
-        if (!data || data.length < PAGINA) break
-      }
-
-      console.log(`[GatewaySyncClients] ${existentes.length} clientes ja na base`)
-
-      const porNome = new Map(existentes.map(c => [c.nome, c]))
-
-      // Só escreve quem mudou de fato.
+      // Só escreve quem mudou de fato, e só inativa quem saiu de fato.
       //
       // `source_hash` existe desde 12/03/2026 e nunca era lido: o sync reescrevia
       // os 2.061 clientes a cada 15 min só para recarimbar `synced_at` — 23,6
@@ -243,13 +305,16 @@ serve(async (req) => {
       // inativado localmente pela reconciliação volta com o MESMO payload (e
       // portanto o mesmo hash) quando reaparece na carga. Sem essa segunda
       // condição ele nunca seria reativado.
-      const mudaram = normalized.filter(c => {
-        const atual = porNome.get(c.nome)
-        if (!atual) return true                              // cliente novo
-        if (atual.source_hash !== c.source_hash) return true  // payload mudou
-        return atual.status !== c.status                      // reativação pendente
-      })
+      //
+      // DESDE A EG-6 o diff é feito no banco (`rpc_vdesk_clientes_diff`): a edge
+      // manda (nome, hash, status) da carga e recebe só as posições a gravar e
+      // os ids a inativar. Antes ela baixava a base inteira em 3 páginas, 96
+      // vezes por dia (~16 MB/dia crus, medido em 10–11/10/2026), para gravar
+      // ZERO linhas em todas as 95 rodadas ok do dia.
+      const diff = await diffClientes(admin, normalized)
+      const mudaram = diff.gravar.map(i => normalized[i])
 
+      console.log(`[GatewaySyncClients] ${diff.naBase} clientes ja na base${diff.viaRpc ? '' : ' (leitura legada)'}`)
       console.log(`[GatewaySyncClients] ${mudaram.length} de ${normalized.length} clientes mudaram`)
 
       // Upsert in chunks using nome as natural key (unique index)
@@ -276,13 +341,11 @@ serve(async (req) => {
       // Antes o corte era `.lt('synced_at', syncTimestamp)`, o que EXIGIA
       // recarimbar todas as linhas a cada ciclo para funcionar — era esse
       // requisito que sustentava os 23,6 milhões de UPDATEs. Agora o diff sai
-      // da leitura acima e só as linhas que realmente mudam de status são escritas.
+      // do estado ANTERIOR ao upsert (o mesmo diff acima) e só as linhas que
+      // realmente mudam de status são escritas.
       let deactivatedCount = 0
       if (normalized.length > 0 && upsertErrors === 0) {
-        const nomesNaCarga = new Set(normalized.map(c => c.nome))
-        const idsParaInativar = (existentes || [])
-          .filter(c => !nomesNaCarga.has(c.nome) && c.status !== 'Inativo')
-          .map(c => c.id)
+        const idsParaInativar = diff.inativar
 
         for (let i = 0; i < idsParaInativar.length; i += 100) {
           const { data: deactivated, error: deactError } = await admin
