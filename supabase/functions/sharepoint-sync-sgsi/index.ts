@@ -1,5 +1,7 @@
-// sharepoint-sync-sgsi v1.1 — Espelha as listas SG do SharePoint Online
+// sharepoint-sync-sgsi v1.2 — Espelha as listas SG do SharePoint Online
 // v1.1: + lista Controle Colaborador (SG-LST-013), casada pelo nome humano.
+// v1.2: grava só o que mudou (EG-7 / PR-10, ver gravacao.ts): de ~27 MB/dia
+//       de upload em sgsi_items para os ids + as linhas alteradas.
 // Fonte: https://flagcom.sharepoint.com/sites/PORTALSGSI (mesma do PBIX
 // "SG-LST Usecase 1.04"). Lê via Microsoft Graph com client credentials.
 //
@@ -14,6 +16,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 import { colunaSensivel } from './sensivel.ts'
+import { type ClienteSgsi, type LinhaSgsi, type ResultadoLista, sincronizarLista } from './gravacao.ts'
 
 const SP_HOST = 'flagcom.sharepoint.com'
 const SP_SITE_PATH = '/sites/PORTALSGSI'
@@ -320,6 +323,8 @@ serve(async (req) => {
 
     // 2. Por lista: colunas (mapa internal→display) + itens paginados
     const resumo: Record<string, number> = {}
+    const diff: Record<string, ResultadoLista> = {}
+    const avisos: string[] = []
     for (const { listKey, graphListId, displayName } of matched) {
       const colsData = await graphJson<{ value: GraphColumn[] }>(
         token, `/sites/${site.id}/lists/${graphListId}/columns?$top=300`
@@ -348,7 +353,7 @@ serve(async (req) => {
       const autorCol = columnMap.get('Author')
       const editorCol = columnMap.get('Editor')
 
-      const rows = items.map((item) => {
+      const rows: LinhaSgsi[] = items.map((item) => {
         const fields = normalizeFields(item.fields ?? {}, columnMap)
         applyUserNames(fields, userMap, pessoaCols)
         // Autor e editor não dependem do mapa de usuários: o próprio item do
@@ -368,7 +373,8 @@ serve(async (req) => {
         }
       })
 
-      // Snapshot: upsert da lista, substitui os itens
+      // Upsert da lista ANTES dos itens (FK de sgsi_items); synced_at dela é o
+      // batimento lido pelo front e pelo HubUptime, avança a cada execução.
       const { error: listErr } = await admin.from('sgsi_lists').upsert({
         list_key: listKey,
         graph_list_id: graphListId,
@@ -378,16 +384,14 @@ serve(async (req) => {
       }, { onConflict: 'list_key' })
       if (listErr) throw new Error(`Upsert sgsi_lists ${listKey}: ${listErr.message}`)
 
-      const { error: delErr } = await admin.from('sgsi_items').delete().eq('list_key', listKey)
-      if (delErr) throw new Error(`Limpeza sgsi_items ${listKey}: ${delErr.message}`)
-
-      for (let i = 0; i < rows.length; i += 200) {
-        const { error: insErr } = await admin.from('sgsi_items').insert(rows.slice(i, i + 200))
-        if (insErr) throw new Error(`Insert sgsi_items ${listKey}: ${insErr.message}`)
-      }
+      // Só o que mudou sobe; o que sumiu da origem sai (gravacao.ts). Sem a
+      // migration EG-7, cai no apagar-e-reinserir de antes, com aviso.
+      const r = await sincronizarLista(admin as unknown as ClienteSgsi, listKey, rows)
+      diff[listKey] = r
+      if (r.aviso) avisos.push(r.aviso)
 
       resumo[listKey] = rows.length
-      console.log(`[SGSI] ${displayName}: ${rows.length} itens`)
+      console.log(`[SGSI] ${displayName}: ${rows.length} itens (${r.modo}: ${r.gravados} gravados, ${r.removidos ?? '?'} removidos)`)
     }
 
     // 3. Registro de ingestão + auditoria
@@ -396,7 +400,7 @@ serve(async (req) => {
       source_type: 'sharepoint',
       source_key: 'sgsi-lists',
       external_id: SP_SITE_PATH,
-      payload: { listas: resumo },
+      payload: { listas: resumo, diff, ...(avisos.length > 0 ? { avisos } : {}) },
       status: 'processed',
       processed_at: new Date().toISOString(),
     })
@@ -405,7 +409,7 @@ serve(async (req) => {
         p_action: 'sharepoint_sync_sgsi',
         p_entity_type: 'sgsi_lists',
         p_entity_id: SP_SITE_PATH,
-        p_metadata: { listas: resumo, duration_ms: duration },
+        p_metadata: { listas: resumo, diff, duration_ms: duration },
       })
     } catch (_) { /* auditoria é best-effort */ }
 
@@ -415,6 +419,9 @@ serve(async (req) => {
       listas: resumo,
       listas_nao_mapeadas: naoMapeadas,
       total_itens: Object.values(resumo).reduce((s, n) => s + n, 0),
+      gravados: Object.values(diff).reduce((s, r) => s + r.gravados, 0),
+      diff,
+      ...(avisos.length > 0 ? { avisos } : {}),
       duration_ms: duration,
     }), { headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
 
