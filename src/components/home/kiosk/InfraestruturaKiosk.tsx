@@ -6,7 +6,9 @@ import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/spri
 export default function InfraestruturaKiosk() {
   const code = getCurrentOfficialSprintCode();
   const range = code ? getOfficialSprintRange(code) : null;
-  const kpis = useInfraestruturaKpis(range?.from, range?.to, 'all');
+  // Egress (EG-8, 11/10/2026): colunas que a Visão Executiva lê e histórico de
+  // sprint só dos itens do recorte — `sprintMigracoes`/`transbordo` somam só ele.
+  const kpis = useInfraestruturaKpis(range?.from, range?.to, 'all', { visaoEnxuta: true, transbordo: 'escopo' });
   return (
     <InfraExecutivoTab
       tvMode

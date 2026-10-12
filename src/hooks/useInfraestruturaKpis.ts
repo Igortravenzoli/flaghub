@@ -48,14 +48,78 @@ export interface DoneBySprint {
   total: number;
 }
 
-export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilter: string | string[] = 'all') {
+/** Todas as colunas da `vw_infraestrutura_kpis` — a tela de mesa usa todas. */
+export const VW_INFRA_COLUNAS =
+  'id, title, work_item_type, state, assigned_to_display, priority, effort, tags, created_date, changed_date, web_url, iteration_path';
+
+/**
+ * As colunas que o telão (Visão Executiva em tvMode) e o card do Home leem:
+ * estado (contagens), tags (melhoria/ISO/#Risco), sprint (done por sprint e
+ * filtro do Home), datas (recorte do período; `created_date` também nos dias sem
+ * risco) e título (lista de riscos #Risco). Fora: web_url, assigned_to_display,
+ * work_item_type, priority, effort — ~42% dos bytes da view.
+ */
+export const VW_INFRA_COLUNAS_ENXUTAS =
+  'id, title, state, tags, created_date, changed_date, iteration_path';
+
+const INFRA_ITEM_VAZIO: Omit<InfraItem, 'id'> = {
+  title: null, work_item_type: null, state: null, assigned_to_display: null, priority: null,
+  effort: null, tags: null, iteration_path: null, created_date: null, changed_date: null, web_url: null,
+};
+
+export function completarInfraItem(parcial: Partial<InfraItem>): InfraItem {
+  return { ...INFRA_ITEM_VAZIO, id: null, ...parcial };
+}
+
+export interface UseInfraestruturaKpisOptions {
+  /** Lê só `VW_INFRA_COLUNAS_ENXUTAS` (cache próprio). Telão e Home com a política do telão. */
+  visaoEnxuta?: boolean;
+  /**
+   * Histórico de sprint (`iteration_history`) para migrações/transbordo:
+   *   • 'todos' (padrão): de todos os itens da view — a tela de mesa expõe os
+   *     contadores por item em `allItems`;
+   *   • 'escopo': só dos itens no recorte (`items`) — basta para `sprintMigracoes`
+   *     e `transbordo`, que somam só o recorte (telão);
+   *   • 'nenhum': não busca — quem só lê contagens (cards do Home).
+   */
+  transbordo?: 'todos' | 'escopo' | 'nenhum';
+}
+
+/** Migrações de sprint relevantes num `iteration_history` (regra única do hook). */
+export function contarMigracoesSprint(history: Array<{ oldValue: string; newValue: string }> | null | undefined): number {
+  return (history || []).filter((h) => {
+    const oldValue = h.oldValue || '';
+    const newValue = h.newValue || '';
+    const oldCode = extractSprintCodeFromPath(oldValue);
+    const newCode = extractSprintCodeFromPath(newValue);
+
+    if (!newCode) return false;
+    if (oldCode) return oldCode !== newCode;
+    return !/backlog/i.test(oldValue);
+  }).length;
+}
+
+export function useInfraestruturaKpis(
+  dateFrom?: Date,
+  dateTo?: Date,
+  sprintFilter: string | string[] = 'all',
+  options?: UseInfraestruturaKpisOptions,
+) {
+  const visaoEnxuta = options?.visaoEnxuta ?? false;
+  const modoTransbordo = options?.transbordo ?? 'todos';
   const query = useQuery({
-    queryKey: ['infraestrutura', 'kpis'],
+    // Cache próprio para a leitura enxuta: com a mesma chave a mesa receberia
+    // linhas sem web_url/responsável.
+    queryKey: visaoEnxuta ? ['infraestrutura', 'kpis', 'enxuta'] : ['infraestrutura', 'kpis'],
     queryFn: async () => {
       // Paginado: com os itens [INFRA] a view passa de 900 linhas (cap 1000/request)
-      return fetchAllRows<InfraItem>((from, to) =>
-        supabase.from('vw_infraestrutura_kpis').select('*').range(from, to)
+      const linhas = await fetchAllRows<InfraItem>((from, to) =>
+        supabase
+          .from('vw_infraestrutura_kpis')
+          .select(visaoEnxuta ? VW_INFRA_COLUNAS_ENXUTAS : VW_INFRA_COLUNAS)
+          .range(from, to) as unknown as PromiseLike<{ data: InfraItem[] | null; error: unknown }>
       );
+      return visaoEnxuta ? linhas.map(completarInfraItem) : linhas;
     },
     staleTime: 5 * 60 * 1000,
     placeholderData: keepPreviousData,
@@ -88,10 +152,38 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
 
   const allItems = query.data || [];
 
+  // Sprint é o filtro primário (single ou multi). Quando há sprint
+  // selecionada, NÃO recorta por data — itens planejados na sprint mas
+  // criados/alterados fora da janela contam normalmente (paridade com o board).
+  const sprintSet = Array.isArray(sprintFilter)
+    ? new Set(sprintFilter.filter(s => s && s !== 'all'))
+    : null;
+  const hasSprintScope = sprintSet ? sprintSet.size > 0 : sprintFilter !== 'all';
+
+  /** O recorte de `items` (sprint, ou período sem sprint) — só sobre campos da view. */
+  const recortar = <T extends InfraItem>(lista: T[]): T[] => {
+    const porSprint = !hasSprintScope
+      ? lista
+      : lista.filter(i => !!i.iteration_path && (sprintSet ? sprintSet.has(i.iteration_path) : i.iteration_path === sprintFilter));
+    return (!hasSprintScope && dateFrom && dateTo)
+      ? porSprint.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
+      : porSprint;
+  };
+
+  /**
+   * Ids cujo `iteration_history` é baixado. Ordenados na chave: a view não tem
+   * ORDER, e a mesma lista em outra ordem virava outra chave (= outro download).
+   */
+  const idsTransbordo = modoTransbordo === 'nenhum'
+    ? []
+    : [...new Set((modoTransbordo === 'escopo' ? recortar(allItems) : allItems)
+        .map(i => i.id)
+        .filter((id): id is number => id != null))].sort((a, b) => a - b);
+
   const transbordoMapQuery = useQuery({
-    queryKey: ['infraestrutura', 'transbordo-map', allItems.map(i => i.id).filter(Boolean).join(',')],
+    queryKey: ['infraestrutura', 'transbordo-map', idsTransbordo.join(',')],
     queryFn: async () => {
-      const ids = allItems.map(i => i.id).filter((id): id is number => id != null);
+      const ids = idsTransbordo;
       if (ids.length === 0) return new Map<number, { sprintMigrationCount: number; realOverflowCount: number }>();
 
       const map = new Map<number, { sprintMigrationCount: number; realOverflowCount: number }>();
@@ -103,27 +195,17 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
           .in('id', chunk);
 
         for (const row of (data || [])) {
-          const history = (row.iteration_history || []) as Array<{ oldValue: string; newValue: string }>;
-          const relevantChanges = history.filter((h) => {
-            const oldValue = h.oldValue || '';
-            const newValue = h.newValue || '';
-            const oldCode = extractSprintCodeFromPath(oldValue);
-            const newCode = extractSprintCodeFromPath(newValue);
-
-            if (!newCode) return false;
-            if (oldCode) return oldCode !== newCode;
-            return !/backlog/i.test(oldValue);
-          });
+          const migracoes = contarMigracoesSprint(row.iteration_history as Array<{ oldValue: string; newValue: string }> | null);
           map.set(row.id, {
-            sprintMigrationCount: relevantChanges.length,
-            realOverflowCount: Math.max(0, relevantChanges.length - 1),
+            sprintMigrationCount: migracoes,
+            realOverflowCount: Math.max(0, migracoes - 1),
           });
         }
       }
 
       return map;
     },
-    enabled: allItems.length > 0,
+    enabled: idsTransbordo.length > 0,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -136,21 +218,7 @@ export function useInfraestruturaKpis(dateFrom?: Date, dateTo?: Date, sprintFilt
     transbordo_count: item.id ? (transbordoMap.get(item.id)?.realOverflowCount || 0) : 0,
   }));
 
-  // Sprint é o filtro primário (single ou multi). Quando há sprint
-  // selecionada, NÃO recorta por data — itens planejados na sprint mas
-  // criados/alterados fora da janela contam normalmente (paridade com o board).
-  const sprintSet = Array.isArray(sprintFilter)
-    ? new Set(sprintFilter.filter(s => s && s !== 'all'))
-    : null;
-  const hasSprintScope = sprintSet ? sprintSet.size > 0 : sprintFilter !== 'all';
-
-  const sprintScopedItems = !hasSprintScope
-    ? allItemsEnriched
-    : allItemsEnriched.filter(i => !!i.iteration_path && (sprintSet ? sprintSet.has(i.iteration_path) : i.iteration_path === sprintFilter));
-
-  const items = (!hasSprintScope && dateFrom && dateTo)
-    ? sprintScopedItems.filter(i => isInRange(i.created_date, dateFrom, dateTo) || isInRange(i.changed_date, dateFrom, dateTo))
-    : sprintScopedItems;
+  const items = recortar(allItemsEnriched);
 
   const total = items.length;
   const pendentes = items.filter(i => isInfraPendente(i.state)).length;

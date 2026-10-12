@@ -1,4 +1,4 @@
-﻿import { useCallback } from 'react';
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/fetchAllRows';
@@ -753,6 +753,108 @@ export function buildSgsiResponse(
   };
 }
 
+// ── Download do espelho (egress, EG-8 — 11/10/2026) ────────────────────
+//
+// O espelho pesava ~7,8 MB por carga: 80% era a 010 (3 mil linhas × ~2 KB de
+// `fields`), e a maior parte desses bytes são colunas que nenhuma tela lê
+// ("Informações adicionais", links de pacote, e-mails e lookupIds de pessoa,
+// "_sharepoint_url" da 010…). O download agora vai em lotes:
+//   • 010 e 014: só os campos que `buildSgsiResponse` lê, projetados no
+//     PostgREST (`fN:fields->"Campo"`) e remontados em `fields` aqui;
+//   • 011, 012, 017, 018: `fields` inteiro (somam ~450 KB — não compensa);
+//   • qualquer outra lista (hoje a 013): sem `fields` — nenhum bloco a lê, mas
+//     ela conta em `totalItens`/`totalItensBase`, então as linhas vêm.
+// Campo novo lido em `buildSgsiResponse` para 010/014 PRECISA entrar aqui — o
+// teste sgsiProjecao.test.ts compara a montagem com e sem a projeção sobre o
+// catálogo de campos do PROD e acusa a falta.
+
+/** Campos (displayName) lidos por `buildSgsiResponse`, por lista projetada. */
+export const SGSI_CAMPOS_PROJETADOS: Readonly<Record<string, readonly string[]>> = {
+  '010': [
+    'Status', 'Ambiente', 'Título', 'Risco', 'Categoria da mudança', 'Categoria',
+    'Atualizações bem sucedidas', 'Validação e testes do pacote de atualização',
+    'Número do chamado', 'Tipo Mudança', 'Tipo de mudança', 'Motivo da mudança ou atualização',
+    'Solicitante atualização', 'Criado por', 'Aprovador TI', 'Aprovador Gestor',
+    'Comentário atualizações', 'Data e Hora conclusão',
+  ],
+  '014': [
+    'Status solicitação', 'Status', 'Data ultima revisão', 'Data última revisão',
+    '<---Preenchimento TI--->', 'Tipo liberação', 'Data fim liberação provisória',
+    'Categoria Liberação', 'TItulo', 'Título', 'Title', 'Descrição acesso', 'Motivo acesso',
+    'Tipo solicitação', 'Projeto', 'Solicitante', 'Aprovador TI', 'Aprovador Gestor',
+    'Acesso ao DevOps', 'Acesso ao TS', 'Permissões administrativas', '_sharepoint_url',
+  ],
+};
+
+/** Listas pequenas, baixadas com `fields` inteiro. */
+export const SGSI_LISTAS_FIELDS_INTEIROS: readonly string[] = ['011', '012', '017', '018'];
+
+const SGSI_COLUNAS_BASE = 'list_key, item_id, created_sp, modified_sp';
+
+/** `select` do PostgREST que projeta só `campos` de dentro de `fields` (alias f0, f1…). */
+export function selectSgsiProjetado(campos: readonly string[]): string {
+  return [SGSI_COLUNAS_BASE, ...campos.map((campo, i) => `f${i}:fields->"${campo}"`)].join(', ');
+}
+
+/**
+ * Remonta `fields` a partir das colunas projetadas. Campo ausente na linha vem
+ * `null` do PostgREST e fica de fora — para os leitores de `@/lib/sgsiFields`
+ * null e ausente são a mesma coisa.
+ */
+export function remontarSgsiProjetado(
+  linha: Record<string, unknown>,
+  campos: readonly string[],
+): SgsiRawItem {
+  const fields: Record<string, unknown> = {};
+  campos.forEach((campo, i) => {
+    const v = linha[`f${i}`];
+    if (v !== null && v !== undefined) fields[campo] = v;
+  });
+  return {
+    list_key: linha.list_key as string,
+    item_id: linha.item_id as number,
+    fields,
+    created_sp: (linha.created_sp as string | null) ?? null,
+    modified_sp: (linha.modified_sp as string | null) ?? null,
+  };
+}
+
+/** Baixa o espelho em lotes (ver bloco acima). Paginação com ORDER estável. */
+async function baixarLinhasSgsi(): Promise<SgsiRawItem[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tabela = () => (supabase as any).from('sgsi_items');
+  const projetadas = Object.entries(SGSI_CAMPOS_PROJETADOS).map(async ([lista, campos]) => {
+    const linhas = await fetchAllRows<Record<string, unknown>>((from, to) =>
+      tabela()
+        .select(selectSgsiProjetado(campos))
+        .eq('list_key', lista)
+        .order('item_id')
+        .range(from, to)
+    );
+    return linhas.map((l) => remontarSgsiProjetado(l, campos));
+  });
+  const inteiras = fetchAllRows<SgsiRawItem>((from, to) =>
+    tabela()
+      .select(`${SGSI_COLUNAS_BASE}, fields`)
+      .in('list_key', [...SGSI_LISTAS_FIELDS_INTEIROS])
+      .order('list_key')
+      .order('item_id')
+      .range(from, to)
+  );
+  const conhecidas = [...Object.keys(SGSI_CAMPOS_PROJETADOS), ...SGSI_LISTAS_FIELDS_INTEIROS];
+  const semCampos = fetchAllRows<Omit<SgsiRawItem, 'fields'>>((from, to) =>
+    tabela()
+      .select(SGSI_COLUNAS_BASE)
+      .not('list_key', 'in', `(${conhecidas.join(',')})`)
+      .order('list_key')
+      .order('item_id')
+      .range(from, to)
+  ).then((linhas) => linhas.map((l): SgsiRawItem => ({ ...l, fields: {} })));
+
+  const lotes = await Promise.all([...projetadas, inteiras, semCampos]);
+  return lotes.flat();
+}
+
 // ── Hook ───────────────────────────────────────────────────────────────
 
 /** Espelho bruto do SGSI: baixado uma vez e compartilhado por todos os períodos. */
@@ -779,13 +881,8 @@ export function useBIInfraSgsi(dateFrom?: Date, dateTo?: Date, acessosNoPeriodo 
     select: montar,
     queryFn: async () => {
       // Paginado: o espelho passa de 3,7k itens e o PostgREST limita 1000/request.
-      const items = await fetchAllRows<SgsiRawItem>((from, to) =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any)
-          .from('sgsi_items')
-          .select('list_key, item_id, fields, created_sp, modified_sp')
-          .range(from, to)
-      );
+      // Em lotes, com só os campos lidos nas listas pesadas — ver baixarLinhasSgsi.
+      const items = await baixarLinhasSgsi();
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: lists } = await (supabase as any)
