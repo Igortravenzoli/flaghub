@@ -3,11 +3,12 @@
  *
  * A busca é SOB DEMANDA, no clique: roster, ausências e fotos de sprint só
  * interessam a quem exporta, e deixá-las num hook da aba faria toda visita
- * pagar três consultas por um botão que quase ninguém aperta. As horas não são
- * buscadas de novo — chegam da aba, que já as tem em cache.
+ * pagar três consultas por um botão que quase ninguém aperta. Quando quem chama
+ * já tem as horas (a aba Executivo, em cache), elas chegam por parâmetro; a
+ * página TimeLog não tem, e aí são buscadas aqui, também só no clique.
  */
 import { supabase } from '@/integrations/supabase/client';
-import type { HoraNegocioRow } from '@/hooks/useHorasNegocio';
+import { buscarHorasNegocio, type HoraNegocioRow } from '@/hooks/useHorasNegocio';
 import type { Ausencia } from '@/lib/capacidade';
 import {
   montarRelatorio, renderizarRelatorioHtml,
@@ -79,9 +80,18 @@ function imprimirHtml(html: string): void {
 export async function exportarRelatorioHoras(params: {
   dateFrom: string;
   dateTo: string;
-  rows: HoraNegocioRow[];
+  /** Horas já carregadas por quem chama. Ausente = buscar o período aqui. */
+  rows?: HoraNegocioRow[];
 }): Promise<void> {
-  const apoio = await carregarApoio(params.dateFrom, params.dateTo);
-  const modelo = montarRelatorio({ ...params, ...apoio, extraidoEm: new Date() });
+  const { dateFrom, dateTo } = params;
+  const [rows, apoio] = await Promise.all([
+    params.rows ?? buscarHorasNegocio({ dateFrom, dateTo }),
+    carregarApoio(dateFrom, dateTo),
+  ]);
+  if (rows.length === 0) throw new Error('não há horas apontadas no período');
+  const modelo = montarRelatorio({ dateFrom, dateTo, rows, ...apoio, extraidoEm: new Date() });
   imprimirHtml(renderizarRelatorioHtml(modelo));
 }
+
+/** Nome do item nos menus de exportação — o mesmo nas duas telas que o oferecem. */
+export const ROTULO_RELATORIO_HORAS = 'Visão Horas/Produtos (PDF)';

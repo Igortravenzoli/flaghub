@@ -12,7 +12,7 @@ import {
   type Dimensao, type Conciliacao, type HoraNegocioRow,
 } from '@/hooks/useHorasNegocio';
 import { exportarCsv, exportarExcel, exportarPdf } from '@/lib/exportHorasNegocio';
-import { exportarRelatorioHoras } from '@/lib/relatorioHorasDados';
+import { exportarRelatorioHoras, ROTULO_RELATORIO_HORAS } from '@/lib/relatorioHorasDados';
 import { GraficoDiario } from './executivo/GraficoDiario';
 import { RankCard } from './executivo/RankCard';
 import { AlertasSino, type AcaoAlerta } from './executivo/AlertasSino';
@@ -212,7 +212,7 @@ export default function TimelogExecutivoTab({
         { id: 'csv', rotulo: 'Exportar CSV', executar: () => exportar('csv') },
         { id: 'excel', rotulo: 'Exportar Excel', executar: () => exportar('excel') },
         { id: 'pdf', rotulo: 'Exportar PDF', executar: () => exportar('pdf') },
-        { id: 'relatorio', rotulo: 'Relatório do período (PDF)', executar: () => { void exportarRelatorio(); } },
+        { id: 'relatorio', rotulo: ROTULO_RELATORIO_HORAS, executar: () => { void exportarRelatorio(); } },
       ],
     });
   }, [chips, limpar, exportar, exportarRelatorio, onContrato]);

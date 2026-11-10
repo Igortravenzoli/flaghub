@@ -11,8 +11,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import {
   Clock, Download, RefreshCw, AlertTriangle, CheckCircle2,
   GitMerge, ExternalLink, Minus, Activity, Play, Users, Loader2,
-  XCircle,
+  XCircle, FileText,
 } from 'lucide-react';
+import { exportarRelatorioHoras, ROTULO_RELATORIO_HORAS } from '@/lib/relatorioHorasDados';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -402,6 +403,33 @@ export default function TimelogHibridoDashboard() {
   const setFilter = (key: keyof TimelogFilters, value: string) =>
     setFilters(prev => ({ ...prev, [key]: value }));
 
+  /**
+   * Visão Horas/Produtos: o mesmo relatório da aba TimeLog Executivo do setor
+   * Produtos, aqui no período dos campos "De" e "Até" desta página. Não obedece
+   * aos filtros de status, colaborador e task: é o fechamento do período.
+   */
+  const [exportandoVisao, setExportandoVisao] = useState(false);
+  const handleExportVisao = async () => {
+    if (!filters.dateFrom || !filters.dateTo) {
+      toast.error('Preencha as datas "De" e "Até" para exportar');
+      return;
+    }
+    if (filters.dateFrom > filters.dateTo) {
+      toast.error('A data inicial é posterior à final');
+      return;
+    }
+    setExportandoVisao(true);
+    const aviso = toast.loading('A montar a visão Horas/Produtos…');
+    try {
+      await exportarRelatorioHoras({ dateFrom: filters.dateFrom, dateTo: filters.dateTo });
+      toast.success('Relatório pronto: escolha "Salvar como PDF" na impressão', { id: aviso });
+    } catch (e) {
+      toast.error(`Falha ao montar o relatório: ${(e as Error).message}`, { id: aviso });
+    } finally {
+      setExportandoVisao(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* ── Header ── */}
@@ -458,6 +486,24 @@ export default function TimelogHibridoDashboard() {
                 <Download className="h-3.5 w-3.5" />
                 CSV
               </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={handleExportVisao} disabled={exportandoVisao}
+                    className="gap-1.5"
+                  >
+                    {exportandoVisao
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <FileText className="h-3.5 w-3.5" />}
+                    {ROTULO_RELATORIO_HORAS}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs max-w-xs">
+                  Horas por colaborador, sistema e cliente e KPIs das sprints, no período
+                  de {filters.dateFrom || '—'} a {filters.dateTo || '—'}.
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>

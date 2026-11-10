@@ -79,26 +79,31 @@ export const SEM_COLABORADOR = 'Sem colaborador';
 /** Tipos que contam como PBI nos indicadores do período. */
 const TIPOS_PBI = new Set(['Product Backlog Item', 'User Story', 'Bug']);
 
+/**
+ * Busca as horas do período. Fica fora do hook porque a exportação da página
+ * TimeLog precisa das mesmas linhas sob demanda, sem montar a aba Executivo.
+ */
+export function buscarHorasNegocio(filters: HorasNegocioFilters): Promise<HoraNegocioRow[]> {
+  return fetchAllRows<HoraNegocioRow>((from, to) =>
+    // `v_horas_negocio` é nova e ainda não está no types.ts gerado; o
+    // contrato real está tipado acima em HoraNegocioRow.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('v_horas_negocio')
+      .select(COLUNAS)
+      .gte('log_date', filters.dateFrom)
+      .lte('log_date', filters.dateTo)
+      .order('log_date', { ascending: false })
+      .range(from, to)
+  );
+}
+
 export function useHorasNegocio(filters: HorasNegocioFilters) {
   return useQuery({
     queryKey: ['horas-negocio', filters.dateFrom, filters.dateTo],
     placeholderData: keepPreviousData,
     staleTime: CADENCIA_MINIMA_MS,
-    queryFn: async () => {
-      const rows = await fetchAllRows<HoraNegocioRow>((from, to) =>
-        // `v_horas_negocio` é nova e ainda não está no types.ts gerado; o
-        // contrato real está tipado acima em HoraNegocioRow.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any)
-          .from('v_horas_negocio')
-          .select(COLUNAS)
-          .gte('log_date', filters.dateFrom)
-          .lte('log_date', filters.dateTo)
-          .order('log_date', { ascending: false })
-          .range(from, to)
-      );
-      return rows;
-    },
+    queryFn: () => buscarHorasNegocio(filters),
   });
 }
 
