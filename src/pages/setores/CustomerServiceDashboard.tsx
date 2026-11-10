@@ -346,14 +346,26 @@ export default function CustomerServiceDashboard() {
     return devopsItems;
   }, [devopsItems, monitorFilter]);
 
+  /**
+   * Texto do botão de datas da barra. No TimeLog ele mostra o intervalo em
+   * vigor — ali o período é a pergunta principal e precisa estar à vista mesmo
+   * quando veio de um preset; nas outras abas é o convite para escolher.
+   */
+  const rotuloDatas = useMemo(() => {
+    const dia = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    return activeTab === 'timelog' && filters.dateFrom && filters.dateTo
+      ? `${dia(filters.dateFrom)} – ${dia(filters.dateTo)}`
+      : 'Escolher datas';
+  }, [activeTab, filters.dateFrom, filters.dateTo]);
+
   const handleExportCSV = () => exportCSV({
-    title: 'Fila Customer Service', area: 'Customer Service', periodLabel: filters.presetLabel,
+    title: 'Fila Produtos', area: 'Produtos', periodLabel: filters.presetLabel,
     columns: ['work_item_id', 'title', 'product', 'state', 'assigned_to_display', 'priority', 'effort', 'query_name'],
     rows: devopsItems as any[],
   });
 
   const handleExportPDF = () => exportPDF({
-    title: 'Dashboard Customer Service', area: 'Customer Service', periodLabel: filters.presetLabel,
+    title: 'Dashboard Produtos', area: 'Produtos', periodLabel: filters.presetLabel,
     kpis: [
       { label: 'Volume Fila CS', value: totalFilaCS },
       { label: 'Implantações em andamento', value: implAndamento },
@@ -409,7 +421,7 @@ export default function CustomerServiceDashboard() {
   ] : [];
 
   return (
-    <SectorLayout title="Customer Service" subtitle="Dashboard de Gestão — CS" lastUpdate="" integrations={integrations} templateKey="cs_implantacoes_v1" areaKey="customer-service" syncFunctions={[{ name: 'devops-sync-all', label: 'Sincronizar Work Items (DevOps)' }]}>
+    <SectorLayout title="Produtos" subtitle="Dashboard de Gestão — Produtos" abasNoCabecalho lastUpdate="" integrations={integrations} templateKey="cs_implantacoes_v1" areaKey="customer-service" syncFunctions={[{ name: 'devops-sync-all', label: 'Sincronizar Work Items (DevOps)' }]}>
       <div className="flex items-center justify-between mb-2">
         <DashboardLastSyncBadge syncedAt={lastSync} status="ok" />
       </div>
@@ -431,9 +443,13 @@ export default function CustomerServiceDashboard() {
           ]}
           dateFrom={filters.dateFrom}
           dateTo={filters.dateTo}
-          minDate={minDate}
-          maxDate={maxDate}
+          // Os limites vêm das datas dos itens da FILA. No TimeLog eles não
+          // valem: as horas têm calendário próprio, e o limite da fila deixava
+          // dias com apontamento apagados no seletor.
+          minDate={activeTab === 'timelog' ? undefined : minDate}
+          maxDate={activeTab === 'timelog' ? undefined : maxDate}
           onCustomRange={filters.setCustomRange}
+          rotuloDatas={rotuloDatas}
           onExportCSV={handleExportCSV}
           onExportPDF={handleExportPDF}
           showRangeBadge={false}

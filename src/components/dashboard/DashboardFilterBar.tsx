@@ -26,6 +26,13 @@ interface FilterBarProps {
   dateFrom?: Date;
   dateTo?: Date;
   onCustomRange?: (from: Date, to: Date) => void;
+  /**
+   * Texto do botão que abre o calendário enquanto o período NÃO é custom.
+   * "Custom" sozinho não diz que ali se escolhe data: quem procura o campo de
+   * período passa por ele sem ver. A página pode trocar por um convite claro
+   * ou pelo próprio intervalo em vigor.
+   */
+  rotuloDatas?: string;
   presetControl?: 'chips' | 'dropdown';
   presetsLabel?: string;
   minDate?: Date;
@@ -69,6 +76,7 @@ export function DashboardFilterBar({
   dateFrom,
   dateTo,
   onCustomRange,
+  rotuloDatas = 'Custom',
   presetControl = 'chips',
   presetsLabel = 'Período',
   minDate,
@@ -158,7 +166,7 @@ export function DashboardFilterBar({
                   <CalendarIcon className="h-3 w-3" />
                   {isCustom && dateFrom && dateTo
                     ? `${format(dateFrom, 'dd/MM', { locale: ptBR })} – ${format(dateTo, 'dd/MM', { locale: ptBR })}`
-                    : 'Custom'}
+                    : rotuloDatas}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -216,7 +224,7 @@ export function DashboardFilterBar({
                   <CalendarIcon className="h-3 w-3" />
                   {isCustom && dateFrom && dateTo
                     ? `${format(dateFrom, 'dd/MM', { locale: ptBR })} – ${format(dateTo, 'dd/MM', { locale: ptBR })}`
-                    : 'Custom'}
+                    : rotuloDatas}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">

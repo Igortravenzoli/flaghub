@@ -38,9 +38,20 @@ interface SectorLayoutProps {
   defaultTab?: string;
   /** When true, only shows dashboard content (no tabs for settings/imports/integrations) */
   kioskMode?: boolean;
+  /**
+   * Tira a faixa "Dashboard · Importações · Configurações" e leva Importações e
+   * Configurações para botões no cabeçalho.
+   *
+   * Serve à página que já tem a própria fileira de abas: duas fileiras
+   * empilhadas, em que a de cima quase nunca muda, empurram o conteúdo para
+   * baixo e fazem "Dashboard" parecer mais uma aba de dado. As duas funções
+   * continuam a um clique — só deixam de ocupar uma linha inteira.
+   */
+  abasNoCabecalho?: boolean;
 }
 
-export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, leadingTabs, defaultTab, kioskMode }: SectorLayoutProps) {
+export function SectorLayout({ title, subtitle, lastUpdate, children, integrations, templateKey, areaKey, syncFunctions, extraTabs, leadingTabs, defaultTab, kioskMode, abasNoCabecalho }: SectorLayoutProps) {
+  const [aba, setAba] = useState(defaultTab ?? 'dashboard');
   // Detect kiosk mode from parent or prop
   const isKiosk = kioskMode ?? document.querySelector('[data-kiosk="true"]') !== null;
   const isHubAdmin = useHubIsAdmin();
@@ -65,6 +76,9 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
   const canSettings = areaKey ? (isAreaOwner || hasMembership || isAdmin) : isAdmin;
   const canViewExtraTabs = isAreasLoading || hasMembership || isAdmin;
   const showImports = Boolean(templateKey) && (areaKey === 'customer-service' || areaKey === 'comercial' || areaKey === 'tickets_os') && canImport;
+  // Só dá para esconder a faixa quando ela não carrega aba de conteúdo própria:
+  // com leading/extraTabs, sem a faixa não haveria como chegar nelas.
+  const semFaixaDeAbas = !!abasNoCabecalho && !leadingTabs?.length && !extraTabs?.length;
 
   const handleRequestAccess = async () => {
     if (!areaRecord) return;
@@ -150,16 +164,42 @@ export function SectorLayout({ title, subtitle, lastUpdate, children, integratio
             <h1 className="text-2xl font-bold text-foreground">{title}</h1>
             {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
           </div>
-          {lastUpdate && (
-            <Badge variant="outline" className="gap-1">
-              <Clock className="h-3 w-3" />
-              {lastUpdate}
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {lastUpdate && (
+              <Badge variant="outline" className="gap-1">
+                <Clock className="h-3 w-3" />
+                {lastUpdate}
+              </Badge>
+            )}
+            {semFaixaDeAbas && aba !== 'dashboard' && (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setAba('dashboard')}>
+                <LayoutDashboard className="h-3.5 w-3.5" />
+                Voltar ao painel
+              </Button>
+            )}
+            {semFaixaDeAbas && showImports && (
+              <Button
+                variant={aba === 'imports' ? 'default' : 'ghost'} size="sm" className="gap-1.5"
+                onClick={() => setAba('imports')}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Importações
+              </Button>
+            )}
+            {semFaixaDeAbas && canSettings && (
+              <Button
+                variant={aba === 'settings' ? 'default' : 'ghost'} size="sm" className="gap-1.5"
+                onClick={() => setAba('settings')}
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Configurações
+              </Button>
+            )}
+          </div>
         </div>
 
-        <Tabs defaultValue={defaultTab ?? 'dashboard'} className="w-full">
-        <TabsList>
+        <Tabs value={aba} onValueChange={setAba} className="w-full">
+        <TabsList className={semFaixaDeAbas ? 'hidden' : undefined}>
           {canViewExtraTabs && leadingTabs?.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id} className="gap-1">
               {tab.icon}
