@@ -12,6 +12,7 @@ import {
   type Dimensao, type Conciliacao, type HoraNegocioRow,
 } from '@/hooks/useHorasNegocio';
 import { exportarCsv, exportarExcel, exportarPdf } from '@/lib/exportHorasNegocio';
+import { exportarRelatorioHoras } from '@/lib/relatorioHorasDados';
 import { GraficoDiario } from './executivo/GraficoDiario';
 import { RankCard } from './executivo/RankCard';
 import { AlertasSino, type AcaoAlerta } from './executivo/AlertasSino';
@@ -166,6 +167,28 @@ export default function TimelogExecutivoTab({
   }, [arvore, dimensao, filtradas, periodo]);
 
   /**
+   * Relatório do período: consolidado por fábrica, uma seção por colaborador,
+   * horas por sistema e cliente e os KPIs das sprints.
+   *
+   * Ao contrário dos três formatos acima, leva `rows` e IGNORA o drill: é o
+   * fechamento do período inteiro, e um fechamento recortado por um clique
+   * esquecido na tela circularia como se fosse o total.
+   */
+  const exportarRelatorio = useCallback(async () => {
+    if (rows.length === 0) {
+      toast.error('Não há horas no período para o relatório');
+      return;
+    }
+    const aviso = toast.loading('A montar o relatório do período…');
+    try {
+      await exportarRelatorioHoras({ dateFrom: periodo.dateFrom, dateTo: periodo.dateTo, rows });
+      toast.success('Relatório pronto: escolha "Salvar como PDF" na impressão', { id: aviso });
+    } catch (e) {
+      toast.error(`Falha ao montar o relatório: ${(e as Error).message}`, { id: aviso });
+    }
+  }, [rows, periodo]);
+
+  /**
    * Contrato com a barra da página: os filtros de drill viram chips lá em cima,
    * e os três formatos substituem o menu de exportação padrão enquanto esta aba
    * estiver activa.
@@ -189,9 +212,10 @@ export default function TimelogExecutivoTab({
         { id: 'csv', rotulo: 'Exportar CSV', executar: () => exportar('csv') },
         { id: 'excel', rotulo: 'Exportar Excel', executar: () => exportar('excel') },
         { id: 'pdf', rotulo: 'Exportar PDF', executar: () => exportar('pdf') },
+        { id: 'relatorio', rotulo: 'Relatório do período (PDF)', executar: () => { void exportarRelatorio(); } },
       ],
     });
-  }, [chips, limpar, exportar, onContrato]);
+  }, [chips, limpar, exportar, exportarRelatorio, onContrato]);
 
   return (
     <div className="space-y-4">
