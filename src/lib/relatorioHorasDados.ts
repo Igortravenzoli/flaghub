@@ -10,6 +10,10 @@
 import { supabase } from '@/integrations/supabase/client';
 import { buscarHorasNegocio, type HoraNegocioRow } from '@/hooks/useHorasNegocio';
 import type { Ausencia } from '@/lib/capacidade';
+import { fetchAllRows } from '@/lib/fetchAllRows';
+import type {
+  CodigoPeriodo, CommitRelatorio, PrRelatorio, IdentidadeColaborador,
+} from '@/lib/relatorioHorasCodigo';
 import {
   montarRelatorio, renderizarRelatorioHtml,
   type RosterRelatorio, type SnapshotRelatorio,
@@ -51,6 +55,50 @@ async function carregarApoio(dateFrom: string, dateTo: string) {
   };
 }
 
+const COLUNAS_COMMIT =
+  'repo_id,commit_id,project_name,repo_name,author_name,author_email,author_date,comment,work_item_ids';
+const COLUNAS_PR =
+  'repo_id,pr_id,project_name,repo_name,title,status,is_draft,created_by_name,created_by_email,'
+  + 'creation_date,closed_date,target_branch,work_item_ids';
+
+/**
+ * Commits e PRs do período, ou `null` se a coleta não estiver disponível.
+ *
+ * Falha aqui NÃO derruba o relatório: as tabelas dependem de uma migration e de
+ * uma edge publicadas à parte, e o front costuma chegar a produção antes delas.
+ * Sem coleta, o relatório sai como sempre saiu, só sem as partes de código.
+ */
+async function carregarCodigo(dateFrom: string, dateTo: string): Promise<CodigoPeriodo | null> {
+  // As tabelas são novas e não estão nos tipos gerados.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = supabase as any;
+  // Calendário de Brasília, o mesmo em que as horas são lançadas.
+  const de = `${dateFrom}T00:00:00-03:00`;
+  const ate = `${dateTo}T23:59:59.999-03:00`;
+  try {
+    const [commits, prs, identidades] = await Promise.all([
+      fetchAllRows<CommitRelatorio>((from, to) =>
+        sb.from('devops_git_commits').select(COLUNAS_COMMIT)
+          .gte('author_date', de).lte('author_date', ate)
+          .order('author_date', { ascending: true }).order('commit_id', { ascending: true })
+          .range(from, to)),
+      fetchAllRows<PrRelatorio>((from, to) =>
+        sb.from('devops_git_pull_requests').select(COLUNAS_PR)
+          // Criado OU fechado no período. Os valores vão entre aspas: dentro de
+          // `or()` o PostgREST lê ":" e "." do carimbo como separadores.
+          .or(`and(creation_date.gte."${de}",creation_date.lte."${ate}"),and(closed_date.gte."${de}",closed_date.lte."${ate}")`)
+          .order('creation_date', { ascending: true }).order('pr_id', { ascending: true })
+          .range(from, to)),
+      sb.from('devops_collaborator_map').select('canonical_name,timelog_name,devops_email'),
+    ]);
+    if (identidades.error) throw identidades.error;
+    return { commits, prs, identidades: (identidades.data ?? []) as IdentidadeColaborador[] };
+  } catch (e) {
+    console.warn('[relatorioHoras] coleta de commits/PRs indisponível; relatório segue sem código', e);
+    return null;
+  }
+}
+
 /**
  * Imprime um documento HTML num iframe oculto. O diálogo de impressão do
  * navegador é onde o usuário escolhe "Salvar como PDF".
@@ -84,12 +132,13 @@ export async function exportarRelatorioHoras(params: {
   rows?: HoraNegocioRow[];
 }): Promise<void> {
   const { dateFrom, dateTo } = params;
-  const [rows, apoio] = await Promise.all([
+  const [rows, apoio, codigo] = await Promise.all([
     params.rows ?? buscarHorasNegocio({ dateFrom, dateTo }),
     carregarApoio(dateFrom, dateTo),
+    carregarCodigo(dateFrom, dateTo),
   ]);
   if (rows.length === 0) throw new Error('não há horas apontadas no período');
-  const modelo = montarRelatorio({ dateFrom, dateTo, rows, ...apoio, extraidoEm: new Date() });
+  const modelo = montarRelatorio({ dateFrom, dateTo, rows, ...apoio, codigo, extraidoEm: new Date() });
   imprimirHtml(renderizarRelatorioHtml(modelo));
 }
 

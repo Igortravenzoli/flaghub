@@ -20,6 +20,10 @@ import type { SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { GRUPOS_HORAS, SQUADS, ehArea, normName } from '@/lib/fabricaRoster';
 import { diaLocal, diasUteisAusentes, type Ausencia } from '@/lib/capacidade';
 import { businessDaysBetween } from '@/lib/sprintCalendar';
+import {
+  indexarCodigo, codigoDoItem, rotuloEstadoPr, diaBrasilia,
+  type CodigoPeriodo, type CodigoPessoa, type AutorSemVinculo,
+} from '@/lib/relatorioHorasCodigo';
 
 // ─── Entrada ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +63,12 @@ export interface EntradaRelatorio {
   roster: RosterRelatorio[];
   ausencias: Ausencia[];
   snapshots: SnapshotRelatorio[];
+  /**
+   * Commits e PRs do período. `null`/ausente = coleta indisponível (tabela
+   * ainda não criada, sem permissão): o relatório sai sem as partes de código
+   * em vez de mostrar zero, que se leria como "ninguém commitou".
+   */
+  codigo?: CodigoPeriodo | null;
   /** Momento em que os dados foram lidos; vira o carimbo do cabeçalho. */
   extraidoEm: Date;
 }
@@ -76,6 +86,11 @@ export interface ItemRelatorio {
   devops: number;
   vdesk: number;
   horas: number;
+  /** PBI pai, quando o item é Task: é para ele que o PR costuma apontar. */
+  pbiId: number | null;
+  /** Commits e PRs da própria pessoa que citam o item ou o PBI pai. */
+  commits: number;
+  prs: number;
 }
 
 export interface PessoaRelatorio {
@@ -96,6 +111,18 @@ export interface PessoaRelatorio {
   /** yyyy-mm-dd → horas do dia por fonte. */
   porDia: Map<string, { devops: number; vdesk: number }>;
   itens: ItemRelatorio[];
+  /** Código da pessoa no período; `null` quando não há nenhum ou não há coleta. */
+  codigo: CodigoPessoa | null;
+}
+
+/** Visão geral do código no período. Só existe quando a coleta respondeu. */
+export interface CodigoModelo {
+  totalCommits: number;
+  totalPrs: number;
+  /** Autores que não casam com ninguém do cadastro de colaboradores. */
+  semVinculo: AutorSemVinculo[];
+  /** Quem tem commit ou PR no período e nenhuma hora lançada. */
+  semHoras: Array<{ nome: string; commits: number; prs: number }>;
 }
 
 export interface LinhaDimensao {
@@ -121,6 +148,7 @@ export interface ModeloRelatorio {
   sistemas: LinhaDimensao[];
   clientes: LinhaDimensao[];
   sprints: SnapshotRelatorio[];
+  codigo: CodigoModelo | null;
 }
 
 const isoDia = (d: Date) =>
@@ -178,8 +206,11 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
     porPessoa.set(nome, [...(porPessoa.get(nome) ?? []), r]);
   }
 
+  const indice = entrada.codigo ? indexarCodigo(entrada.codigo, entrada.dateFrom, entrada.dateTo) : null;
+
   const pessoas: PessoaRelatorio[] = [...porPessoa.entries()].map(([nome, linhas]) => {
     const cadastro = rosterPorNome.get(normName(nome));
+    const codigo = indice?.porPessoa.get(normName(nome)) ?? null;
     const ausencias = ausenciasPorNome.get(normName(nome)) ?? [];
 
     const itens = new Map<string, ItemRelatorio>();
@@ -201,6 +232,8 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
       const item = itens.get(k) ?? {
         id: r.work_item_id, titulo: r.work_item_title ?? '', tipo: r.work_item_type ?? '',
         estado: r.work_item_state ?? '', lancamentos: 0, devops: 0, vdesk: 0, horas: 0,
+        pbiId: r.pbi_id ?? null,
+        ...codigoDoItem(codigo, r.work_item_id, r.pbi_id ?? null),
       };
       item.lancamentos += (r.lancamentos_devops ?? 0) + (r.lancamentos_vdesk ?? 0);
       item.devops += hd; item.vdesk += hv; item.horas += r.horas;
@@ -223,6 +256,7 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
       diasAusentes,
       porDia,
       itens: [...itens.values()].sort((a, b) => b.horas - a.horas),
+      codigo,
     };
   });
 
@@ -266,6 +300,15 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
     sprints: entrada.snapshots
       .filter((s) => s.category_breakdown && s.sprint_end_date >= entrada.dateFrom && s.sprint_start_date <= entrada.dateTo)
       .sort((a, b) => a.sprint_start_date.localeCompare(b.sprint_start_date)),
+    codigo: indice && {
+      totalCommits: indice.totalCommits,
+      totalPrs: indice.totalPrs,
+      semVinculo: indice.semVinculo,
+      semHoras: [...indice.porPessoa.entries()]
+        .filter(([k]) => !comHoras.has(k))
+        .map(([k, c]) => ({ nome: indice.nomes.get(k) ?? k, commits: c.commits, prs: c.prs.length }))
+        .sort((a, b) => (b.commits + b.prs) - (a.commits + a.prs)),
+    },
   };
 }
 
@@ -309,6 +352,12 @@ function cartoes(itens: Array<[rotulo: string, valor: string, pe: string]>): str
 
 function paginaConsolidado(m: ModeloRelatorio, periodo: string): string {
   const maior = Math.max(...m.pessoas.map((p) => p.horas), 1);
+  // As colunas de código só existem quando a coleta respondeu: coluna de zeros
+  // sem coleta se leria como "ninguém commitou".
+  const cod = m.codigo;
+  const commitsDe = (p: PessoaRelatorio) => p.codigo?.commits ?? 0;
+  const prsDe = (p: PessoaRelatorio) => p.codigo?.prs.length ?? 0;
+  const inteiro = (v: number) => (v ? String(v) : '–');
   const blocos = m.grupos.map((g) => {
     const ps = m.pessoas.filter((p) => p.grupo === g);
     const soma = (f: (p: PessoaRelatorio) => number) => ps.reduce((s, p) => s + f(p), 0);
@@ -317,15 +366,29 @@ function paginaConsolidado(m: ModeloRelatorio, periodo: string): string {
       `<tr><td class="n">${esc(p.nome)}${p.lead ? ' <span class="tag">lead</span>' : ''}</td>`
       + `<td>${ouTraco(p.devops)}</td><td>${ouTraco(p.vdesk)}</td><td class="c">${num(p.horas)}</td>`
       + `<td class="bar"><i style="width:${((100 * p.horas) / maior).toFixed(1)}%"></i></td>`
-      + `<td>${p.lancDevops + p.lancVdesk}</td><td>${p.itens.length}</td><td>${p.dias}</td><td>${p.ferias || '–'}</td></tr>`).join('');
+      + `<td>${p.lancDevops + p.lancVdesk}</td><td>${p.itens.length}</td><td>${p.dias}</td><td>${p.ferias || '–'}</td>`
+      + (cod ? `<td class="cd">${inteiro(commitsDe(p))}</td><td>${inteiro(prsDe(p))}</td>` : '') + '</tr>').join('');
     return `<tbody><tr class="g"><td class="n">${esc(g)}<small>${tipo}</small></td>`
       + `<td>${ouTraco(soma((p) => p.devops))}</td><td>${ouTraco(soma((p) => p.vdesk))}</td><td class="c">${num(soma((p) => p.horas))}</td><td></td>`
-      + `<td>${soma((p) => p.lancDevops + p.lancVdesk)}</td><td></td><td></td><td></td></tr>${linhas}</tbody>`;
+      + `<td>${soma((p) => p.lancDevops + p.lancVdesk)}</td><td></td><td></td><td></td>`
+      + (cod ? `<td class="cd">${inteiro(soma(commitsDe))}</td><td>${inteiro(soma(prsDe))}</td>` : '') + `</tr>${linhas}</tbody>`;
   }).join('');
 
   const semApont = m.semApontamento.length
     ? `<p><b>Cadastrados sem apontamento no período</b>: ${esc(m.semApontamento.map((s) => `${s.nome} (${s.grupo})`).join(', '))}.</p>`
     : '';
+
+  const partes = (c: number, p: number) =>
+    [c ? `${c} commit${c > 1 ? 's' : ''}` : '', p ? `${p} PR${p > 1 ? 's' : ''}` : ''].filter(Boolean).join(' e ');
+  const notasCodigo = !cod ? '' : NOTA_CODIGO
+    + (cod.semHoras.length
+      ? `<p><b>Com código e sem hora lançada no período</b>: ${esc(cod.semHoras.map((s) => `${s.nome} (${partes(s.commits, s.prs)})`).join(', '))}.</p>`
+      : '')
+    + (cod.semVinculo.length
+      ? `<p><b>Autores sem vínculo no cadastro de colaboradores</b> (fora das colunas): ${esc(cod.semVinculo.map((s) => `${s.autor} (${partes(s.commits, s.prs)})`).join(', '))}.</p>`
+      : '');
+  const somaCommits = m.pessoas.reduce((s, p) => s + commitsDe(p), 0);
+  const somaPrs = m.pessoas.reduce((s, p) => s + prsDe(p), 0);
 
   return topo('Horas apontadas', `${periodo} · ${ddmm(m.dateFrom)} a ${ddmm(m.dateTo)} · ${m.diasUteis} dias úteis`, m)
     + cartoes([
@@ -335,11 +398,38 @@ function paginaConsolidado(m: ModeloRelatorio, periodo: string): string {
       ['Colaboradores', String(m.total.pessoas), 'com horas no período'],
     ])
     + `<table class="t"><thead><tr><th class="n">Colaborador</th><th>DevOps (h)</th><th>VDESK (h)</th><th>Consolidado (h)</th><th></th>`
-    + `<th>Lançam.</th><th>Itens</th><th>Dias com apont.</th><th>Férias (dias úteis)</th></tr></thead>${blocos}`
+    + `<th>Lançam.</th><th>Itens</th><th>Dias com apont.</th><th>Férias (dias úteis)</th>`
+    + (cod ? '<th class="cd">Commits</th><th>PRs</th>' : '') + `</tr></thead>${blocos}`
     + `<tfoot><tr><td class="n">Total geral</td><td>${num(m.total.devops)}</td><td>${num(m.total.vdesk)}</td><td class="c">${num(m.total.horas)}</td>`
-    + `<td></td><td>${m.total.lancamentos}</td><td></td><td></td><td></td></tr></tfoot></table>`
+    + `<td></td><td>${m.total.lancamentos}</td><td></td><td></td><td></td>`
+    + (cod ? `<td class="cd">${somaCommits}</td><td>${somaPrs}</td>` : '') + '</tr></tfoot></table>'
     + `<div class="notas"><p><b>Consolidado</b>: DevOps e VDESK registram a mesma hora; por item, dia e colaborador vale o maior valor entre as duas fontes, sem somar. `
-    + `<b>Férias</b>: dias úteis de ausência no Controle Colaborador dentro do período. Lançamentos removidos no DevOps não entram. Dias úteis não descontam feriados.</p>${semApont}</div>`;
+    + `<b>Férias</b>: dias úteis de ausência no Controle Colaborador dentro do período. Lançamentos removidos no DevOps não entram. Dias úteis não descontam feriados.</p>${semApont}${notasCodigo}</div>`;
+}
+
+/** Como ler os números de código. Vai em toda página que os mostra. */
+const NOTA_CODIGO = '<p><b>Commits e PRs</b>: repositórios do Azure DevOps marcados como aplicáveis. Commits são os da branch padrão, pela data do autor; '
+  + 'PRs são os criados ou concluídos no período. Hora sem código não é falha por si: teste, análise, infraestrutura e suporte apontam sem commit, '
+  + 'e trabalho em repositório fora dessa lista não aparece aqui.</p>';
+
+function secaoCodigo(p: PessoaRelatorio, m: ModeloRelatorio): string {
+  if (!m.codigo) return '';
+  const c = p.codigo;
+  if (!c || (c.commits === 0 && c.prs.length === 0)) {
+    return '<h2>Código no período</h2><div class="notas"><p>Nenhum commit ou pull request desta pessoa nos repositórios coletados.</p>' + NOTA_CODIGO + '</div>';
+  }
+  const dia = (instante: string | null) => (instante ? ddmm(diaBrasilia(instante)) : '–');
+  const prs = c.prs.length === 0 ? '' : '<table class="t it"><thead><tr><th class="id">PR</th><th class="n">Título</th><th class="q">Repositório</th>'
+    + '<th class="q">Estado</th><th>Criado</th><th>Fechado</th><th>Itens</th></tr></thead><tbody>'
+    + c.prs.map((pr) =>
+      `<tr><td class="id">${pr.pr_id}</td><td class="n tt">${esc(pr.title ?? '')}</td><td class="q">${esc(pr.repo_name)}</td>`
+      + `<td class="q">${rotuloEstadoPr(pr)}</td><td>${dia(pr.creation_date)}</td><td>${dia(pr.closed_date)}</td>`
+      + `<td>${(pr.work_item_ids ?? []).length ? (pr.work_item_ids ?? []).join(', ') : '<span class="al">sem item</span>'}</td></tr>`).join('')
+    + '</tbody></table>';
+  const repos = [...c.commitsPorRepo.entries()].sort((a, b) => b[1] - a[1]);
+  const commits = repos.length === 0 ? '' : `<p class="rp"><b>Commits por repositório</b>: ${repos.map(([r, n]) => `${esc(r)} (${n})`).join(' · ')}</p>`;
+  return `<h2>Código no período <small>${c.commits} commits · ${c.prs.length} pull requests</small></h2>${prs}${commits}`
+    + `<div class="notas">${NOTA_CODIGO}</div>`;
 }
 
 function calendario(p: PessoaRelatorio, m: ModeloRelatorio): string {
@@ -348,7 +438,7 @@ function calendario(p: PessoaRelatorio, m: ModeloRelatorio): string {
   let cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate() - ((from.getDay() + 6) % 7));
   let linhas = '';
   while (cursor <= to) {
-    let somaD = 0, somaV = 0, celulas = '';
+    let somaD = 0, somaV = 0, somaC = 0, celulas = '';
     for (let k = 0; k < 7; k++) {
       const d = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + k);
       if (d < from || d > to) { celulas += '<td class="fora"></td>'; continue; }
@@ -357,10 +447,14 @@ function calendario(p: PessoaRelatorio, m: ModeloRelatorio): string {
       somaD += h.devops; somaV += h.vdesk;
       const ausente = p.diasAusentes.has(iso);
       const fds = d.getDay() === 0 || d.getDay() === 6;
+      const nc = p.codigo?.commitsPorDia.get(iso) ?? 0;
+      somaC += nc;
       celulas += `<td class="${ausente ? 'fer' : fds ? 'off' : ''}"><u>${ddmm(iso)}</u>${ausente ? '<em>férias</em>' : ''}`
-        + `<b>${h.devops > 0.004 ? num(h.devops) : ''}</b>${h.vdesk > 0.004 ? `<s>VDESK ${num(h.vdesk)}</s>` : ''}</td>`;
+        + `<b>${h.devops > 0.004 ? num(h.devops) : ''}</b>${h.vdesk > 0.004 ? `<s>VDESK ${num(h.vdesk)}</s>` : ''}`
+        + `${nc ? `<s class="cm">${nc} commit${nc > 1 ? 's' : ''}</s>` : ''}</td>`;
     }
-    linhas += `<tr>${celulas}<td class="sm"><b>${ouTraco(somaD)}</b>${somaV > 0.004 ? `<s>VDESK ${num(somaV)}</s>` : ''}</td></tr>`;
+    linhas += `<tr>${celulas}<td class="sm"><b>${ouTraco(somaD)}</b>${somaV > 0.004 ? `<s>VDESK ${num(somaV)}</s>` : ''}`
+      + `${somaC ? `<s class="cm">${somaC} commit${somaC > 1 ? 's' : ''}</s>` : ''}</td></tr>`;
     cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 7);
   }
   return `<table class="cal"><thead><tr>${SEMANA.map((s) => `<th>${s}</th>`).join('')}<th class="sm">Semana</th></tr></thead><tbody>${linhas}</tbody></table>`;
@@ -368,10 +462,18 @@ function calendario(p: PessoaRelatorio, m: ModeloRelatorio): string {
 
 function paginaPessoa(p: PessoaRelatorio, m: ModeloRelatorio, periodo: string): string {
   const temVdesk = p.vdesk > 0.004;
+  const temCodigo = !!m.codigo;
+  // "2 PR · 5 c": PRs e commits da própria pessoa que citam o item ou o PBI pai.
+  const codigoItem = (i: ItemRelatorio) =>
+    [i.prs ? `${i.prs} PR` : '', i.commits ? `${i.commits} c` : ''].filter(Boolean).join(' · ') || '–';
   const linhas = p.itens.map((i) =>
     `<tr><td class="id">${i.id ?? '–'}</td><td class="n tt">${i.titulo ? esc(i.titulo) : '<i>sem work item</i>'}</td>`
     + `<td class="q">${esc(i.tipo)}</td><td class="q">${esc(i.estado)}</td><td>${i.lancamentos || '–'}</td><td>${ouTraco(i.devops)}</td>`
-    + (temVdesk ? `<td>${ouTraco(i.vdesk)}</td><td class="c">${num(i.horas)}</td>` : '') + '</tr>').join('');
+    + (temVdesk ? `<td>${ouTraco(i.vdesk)}</td><td class="c">${num(i.horas)}</td>` : '')
+    + (temCodigo ? `<td class="cd">${codigoItem(i)}</td>` : '') + '</tr>').join('');
+  const cartaoCodigo: Array<[string, string, string]> = temCodigo
+    ? [['Commits · PRs', `${p.codigo?.commits ?? 0} · ${p.codigo?.prs.length ?? 0}`, 'no Azure DevOps']]
+    : [];
 
   return '<div class="pb"></div>'
     + topo(esc(p.nome), `${esc(p.grupo)}${p.lead ? ' · lead' : ''} · ${periodo}`, m)
@@ -381,13 +483,17 @@ function paginaPessoa(p: PessoaRelatorio, m: ModeloRelatorio, periodo: string): 
       ['VDESK', ouTraco(p.vdesk), `${p.lancVdesk} lançamentos`],
       ['Dias com apontamento', String(p.dias), `de ${m.diasUteis - p.ferias} dias úteis disponíveis`],
       ['Férias', p.ferias ? String(p.ferias) : '–', 'dias úteis no período'],
+      ...cartaoCodigo,
     ])
     + `<h2>Horas por dia <small>valor em destaque = DevOps</small></h2>${calendario(p, m)}`
     + `<h2>Horas por item de trabalho <small>${p.itens.length} itens</small></h2>`
     + `<table class="t it"><thead><tr><th class="id">Item</th><th class="n">Título</th><th class="q">Tipo</th><th class="q">Estado</th>`
-    + `<th>Lançam.</th><th>DevOps (h)</th>${temVdesk ? '<th>VDESK (h)</th><th>Consol. (h)</th>' : ''}</tr></thead><tbody>${linhas}</tbody>`
+    + `<th>Lançam.</th><th>DevOps (h)</th>${temVdesk ? '<th>VDESK (h)</th><th>Consol. (h)</th>' : ''}`
+    + `${temCodigo ? '<th class="cd">Código</th>' : ''}</tr></thead><tbody>${linhas}</tbody>`
     + `<tfoot><tr><td></td><td class="n">Total</td><td></td><td></td><td>${p.lancDevops + p.lancVdesk}</td><td>${num(p.devops)}</td>`
-    + (temVdesk ? `<td>${num(p.vdesk)}</td><td class="c">${num(p.horas)}</td>` : '') + '</tr></tfoot></table>';
+    + (temVdesk ? `<td>${num(p.vdesk)}</td><td class="c">${num(p.horas)}</td>` : '')
+    + (temCodigo ? '<td class="cd"></td>' : '') + '</tr></tfoot></table>'
+    + secaoCodigo(p, m);
 }
 
 function paginaDimensao(m: ModeloRelatorio, periodo: string, titulo: string, rotulo: string, linhas: LinhaDimensao[]): string {
@@ -518,6 +624,8 @@ h2{font-size:9.6pt;font-weight:700;margin:12px 0 5px;padding-left:8px;border-lef
 .cal b{display:block;font-size:11.5pt;font-weight:700;line-height:1.2}.cal s{display:block;text-decoration:none;font-size:6.4pt;color:#0369a1;line-height:1;font-weight:600}
 .cal .off{background:var(--sec);border-color:var(--sec)}.cal .fer{background:var(--gold-s);border-color:#f1e3b8}.cal .fora{border:0}
 .cal td.sm{width:13%;background:var(--navy2);border-color:var(--navy2);color:#f8fafc}.cal td.sm s{color:#7dd3fc}
+.t .cd{border-left:1px solid var(--bd);white-space:nowrap}.t tfoot .cd{border-left-color:#2b3658}.al{color:#b45309}
+.cal s.cm{color:#6d28d9}.cal td.sm s.cm{color:#c4b5fd}.rp{margin:7px 0 0;font-size:7.8pt}
 .notas{margin-top:8px;font-size:7.3pt;color:var(--mut)}.notas p{margin:0 0 3px}.notas b{color:var(--navy)}
 .sps{display:flex;gap:8px;margin:9px 0 4px}.sp{flex:1;border:1px solid var(--bd);border-radius:12px;padding:9px 11px}
 .sp h3{margin:0 0 6px;font-size:11pt}.sp h3 small{font-weight:400;color:var(--mut);font-size:7.4pt;margin-left:6px}
