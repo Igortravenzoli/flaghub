@@ -54,9 +54,9 @@ const base = (extra: Partial<EntradaRelatorio> = {}): EntradaRelatorio => ({
     linha({ colaborador: 'Visitante', log_date: '2026-10-08', work_item_id: 13, minutes_devops: 60 }),
   ],
   roster: [
-    { colaborador: 'Ana Souza', squad: 'FLEXX', papel: 'lead' },
-    { colaborador: 'Bruno Lima', squad: 'INFRA', papel: 'dev' },
-    { colaborador: 'Caio Reis', squad: 'K8', papel: 'dev' },
+    { colaborador: 'Ana Souza', squad: 'ERP_SUST', papel: 'lead' },
+    { colaborador: 'Bruno Lima', squad: 'QUALIDADE', papel: 'dev' },
+    { colaborador: 'Caio Reis', squad: 'GPS_GO', papel: 'dev' },
   ],
   ausencias: [{ colaborador: 'Bruno Lima', tipo: 'ferias', data_inicio: '2026-10-13', data_fim: '2026-10-18' }],
   snapshots: [foto('S21-2026', '2026-10-12', '2026-10-23'), foto('S10-2026', '2026-05-11', '2026-05-22')],
@@ -79,10 +79,41 @@ describe('montarRelatorio', () => {
 
   it('agrupa pelo roster, com fábrica antes de área e sem cadastro por último', () => {
     const m = montarRelatorio(base());
-    expect(m.grupos).toEqual(['FLEXX', 'INFRA', SEM_GRUPO]);
+    expect(m.grupos).toEqual(['ERP_SUST', 'QUALIDADE', SEM_GRUPO]);
     expect(m.pessoas.find((p) => p.nome === 'Ana Souza')!.lead).toBe(true);
     expect(m.pessoas.find((p) => p.nome === 'Visitante')!.grupo).toBe(SEM_GRUPO);
-    expect(m.semApontamento).toEqual([{ nome: 'Caio Reis', grupo: 'K8' }]);
+    expect(m.semApontamento).toEqual([{ nome: 'Caio Reis', grupo: 'GPS / GO' }]);
+  });
+
+  it('resume por grupo › fábrica e rateia quem divide o tempo entre duas fábricas', () => {
+    // Ana: 14 h, metade em ERP (Sustentação) e metade em ERP (Evolução).
+    const m = montarRelatorio(base({
+      roster: [
+        { colaborador: 'Ana Souza', squad: 'ERP_SUST', papel: 'dev', alocacao_pct: 50 },
+        { colaborador: 'Ana Souza', squad: 'ERP_EVOL', papel: 'dev', alocacao_pct: 50 },
+        { colaborador: 'Bruno Lima', squad: 'IR', papel: 'lead' },
+        { colaborador: 'Caio Reis', squad: 'GPS_GO', papel: 'dev', alocacao_pct: 50 },
+        { colaborador: 'Caio Reis', squad: 'APP', papel: 'dev', alocacao_pct: 50 },
+      ],
+    }));
+    const resumo = m.resumoGrupos.map((g) => [g.rotulo, Math.round(g.horas), g.pessoas, g.fabricas.map((x) => [x.codigo, Math.round(x.horas)])]);
+    expect(resumo).toEqual([
+      ['Sustentação', 7, 1, [['ERP_SUST', 7]]],
+      ['Evolução', 17, 2, [['ERP_EVOL', 7], ['IR', 10]]],
+      ['Sem cadastro', 1, 1, []],
+    ]);
+    // O rateio não cria nem some com hora: os grupos somam o total geral.
+    expect(m.resumoGrupos.reduce((s, g) => s + g.horas, 0)).toBeCloseTo(m.total.horas);
+    // A pessoa aparece UMA vez na lista, na fábrica principal, com as duas casas.
+    const ana = m.pessoas.filter((p) => p.nome === 'Ana Souza');
+    expect(ana).toHaveLength(1);
+    expect(ana[0].casas.map((c) => [c.squad, c.peso])).toEqual([['ERP_SUST', 0.5], ['ERP_EVOL', 0.5]]);
+    // Quem está em duas fábricas e não apontou é citado uma vez só.
+    expect(m.semApontamento).toEqual([{ nome: 'Caio Reis', grupo: 'GPS / GO + APP' }]);
+
+    const html = renderizarRelatorioHtml(m);
+    expect(html).toContain('Resumo por fábrica');
+    expect(html).toContain('ERP · Sustentação 50% + ERP · Evolução 50%');
   });
 
   it('conta férias em dias úteis e marca os dias corridos no calendário', () => {

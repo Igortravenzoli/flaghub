@@ -17,7 +17,8 @@
 import type { HoraNegocioRow } from '@/hooks/useHorasNegocio';
 import { SEM_CLIENTE, SEM_PRODUTO } from '@/hooks/useHorasNegocio';
 import type { SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
-import { GRUPOS_HORAS, SQUADS, ehArea, normName } from '@/lib/fabricaRoster';
+import { GRUPOS_HORAS, SQUADS, buildAlocacaoMap, casasDe, normName, type CasaAlocada } from '@/lib/fabricaRoster';
+import { GRUPOS, fabricasDoGrupo, grupoDaFabrica, rotuloFabrica, rotuloFabricaLongo } from '@/lib/fabricaOrganograma';
 import { diaLocal, diasUteisAusentes, type Ausencia } from '@/lib/capacidade';
 import { businessDaysBetween } from '@/lib/sprintCalendar';
 import {
@@ -31,6 +32,8 @@ export interface RosterRelatorio {
   colaborador: string;
   squad: string;
   papel: string | null;
+  /** Percentual da pessoa nesta fábrica; ausente = 100. Uma linha por fábrica. */
+  alocacao_pct?: number | null;
 }
 
 /** Foto de fim de sprint (`sprint_indicator_snapshots`), só o que o relatório usa. */
@@ -95,7 +98,10 @@ export interface ItemRelatorio {
 
 export interface PessoaRelatorio {
   nome: string;
+  /** Fábrica principal (a de maior alocação) — é onde a pessoa é listada. */
   grupo: string;
+  /** Todas as fábricas da pessoa, com o rateio das horas. Vazio = sem cadastro. */
+  casas: CasaAlocada[];
   lead: boolean;
   devops: number;
   vdesk: number;
@@ -134,6 +140,22 @@ export interface LinhaDimensao {
   semClassificacao: boolean;
 }
 
+/** Linha do resumo por fábrica: horas já rateadas pela alocação. */
+export interface ResumoFabrica {
+  codigo: string;
+  rotulo: string;
+  cor: string;
+  pessoas: number;
+  devops: number;
+  vdesk: number;
+  horas: number;
+}
+
+/** Consolidado de um grupo do organograma (soma das fábricas dele). */
+export interface ResumoGrupo extends ResumoFabrica {
+  fabricas: ResumoFabrica[];
+}
+
 export interface ModeloRelatorio {
   dateFrom: string;
   dateTo: string;
@@ -144,6 +166,8 @@ export interface ModeloRelatorio {
   grupos: string[];
   /** Cadastrados no roster que não apontaram no período. */
   semApontamento: Array<{ nome: string; grupo: string }>;
+  /** Grupo › fábrica, na ordem do organograma; só o que tem hora no período. */
+  resumoGrupos: ResumoGrupo[];
   total: { horas: number; devops: number; vdesk: number; lancamentos: number; itens: number; pessoas: number };
   sistemas: LinhaDimensao[];
   clientes: LinhaDimensao[];
@@ -193,7 +217,9 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
   const to = diaLocal(entrada.dateTo);
   const dias = cadaDia(from, to);
 
-  const rosterPorNome = new Map(entrada.roster.map((r) => [normName(r.colaborador), r]));
+  // Uma pessoa pode ter uma linha por fábrica: as casas vêm do rateio, o lead de qualquer linha.
+  const alocMap = buildAlocacaoMap(entrada.roster);
+  const leads = new Set(entrada.roster.filter((r) => r.papel === 'lead').map((r) => normName(r.colaborador)));
   const ausenciasPorNome = new Map<string, Ausencia[]>();
   for (const a of entrada.ausencias) {
     const k = normName(a.colaborador);
@@ -209,7 +235,7 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
   const indice = entrada.codigo ? indexarCodigo(entrada.codigo, entrada.dateFrom, entrada.dateTo) : null;
 
   const pessoas: PessoaRelatorio[] = [...porPessoa.entries()].map(([nome, linhas]) => {
-    const cadastro = rosterPorNome.get(normName(nome));
+    const casas = casasDe(alocMap, nome);
     const codigo = indice?.porPessoa.get(normName(nome)) ?? null;
     const ausencias = ausenciasPorNome.get(normName(nome)) ?? [];
 
@@ -248,8 +274,9 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
 
     return {
       nome,
-      grupo: cadastro?.squad ?? SEM_GRUPO,
-      lead: cadastro?.papel === 'lead',
+      grupo: casas[0]?.squad ?? SEM_GRUPO,
+      casas,
+      lead: leads.has(normName(nome)),
       devops, vdesk, horas, lancDevops, lancVdesk,
       dias: porDia.size,
       ferias: diasUteisAusentes(ausencias, from, to),
@@ -271,10 +298,48 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
   const grupos = [...new Set(pessoas.map((p) => p.grupo))];
 
   const comHoras = new Set(pessoas.map((p) => normName(p.nome)));
-  const semApontamento = entrada.roster
+  // Uma entrada por PESSOA: quem está em duas fábricas apareceria duas vezes.
+  const semApontamento = [...new Map(entrada.roster
     .filter((r) => !comHoras.has(normName(r.colaborador)))
-    .map((r) => ({ nome: r.colaborador, grupo: r.squad }))
+    .map((r) => [normName(r.colaborador), {
+      nome: r.colaborador,
+      grupo: casasDe(alocMap, r.colaborador).map((c) => rotuloFabricaLongo(c.squad)).join(' + '),
+    }])).values()]
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
+
+  /**
+   * Resumo grupo › fábrica. Quem divide o tempo entra em cada fábrica na
+   * proporção da alocação — as linhas somam o total geral, sem dobrar ninguém.
+   * `pessoas` conta gente distinta: no grupo, quem está em duas fábricas dele
+   * conta uma vez só.
+   */
+  const acum = new Map<string, { devops: number; vdesk: number; horas: number; nomes: Set<string> }>();
+  for (const p of pessoas) {
+    const partes = p.casas.length ? p.casas : [{ squad: SEM_GRUPO, pct: 100, peso: 1 }];
+    for (const c of partes) {
+      const a = acum.get(c.squad) ?? { devops: 0, vdesk: 0, horas: 0, nomes: new Set<string>() };
+      a.devops += p.devops * c.peso; a.vdesk += p.vdesk * c.peso; a.horas += p.horas * c.peso;
+      a.nomes.add(p.nome);
+      acum.set(c.squad, a);
+    }
+  }
+  const linhaResumo = (codigo: string, rotulo: string, cor: string): ResumoFabrica | null => {
+    const a = acum.get(codigo);
+    return a ? { codigo, rotulo, cor, pessoas: a.nomes.size, devops: a.devops, vdesk: a.vdesk, horas: a.horas } : null;
+  };
+  const resumoGrupos: ResumoGrupo[] = GRUPOS.map((g) => {
+    const fabricas = fabricasDoGrupo(g.id)
+      .map((f) => linhaResumo(f.codigo, f.rotulo, f.cor))
+      .filter((x): x is ResumoFabrica => x != null);
+    const nomes = new Set(fabricas.flatMap((f) => [...(acum.get(f.codigo)?.nomes ?? [])]));
+    const soma = (fn: (f: ResumoFabrica) => number) => fabricas.reduce((s, f) => s + fn(f), 0);
+    return {
+      codigo: g.id, rotulo: g.rotulo, cor: g.cor, pessoas: nomes.size,
+      devops: soma((f) => f.devops), vdesk: soma((f) => f.vdesk), horas: soma((f) => f.horas), fabricas,
+    };
+  }).filter((g) => g.fabricas.length > 0);
+  const semCadastro = linhaResumo(SEM_GRUPO, 'Sem cadastro', '#94a3b8');
+  if (semCadastro) resumoGrupos.push({ ...semCadastro, fabricas: [] });
 
   const itensDistintos = new Set(entrada.rows.map((r) => r.work_item_id).filter((id) => id != null));
 
@@ -286,6 +351,7 @@ export function montarRelatorio(entrada: EntradaRelatorio): ModeloRelatorio {
     pessoas,
     grupos,
     semApontamento,
+    resumoGrupos,
     total: {
       horas: pessoas.reduce((s, p) => s + p.horas, 0),
       devops: pessoas.reduce((s, p) => s + p.devops, 0),
@@ -350,6 +416,27 @@ function cartoes(itens: Array<[rotulo: string, valor: string, pe: string]>): str
     `<div${i === 0 ? ' class="d"' : ''}><span>${r}</span><b>${v}</b><small>${p}</small></div>`).join('')}</div>`;
 }
 
+/**
+ * Resumo grupo › fábrica: a primeira leitura do relatório. O grupo é a linha
+ * de destaque (soma das fábricas dele); a barra usa a cor que a fábrica tem
+ * na tela, para o PDF e o painel falarem a mesma língua.
+ */
+function resumoPorFabrica(m: ModeloRelatorio): string {
+  if (m.resumoGrupos.length === 0) return '';
+  const maior = Math.max(...m.resumoGrupos.map((g) => g.horas), 1);
+  const linha = (r: ResumoFabrica, cls: string) =>
+    `<tr${cls}><td class="n">${esc(r.rotulo)}</td><td>${r.pessoas}</td><td>${ouTraco(r.devops)}</td><td>${ouTraco(r.vdesk)}</td>`
+    + `<td class="c">${num(r.horas)}</td><td>${pct(r.horas, m.total.horas)}</td>`
+    + `<td class="bar"><i style="width:${((100 * r.horas) / maior).toFixed(1)}%;background:${r.cor}"></i></td></tr>`;
+  const corpo = m.resumoGrupos.map((g) =>
+    `<tbody>${linha(g, ' class="g"')}${g.fabricas.map((f) => linha(f, '')).join('')}</tbody>`).join('');
+  return '<h2>Resumo por fábrica <small>grupo › fábrica</small></h2>'
+    + '<table class="t rs"><thead><tr><th class="n">Grupo / Fábrica</th><th>Pessoas</th><th>DevOps (h)</th><th>VDESK (h)</th>'
+    + `<th>Consolidado (h)</th><th>% do total</th><th></th></tr></thead>${corpo}`
+    + `<tfoot><tr><td class="n">Total geral</td><td>${m.total.pessoas}</td><td>${num(m.total.devops)}</td><td>${num(m.total.vdesk)}</td>`
+    + `<td class="c">${num(m.total.horas)}</td><td></td><td></td></tr></tfoot></table>`;
+}
+
 function paginaConsolidado(m: ModeloRelatorio, periodo: string): string {
   const maior = Math.max(...m.pessoas.map((p) => p.horas), 1);
   // As colunas de código só existem quando a coleta respondeu: coluna de zeros
@@ -358,17 +445,21 @@ function paginaConsolidado(m: ModeloRelatorio, periodo: string): string {
   const commitsDe = (p: PessoaRelatorio) => p.codigo?.commits ?? 0;
   const prsDe = (p: PessoaRelatorio) => p.codigo?.prs.length ?? 0;
   const inteiro = (v: number) => (v ? String(v) : '–');
+  // Quem divide o tempo é listado na fábrica principal, com a outra anotada.
+  const divide = (p: PessoaRelatorio) => (p.casas.length > 1
+    ? ` <span class="tag dv">${Math.round(p.casas[0].pct)}% · também ${esc(p.casas.slice(1).map((c) => rotuloFabricaLongo(c.squad)).join(', '))}</span>`
+    : '');
   const blocos = m.grupos.map((g) => {
     const ps = m.pessoas.filter((p) => p.grupo === g);
     const soma = (f: (p: PessoaRelatorio) => number) => ps.reduce((s, p) => s + f(p), 0);
-    const tipo = g === SEM_GRUPO ? '' : ehArea(g) ? 'Área' : 'Fábrica';
+    const tipo = grupoDaFabrica(g)?.rotulo ?? '';
     const linhas = ps.map((p) =>
-      `<tr><td class="n">${esc(p.nome)}${p.lead ? ' <span class="tag">lead</span>' : ''}</td>`
+      `<tr><td class="n">${esc(p.nome)}${p.lead ? ' <span class="tag">lead</span>' : ''}${divide(p)}</td>`
       + `<td>${ouTraco(p.devops)}</td><td>${ouTraco(p.vdesk)}</td><td class="c">${num(p.horas)}</td>`
       + `<td class="bar"><i style="width:${((100 * p.horas) / maior).toFixed(1)}%"></i></td>`
       + `<td>${p.lancDevops + p.lancVdesk}</td><td>${p.itens.length}</td><td>${p.dias}</td><td>${p.ferias || '–'}</td>`
       + (cod ? `<td class="cd">${inteiro(commitsDe(p))}</td><td>${inteiro(prsDe(p))}</td>` : '') + '</tr>').join('');
-    return `<tbody><tr class="g"><td class="n">${esc(g)}<small>${tipo}</small></td>`
+    return `<tbody><tr class="g"><td class="n">${esc(rotuloFabrica(g))}<small>${esc(tipo)}</small></td>`
       + `<td>${ouTraco(soma((p) => p.devops))}</td><td>${ouTraco(soma((p) => p.vdesk))}</td><td class="c">${num(soma((p) => p.horas))}</td><td></td>`
       + `<td>${soma((p) => p.lancDevops + p.lancVdesk)}</td><td></td><td></td><td></td>`
       + (cod ? `<td class="cd">${inteiro(soma(commitsDe))}</td><td>${inteiro(soma(prsDe))}</td>` : '') + `</tr>${linhas}</tbody>`;
@@ -397,6 +488,8 @@ function paginaConsolidado(m: ModeloRelatorio, periodo: string): string {
       ['Horas no VDESK', num(m.total.vdesk), `${m.pessoas.reduce((s, p) => s + p.lancVdesk, 0)} lançamentos`],
       ['Colaboradores', String(m.total.pessoas), 'com horas no período'],
     ])
+    + resumoPorFabrica(m)
+    + `<h2>Por colaborador <small>na fábrica principal de cada um</small></h2>`
     + `<table class="t"><thead><tr><th class="n">Colaborador</th><th>DevOps (h)</th><th>VDESK (h)</th><th>Consolidado (h)</th><th></th>`
     + `<th>Lançam.</th><th>Itens</th><th>Dias com apont.</th><th>Férias (dias úteis)</th>`
     + (cod ? '<th class="cd">Commits</th><th>PRs</th>' : '') + `</tr></thead>${blocos}`
@@ -404,7 +497,16 @@ function paginaConsolidado(m: ModeloRelatorio, periodo: string): string {
     + `<td></td><td>${m.total.lancamentos}</td><td></td><td></td><td></td>`
     + (cod ? `<td class="cd">${somaCommits}</td><td>${somaPrs}</td>` : '') + '</tr></tfoot></table>'
     + `<div class="notas"><p><b>Consolidado</b>: DevOps e VDESK registram a mesma hora; por item, dia e colaborador vale o maior valor entre as duas fontes, sem somar. `
+    + `<b>Resumo por fábrica</b>: quem divide o tempo entre duas fábricas entra em cada uma na proporção da alocação do cadastro; as linhas somam o total geral. Na lista por colaborador a pessoa aparece inteira na fábrica principal, então o subtotal de um bloco pode diferir da linha do resumo. `
     + `<b>Férias</b>: dias úteis de ausência no Controle Colaborador dentro do período. Lançamentos removidos no DevOps não entram. Dias úteis não descontam feriados.</p>${semApont}${notasCodigo}</div>`;
+}
+
+/** "I & R 50% + LAB 50%" — as fábricas da pessoa, para o cabeçalho da página dela. */
+function casasDaPessoa(p: PessoaRelatorio): string {
+  if (p.casas.length === 0) return p.grupo;
+  return p.casas
+    .map((c) => `${rotuloFabricaLongo(c.squad)}${p.casas.length > 1 || c.pct < 100 ? ` ${Math.round(c.pct)}%` : ''}`)
+    .join(' + ');
 }
 
 /** Como ler os números de código. Vai em toda página que os mostra. */
@@ -476,7 +578,7 @@ function paginaPessoa(p: PessoaRelatorio, m: ModeloRelatorio, periodo: string): 
     : [];
 
   return '<div class="pb"></div>'
-    + topo(esc(p.nome), `${esc(p.grupo)}${p.lead ? ' · lead' : ''} · ${periodo}`, m)
+    + topo(esc(p.nome), `${esc(casasDaPessoa(p))}${p.lead ? ' · lead' : ''} · ${periodo}`, m)
     + cartoes([
       ['Horas consolidadas', num(p.horas), 'maior valor por item e dia'],
       ['DevOps', ouTraco(p.devops), `${p.lancDevops} lançamentos`],
@@ -579,11 +681,12 @@ function paginaSprints(m: ModeloRelatorio, periodo: string): string {
     + topo('Sprints do período', `${periodo} · KPIs macro da Fábrica · foto selada no fim de cada sprint`, m)
     + `<div class="sps">${cartoesSprint}</div><h2>Indicadores por sprint</h2>`
     + `<table class="t kp"><thead><tr><th class="n">Indicador</th>${sp.map((s) => `<th>${esc(s.sprint_code)}<small>${intervalo(s)}</small></th>`).join('')}</tr></thead><tbody>${corpo}</tbody></table>`
-    + `<h2>Por fábrica</h2><table class="t fb"><thead><tr><th rowspan="2" class="n">Fábrica</th>${sp.map((s) => `<th colspan="5" class="grp">${esc(s.sprint_code)}</th>`).join('')}</tr>`
+    + `<h2>Por squad <small>Épico do item no DevOps</small></h2><table class="t fb"><thead><tr><th rowspan="2" class="n">Squad</th>${sp.map((s) => `<th colspan="5" class="grp">${esc(s.sprint_code)}</th>`).join('')}</tr>`
     + `<tr>${sp.map(() => '<th class="s">Itens</th><th>Bugs</th><th>Aviões</th><th>Ret. QA</th><th>Done + Entr.</th>').join('')}</tr></thead><tbody>${porFabrica}</tbody></table>`
     + `<div class="notas"><p>Fonte: fotos de fim de sprint do FlagHub, com os itens que estavam na sprint naquele momento. `
     + `Cada item entra em uma só categoria, definida pela tag (retorno de QA, avião, priorização) ou pelo tipo Bug. <b>Aviões</b> somam os da sprint e os transbordados. `
     + `<b>Transbordo</b>: itens na sprint com a tag de transbordo. <b>Entregue</b>: aguardando teste, em teste, aguardando deploy ou homologação. Lead time considera só PBIs. `
+    + `<b>Por squad</b>: a squad de um item é o Épico dele no DevOps, que ainda segue o organograma anterior; por isso esta tabela não repete as fábricas do resumo de horas. `
     + `Entram as sprints que tocam o período; um mesmo item pode aparecer em mais de uma, então as colunas não se somam.</p></div>`;
 }
 
@@ -613,7 +716,8 @@ h2{font-size:9.6pt;font-weight:700;margin:12px 0 5px;padding-left:8px;border-lef
 .t tr.g td.n{box-shadow:inset 3px 0 0 var(--gold)}.t tr.g small{font-weight:400;color:var(--mut);margin-left:7px;font-size:7.2pt}
 .t tbody tr:not(.g) td.n{padding-left:15px}.t tfoot td{font-weight:700;background:var(--navy2);color:#f8fafc;border-bottom:0;padding-top:5px;padding-bottom:5px}
 .bar{width:21%;padding-left:2px!important}.bar i{display:block;height:7px;background:var(--gold);border-radius:4px;min-width:2px}
-.tag{font-size:6.4pt;font-weight:600;background:var(--navy2);color:var(--gold);border-radius:8px;padding:1px 6px;margin-left:5px}
+.tag{font-size:6.4pt;font-weight:600;background:var(--navy2);color:var(--gold);border-radius:8px;padding:1px 6px;margin-left:5px}.tag.dv{background:var(--sec);color:var(--mut);font-weight:500}
+.t.rs{margin-bottom:2px}.t.rs .bar{width:26%}.t.rs .bar i{height:8px}
 .t.it td{font-size:8pt}.t.it tbody td.n,.t.dim tbody td.n,.t.kp tbody td.n,.t.fb tbody td.n{padding-left:9px!important}
 .id{text-align:left!important;width:44px;color:var(--mut)}.tt{max-width:290px;overflow:hidden;text-overflow:ellipsis}
 .t.dim td{padding-top:2.5px;padding-bottom:2.5px}.t.dim tr.sc td{color:var(--mut);font-style:italic}.t.dim .bar{width:30%}

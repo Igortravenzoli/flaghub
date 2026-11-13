@@ -5,7 +5,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { buildHomeSquadMap, buildNaoContaSet, ehArea, GRUPOS_HORAS, homeSquadOf, normName, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
+import { alocacaoPct, buildAlocacaoMap, buildNaoContaSet, casasDe, ehArea, GRUPOS_HORAS, normName, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
+import { epicoDaFabrica, fabricaOrg, fabricasDoGrupo, GRUPOS, grupoDaFabrica, rotuloFabrica, rotuloFabricaLongo, type GrupoId } from '@/lib/fabricaOrganograma';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { useColaboradorAusencias } from '@/hooks/useColaboradorAusencias';
 import { capacidadeMinutos, diasUteisAusentes, indexarAusencias } from '@/lib/capacidade';
@@ -52,6 +53,8 @@ const COR_CRUZADO = 'hsl(28,92%,55%)';
  * excedente é declarado como "+N" no rodapé. Com 9 nada é escondido hoje.
  */
 const TV_MAX_LINHAS = 9;
+/** Até quantos grupos o telão comporta COM a linha de fábricas sob cada um. */
+const TV_MAX_GRUPOS_COM_FABRICAS = 4;
 
 // Horas em h:mm (mesma língua do DevOps e da planilha do gestor) — src/lib/formatHoras.ts.
 
@@ -65,7 +68,15 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
   const { data: rosterRows = [], isLoading: rosterLoading } = useFabricaRoster();
   const { data: ausencias = [] } = useColaboradorAusencias();
   const ausenciasPorPessoa = useMemo(() => indexarAusencias(ausencias), [ausencias]);
-  const homeMap = useMemo(() => buildHomeSquadMap(rosterRows), [rosterRows]);
+  /**
+   * Casas de cada pessoa, com o rateio das horas. Só entram as linhas que
+   * contam hora: quem é gestor numa fábrica e executor na outra tem as horas
+   * todas na fábrica em que executa.
+   */
+  const alocMap = useMemo(
+    () => buildAlocacaoMap(rosterRows.filter((r) => r.conta_horas !== false)),
+    [rosterRows],
+  );
   // Lead só gestor (conta_horas=false) não conta como hora de fábrica — fora da capacidade e do realizado.
   const naoContaSet = useMemo(() => buildNaoContaSet(rosterRows), [rosterRows]);
 
@@ -93,8 +104,10 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
       for (const r of rosterRows) {
         if (r.squad !== squad || r.conta_horas === false) continue;
         const dias = diasUteisAusentes(ausenciasPorPessoa.get(r.colaborador) ?? [], dateFrom, dateTo);
-        total += capacidadeMinutos(r.capacidade_h_dia, businessDays, dias);
-        descontado += capacidadeMinutos(r.capacidade_h_dia, dias);
+        // Alocação parcial: a fábrica só dispõe da fatia da jornada que é dela.
+        const hDia = (Number(r.capacidade_h_dia) || 0) * alocacaoPct(r) / 100;
+        total += capacidadeMinutos(hDia, businessDays, dias);
+        descontado += capacidadeMinutos(hDia, dias);
       }
       cap[squad] = total;
       ausente[squad] = descontado;
@@ -115,9 +128,15 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
       destSet.add(dest);
       for (const c of row.collaborators) {
         if (naoContaSet.has(normName(c.name))) continue; // lead só gestor não conta
-        const home = homeSquadOf(homeMap, c.name) ?? SEM_SQUAD;
-        if (home === SEM_SQUAD) semSquad += c.minutes;
-        bump(home, dest, c.minutes);
+        const casas = casasDe(alocMap, c.name);
+        if (casas.length === 0) {
+          semSquad += c.minutes;
+          bump(SEM_SQUAD, dest, c.minutes);
+          continue;
+        }
+        // Quem divide o tempo entre duas fábricas tem a hora rateada pela
+        // alocação: não existe Épico por fábrica nova para dizer onde ela caiu.
+        for (const casa of casas) bump(casa.squad, dest, c.minutes * casa.peso);
       }
     }
     /**
@@ -129,12 +148,17 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     for (const row of foraDasFabricas ?? []) {
       for (const c of row.collaborators) {
         if (naoContaSet.has(normName(c.name))) continue;
-        const home = homeSquadOf(homeMap, c.name);
-        // Membro de FÁBRICA continua de fora: hora sem épico de squad inflaria a
-        // utilização dele contra uma capacidade medida sobre trabalho de squad.
-        if (home && !ehArea(home)) continue;
-        foraMin += c.minutes;
-        if (home) {
+        const casas = casasDe(alocMap, c.name);
+        if (casas.length === 0) {
+          foraMin += c.minutes;
+          semSquad += c.minutes;
+          bump(SEM_SQUAD, OUTRAS, c.minutes);
+          continue;
+        }
+        for (const casa of casas) {
+          // Fatia de FÁBRICA continua de fora: hora sem épico de squad inflaria
+          // a utilização contra uma capacidade medida sobre trabalho de squad.
+          if (!ehArea(casa.squad)) continue;
           /**
            * Área é o caso oposto: o trabalho dela VIVE fora dos épicos de squad
            * (o do Infra pendura no épico 2700, que é justamente o que
@@ -143,10 +167,9 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
            * fábrica, e não conta em "Sem squad" porque agora tem casa. Em
            * 08/2026 isso deixou o INFRA com 1:30 de realizado.
            */
-          bump(home, OUTRAS, c.minutes);
-        } else {
-          semSquad += c.minutes;
-          bump(SEM_SQUAD, OUTRAS, c.minutes);
+          const min = c.minutes * casa.peso;
+          foraMin += min;
+          bump(casa.squad, OUTRAS, min);
         }
       }
     }
@@ -165,9 +188,15 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
       const byDest = matrix[home] ?? {};
       const total = Object.values(byDest).reduce((s, v) => s + v, 0);
       squadTotals[home] = total;
-      // Área não é destino de apontamento (o destino sai do Épico), então tudo
-      // que ela faz seria lido como cruzado. Uso cruzado só existe entre fábricas.
-      crossTotals[home] = ehArea(home) ? 0 : total - (byDest[home] ?? 0);
+      /**
+       * Uso cruzado = hora da fábrica em item de OUTRO Épico. Só dá para medir
+       * onde a fábrica tem um Épico de squad que ainda a representa (STAGING e
+       * APP, além das squads do formato anterior). Para as demais não existe
+       * "casa" no DevOps: tratar tudo como cruzado pintaria a fábrica inteira
+       * de âmbar por um motivo que não é dela.
+       */
+      const epico = epicoDaFabrica(home);
+      crossTotals[home] = epico ? total - (byDest[epico] ?? 0) : 0;
     }
 
     const destinos = [...SQUADS.filter((s) => destSet.has(s)), ...(destSet.has(OUTRAS) ? [OUTRAS] : [])];
@@ -176,39 +205,66 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     const hasData = Object.keys(matrix).length > 0
       && (GRUPOS_HORAS.some((s) => squadTotals[s] > 0) || semSquad > 0);
     return { matrix, squadTotals, crossTotals, semSquadMin: semSquad, destinos, hasData };
-  }, [fabricaRows, foraDasFabricas, homeMap, naoContaSet]);
+  }, [fabricaRows, foraDasFabricas, alocMap, naoContaSet]);
 
-  const maxCap = useMemo(() => Math.max(1, ...GRUPOS_HORAS.map((s) => capByHome[s] ?? 0)), [capByHome]);
   const temCapacidade = !!businessDays && GRUPOS_HORAS.some((s) => (capByHome[s] ?? 0) > 0);
 
   /**
    * Densidade de telão. No modo TV o card divide a faixa de baixo com o
-   * DailyProgress e recebe ~210px úteis de altura; com 8 linhas + divisor +
-   * legenda o conteúdo passava de 260px e transbordava. Aqui encolhem só
-   * respiro e paddings — o TEXTO fica no tamanho original, porque telão se lê
-   * a 3–5 m e diminuir fonte seria trocar um defeito por outro.
+   * DailyProgress e recebe ~210px úteis de altura. Aqui encolhem só respiro e
+   * paddings — o TEXTO fica no tamanho original, porque telão se lê a 3–5 m e
+   * diminuir fonte seria trocar um defeito por outro.
    */
   const denso = compact && fill;
 
-  /**
-   * Linhas que realmente vão para a tela. Precisa ser resolvido ANTES do JSX:
-   * o teto do telão só é aplicável sobre a lista já filtrada, senão o "+N"
-   * contaria squads que nem seriam desenhadas (as sem hora e sem capacidade).
-   */
-  const gruposVisiveis = GRUPOS_HORAS.filter(
+  // Fábricas que têm o que mostrar (hora ou capacidade) no período.
+  const fabricasVisiveis = GRUPOS_HORAS.filter(
     (home) => (squadTotals[home] || 0) !== 0 || (capByHome[home] ?? 0) !== 0,
   );
-  // "Sem squad" também ocupa uma linha; reservar o lugar dela evita estourar
-  // justo no período em que aparece gente fora do roster.
-  const tetoGrupos = Math.max(1, TV_MAX_LINHAS - (semSquadMin > 0 ? 1 : 0));
-  const gruposExibidos = denso ? gruposVisiveis.slice(0, tetoGrupos) : gruposVisiveis;
-  const gruposOcultos = gruposVisiveis.length - gruposExibidos.length;
 
   /**
-   * Lead de cada squad. `papel='lead'` + `conta_horas` distingue os dois papéis:
+   * Consolidado por grupo do organograma (Sustentação, Evolução, Híbrida, áreas
+   * de apoio). É o primeiro nível da leitura: o grupo abre nas fábricas dele, e
+   * a fábrica abre nas pessoas.
+   *
+   * Grupo é sempre SOMA das fábricas — capacidade, realizado e ausência. Nunca
+   * média de percentuais: fábrica de uma pessoa pesaria igual à de cinco.
+   */
+  const gruposResumo = GRUPOS.map((grupo) => {
+    const fabs = fabricasDoGrupo(grupo.id).map((f) => f.codigo).filter((c) => fabricasVisiveis.includes(c));
+    const soma = (rec: Record<string, number>) => fabs.reduce((s, c) => s + (rec[c] ?? 0), 0);
+    return { grupo, fabs, real: soma(squadTotals), cross: soma(crossTotals), cap: soma(capByHome), ausente: soma(ausenteByHome) };
+  }).filter((g) => g.fabs.length > 0);
+  /**
+   * UMA escala de horas para o card inteiro: a barra da fábrica usa a mesma
+   * régua da barra do grupo. Assim a fábrica nunca fica mais comprida que o
+   * grupo que a contém, e as fábricas abertas somam visualmente o grupo.
+   */
+  const maxCapGrupo = Math.max(1, ...gruposResumo.map((g) => g.cap));
+  const maxRealGrupo = Math.max(1, ...gruposResumo.map((g) => g.real));
+
+  /**
+   * Teto de linhas do telão, agora contado em GRUPOS: no modo TV o card mostra
+   * só o consolidado (não há mouse para abrir o grupo). "Sem squad" também
+   * ocupa uma linha; reservar o lugar dela evita estourar justo no período em
+   * que aparece gente fora do roster.
+   */
+  const tetoGrupos = Math.max(1, TV_MAX_LINHAS - (semSquadMin > 0 ? 1 : 0));
+  const gruposExibidos = denso ? gruposResumo.slice(0, tetoGrupos) : gruposResumo;
+  const gruposOcultos = gruposResumo.length - gruposExibidos.length;
+  /**
+   * No telão o grupo não abre, então a fábrica aparece numa linha de texto sob
+   * a barra do grupo (nome + utilização). Medido na caixa real de 524×286: 4
+   * grupos com essa linha + "Sem squad" + legenda ocupam ~228 de 244px úteis.
+   * Um quinto grupo já não cabe — aí a linha some e fica só a barra empilhada.
+   */
+  const fabricasNoTelao = denso && gruposExibidos.length <= TV_MAX_GRUPOS_COM_FABRICAS;
+
+  /**
+   * Lead de cada fábrica. `papel='lead'` + `conta_horas` distingue os dois papéis:
    * quem só gerencia (horas fora da conta da fábrica) e quem também opera.
    * A fábrica é fixa, o lead pode mudar — por isso o nome fica num (i) discreto
-   * ao lado da squad, não no lugar dela (decisão de 11/08/2026).
+   * ao lado da fábrica, não no lugar dela (decisão de 11/08/2026).
    */
   const leadPorSquad = useMemo(() => {
     const out: Record<string, { nome: string; papel: 'gestor' | 'executor' } | null> = {};
@@ -221,45 +277,34 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     return out;
   }, [rosterRows]);
 
-  // Drill-down: qual squad está aberta na lista de desenvolvedores.
+  // Drill: grupos abertos (vários ao mesmo tempo) e a fábrica aberta nas pessoas.
+  const [gruposAbertos, setGruposAbertos] = useState<Set<GrupoId>>(new Set());
   const [squadAberta, setSquadAberta] = useState<string | null>(null);
   const podeAbrir = !compact;
+  const todosAbertos = gruposResumo.length > 0 && gruposResumo.every((g) => gruposAbertos.has(g.grupo.id));
+  const alternarGrupo = (id: GrupoId) => setGruposAbertos((atual) => {
+    const novo = new Set(atual);
+    if (novo.has(id)) novo.delete(id); else novo.add(id);
+    return novo;
+  });
+  const alternarTodos = () =>
+    setGruposAbertos(todosAbertos ? new Set() : new Set(gruposResumo.map((g) => g.grupo.id)));
+
+  // Coluna do nome mais larga fora do telão: a fábrica entra recuada sob o grupo.
+  const colunas = denso ? 'grid-cols-[148px_1fr_176px]' : 'grid-cols-[184px_1fr_176px]';
 
   /**
-   * Função, não componente: declarar um componente dentro do corpo de outro cria
-   * um TIPO novo a cada render, e o Radix remonta perdendo o estado de aberto —
-   * o tooltip nunca chegava a aparecer.
-   */
-  /**
-   * O (i) da linha. Um só, para fábrica e para área.
+   * As linhas são FUNÇÕES, não componentes: declarar um componente dentro do
+   * corpo de outro cria um TIPO novo a cada render, e o Radix remonta perdendo
+   * o estado de aberto — o tooltip nunca chegava a aparecer.
    *
-   * A área já teve um selo "ÁREA" ao lado do nome; saiu em 12/08/2026 por
-   * poluir a linha. O que ele dizia virou um parágrafo dentro deste tooltip,
-   * abaixo do lead — texto igual, lugar mais discreto. Quem separa fábrica de
-   * área na leitura rápida é o divisor entre os dois blocos de barras.
+   * O (i) da linha é um só, para fábrica e para área. O que o selo "ÁREA" dizia
+   * (saiu em 12/08/2026 por poluir a linha) virou um parágrafo deste tooltip.
    */
-  /**
-   * Primeira linha de área: onde entra o divisor entre fábricas de entrega e
-   * áreas de apoio. Sem o selo por linha, é ele que faz a separação na leitura
-   * rápida (pedido de 12/08/2026).
-   *
-   * Compara com a linha ANTERIOR JÁ EXIBIDA, não com a vizinha em
-   * GRUPOS_HORAS: uma fábrica sem hora e sem capacidade não é desenhada, e
-   * olhar para ela deixava o divisor no lugar errado (ou fora da tela).
-   */
-  const abreBlocoAreas = (home: string, anterior: string | undefined) =>
-    ehArea(home) && !!anterior && !ehArea(anterior);
-
-  const divisorAreas = (
-    <div className={`flex items-center gap-2 ${denso ? 'pt-1 pb-0.5' : 'pt-2 pb-1'}`}>
-      <span className={`text-[9px] uppercase tracking-wide text-muted-foreground/70 ${denso ? 'leading-none' : ''}`}>áreas de apoio</span>
-      <span className="h-px flex-1 bg-border/60" />
-    </div>
-  );
-
   const leadInfo = (squad: string) => {
     const area = ehArea(squad);
-
+    const nome = rotuloFabricaLongo(squad);
+    const produtos = fabricaOrg(squad)?.produtos;
     const lead = leadPorSquad[squad];
     return (
       <Tooltip>
@@ -267,8 +312,8 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
           <button
             type="button"
             aria-label={[
-              lead ? `Lead ${lead.papel} da squad ${squad}: ${lead.nome}` : `${squad} sem lead definido`,
-              area ? `${squad} é área de apoio: horas sim, KPI de entrega e qualidade não` : '',
+              lead ? `Lead ${lead.papel} de ${nome}: ${lead.nome}` : `${nome} sem lead definido`,
+              area ? `${nome} conta só horas: KPI de entrega e qualidade não` : '',
             ].filter(Boolean).join('. ')}
             className="inline-flex items-center text-muted-foreground/70 hover:text-foreground transition-colors"
             onClick={(e) => e.stopPropagation()}
@@ -276,19 +321,214 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
             <Info className="h-3 w-3" />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="top" className={`text-xs ${area ? 'max-w-xs' : ''}`}>
+        <TooltipContent side="top" className="max-w-xs text-xs">
           {lead
             ? <>Lead {lead.papel === 'gestor' ? 'Gestor' : 'Executor'}: <b>{lead.nome}</b></>
             : <>Sem lead definido no roster</>}
+          {produtos && <p className="mt-1 text-muted-foreground">{produtos}</p>}
           {area && (
             <p className="mt-1.5 border-t border-border/60 pt-1.5">
-              Área de apoio: as horas aparecem nesta visão, mas <b>não são contabilizadas nos KPIs
-              de entrega e de qualidade</b> nesta versão. Se for necessário que todas as áreas
-              entrem nesses indicadores, solicitar ajuste.
+              Só horas: aparecem nesta visão, mas <b>não são contabilizadas nos KPIs
+              de entrega e de qualidade</b> nesta versão. Se for necessário que entrem
+              nesses indicadores, solicitar ajuste.
             </p>
           )}
         </TooltipContent>
       </Tooltip>
+    );
+  };
+
+  /** Pessoas da fábrica (ou de quem está fora do roster): dev › PBI › task › lançamento. */
+  const drillPessoas = (home: string) => (
+    <div className={`mt-1 mb-2 border rounded-lg overflow-hidden ${home === SEM_SQUAD ? '' : 'ml-4'}`}>
+      <AlocacaoLeadDevCard
+        fabricaRows={home === SEM_SQUAD || ehArea(home) ? [...fabricaRows, ...(foraDasFabricas ?? [])] : fabricaRows}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        squadEmbutida={home}
+        pbiByTaskId={pbiByTaskId}
+        onAnalisarColaborador={onAnalisarColaborador}
+      />
+    </div>
+  );
+
+  /** Linha de uma fábrica, recuada sob o grupo. Abre as pessoas. */
+  const linhaFabrica = (home: string) => {
+    const real = squadTotals[home] || 0;
+    const cor = fabricaColor(home, GRUPOS_HORAS.indexOf(home));
+    const cross = crossTotals[home] || 0;
+    const own = real - cross;
+    const cap = capByHome[home] ?? 0;
+    const comCap = temCapacidade && cap > 0;
+    const aberta = squadAberta === home;
+    const ownPct = real > 0 ? (own / real) * 100 : 0;
+    const crossPct = real > 0 ? (cross / real) * 100 : 0;
+    const delta = real - cap;
+    return (
+      <div key={home}>
+        <div
+          className={`grid ${colunas} items-center gap-3 rounded pl-4 ${podeAbrir ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+          onClick={podeAbrir ? () => setSquadAberta(aberta ? null : home) : undefined}
+          title={podeAbrir ? (aberta ? 'Recolher as pessoas' : 'Ver as pessoas da fábrica') : undefined}
+        >
+          <span className="flex min-w-0 items-center gap-1 text-sm font-medium">
+            {podeAbrir && <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${aberta ? 'rotate-90' : ''}`} />}
+            <span className="inline-block w-2.5 h-2.5 shrink-0 rounded-sm" style={{ background: cor }} />
+            <span className="truncate" title={rotuloFabricaLongo(home)}>{rotuloFabrica(home)}</span>
+            {leadInfo(home)}
+          </span>
+          {comCap ? (
+            <div
+              className="relative"
+              title={[
+                `capacidade ${horasHM(cap)}`,
+                `realizado ${horasHM(real)}`,
+                (ausenteByHome[home] ?? 0) > 0
+                  ? `já descontado ${horasHM(ausenteByHome[home])} de ausência no período`
+                  : '',
+              ].filter(Boolean).join(' · ')}
+            >
+              <div className="relative h-4 rounded overflow-hidden bg-[hsl(var(--muted))]" style={{ width: `${(cap / maxCapGrupo) * 100}%` }}>
+                {/* ociosa (hachura) */}
+                <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 5px, hsl(var(--border)) 5px, hsl(var(--border)) 6px)' }} />
+                {/* realizado: própria + cruzado */}
+                <div className="absolute inset-y-0 left-0 flex" style={{ width: `${Math.min(real / cap, 1) * 100}%` }}>
+                  <div style={{ width: `${ownPct}%`, background: cor }} />
+                  <div style={{ width: `${crossPct}%`, background: COR_CRUZADO }} title={`uso cruzado ${horasHM(cross)}`} />
+                </div>
+                {/* traço de 100% da capacidade (borda direita do track) */}
+                <div className="absolute inset-y-[-2px] right-0 w-0.5 bg-foreground/60" />
+              </div>
+            </div>
+          ) : (
+            // Sem período/capacidade: só realizado, própria vs cruzado.
+            <div className="h-4 w-full overflow-hidden rounded bg-muted">
+              <div className="flex h-full" style={{ width: `${(real / maxRealGrupo) * 100}%` }}>
+                <div style={{ width: `${ownPct}%`, background: cor }} />
+                <div style={{ width: `${crossPct}%`, background: COR_CRUZADO }} />
+              </div>
+            </div>
+          )}
+          <span className="text-xs text-right tabular-nums">
+            {comCap ? (
+              <>
+                <span className="font-mono font-semibold">{Math.round((real / cap) * 100)}%</span>
+                <span className="text-muted-foreground"> · {horasHM(real)}/{horasHM(cap)} </span>
+                <span className={delta >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-destructive font-medium'}>{horasHMComSinal(delta)}</span>
+              </>
+            ) : (
+              <>
+                <span className="font-mono font-semibold">{horasHM(real)}</span>
+                {cross > 0 && <span className="text-amber-600 dark:text-amber-400"> · {Math.round((cross / real) * 100)}% cruzado</span>}
+              </>
+            )}
+          </span>
+        </div>
+        {aberta && drillPessoas(home)}
+      </div>
+    );
+  };
+
+  /**
+   * Linha consolidada do grupo. A barra é empilhada: cada trecho é uma fábrica,
+   * no tom dela — dá para ver de onde vem o realizado sem abrir o grupo, que é
+   * o que o telão precisa (lá o grupo não abre).
+   */
+  const linhaGrupo = (g: (typeof gruposResumo)[number]) => {
+    const { grupo, fabs, real, cap, cross } = g;
+    const aberto = podeAbrir && gruposAbertos.has(grupo.id);
+    const comCap = temCapacidade && cap > 0;
+    const delta = real - cap;
+    const trechos = fabs
+      .map((c) => ({ c, min: squadTotals[c] || 0 }))
+      .filter((t) => t.min > 0);
+    const pilha = trechos.map((t, i) => (
+      <div
+        key={t.c}
+        className={i > 0 ? 'border-l border-background/80' : undefined}
+        style={{ width: `${(t.min / real) * 100}%`, background: fabricaColor(t.c, GRUPOS_HORAS.indexOf(t.c)) }}
+        title={`${rotuloFabrica(t.c)}: ${horasHM(t.min)}`}
+      />
+    ));
+    return (
+      <div key={grupo.id}>
+        <div
+          className={`grid ${colunas} items-center gap-3 rounded ${podeAbrir ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+          onClick={podeAbrir ? () => alternarGrupo(grupo.id) : undefined}
+          title={podeAbrir ? `${grupo.descricao} ${aberto ? 'Clique para recolher.' : 'Clique para abrir as fábricas.'}` : undefined}
+          aria-expanded={podeAbrir ? aberto : undefined}
+        >
+          <span className="flex min-w-0 items-center gap-1 text-sm font-semibold">
+            {podeAbrir && <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${aberto ? 'rotate-90' : ''}`} />}
+            <span className="inline-block w-2.5 h-2.5 shrink-0 rounded-sm" style={{ background: grupo.cor }} />
+            <span className="truncate">{grupo.rotulo}</span>
+            {!denso && (
+              <span className="shrink-0 text-[10px] font-normal text-muted-foreground" title={fabs.map(rotuloFabrica).join(', ')}>
+                {fabs.length} {grupo.id === 'APOIO'
+                  ? (fabs.length === 1 ? 'área' : 'áreas')
+                  : (fabs.length === 1 ? 'fábrica' : 'fábricas')}
+              </span>
+            )}
+          </span>
+          {comCap ? (
+            <div
+              className="relative"
+              title={[
+                `capacidade ${horasHM(cap)}`,
+                `realizado ${horasHM(real)}`,
+                cross > 0 ? `uso cruzado ${horasHM(cross)}` : '',
+                g.ausente > 0 ? `já descontado ${horasHM(g.ausente)} de ausência no período` : '',
+              ].filter(Boolean).join(' · ')}
+            >
+              <div className="relative h-5 rounded overflow-hidden bg-[hsl(var(--muted))]" style={{ width: `${(cap / maxCapGrupo) * 100}%` }}>
+                <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 5px, hsl(var(--border)) 5px, hsl(var(--border)) 6px)' }} />
+                <div className="absolute inset-y-0 left-0 flex" style={{ width: `${Math.min(real / cap, 1) * 100}%` }}>{pilha}</div>
+                <div className="absolute inset-y-[-2px] right-0 w-0.5 bg-foreground/60" />
+              </div>
+            </div>
+          ) : (
+            <div className="h-5 w-full overflow-hidden rounded bg-muted">
+              <div className="flex h-full" style={{ width: `${(real / maxRealGrupo) * 100}%` }}>{pilha}</div>
+            </div>
+          )}
+          <span className="text-xs text-right tabular-nums">
+            {comCap ? (
+              <>
+                <span className="font-mono font-semibold">{Math.round((real / cap) * 100)}%</span>
+                <span className="text-muted-foreground"> · {horasHM(real)}/{horasHM(cap)} </span>
+                <span className={delta >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-destructive font-medium'}>{horasHMComSinal(delta)}</span>
+              </>
+            ) : (
+              <>
+                <span className="font-mono font-semibold">{horasHM(real)}</span>
+                {cross > 0 && <span className="text-amber-600 dark:text-amber-400"> · {Math.round((cross / real) * 100)}% cruzado</span>}
+              </>
+            )}
+          </span>
+        </div>
+        {fabricasNoTelao && (
+          <p className="mt-0.5 flex gap-x-2.5 overflow-hidden whitespace-nowrap pl-[160px] text-[11px] leading-4 text-muted-foreground">
+            {fabs.map((c) => {
+              const capF = capByHome[c] ?? 0;
+              const realF = squadTotals[c] || 0;
+              return (
+                <span key={c} className="inline-flex shrink-0 items-center gap-1">
+                  <span className="inline-block h-1.5 w-1.5 rounded-sm" style={{ background: fabricaColor(c, GRUPOS_HORAS.indexOf(c)) }} />
+                  {rotuloFabrica(c)}
+                  <span className="font-mono font-semibold text-foreground">
+                    {temCapacidade && capF > 0 ? `${Math.round((realF / capF) * 100)}%` : horasHM(realF)}
+                  </span>
+                </span>
+              );
+            })}
+          </p>
+        )}
+        {aberto && (
+          <div className="mt-1.5 mb-1 space-y-1.5 border-l-2 pl-0" style={{ borderColor: grupo.cor }}>
+            {fabs.map(linhaFabrica)}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -297,7 +537,16 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
       <CardHeader className={denso ? 'px-4 pt-2 pb-1' : 'pb-2'}>
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <ArrowLeftRight className="h-4 w-4 text-primary" />
-          Capacidade × Realizado por Squad
+          Capacidade × Realizado por Fábrica
+          {podeAbrir && hasData && gruposResumo.length > 0 && (
+            <button
+              type="button"
+              className="ml-auto text-[11px] font-normal text-muted-foreground hover:text-foreground transition-colors"
+              onClick={alternarTodos}
+            >
+              {todosAbertos ? 'Recolher grupos' : 'Abrir todas as fábricas'}
+            </button>
+          )}
         </CardTitle>
       </CardHeader>
       {/*
@@ -315,197 +564,75 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
         }
       >
         {rosterLoading ? (
-          <p className="text-xs text-muted-foreground text-center py-8">Carregando roster das squads…</p>
+          <p className="text-xs text-muted-foreground text-center py-8">Carregando roster das fábricas…</p>
         ) : rosterRows.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-8">
-            Roster das squads não carregado (tabela <code>fabrica_squad_membership</code> vazia).
+            Roster das fábricas não carregado (tabela <code>fabrica_squad_membership</code> vazia).
           </p>
         ) : !hasData ? (
           <p className="text-xs text-muted-foreground text-center py-8">
-            Sem apontamentos no período para cruzar com o roster das squads.
+            Sem apontamentos no período para cruzar com o roster das fábricas.
           </p>
         ) : (
           <>
-            <div className={denso ? 'space-y-1' : 'space-y-2.5'}>
-              {gruposExibidos.map((home, idx) => {
-                const real = squadTotals[home] || 0;
-                // Cor é posicional em GRUPOS_HORAS: usar o índice da lista
-                // filtrada trocaria a cor da squad quando alguma some.
-                const hi = GRUPOS_HORAS.indexOf(home);
-                const anterior = gruposExibidos[idx - 1];
-                const cor = fabricaColor(home, hi);
-                const cross = crossTotals[home] || 0;
-                const own = real - cross;
-                const cap = capByHome[home] ?? 0;
-
-                if (temCapacidade && cap > 0) {
-                  const trackPct = (cap / maxCap) * 100;         // largura ∝ capacidade
-                  const fillPct = Math.min(real / cap, 1) * 100;  // realizado dentro da capacidade
-                  const ownPct = real > 0 ? (own / real) * 100 : 0;
-                  const crossPct = real > 0 ? (cross / real) * 100 : 0;
-                  const util = Math.round((real / cap) * 100);
-                  const delta = real - cap;
-                  const aberta = squadAberta === home;
-                  return (
-                    <div key={home}>
-                    {abreBlocoAreas(home, anterior) && divisorAreas}
-                    <div
-                      className={`grid grid-cols-[148px_1fr_176px] items-center gap-3 rounded ${podeAbrir ? 'cursor-pointer hover:bg-muted/40' : ''}`}
-                      onClick={podeAbrir ? () => setSquadAberta(aberta ? null : home) : undefined}
-                      title={podeAbrir ? (aberta ? 'Recolher os desenvolvedores' : 'Ver os desenvolvedores da squad') : undefined}
-                    >
-                      <span className="flex items-center gap-1 text-sm font-semibold">
-                        {podeAbrir && <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${aberta ? 'rotate-90' : ''}`} />}
-                        <span className="inline-block w-2.5 h-2.5 shrink-0 rounded-sm" style={{ background: cor }} />
-                        <span className="truncate" title={home}>{home}</span>
-                        {leadInfo(home)}
-                      </span>
-                      <div
-                        className="relative"
-                        title={[
-                          `capacidade ${horasHM(cap)}`,
-                          `realizado ${horasHM(real)}`,
-                          (ausenteByHome[home] ?? 0) > 0
-                            ? `já descontado ${horasHM(ausenteByHome[home])} de ausência no período`
-                            : '',
-                        ].filter(Boolean).join(' · ')}
-                      >
-                        <div className="relative h-5 rounded overflow-hidden bg-[hsl(var(--muted))]" style={{ width: `${trackPct}%` }}>
-                          {/* ociosa (hachura) */}
-                          <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 5px, hsl(var(--border)) 5px, hsl(var(--border)) 6px)' }} />
-                          {/* realizado: própria + cruzado */}
-                          <div className="absolute inset-y-0 left-0 flex" style={{ width: `${fillPct}%` }}>
-                            <div style={{ width: `${ownPct}%`, background: cor }} />
-                            <div style={{ width: `${crossPct}%`, background: COR_CRUZADO }} title={`uso cruzado ${horasHM(cross)}`} />
-                          </div>
-                          {/* traço de 100% da capacidade (borda direita do track) */}
-                          <div className="absolute inset-y-[-2px] right-0 w-0.5 bg-foreground/60" />
-                        </div>
-                      </div>
-                      <span className="text-xs text-right tabular-nums">
-                        <span className="font-mono font-semibold">{util}%</span>
-                        <span className="text-muted-foreground"> · {horasHM(real)}/{horasHM(cap)} </span>
-                        <span className={delta >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-destructive font-medium'}>{horasHMComSinal(delta)}</span>
-                      </span>
-                    </div>
-                    {aberta && (
-                      <div className="mt-1 mb-2 border rounded-lg overflow-hidden">
-                        <AlocacaoLeadDevCard
-                          fabricaRows={ehArea(home) ? [...fabricaRows, ...(foraDasFabricas ?? [])] : fabricaRows}
-                          dateFrom={dateFrom}
-                          dateTo={dateTo}
-                          squadEmbutida={home}
-                          pbiByTaskId={pbiByTaskId}
-                          onAnalisarColaborador={onAnalisarColaborador}
-                        />
-                      </div>
-                    )}
-                    </div>
-                  );
-                }
-
-                // Fallback (sem período/capacidade): só realizado, própria vs cruzado.
-                const crossPctReal = real > 0 ? Math.round((cross / real) * 100) : 0;
-                const abertaSemCap = squadAberta === home;
-                return (
-                  <div key={home}>
-                  {abreBlocoAreas(home, anterior) && divisorAreas}
-                  <div
-                    className={`grid grid-cols-[148px_1fr_150px] items-center gap-3 rounded ${podeAbrir ? 'cursor-pointer hover:bg-muted/40' : ''}`}
-                    onClick={podeAbrir ? () => setSquadAberta(abertaSemCap ? null : home) : undefined}
-                  >
-                    <span className="flex items-center gap-1 text-sm font-semibold">
-                      {podeAbrir && <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${abertaSemCap ? 'rotate-90' : ''}`} />}
-                      <span className="inline-block w-2.5 h-2.5 shrink-0 rounded-sm" style={{ background: cor }} />
-                        <span className="truncate" title={home}>{home}</span>
-                      {leadInfo(home)}
-                    </span>
-                    <div className="flex h-5 w-full overflow-hidden rounded bg-muted">
-                      <div style={{ width: `${real > 0 ? (own / real) * 100 : 0}%`, background: cor }} />
-                      <div style={{ width: `${real > 0 ? (cross / real) * 100 : 0}%`, background: COR_CRUZADO }} />
-                    </div>
-                    <span className="text-xs text-right tabular-nums">
-                      <span className="font-mono font-semibold">{horasHM(real)}</span>
-                      {cross > 0 && <span className="text-amber-600 dark:text-amber-400"> · {crossPctReal}% cruzado</span>}
-                    </span>
-                  </div>
-                  {abertaSemCap && (
-                    <div className="mt-1 mb-2 border rounded-lg overflow-hidden">
-                      <AlocacaoLeadDevCard
-                        fabricaRows={ehArea(home) ? [...fabricaRows, ...(foraDasFabricas ?? [])] : fabricaRows}
-                        dateFrom={dateFrom}
-                        dateTo={dateTo}
-                        squadEmbutida={home}
-                        pbiByTaskId={pbiByTaskId}
-                        onAnalisarColaborador={onAnalisarColaborador}
-                      />
-                    </div>
-                  )}
-                  </div>
-                );
-              })}
+            <div className={denso ? 'space-y-1.5' : 'space-y-2.5'}>
+              {gruposExibidos.map(linhaGrupo)}
 
               {/*
-                "Sem squad" também abre. Quem não está no roster (Igor, Ana,
-                Leonardo, Mauricio, Rodolfo…) só aparecia como linha da matriz:
-                filtrar uma dessas pessoas no topo zerava as 4 squads e o card
-                dizia "sem apontamentos", sem PBI nem task (reportado em 11/08/2026).
+                "Sem squad" também abre. Quem não está no roster só aparecia como
+                linha da matriz: filtrar uma dessas pessoas no topo zerava as
+                fábricas e o card dizia "sem apontamentos", sem PBI nem task
+                (reportado em 11/08/2026).
               */}
               {semSquadMin > 0 && (() => {
                 const aberta = squadAberta === SEM_SQUAD;
                 return (
                   <div key={SEM_SQUAD}>
                     <div
-                      className={`grid grid-cols-[148px_1fr_176px] items-center gap-3 rounded ${podeAbrir ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                      className={`grid ${colunas} items-center gap-3 rounded ${podeAbrir ? 'cursor-pointer hover:bg-muted/40' : ''}`}
                       onClick={podeAbrir ? () => setSquadAberta(aberta ? null : SEM_SQUAD) : undefined}
-                      title={podeAbrir ? 'Ver quem apontou fora do roster das squads' : undefined}
+                      title={podeAbrir ? 'Ver quem apontou fora do roster das fábricas' : undefined}
                     >
                       <span className="flex items-center gap-1 text-sm font-semibold text-muted-foreground">
                         {podeAbrir && <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform ${aberta ? 'rotate-90' : ''}`} />}
                         <span className="inline-block w-2.5 h-2.5 shrink-0 rounded-sm bg-muted-foreground/40" />
                         <span className="truncate" title={SEM_SQUAD}>{SEM_SQUAD}</span>
                       </span>
-                      <div className="flex h-5 w-full overflow-hidden rounded bg-muted">
-                        <div style={{ width: '100%', background: 'hsl(var(--muted-foreground) / 0.35)' }} />
+                      {/* Mesma régua de horas dos grupos: cheia, a barra parecia maior que uma fábrica inteira. */}
+                      <div className="h-5 w-full overflow-hidden rounded bg-muted">
+                        <div className="h-full" style={{ width: `${Math.min(semSquadMin / (temCapacidade ? maxCapGrupo : maxRealGrupo), 1) * 100}%`, minWidth: 4, background: 'hsl(var(--muted-foreground) / 0.35)' }} />
                       </div>
                       <span className="text-xs text-right tabular-nums">
                         <span className="font-mono font-semibold">{horasHM(semSquadMin)}</span>
                         <span className="text-muted-foreground"> · fora do roster</span>
                       </span>
                     </div>
-                    {aberta && (
-                      <div className="mt-1 mb-2 border rounded-lg overflow-hidden">
-                        <AlocacaoLeadDevCard
-                          fabricaRows={[...fabricaRows, ...(foraDasFabricas ?? [])]}
-                          dateFrom={dateFrom}
-                          dateTo={dateTo}
-                          squadEmbutida={SEM_SQUAD}
-                          pbiByTaskId={pbiByTaskId}
-                          onAnalisarColaborador={onAnalisarColaborador}
-                        />
-                      </div>
-                    )}
+                    {aberta && drillPessoas(SEM_SQUAD)}
                   </div>
                 );
               })()}
             </div>
 
             {/*
-              Telão não tem scroll: se alguma squad não coube, ela é DECLARADA
+              Telão não tem scroll: se algum grupo não coube, ele é DECLARADO
               aqui. Some em silêncio = quem olha a TV lê o card como completo.
             */}
             {gruposOcultos > 0 && (
               <p className="text-[10px] text-muted-foreground/80 pt-1">
-                +{gruposOcultos} {gruposOcultos === 1 ? 'squad não exibida' : 'squads não exibidas'} — sem espaço no telão
+                +{gruposOcultos} {gruposOcultos === 1 ? 'grupo não exibido' : 'grupos não exibidos'} — sem espaço no telão
               </p>
             )}
 
-            {/* Matriz origem → destino */}
+            {/*
+              Matriz origem → destino. A origem é a fábrica de casa da pessoa
+              (organograma); o destino é o Épico do item no DevOps, que ainda
+              segue o formato anterior. Por isso as colunas não repetem as linhas.
+            */}
             <div className={`mt-4 overflow-x-auto ${compact ? 'hidden' : ''}`}>
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="text-muted-foreground">
-                    <th className="text-left font-medium py-1.5 pr-2">origem ↓ / destino →</th>
+                    <th className="text-left font-medium py-1.5 pr-2">fábrica ↓ / Épico do item →</th>
                     {destinos.map((d) => (
                       <th key={d} className="text-center font-medium px-2" style={{ color: d === OUTRAS ? undefined : fabricaColor(d, destinos.indexOf(d)) }}>{d}</th>
                     ))}
@@ -513,16 +640,26 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                   </tr>
                 </thead>
                 <tbody>
-                  {[...GRUPOS_HORAS, ...(semSquadMin > 0 ? [SEM_SQUAD] : [])].map((home, hi, lista) => {
+                  {[...GRUPOS_HORAS, ...(semSquadMin > 0 ? [SEM_SQUAD] : [])]
+                    .filter((home) => Object.values(matrix[home] ?? {}).some((v) => v > 0))
+                    .map((home, hi, lista) => {
                     const byDest = matrix[home] ?? {};
                     const total = Object.values(byDest).reduce((s, v) => s + v, 0);
-                    if (total === 0) return null;
+                    // Traço mais forte onde muda o grupo: separa os blocos sem repetir o nome dele.
+                    const mudouGrupo = hi > 0 && grupoDaFabrica(home)?.id !== grupoDaFabrica(lista[hi - 1])?.id;
+                    const epico = epicoDaFabrica(home);
                     return (
-                      <tr key={home} className={abreBlocoAreas(home, lista[hi - 1]) ? 'border-t-2 border-border' : 'border-t border-border/60'}>
-                        <th className="text-left font-semibold py-1.5 pr-2">{home}</th>
+                      <tr key={home} className={mudouGrupo ? 'border-t-2 border-border' : 'border-t border-border/60'}>
+                        <th className="text-left font-semibold py-1.5 pr-2">
+                          <span className="inline-flex items-center gap-1.5">
+                            {home !== SEM_SQUAD && <span className="inline-block w-2 h-2 shrink-0 rounded-sm" style={{ background: fabricaColor(home, hi) }} />}
+                            {rotuloFabricaLongo(home)}
+                          </span>
+                        </th>
                         {destinos.map((dest) => {
                           const min = byDest[dest] ?? 0;
-                          const isCross = home !== dest && min > 0 && home !== SEM_SQUAD && !ehArea(home);
+                          // Só é cruzado onde a fábrica tem Épico próprio para comparar.
+                          const isCross = !!epico && epico !== dest && min > 0;
                           return (
                             <td
                               key={dest}
@@ -559,16 +696,16 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs text-xs">
-                  Capacidade = Σ h/dia dos membros × dias úteis do período; lead só gestor não conta.
-                  A barra preenchida é o realizado.
-                  {podeAbrir && ' No dev, o chip verde é a fábrica de casa e o âmbar é o uso cruzado — os dois somados dão o total da pessoa.'}
-                  {' '}Abaixo do divisor ficam as áreas de apoio: elas mostram horas, mas não entram
-                  nos KPIs de entrega e de qualidade nesta versão.
-                  {' '}Na matriz, a diagonal só existe para fábrica: como o destino sai do Épico do item
-                  e não há épico de área, a linha de uma área mostra EM QUAL fábrica ela trabalhou, e
-                  isso não é uso cruzado. O que sobra cai em "Outras" (o trabalho próprio da área, como
-                  o épico de Infra).
-                  {podeAbrir && ' Clique na squad para abrir os desenvolvedores, no desenvolvedor para ver os PBIs, no PBI para ver as tasks e na task para ver cada lançamento.'}
+                  Capacidade = Σ h/dia dos membros × alocação × dias úteis do período; lead só gestor
+                  não conta. A barra preenchida é o realizado; no grupo, cada trecho é uma fábrica.
+                  {' '}Quem divide o tempo entre duas fábricas entra com a fatia da capacidade e das
+                  horas em cada uma, pelo percentual de alocação do cadastro.
+                  {' '}Uso cruzado só é medido onde a fábrica tem Épico próprio no DevOps (hoje STAGING
+                  e APP): os Épicos ainda seguem o organograma anterior, e por isso as colunas da
+                  matriz são os Épicos, não as fábricas.
+                  {' '}Áreas de apoio e Infra mostram horas, mas não entram nos KPIs de entrega e de
+                  qualidade nesta versão.
+                  {podeAbrir && ' Clique no grupo para abrir as fábricas, na fábrica para ver as pessoas, na pessoa para ver os PBIs, no PBI para ver as tasks e na task para ver cada lançamento.'}
                   {semSquadMin > 0 && ` "${SEM_SQUAD}" = ${horasHM(semSquadMin)} de quem não está no roster.`}
                 </TooltipContent>
               </Tooltip>

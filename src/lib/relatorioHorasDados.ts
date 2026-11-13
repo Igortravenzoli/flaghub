@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { buscarHorasNegocio, type HoraNegocioRow } from '@/hooks/useHorasNegocio';
 import type { Ausencia } from '@/lib/capacidade';
 import { fetchAllRows } from '@/lib/fetchAllRows';
+import { carregarRoster } from '@/hooks/useFabricaRoster';
 import type {
   CodigoPeriodo, CommitRelatorio, PrRelatorio, IdentidadeColaborador,
 } from '@/lib/relatorioHorasCodigo';
@@ -30,7 +31,9 @@ async function carregarApoio(dateFrom: string, dateTo: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = supabase as any;
   const [roster, ausencias, snapshots] = await Promise.all([
-    sb.from('fabrica_squad_membership').select('colaborador, squad, papel').eq('ativo', true),
+    // Mesma leitura da tela (com a alocação por fábrica), para o PDF e o painel
+    // nunca discordarem sobre quem está onde.
+    carregarRoster().then((data) => ({ data, error: null }), (error) => ({ data: null, error })),
     sb.from('v_colaborador_ausencias').select('colaborador, tipo, data_inicio, data_fim')
       .lte('data_inicio', dateTo).gte('data_fim', dateFrom),
     sb.from('sprint_indicator_snapshots').select(COLUNAS_SNAPSHOT)
