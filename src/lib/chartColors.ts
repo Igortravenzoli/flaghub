@@ -1,3 +1,5 @@
+import { FABRICAS } from '@/lib/fabricaOrganograma';
+
 export const CHART_COLORS = [
   'hsl(var(--primary))',
   'hsl(var(--info))',
@@ -54,8 +56,15 @@ export function getChartColor(index: number): string {
   return CHART_COLORS[index % CHART_COLORS.length];
 }
 
-/** Cor fixa por fábrica — identidade consistente entre os gráficos de Fábrica. */
+/**
+ * Cor fixa por fábrica — identidade consistente entre os gráficos de Fábrica.
+ *
+ * As quatro squads por Épico mantêm a cor de sempre (ranking, qualidade e
+ * progresso diário ainda leem o Épico). As fábricas do organograma herdam um
+ * tom da cor do grupo, de `FABRICAS` — STAGING e APP coincidem de propósito.
+ */
 export const FABRICA_COLORS: Record<string, string> = {
+  ...Object.fromEntries(FABRICAS.map((f) => [f.codigo, f.cor])),
   K8: 'hsl(43,74%,49%)',
   FLEXX: 'hsl(265,52%,58%)',
   STAGING: 'hsl(205,55%,47%)',

@@ -6,7 +6,7 @@ import { extractSprintCodeFromPath } from '@/lib/sprintCalendar';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { normalizeProduct, extractProducts } from '@/lib/products';
 import { ehEstadoEntregue } from '@/lib/fabricaEstados';
-import { SQUADS } from '@/lib/fabricaRoster';
+import { ehFabricaDeEntrega } from '@/lib/fabricaOrganograma';
 
 const normalizeFabricaState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 
@@ -894,7 +894,7 @@ export function useFabricaKpis(
   const rosterNomes = (() => {
     const set = new Set<string>();
     for (const r of rosterQuery.data || []) {
-      if (!SQUADS.includes(r.squad)) continue;
+      if (!ehFabricaDeEntrega(r.squad)) continue;
       const n = normalizeCollaboratorName(r.colaborador);
       if (n) set.add(n);
     }

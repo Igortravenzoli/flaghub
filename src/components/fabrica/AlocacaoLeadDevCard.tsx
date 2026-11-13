@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { ehArea, GRUPOS_HORAS, normName, SEM_SQUAD } from '@/lib/fabricaRoster';
+import { alocacaoPct, buildAlocacaoMap, casasDe, GRUPOS_HORAS, normName, SEM_SQUAD } from '@/lib/fabricaRoster';
+import { epicoDaFabrica, rotuloFabrica, rotuloFabricaLongo } from '@/lib/fabricaOrganograma';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { useColaboradorAusencias } from '@/hooks/useColaboradorAusencias';
 import { capacidadeMinutos, diasUteisAusentes, indexarAusencias } from '@/lib/capacidade';
@@ -232,6 +233,8 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
         crossDests: [...v.byDest].sort((a, b) => b[1] - a[1]) as [string, number][],
         cap: 0,
         diasFora: 0,
+        pct: 100,
+        outrasCasas: [] as string[],
       }))
       .sort((a, b) => b.total - a.total);
 
@@ -244,31 +247,41 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
       cap: 0,
     };
 
+    // Rateio de quem divide o tempo entre duas fábricas (mesma regra do card pai).
+    const alocMap = buildAlocacaoMap(roster.filter((r) => r.conta_horas !== false));
+
     return [...GRUPOS_HORAS.map((squad) => {
       const membros = roster.filter((r) => r.squad === squad);
       const lead = membros.find((r) => r.papel === 'lead') ?? null;
       /**
-       * Área não é destino de apontamento, então nada do que ela faz é uso
-       * cruzado: `own` é o total e os destinos viram chip informativo, igual ao
-       * balde de quem está fora do roster.
+       * Uso cruzado só existe onde a fábrica tem Épico de squad no DevOps para
+       * servir de "casa". Sem ele (áreas e as fábricas novas do organograma),
+       * `own` é o total e os destinos viram chip informativo, igual ao balde de
+       * quem está fora do roster.
        */
-      const area = ehArea(squad);
+      const epico = epicoDaFabrica(squad);
       // Lead só gestor (conta_horas=false) fica só no cabeçalho; lead executor conta como dev.
       const devs = membros
         .filter((r) => r.conta_horas !== false)
         .map((r) => {
           const stat = byCollab.get(normName(r.colaborador));
-          const total = stat?.total ?? 0;
-          const own = area ? total : (stat?.byDest.get(squad) ?? 0);
+          const casas = casasDe(alocMap, r.colaborador);
+          const peso = casas.find((c) => c.squad === squad)?.peso ?? 1;
+          const total = (stat?.total ?? 0) * peso;
+          const own = epico ? (stat?.byDest.get(epico) ?? 0) * peso : total;
           const crossDests = [...(stat?.byDest ?? new Map<string, number>())]
-            .filter(([d]) => area || d !== squad)
+            .filter(([d]) => !epico || d !== epico)
+            .map(([d, min]) => [d, min * peso] as [string, number])
             .sort((a, b) => b[1] - a[1]);
           // Capacidade do dev já sem os dias de ausência dele no período.
           const diasFora = businessDays && dateFrom && dateTo
             ? diasUteisAusentes(ausenciasPorPessoa.get(r.colaborador) ?? [], dateFrom, dateTo)
             : 0;
-          const cap = businessDays ? capacidadeMinutos(r.capacidade_h_dia, businessDays, diasFora) : 0;
-          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests: crossDests as [string, number][], cap, diasFora };
+          const pct = alocacaoPct(r);
+          const hDia = (Number(r.capacidade_h_dia) || 0) * pct / 100;
+          const cap = businessDays ? capacidadeMinutos(hDia, businessDays, diasFora) : 0;
+          const outrasCasas = casas.filter((c) => c.squad !== squad).map((c) => rotuloFabricaLongo(c.squad));
+          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests, cap, diasFora, pct, outrasCasas };
         })
         .sort((a, b) => b.total - a.total);
       const total = devs.reduce((s, d) => s + d.total, 0);
@@ -515,8 +528,8 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
   const renderDevs = (s: (typeof squads)[number], cor: string) => (
     <div className="divide-y divide-border/60">
       {s.devs.map((d) => {
-        // Sem fábrica de casa: quem está fora do roster e as áreas de horas.
-        const foraDoRoster = s.squad === SEM_SQUAD || ehArea(s.squad);
+        // Sem "casa" no DevOps: fora do roster, áreas e fábricas ainda sem Épico próprio.
+        const foraDoRoster = s.squad === SEM_SQUAD || !epicoDaFabrica(s.squad);
         const ownPct = d.total > 0 ? (d.own / d.total) * 100 : 0;
         const crossPctDev = d.total > 0 ? (d.cross / d.total) * 100 : 0;
         const showCap = temCapacidade && d.cap > 0;
@@ -553,6 +566,23 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
                   <span className="text-[10px] px-1 rounded bg-muted text-muted-foreground">lead</span>
                 )}
                 {/*
+                  Alocação parcial. Sem a marca, as horas e a capacidade da
+                  linha (já rateadas) não bateriam com o total que aparece ao
+                  abrir a pessoa, que lista TODOS os lançamentos dela.
+                */}
+                {(d.pct < 100 || d.outrasCasas.length > 0) && (
+                  <span
+                    className="text-[10px] px-1.5 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-medium"
+                    title={[
+                      `${Math.round(d.pct)}% da jornada nesta fábrica`,
+                      d.outrasCasas.length > 0 ? `o restante em ${d.outrasCasas.join(' e ')}` : '',
+                      'Capacidade e horas desta linha já estão na proporção; ao abrir, os lançamentos são todos os da pessoa.',
+                    ].filter(Boolean).join('. ')}
+                  >
+                    {Math.round(d.pct)}%
+                  </span>
+                )}
+                {/*
                   Sem esta marca, a capacidade menor do dev viraria mistério: o
                   gestor veria 21:00 onde esperava 70:00 e não teria como saber
                   que a diferença é férias.
@@ -576,9 +606,9 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
                 {!foraDoRoster && d.own > 0 && (
                   <span
                     className="text-[10px] px-1.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium"
-                    title={`Fábrica de casa: ${horasHM(d.own)} em ${s.squad}`}
+                    title={`Fábrica de casa: ${horasHM(d.own)} em ${rotuloFabricaLongo(s.squad)}`}
                   >
-                    {horasHM(d.own)} → {s.squad}
+                    {horasHM(d.own)} → {rotuloFabrica(s.squad)}
                   </span>
                 )}
                 {d.crossDests.map(([dest, min]) => (
