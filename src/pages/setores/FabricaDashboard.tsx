@@ -51,9 +51,14 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 import type { Integration } from '@/components/setores/SectorIntegrations';
-import { extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
+import { businessDaysBetween, extractSprintCodeFromPath, formatSprintIntervalLabel, getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
 import { CHART_COLORS, STATE_COLORS, TYPE_COLORS, TYPE_LABELS } from '@/lib/chartColors';
 import { horasHM } from '@/lib/formatHoras';
+import { useFabricaRoster } from '@/hooks/useFabricaRoster';
+import { useColaboradorAusencias } from '@/hooks/useColaboradorAusencias';
+import { capacidadeMinutos, diasUteisAusentes, indexarAusencias } from '@/lib/capacidade';
+import { alocacaoPct, horasDiaNaCasa, normName } from '@/lib/fabricaRoster';
+import { rotuloFabricaLongo } from '@/lib/fabricaOrganograma';
 import { classificaDemanda, ehAviao, itemEhNaoPriorizado, rotuloCategoria } from '@/lib/fabricaClassificacao';
 
 type FabKpiFilter = 'all' | 'in_progress' | 'todo' | 'done' | 'entregue' | 'aguardando_teste' | 'aguardando_deploy' | 'em_teste' | 'em_desenvolvimento' | 'new' | 'aviao' | 'sem_task';
@@ -368,6 +373,13 @@ function SprintStatusCard({ total, inProgress, toDo, done, entregue, semTask, se
     </Card>
   );
 }
+
+/** Linha do gráfico Horas por Colaborador (horas decimais, sem arredondar). */
+type ColabBarra = {
+  name: string; vdesk: number; devops: number; consolidado: number;
+  capacidade?: number; diasFora?: number;
+  casas?: Array<{ rotulo: string; pct: number; hDia: number }>;
+};
 
 export default function FabricaDashboard() {
   const [sprintSelection, setSprintSelection] = useState<string[]>(['__pending__']);
@@ -724,6 +736,33 @@ export default function FabricaDashboard() {
    */
   const [colabEscopo, setColabEscopo] = useState<'fila' | 'periodo'>('fila');
 
+  /**
+   * Capacidade de cada pessoa no período: Σ das casas (h/dia × alocação) ×
+   * dias úteis, já sem a ausência. Jornada cheia de 7 h a 100% = 7 h/dia; quem
+   * está 50% em duas fábricas soma 3,5 h + 3,5 h, e cada fábrica aparece
+   * separada no tooltip. Lead só gestor (conta_horas = false) não tem régua.
+   */
+  const { data: rosterCap = [] } = useFabricaRoster();
+  const { data: ausenciasCap = [] } = useColaboradorAusencias();
+  const capacidadePorPessoa = useMemo(() => {
+    const out = new Map<string, { minutos: number; diasFora: number; casas: Array<{ rotulo: string; pct: number; hDia: number }> }>();
+    const from = effectiveRange?.from;
+    const to = effectiveRange?.to;
+    if (!from || !to) return out;
+    const dias = businessDaysBetween(from, to);
+    const porPessoa = indexarAusencias(ausenciasCap);
+    for (const r of rosterCap) {
+      if (r.conta_horas === false) continue;
+      const k = normName(r.colaborador);
+      const diasFora = diasUteisAusentes(porPessoa.get(r.colaborador) ?? [], from, to);
+      const e = out.get(k) ?? { minutos: 0, diasFora, casas: [] };
+      e.minutos += capacidadeMinutos(horasDiaNaCasa(r), dias, diasFora);
+      e.casas.push({ rotulo: rotuloFabricaLongo(r.squad), pct: alocacaoPct(r), hDia: horasDiaNaCasa(r) });
+      out.set(k, e);
+    }
+    return out;
+  }, [rosterCap, ausenciasCap, effectiveRange?.from, effectiveRange?.to]);
+
   const mergedCollaboradores = useMemo(() => {
     const map = new Map<string, { name: string; vdesk: number; devops: number; consolidado: number }>();
     const touch = (name: string) => {
@@ -747,7 +786,15 @@ export default function FabricaDashboard() {
 
     const rows = Array.from(map.values()).filter((e) =>
       (showVdesk && e.vdesk > 0) || (showDevops && e.devops > 0)
-    );
+    ) as ColabBarra[];
+    // A régua de capacidade só faz sentido contra TODO o apontamento: a fila
+    // cobre parte das horas, e contra ela todo mundo pareceria ocioso.
+    if (colabEscopo === 'periodo') {
+      for (const e of rows) {
+        const cap = capacidadePorPessoa.get(normName(e.name));
+        if (cap && cap.minutos > 0) { e.capacidade = cap.minutos / 60; e.casas = cap.casas; e.diasFora = cap.diasFora; }
+      }
+    }
     // valor plotado: consolidado quando as duas fontes estão ligadas
     for (const e of rows) {
       e.consolidado = showVdesk && showDevops
@@ -757,7 +804,7 @@ export default function FabricaDashboard() {
     return rows.sort((a, b) => b.consolidado - a.consolidado);
   }, [
     fab.horasVdeskPorColaborador, fab.horasPorColaborador, fab.horasConsolidadasPorColaborador,
-    fab.horasPeriodoTotalPorColaborador, showVdesk, showDevops, colabEscopo,
+    fab.horasPeriodoTotalPorColaborador, showVdesk, showDevops, colabEscopo, capacidadePorPessoa,
   ]);
 
   /**
@@ -2880,21 +2927,48 @@ export default function FabricaDashboard() {
                     */
                     <div className={mergedCollaboradores.length > 12 ? 'max-h-[400px] overflow-y-auto pr-1' : undefined}>
                     <ResponsiveContainer width="100%" height={Math.max(180, mergedCollaboradores.length * 32)}>
-                      <BarChart data={mergedCollaboradores} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 0 }} style={{ cursor: 'pointer' }}>
+                      {/*
+                        Duas barras sobrepostas (barGap negativo = largura): atrás a
+                        capacidade do período, na frente o realizado. Só em "Todo o
+                        período" a capacidade existe (ver capacidadePorPessoa).
+                      */}
+                      <BarChart data={mergedCollaboradores} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 0 }} style={{ cursor: 'pointer' }} barSize={14} barGap={-14}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                         {/* Eixo = escala (hora cheia); o número confrontável sai em h:mm no tooltip. */}
                         <XAxis type="number" fontSize={10} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: number) => `${Math.round(v)}h`} />
                         <YAxis type="category" dataKey="name" fontSize={10} stroke="hsl(var(--muted-foreground))" width={110} />
                         <RechartsTooltip
-                          contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '11px' }}
-                          formatter={(value: number, _n: string, item: any) => {
-                            const d = item?.payload as { vdesk?: number; devops?: number } | undefined;
-                            const label = ambasFontes
-                              ? `Consolidado (Vdesk ${horasHM(Math.round((d?.vdesk ?? 0) * 60))} · Devops ${horasHM(Math.round((d?.devops ?? 0) * 60))})`
+                          cursor={{ fill: 'hsl(var(--muted) / 0.4)' }}
+                          content={({ active, payload }) => {
+                            const d = payload?.[0]?.payload as ColabBarra | undefined;
+                            if (!active || !d) return null;
+                            const fonte = ambasFontes
+                              ? `Consolidado (Vdesk ${horasHM(Math.round(d.vdesk * 60))} · Devops ${horasHM(Math.round(d.devops * 60))})`
                               : showVdesk ? 'Vdesk' : 'Devops';
-                            return [horasHM(Math.round(value * 60)), label];
+                            return (
+                              <div className="rounded-lg border bg-card px-2.5 py-1.5 text-[11px] shadow-sm">
+                                <p className="font-semibold">{d.name}</p>
+                                <p><span className="font-mono font-semibold">{horasHM(Math.round(d.consolidado * 60))}</span> <span className="text-muted-foreground">{fonte}</span></p>
+                                {d.capacidade != null && (
+                                  <>
+                                    <p>
+                                      <span className="text-muted-foreground">Capacidade </span>
+                                      <span className="font-mono">{horasHM(Math.round(d.capacidade * 60))}</span>
+                                      <span className="font-semibold"> · {Math.round((d.consolidado / d.capacidade) * 100)}%</span>
+                                      {d.diasFora ? <span className="text-sky-700 dark:text-sky-300"> · ausente {d.diasFora}d</span> : null}
+                                    </p>
+                                    {d.casas?.map((c) => (
+                                      <p key={c.rotulo} className="text-muted-foreground">
+                                        {c.rotulo} · {Math.round(c.pct)}% · <span className="font-mono">{horasHM(Math.round(c.hDia * 60))}</span>/dia
+                                      </p>
+                                    ))}
+                                  </>
+                                )}
+                              </div>
+                            );
                           }}
                         />
+                        <Bar dataKey="capacidade" fill="hsl(var(--muted))" stroke="hsl(var(--border))" radius={[0, 4, 4, 0]} isAnimationActive={false} />
                         <Bar
                           dataKey="consolidado"
                           fill={ambasFontes ? 'hsl(258,80%,62%)' : showVdesk ? 'hsl(142,71%,45%)' : 'hsl(210,90%,60%)'}
@@ -2919,6 +2993,9 @@ export default function FabricaDashboard() {
                   {mergedCollaboradores.length > 0 && (
                     <p className="text-[11px] text-muted-foreground mt-2 text-center">
                       {mergedCollaboradores.length} colaborador{mergedCollaboradores.length === 1 ? '' : 'es'} com apontamento no período.
+                      {colabEscopo === 'periodo'
+                        ? ' Barra cinza = capacidade (h/dia × alocação em cada fábrica × dias úteis, sem ausências).'
+                        : ' A capacidade aparece em "Todo o período".'}
                     </p>
                   )}
 

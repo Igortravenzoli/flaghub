@@ -140,13 +140,14 @@ describe('UsoCruzadoCard — visão de mesa (sem fill)', () => {
     expect(miolo(container)).toBeNull();
   });
 
-  it('o grupo é a SOMA das fábricas, com a pessoa dividida entrando pela metade em cada', () => {
+  it('o grupo é a SOMA das fábricas: capacidade pela alocação, hora pelo trabalho', () => {
     const { container } = montar({});
-    // Sustentação: 4 pessoas cheias (320 h) + meia do dividido (40 h) = 360 h de capacidade;
-    // realizado 4 × 10 h + metade das 20 h do dividido = 50 h.
-    expect(linhaDe(container, 'Sustentação')).toContain('50:00/360:00');
-    // Evolução: 4 pessoas cheias (Infra inclusa) + meia = 360 h; realizado 4 × 10 + 10 = 50 h.
-    expect(linhaDe(container, 'Evolução')).toContain('50:00/360:00');
+    // Sustentação: 4 pessoas cheias (320 h) + meia jornada do dividido (40 h) = 360 h.
+    // As 20 h do dividido (APP + I & R) caíram no Épico K8, fora do Épico da APP:
+    // vão todas para I & R. Realizado da Sustentação = 4 × 10 h = 40 h.
+    expect(linhaDe(container, 'Sustentação')).toContain('40:00/360:00');
+    // Evolução: 4 pessoas cheias (Infra inclusa) + meia = 360 h; realizado 4 × 10 + 20 = 60 h.
+    expect(linhaDe(container, 'Evolução')).toContain('60:00/360:00');
     expect(linhaDe(container, 'Híbrida')).toContain('10:00/80:00');
     // 9 fábricas + 3 áreas cheias + 1 dividido = 13 pessoas; nada some no rateio.
     expect(linhaDe(container, 'Áreas de apoio')).toContain('30:00/240:00');
@@ -160,8 +161,8 @@ describe('UsoCruzadoCard — visão de mesa (sem fill)', () => {
 
     fireEvent.click(barras.getByText('Sustentação'));
     expect(barras.getByText('PROMO / SUITE')).toBeInTheDocument();
-    // APP: 1 pessoa cheia + meia = 120 h de capacidade; 10 h + 10 h de realizado.
-    expect(linhaDe(container, 'APP')).toContain('20:00/120:00');
+    // APP: 1 pessoa cheia + meia jornada = 120 h; só as 10 h da pessoa cheia são de APP.
+    expect(linhaDe(container, 'APP')).toContain('10:00/120:00');
     expect(barras.queryByText('I & R')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Abrir todas as fábricas'));
