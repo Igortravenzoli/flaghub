@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { alocacaoPct, buildAlocacaoMap, casasDe, GRUPOS_HORAS, normName, SEM_SQUAD } from '@/lib/fabricaRoster';
+import { alocacaoPct, buildAlocacaoMap, casasDe, GRUPOS_HORAS, horasDiaNaCasa, normName, repartirHora, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
 import { epicoDaFabrica, rotuloFabrica, rotuloFabricaLongo } from '@/lib/fabricaOrganograma';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { useColaboradorAusencias } from '@/hooks/useColaboradorAusencias';
@@ -34,6 +34,11 @@ type AlocacaoLeadDevCardProps = {
    * drill-down dev → task → lançamento (decisão de 11/08/2026).
    */
   squadEmbutida?: string;
+  /**
+   * Horas fora dos Épicos de squad (Infra, item sem Épico). Vão só para as
+   * casas de área da pessoa e para quem está fora do roster (`repartirHora`).
+   */
+  foraDasFabricas?: FabricaScopeRow[];
   /**
    * Task id → PBI/Bug pai (ex.: `fab.managerIdByTaskId`). Insere o nível de PBI
    * no drill: Fábrica → Colaborador → PBI → Tasks → Registros. Sem isso o drill
@@ -99,7 +104,7 @@ function semTrilha(row: LogRow): boolean {
  * do fim da sprint. Este KPI não é congelado: reage ao que é lançado
  * (decisão do gestor 19/07).
  */
-export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbutida, pbiByTaskId, onAnalisarColaborador }: AlocacaoLeadDevCardProps) {
+export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, dateTo, squadEmbutida, pbiByTaskId, onAnalisarColaborador }: AlocacaoLeadDevCardProps) {
   const { data: roster = [], isLoading } = useFabricaRoster();
   const { data: ausencias = [] } = useColaboradorAusencias();
   const ausenciasPorPessoa = useMemo(() => indexarAusencias(ausencias), [ausencias]);
@@ -197,21 +202,38 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
     return out;
   }, [logsQuery.data, collabMapQuery.data]);
 
-  // Horas de cada colaborador por fábrica de DESTINO (fábrica do item).
+  /**
+   * Horas de cada colaborador, uma entrada por destino (Épico do item). As
+   * entradas guardam a ORIGEM para a hora poder ir à casa certa de quem está
+   * em duas fábricas (`repartirHora`); o total bruto serve a quem está fora
+   * do roster.
+   */
+  type Entrada = { dest: string; min: number; fora: boolean };
   const byCollab = useMemo(() => {
-    const m = new Map<string, { total: number; byDest: Map<string, number>; nome: string }>();
-    for (const row of fabricaRows) {
-      const dest = cleanFabricaName(row.key);
-      for (const c of row.collaborators) {
-        const k = normName(c.name);
-        const e = m.get(k) ?? { total: 0, byDest: new Map<string, number>(), nome: c.name };
-        e.total += c.minutes;
-        e.byDest.set(dest, (e.byDest.get(dest) ?? 0) + c.minutes);
-        m.set(k, e);
+    const m = new Map<string, { total: number; entradas: Entrada[]; nome: string }>();
+    const somar = (rows: FabricaScopeRow[], fora: boolean) => {
+      for (const row of rows) {
+        const dest = cleanFabricaName(row.key);
+        for (const c of row.collaborators) {
+          const k = normName(c.name);
+          const e = m.get(k) ?? { total: 0, entradas: [] as Entrada[], nome: c.name };
+          e.total += c.minutes;
+          e.entradas.push({ dest, min: c.minutes, fora });
+          m.set(k, e);
+        }
       }
-    }
+    };
+    somar(fabricaRows, false);
+    somar(foraDasFabricas ?? [], true);
     return m;
-  }, [fabricaRows]);
+  }, [fabricaRows, foraDasFabricas]);
+
+  /** Soma por destino (chips). */
+  const porDestino = (entradas: Array<{ dest: string; min: number }>) => {
+    const out = new Map<string, number>();
+    for (const e of entradas) if (e.min > 0) out.set(e.dest, (out.get(e.dest) ?? 0) + e.min);
+    return out;
+  };
 
   const squads = useMemo(() => {
     /**
@@ -230,10 +252,11 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
         total: v.total,
         own: v.total,
         cross: 0,
-        crossDests: [...v.byDest].sort((a, b) => b[1] - a[1]) as [string, number][],
+        crossDests: [...porDestino(v.entradas)].sort((a, b) => b[1] - a[1]) as [string, number][],
         cap: 0,
         diasFora: 0,
         pct: 100,
+        hDia: 0,
         outrasCasas: [] as string[],
       }))
       .sort((a, b) => b.total - a.total);
@@ -266,22 +289,27 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
         .map((r) => {
           const stat = byCollab.get(normName(r.colaborador));
           const casas = casasDe(alocMap, r.colaborador);
-          const peso = casas.find((c) => c.squad === squad)?.peso ?? 1;
-          const total = (stat?.total ?? 0) * peso;
-          const own = epico ? (stat?.byDest.get(epico) ?? 0) * peso : total;
-          const crossDests = [...(stat?.byDest ?? new Map<string, number>())]
+          // Só a parte do trabalho que é DESTA fábrica (ver repartirHora).
+          const minhas = (stat?.entradas ?? []).map((e) => ({
+            dest: e.dest,
+            min: e.min * (repartirHora(casas, { epico: SQUADS.includes(e.dest) ? e.dest : null, fora: e.fora })
+              .find((p) => p.squad === squad)?.peso ?? 0),
+          }));
+          const doDestino = porDestino(minhas);
+          const total = [...doDestino.values()].reduce((s, v) => s + v, 0);
+          const own = epico ? (doDestino.get(epico) ?? 0) : total;
+          const crossDests = [...doDestino]
             .filter(([d]) => !epico || d !== epico)
-            .map(([d, min]) => [d, min * peso] as [string, number])
             .sort((a, b) => b[1] - a[1]);
           // Capacidade do dev já sem os dias de ausência dele no período.
           const diasFora = businessDays && dateFrom && dateTo
             ? diasUteisAusentes(ausenciasPorPessoa.get(r.colaborador) ?? [], dateFrom, dateTo)
             : 0;
           const pct = alocacaoPct(r);
-          const hDia = (Number(r.capacidade_h_dia) || 0) * pct / 100;
+          const hDia = horasDiaNaCasa(r);
           const cap = businessDays ? capacidadeMinutos(hDia, businessDays, diasFora) : 0;
           const outrasCasas = casas.filter((c) => c.squad !== squad).map((c) => rotuloFabricaLongo(c.squad));
-          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests, cap, diasFora, pct, outrasCasas };
+          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests, cap, diasFora, pct, hDia, outrasCasas };
         })
         .sort((a, b) => b.total - a.total);
       const total = devs.reduce((s, d) => s + d.total, 0);
@@ -574,12 +602,12 @@ export function AlocacaoLeadDevCard({ fabricaRows, dateFrom, dateTo, squadEmbuti
                   <span
                     className="text-[10px] px-1.5 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-medium"
                     title={[
-                      `${Math.round(d.pct)}% da jornada nesta fábrica`,
+                      `${Math.round(d.pct)}% da jornada nesta fábrica: ${horasHM(Math.round(d.hDia * 60))} por dia útil`,
                       d.outrasCasas.length > 0 ? `o restante em ${d.outrasCasas.join(' e ')}` : '',
-                      'Capacidade e horas desta linha já estão na proporção; ao abrir, os lançamentos são todos os da pessoa.',
+                      'As horas desta linha são as do trabalho desta fábrica; ao abrir, os lançamentos são todos os da pessoa.',
                     ].filter(Boolean).join('. ')}
                   >
-                    {Math.round(d.pct)}%
+                    {Math.round(d.pct)}% · {horasHM(Math.round(d.hDia * 60))}/dia
                   </span>
                 )}
                 {/*

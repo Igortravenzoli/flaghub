@@ -7,7 +7,7 @@
  *
  * A estrutura (grupo › fábrica) vem de `@/lib/fabricaOrganograma`.
  */
-import { CODIGOS_FABRICA, ehFabricaDeEntrega, fabricaOrg } from '@/lib/fabricaOrganograma';
+import { CODIGOS_FABRICA, ehFabricaDeEntrega, epicoDaFabrica, fabricaOrg } from '@/lib/fabricaOrganograma';
 
 /**
  * Squads POR ÉPICO — o recorte dos KPIs de sprint (ranking, matriz de sprint,
@@ -111,6 +111,48 @@ export function buildAlocacaoMap(rows: RosterEntry[]): Map<string, CasaAlocada[]
 export function casasDe(map: Map<string, CasaAlocada[]>, name: string | null | undefined): CasaAlocada[] {
   if (!name) return [];
   return map.get(normName(name)) ?? [];
+}
+
+/**
+ * Jornada da pessoa DENTRO de uma fábrica: h/dia × alocação.
+ * Com a jornada cheia de 7 h, 50% são 3,5 h/dia em cada fábrica.
+ */
+export function horasDiaNaCasa(row: { capacidade_h_dia?: number | null; alocacao_pct?: number | null }): number {
+  return (Number(row.capacidade_h_dia) || 0) * alocacaoPct(row) / 100;
+}
+
+/** De onde veio uma hora: Épico de squad do item (nome limpo) ou fora de qualquer Épico de squad. */
+export type OrigemHora = { epico: string | null; fora: boolean };
+
+/**
+ * Para qual casa da pessoa vai uma hora apontada. Quem decide é o TRABALHO;
+ * o percentual só entra quando o trabalho não diz.
+ *
+ * - Hora fora dos Épicos de squad (Infra 2700, item sem Épico): é trabalho de
+ *   área, então vai para as casas que são área (Infra, Qualidade…). Quem não
+ *   tem casa de área não recebe — como sempre foi para membro de fábrica.
+ * - Hora em Épico de squad: se uma das fábricas da pessoa É dona daquele
+ *   Épico (STAGING, APP), vai inteira para ela. Senão, vai para as fábricas
+ *   que ainda não têm Épico próprio — trabalho fora do Épico da STAGING não é
+ *   da STAGING. Só quando nada disso decide é que entra o rateio pelo %.
+ * - Quem só tem área recebe a hora de Épico de squad na área, como antes.
+ *
+ * Exemplo: 50% LAB + 50% Infra → hora do Épico 2700 vai toda para Infra e
+ * hora de Épico de squad vai toda para LAB. Rateio 50/50 seria inventar.
+ */
+export function repartirHora(casas: CasaAlocada[], origem: OrigemHora): Array<{ squad: string; peso: number }> {
+  const renorm = (cs: CasaAlocada[]) => {
+    const soma = cs.reduce((s, c) => s + c.pct, 0);
+    return soma > 0 ? cs.map((c) => ({ squad: c.squad, peso: c.pct / soma })) : [];
+  };
+  const areas = casas.filter((c) => ehArea(c.squad));
+  const fabricas = casas.filter((c) => !ehArea(c.squad));
+  if (origem.fora) return renorm(areas);
+  if (fabricas.length === 0) return renorm(areas);
+  const dona = origem.epico ? fabricas.find((c) => epicoDaFabrica(c.squad) === origem.epico) : undefined;
+  if (dona) return [{ squad: dona.squad, peso: 1 }];
+  const semEpico = fabricas.filter((c) => !epicoDaFabrica(c.squad));
+  return renorm(semEpico.length > 0 ? semEpico : fabricas);
 }
 
 /**

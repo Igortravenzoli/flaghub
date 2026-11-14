@@ -7,6 +7,7 @@ import {
 } from '@/lib/fabricaOrganograma';
 import {
   AREAS, GRUPOS_HORAS, SQUADS, buildAlocacaoMap, buildHomeSquadMap, buildNaoContaSet, casasDe, ehArea, homeSquadOf,
+  horasDiaNaCasa, repartirHora,
 } from '@/lib/fabricaRoster';
 import { fabricaColor } from '@/lib/chartColors';
 
@@ -120,5 +121,41 @@ describe('alocação parcial (pessoa em duas fábricas)', () => {
       { colaborador: 'Gil Sá', squad: 'PRODUTOS', conta_horas: false },
     ];
     expect([...buildNaoContaSet(misto)]).toEqual(['gil sa']);
+  });
+});
+
+describe('jornada e atribuição de quem divide o tempo', () => {
+  it('7 h/dia a 50% são 3,5 h/dia na fábrica; sem percentual vale 100%', () => {
+    expect(horasDiaNaCasa({ capacidade_h_dia: 7, alocacao_pct: 50 })).toBe(3.5);
+    expect(horasDiaNaCasa({ capacidade_h_dia: 7 })).toBe(7);
+  });
+
+  const casas = (linhas: Array<[string, number]>) =>
+    casasDe(buildAlocacaoMap(linhas.map(([squad, pct]) => ({ colaborador: 'X', squad, alocacao_pct: pct }))), 'X');
+
+  it('fábrica + Infra: hora de Épico de squad vai para a fábrica, hora de Infra vai para a Infra', () => {
+    const lab = casas([['LAB', 50], ['INFRA', 50]]);
+    expect(repartirHora(lab, { epico: 'K8', fora: false })).toEqual([{ squad: 'LAB', peso: 1 }]);
+    expect(repartirHora(lab, { epico: null, fora: false })).toEqual([{ squad: 'LAB', peso: 1 }]);
+    expect(repartirHora(lab, { epico: null, fora: true })).toEqual([{ squad: 'INFRA', peso: 1 }]);
+  });
+
+  it('o Épico da fábrica decide; fora dele a hora vai para a fábrica sem Épico próprio', () => {
+    const stagingPromo = casas([['STAGING', 50], ['PROMO_SUITE', 50]]);
+    expect(repartirHora(stagingPromo, { epico: 'STAGING', fora: false })).toEqual([{ squad: 'STAGING', peso: 1 }]);
+    expect(repartirHora(stagingPromo, { epico: 'K8', fora: false })).toEqual([{ squad: 'PROMO_SUITE', peso: 1 }]);
+  });
+
+  it('quando nada decide, entra o rateio pelo percentual', () => {
+    const doisErp = casas([['ERP_SUST', 50], ['ERP_EVOL', 50]]);
+    expect(repartirHora(doisErp, { epico: 'FLEXX', fora: false })).toEqual([
+      { squad: 'ERP_SUST', peso: 0.5 }, { squad: 'ERP_EVOL', peso: 0.5 },
+    ]);
+  });
+
+  it('membro só de fábrica não recebe hora de fora; membro só de área recebe tudo', () => {
+    expect(repartirHora(casas([['IR', 100]]), { epico: null, fora: true })).toEqual([]);
+    expect(repartirHora(casas([['QUALIDADE', 100]]), { epico: 'APP', fora: false })).toEqual([{ squad: 'QUALIDADE', peso: 1 }]);
+    expect(repartirHora([], { epico: 'APP', fora: false })).toEqual([]);
   });
 });

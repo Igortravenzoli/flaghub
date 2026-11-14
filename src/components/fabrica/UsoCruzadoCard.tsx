@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { alocacaoPct, buildAlocacaoMap, buildNaoContaSet, casasDe, ehArea, GRUPOS_HORAS, normName, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
+import { buildAlocacaoMap, buildNaoContaSet, casasDe, ehArea, GRUPOS_HORAS, horasDiaNaCasa, normName, repartirHora, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
 import { epicoDaFabrica, fabricaOrg, fabricasDoGrupo, GRUPOS, grupoDaFabrica, rotuloFabrica, rotuloFabricaLongo, type GrupoId } from '@/lib/fabricaOrganograma';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { useColaboradorAusencias } from '@/hooks/useColaboradorAusencias';
@@ -105,7 +105,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
         if (r.squad !== squad || r.conta_horas === false) continue;
         const dias = diasUteisAusentes(ausenciasPorPessoa.get(r.colaborador) ?? [], dateFrom, dateTo);
         // Alocação parcial: a fábrica só dispõe da fatia da jornada que é dela.
-        const hDia = (Number(r.capacidade_h_dia) || 0) * alocacaoPct(r) / 100;
+        const hDia = horasDiaNaCasa(r);
         total += capacidadeMinutos(hDia, businessDays, dias);
         descontado += capacidadeMinutos(hDia, dias);
       }
@@ -134,9 +134,9 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
           bump(SEM_SQUAD, dest, c.minutes);
           continue;
         }
-        // Quem divide o tempo entre duas fábricas tem a hora rateada pela
-        // alocação: não existe Épico por fábrica nova para dizer onde ela caiu.
-        for (const casa of casas) bump(casa.squad, dest, c.minutes * casa.peso);
+        // Quem divide o tempo: a hora vai para a casa do trabalho (ver repartirHora).
+        const origem = { epico: SQUADS.includes(clean) ? clean : null, fora: false };
+        for (const p of repartirHora(casas, origem)) bump(p.squad, dest, c.minutes * p.peso);
       }
     }
     /**
@@ -155,10 +155,9 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
           bump(SEM_SQUAD, OUTRAS, c.minutes);
           continue;
         }
-        for (const casa of casas) {
-          // Fatia de FÁBRICA continua de fora: hora sem épico de squad inflaria
-          // a utilização contra uma capacidade medida sobre trabalho de squad.
-          if (!ehArea(casa.squad)) continue;
+        // Só casa de ÁREA recebe: hora sem épico de squad na fábrica inflaria a
+        // utilização contra uma capacidade medida sobre trabalho de squad.
+        for (const casa of repartirHora(casas, { epico: null, fora: true })) {
           /**
            * Área é o caso oposto: o trabalho dela VIVE fora dos épicos de squad
            * (o do Infra pendura no épico 2700, que é justamente o que
@@ -342,7 +341,8 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
   const drillPessoas = (home: string) => (
     <div className={`mt-1 mb-2 border rounded-lg overflow-hidden ${home === SEM_SQUAD ? '' : 'ml-4'}`}>
       <AlocacaoLeadDevCard
-        fabricaRows={home === SEM_SQUAD || ehArea(home) ? [...fabricaRows, ...(foraDasFabricas ?? [])] : fabricaRows}
+        fabricaRows={fabricaRows}
+        foraDasFabricas={foraDasFabricas}
         dateFrom={dateFrom}
         dateTo={dateTo}
         squadEmbutida={home}
