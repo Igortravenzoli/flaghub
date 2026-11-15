@@ -45,13 +45,20 @@ const INFRA_PREFIX = '[INFRA]';
  * Epics/PBIs guarda-chuva que NÃO são trabalho da Fábrica: o item e todos os
  * filhos somem da listagem e dos KPIs do setor.
  *   2700  — INFRA (consumido pela Infraestrutura via vw_infraestrutura_kpis)
+ *   16640 — "[INFRA] - SPRINT DONE": arquivo das tasks fechadas da 2700
+ *   19082 — "[INFRA] - SPRINT DONE 2026": idem, próximo arquivo
  *   16687 — PBI FlagDash · Painéis Gerenciais
+ *
+ * A 2700 bate no limite de 1000 links do DevOps. Por isso as tasks fechadas
+ * mais antigas vão para os arquivos acima (expurgos de 17/07 e 12/11/2026).
+ * Só o pai muda; as horas continuam na task. Sem os arquivos nesta lista, as
+ * horas dessas tasks somem da aba TimeLog da Fábrica.
  *
  * A exclusão é só de EXIBIÇÃO. As fotografias de sprint continuam contando
  * estes itens de propósito (decisão de 25/07/2026): assim o esforço e as
  * movimentações ficam preservados no histórico caso um dia se queira medi-los.
  */
-export const EPICS_FORA_DA_FABRICA = new Set<number>([2700, 16687]);
+export const EPICS_FORA_DA_FABRICA = new Set<number>([2700, 16640, 19082, 16687]);
 
 function isEpicForaDaFabrica(id?: number | null, parentId?: number | null): boolean {
   return (id != null && EPICS_FORA_DA_FABRICA.has(id))
