@@ -89,7 +89,7 @@ export function Pilula({
 /** Estado vazio curto, centralizado. */
 export function Vazio({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full min-h-[96px] items-center justify-center rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+    <div className="flex min-h-[72px] items-center justify-center rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
       {children}
     </div>
   );

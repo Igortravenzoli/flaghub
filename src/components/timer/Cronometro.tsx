@@ -55,7 +55,7 @@ export function Cronometro({ motor, onEncerrar, className }: Props) {
               <span className="font-mono">#{rodando.work_item_id}</span> · desde {horaCurta(rodando.iniciado_em)}
             </p>
           </div>
-          <p className="font-mono text-4xl font-semibold tracking-tight tabular-nums" aria-live="off">
+          <p className="font-mono text-3xl font-semibold tracking-tight tabular-nums" aria-live="off">
             {relogio(segundos)}
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -102,8 +102,8 @@ export function Cronometro({ motor, onEncerrar, className }: Props) {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border py-8">
-          <span className="font-mono text-4xl font-semibold tracking-tight tabular-nums text-muted-foreground/50">
+        <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border py-5">
+          <span className="font-mono text-3xl font-semibold tracking-tight tabular-nums text-muted-foreground/50">
             00:00:00
           </span>
           <span className="text-sm text-muted-foreground">Nada rodando</span>

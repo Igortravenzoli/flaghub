@@ -148,19 +148,19 @@ export default function TimerHome() {
         </div>
       )}
 
-      {/* 4 colunas: no xl ocupam a altura da tela e rolam por dentro */}
-      <div className="grid gap-4 md:grid-cols-2 xl:h-[calc(100dvh-9.5rem)] xl:min-h-[560px] xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      {/* 4 colunas: crescem com o conteúdo até a altura da tela e aí rolam por dentro */}
+      <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <ColunaAnotacoes
           emConversao={anotacao?.id ?? null}
           onVirarTask={virarTask}
-          className="max-h-[70vh] xl:max-h-none"
+          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
         />
 
         <Coluna
           icone={ListTree}
           titulo="Iniciar demanda"
           destaque={!!anotacao}
-          className="max-h-[70vh] xl:max-h-none"
+          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
         >
           <PainelTarefas
             embutido
@@ -187,10 +187,10 @@ export default function TimerHome() {
           podeRetomar={!somenteConsulta}
           onRetomar={retomar}
           onEncerrar={(d) => setEncerrando({ id: d.work_item_id, titulo: d.titulo })}
-          className="max-h-[70vh] xl:max-h-none"
+          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
         />
 
-        <Cronometro motor={motor} onEncerrar={encerrarRodando} className="order-first md:order-none" />
+        <Cronometro motor={motor} onEncerrar={encerrarRodando} className="order-first max-h-[70vh] md:order-none xl:max-h-[calc(100dvh-9.5rem)]" />
       </div>
 
       <TrechosDoDia motor={motor} podeLancar={podeLancar} />
