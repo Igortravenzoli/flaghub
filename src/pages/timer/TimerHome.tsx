@@ -1,5 +1,7 @@
-import { useEffect, useMemo } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Download, Globe } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Clock, Download, ExternalLink, Globe, X } from 'lucide-react';
+import { PainelTarefas } from '@/components/timer/PainelTarefas';
+import { gravarSelecao, lerSelecao, type TarefaSelecionada } from '@/lib/timerSelecao';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,6 +23,12 @@ export default function TimerHome() {
   const base = import.meta.env.VITE_TIMER_DOWNLOAD_BASE_URL as string | undefined;
   const downloads = useMemo(() => ordenarDownloads(DOWNLOADS_TIMER, plataforma), [plataforma]);
 
+  const [selecionada, setSelecionada] = useState<TarefaSelecionada | null>(() => lerSelecao());
+  const trocarSelecao = (t: TarefaSelecionada | null) => {
+    setSelecionada(t);
+    gravarSelecao(t);
+  };
+
   useEffect(() => {
     void registrarEventoTimer('abriu');
   }, []);
@@ -40,10 +48,37 @@ export default function TimerHome() {
             <CardTitle className="flex items-center gap-2 text-base">
               <Clock className="h-4 w-4 text-primary" /> Cronômetro
             </CardTitle>
-            <CardDescription>Suas tarefas do DevOps e o cronômetro chegam na próxima entrega.</CardDescription>
+            <CardDescription>
+              {selecionada ? 'Tarefa escolhida. O botão de iniciar chega na próxima entrega.' : 'Escolha uma tarefa em “Minhas tarefas”.'}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-center rounded-lg border border-dashed py-10">
+          <CardContent className="space-y-4">
+            {selecionada ? (
+              <div className="flex items-start gap-3 rounded-lg border border-flag-gold/50 bg-flag-gold/5 p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs text-muted-foreground">{selecionada.caminho ?? selecionada.work_item_type}</p>
+                  <p className="truncate font-medium">
+                    <span className="mr-1.5 font-mono text-xs text-muted-foreground">#{selecionada.id}</span>
+                    {selecionada.title}
+                  </p>
+                </div>
+                {selecionada.web_url && (
+                  <a
+                    href={selecionada.web_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title={`Abrir #${selecionada.id} no Azure DevOps`}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                )}
+                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => trocarSelecao(null)} title="Limpar a escolha">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-center rounded-lg border border-dashed py-8">
               <span className="font-mono text-5xl font-semibold tabular-nums text-muted-foreground/60">00:00:00</span>
             </div>
           </CardContent>
@@ -74,6 +109,8 @@ export default function TimerHome() {
           </CardContent>
         </Card>
       </div>
+
+      <PainelTarefas selecionada={selecionada} onSelecionar={trocarSelecao} />
 
       {!noDesktop && (
         <section className="space-y-3" aria-labelledby="timer-downloads">
