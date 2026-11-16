@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Clock, LogOut, CheckCircle2, Loader2, Send } from 'lucide-react';
+import { Clock, LogOut, CheckCircle2, Loader2, Send, BarChart3, Timer as TimerIcon, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
+import { useTimerAcesso } from '@/hooks/useTimerAcesso';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -26,6 +28,11 @@ export default function PendingApproval() {
   const [existingRequests, setExistingRequests] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<RequestStatus>('idle');
   const [loadingAreas, setLoadingAreas] = useState(true);
+  // Modal pós-SSO: "o que você quer?" — KPIs (fluxo de aprovação de sempre) ou
+  // Timer Flag (liberado na hora pelo SSO, sem abrir KPI nenhum).
+  const [escolheuKpis, setEscolheuKpis] = useState(false);
+  const { data: timerAcesso, isLoading: carregandoTimer } = useTimerAcesso();
+  const temTimer = timerAcesso?.status === 'ativo';
 
   useEffect(() => {
     async function load() {
@@ -124,8 +131,45 @@ export default function PendingApproval() {
   const selectableAreas = areas.filter((a) => !existingRequests.has(a.id));
   const allSelected = selectableAreas.length > 0 && selectedAreas.size === selectableAreas.length;
 
+  // Quem já pediu KPI, ou já tem o Timer, não precisa da pergunta de novo.
+  const mostrarEscolha =
+    !loadingAreas && !carregandoTimer && !escolheuKpis && existingRequests.size === 0 && !temTimer;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Dialog open={mostrarEscolha} onOpenChange={(aberto) => { if (!aberto) setEscolheuKpis(true); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>O que você quer usar?</DialogTitle>
+            <DialogDescription>Você entrou com a conta {user?.email}. Escolha por onde começar.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setEscolheuKpis(true)}
+              className="flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+            >
+              <BarChart3 className="h-6 w-6 text-primary" />
+              <span className="font-semibold">Solicitar acesso aos KPIs</span>
+              <span className="text-xs text-muted-foreground">
+                Escolha os setores. Um administrador analisa e aprova.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/timer')}
+              className="flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:border-flag-gold hover:bg-flag-gold/10"
+            >
+              <TimerIcon className="h-6 w-6 text-flag-gold" />
+              <span className="font-semibold">Timer Flag</span>
+              <span className="text-xs text-muted-foreground">
+                Marque o tempo das tarefas e lance no DevOps. Libera na hora com a conta Microsoft.
+              </span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Card className="w-full max-w-lg">
         <CardHeader className="space-y-3 text-center">
           <div className="flex justify-center">
@@ -224,6 +268,12 @@ export default function PendingApproval() {
               </Button>
             </>
           )}
+
+          <Button variant="secondary" onClick={() => navigate('/timer')} className="w-full gap-2">
+            <TimerIcon className="h-4 w-4" />
+            {temTimer ? 'Abrir o Timer Flag' : 'Usar o Timer Flag'}
+            <ArrowRight className="h-4 w-4" />
+          </Button>
 
           <Button variant="outline" onClick={handleSignOut} className="w-full gap-2">
             <LogOut className="h-4 w-4" />

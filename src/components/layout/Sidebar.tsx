@@ -23,6 +23,7 @@ import {
   Lock,
   Download,
   Mail,
+  Timer as TimerIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,8 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Dashboards', path: '/home', icon: LayoutDashboard },
 ];
+
+const timerItem: NavItem = { label: 'Timer Flag', path: '/timer', icon: TimerIcon };
 
 const sectorItems: NavItem[] = [
   { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp, areaKey: 'comercial' },
@@ -226,6 +229,9 @@ export function Sidebar() {
         {/* Monitor user: only show Home, no sectors or admin */}
         {!isMonitor && (
           <>
+            {/* Timer Flag: abre a casca própria (/timer), fora do MainLayout */}
+            {renderNavItem(timerItem)}
+
             {/* Separator: Áreas */}
             {!collapsed && (
               <div className="pt-3 pb-1 px-3">

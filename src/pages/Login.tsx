@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Loader2, ShieldAlert, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { HubFusionAnimation } from '@/components/auth/HubFusionAnimation';
+import { ehRotaTimer, guardarDestino } from '@/lib/timerAcesso';
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 60;
@@ -63,6 +64,9 @@ export default function Login() {
 
   const handleAzureLogin = async () => {
     setIsAzureLoading(true);
+    // O redirect do Azure perde o state do router: o destino (ex.: /timer)
+    // atravessa no sessionStorage e o AuthCallback o consome.
+    guardarDestino(from);
     try {
       const { error } = await signInWithAzure();
       if (error) {
@@ -192,7 +196,9 @@ export default function Login() {
         <CardHeader className="text-center space-y-2 pb-2">
           <HubFusionAnimation />
           <CardDescription>
-            Central de KPIs e Dashboards Setoriais
+            {ehRotaTimer(from)
+              ? 'Timer Flag: entre com a sua conta Microsoft da Flag'
+              : 'Central de KPIs e Dashboards Setoriais'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
