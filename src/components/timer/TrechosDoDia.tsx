@@ -91,7 +91,7 @@ export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLan
       </CardHeader>
       <CardContent className="space-y-4">
         {!carregando && fonte && (
-          <LancamentosTimeLog fonte={fonte} motor={motor} podeLancar={podeLancar} mostrarDia={periodo === 7} />
+          <LancamentosTimeLog fonte={fonte} motor={motor} podeLancar={podeLancar} mostrarDia={periodo === 7} mostrarPendentes={false} />
         )}
         {carregando ? (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">

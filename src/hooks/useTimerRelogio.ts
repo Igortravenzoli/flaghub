@@ -73,10 +73,11 @@ export function useAcoesTimer() {
   const qc = useQueryClient();
 
   const gravar = useCallback(
-    (e: EstadoNoCliente) => {
+    (e: EstadoNoCliente, semana = true) => {
       qc.setQueryData(chave(user?.id, 1), e);
-      // a lista de 7 dias: recarrega só se estiver na tela
-      void qc.invalidateQueries({ queryKey: chave(user?.id, 7), refetchType: 'active' });
+      // a lista de 7 dias: recarrega só se estiver na tela (e nunca no sinal
+      // de 5 em 5 min, que não muda trecho fechado)
+      if (semana) void qc.invalidateQueries({ queryKey: chave(user?.id, 7), refetchType: 'active' });
     },
     [qc, user?.id],
   );
@@ -96,20 +97,21 @@ export function useAcoesTimer() {
         p_versao_app: versaoDesktop(ua),
       });
     },
-    onSuccess: gravar,
+    onSuccess: (e) => gravar(e),
     onError: falhou,
   });
 
   const pausar = useMutation({
     mutationFn: (p: { motivo?: 'manual' | 'suspensao' | 'bloqueio' | 'ocioso' | 'sem_confirmacao'; fim?: string | null } = {}) =>
       rpc('timer_pausar', { p_motivo: p.motivo ?? 'manual', p_fim: p.fim ?? null }),
-    onSuccess: gravar,
+    onSuccess: (e) => gravar(e),
     onError: falhou,
   });
 
   const sinal = useMutation({
     mutationFn: (presenca: boolean) => rpc('timer_sinal', { p_presenca: presenca }),
-    onSuccess: gravar,
+    // o sinal pode fechar um trecho (corte do servidor): aí a semana muda
+    onSuccess: (e) => gravar(e, !e.rodando),
     // sinal falho é silencioso: tenta de novo no próximo ciclo
   });
 

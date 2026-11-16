@@ -7,7 +7,7 @@ import {
   TIMELOG_DOCS,
   validarPedidoLancar,
 } from '../../supabase/functions/timer-devops/lancamento';
-import { dentroDaJanela, diaSP, gruposPendentes, situacao } from '@/lib/timerLancamento';
+import { demandasEmEspera, dentroDaJanela, diaSP, gruposPendentes, situacao } from '@/lib/timerLancamento';
 import type { Lancamento, TrechoFechado } from '@/lib/timerRelogio';
 
 describe('validarPedidoLancar', () => {
@@ -143,6 +143,28 @@ describe('gruposPendentes', () => {
     expect(dentroDaJanela('2026-11-09', '2026-11-16')).toBe(true);
     expect(dentroDaJanela('2026-11-08', '2026-11-16')).toBe(false);
     expect(dentroDaJanela('2026-11-17', '2026-11-16')).toBe(false);
+  });
+});
+
+describe('demandasEmEspera', () => {
+  const ts = [
+    trecho({}), // item 1, 16/11, 30 min
+    trecho({ iniciado_em: '2026-11-15T13:00:00.000Z', encerrado_em: '2026-11-15T13:20:00.000Z' }), // item 1, 15/11, 20 min
+    trecho({ work_item_id: 2, titulo: 'Item 2', iniciado_em: '2026-11-16T16:00:00.000Z', encerrado_em: '2026-11-16T16:10:00.000Z' }),
+    trecho({ work_item_id: 3, titulo: 'Item 3', lancamento_id: 'x' }),
+    trecho({ work_item_id: 4, titulo: 'Antigo', iniciado_em: '2026-11-01T13:00:00.000Z', encerrado_em: '2026-11-01T14:00:00.000Z' }),
+  ];
+
+  it('junta os dias por item, mais recente primeiro, sem lançado nem fora da janela', () => {
+    const d = demandasEmEspera(ts, null, '2026-11-16');
+    expect(d.map((x) => [x.work_item_id, x.minutos, x.grupos.length])).toEqual([
+      [2, 10, 1],
+      [1, 50, 2],
+    ]);
+  });
+
+  it('o item que está rodando não fica em espera', () => {
+    expect(demandasEmEspera(ts, 1, '2026-11-16').map((x) => x.work_item_id)).toEqual([2]);
   });
 });
 
