@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { alocacaoPct, buildAlocacaoMap, casasDe, GRUPOS_HORAS, horasDiaNaCasa, normName, repartirHora, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
+import { alocacaoPct, buildAlocacaoMap, type CasaAlocada, casasDe, GRUPOS_HORAS, horasDiaNaCasa, normName, repartirHora, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
 import { epicoDaFabrica, rotuloFabrica, rotuloFabricaLongo } from '@/lib/fabricaOrganograma';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { useColaboradorAusencias } from '@/hooks/useColaboradorAusencias';
@@ -16,7 +16,12 @@ import { horasHM, horasHMComSinal } from '@/lib/formatHoras';
 type FabricaScopeRow = {
   key: string;
   collaborators: { name: string; minutes: number }[];
+  /** Itens apontados sob esta chave: dizem a origem de cada lançamento no drill. */
+  taskIds?: number[];
 };
+
+/** Origem de um item para `repartirHora`: Épico de squad ou fora deles. */
+type OrigemItem = { dest: string; fora: boolean };
 
 type AlocacaoLeadDevCardProps = {
   /** Horas por fábrica (Epic) com colaboradores — ex.: fab.horasPorFabricaFull. */
@@ -228,6 +233,14 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
     return m;
   }, [fabricaRows, foraDasFabricas]);
 
+  /** Item → origem (Épico de squad ou fora), para saber se o lançamento conta na fábrica aberta. */
+  const origemPorItem = useMemo(() => {
+    const m = new Map<number, OrigemItem>();
+    for (const row of fabricaRows) for (const id of row.taskIds ?? []) m.set(id, { dest: cleanFabricaName(row.key), fora: false });
+    for (const row of foraDasFabricas ?? []) for (const id of row.taskIds ?? []) m.set(id, { dest: cleanFabricaName(row.key), fora: true });
+    return m;
+  }, [fabricaRows, foraDasFabricas]);
+
   /** Soma por destino (chips). */
   const porDestino = (entradas: Array<{ dest: string; min: number }>) => {
     const out = new Map<string, number>();
@@ -258,6 +271,8 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
         pct: 100,
         hDia: 0,
         outrasCasas: [] as string[],
+        foraDaqui: [] as [string, number][],
+        casas: [] as CasaAlocada[],
       }))
       .sort((a, b) => b.total - a.total);
 
@@ -290,11 +305,20 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
           const stat = byCollab.get(normName(r.colaborador));
           const casas = casasDe(alocMap, r.colaborador);
           // Só a parte do trabalho que é DESTA fábrica (ver repartirHora).
-          const minhas = (stat?.entradas ?? []).map((e) => ({
-            dest: e.dest,
-            min: e.min * (repartirHora(casas, { epico: SQUADS.includes(e.dest) ? e.dest : null, fora: e.fora })
-              .find((p) => p.squad === squad)?.peso ?? 0),
-          }));
+          const minhas: Array<{ dest: string; min: number }> = [];
+          // O resto vai para a outra casa da pessoa ou para nenhuma fábrica:
+          // não entra no total nem na capacidade, aparece esmaecido como indicador.
+          const foraDaquiMap = new Map<string, number>();
+          for (const e of stat?.entradas ?? []) {
+            const partes = repartirHora(casas, { epico: SQUADS.includes(e.dest) ? e.dest : null, fora: e.fora });
+            const peso = partes.find((p) => p.squad === squad)?.peso ?? 0;
+            minhas.push({ dest: e.dest, min: e.min * peso });
+            const outras = partes.filter((p) => p.squad !== squad);
+            // '' = hora que não vai para casa nenhuma da pessoa (ex.: Infra de quem é só fábrica).
+            if (outras.length === 0 && peso < 1) foraDaquiMap.set('', (foraDaquiMap.get('') ?? 0) + e.min * (1 - peso));
+            for (const p of outras) foraDaquiMap.set(p.squad, (foraDaquiMap.get(p.squad) ?? 0) + e.min * p.peso);
+          }
+          const foraDaqui = [...foraDaquiMap].filter(([, v]) => v >= 1).sort((a, b) => b[1] - a[1]);
           const doDestino = porDestino(minhas);
           const total = [...doDestino.values()].reduce((s, v) => s + v, 0);
           const own = epico ? (doDestino.get(epico) ?? 0) : total;
@@ -309,7 +333,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
           const hDia = horasDiaNaCasa(r);
           const cap = businessDays ? capacidadeMinutos(hDia, businessDays, diasFora) : 0;
           const outrasCasas = casas.filter((c) => c.squad !== squad).map((c) => rotuloFabricaLongo(c.squad));
-          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests, cap, diasFora, pct, hDia, outrasCasas };
+          return { nome: r.colaborador, papel: r.papel as string | null, total, own, cross: total - own, crossDests, cap, diasFora, pct, hDia, outrasCasas, foraDaqui, casas };
         })
         .sort((a, b) => b.total - a.total);
       const total = devs.reduce((s, d) => s + d.total, 0);
@@ -321,11 +345,49 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
   const temCapacidade = !!businessDays;
 
   // ── Nível 1 do drill: tasks do dev; nível 2: lançamentos da task ────────────
-  const renderDetalhe = (devKey: string) => {
+  const renderDetalhe = (devKey: string, squad: string, casas: CasaAlocada[]) => {
     const rows = detalhePorDev.get(devKey) ?? [];
     const carregando = logsQuery.isLoading || collabMapQuery.isLoading;
     const itemById = itemsQuery.data;
     const totalMin = rows.reduce((s, r) => s + (r.time_minutes || 0), 0);
+
+    /**
+     * Quanto do item conta NESTA fábrica (mesma regra da linha da pessoa).
+     * A lista mostra todos os lançamentos da pessoa; o que vai para a outra casa
+     * dela, ou para fábrica nenhuma, fica esmaecido — é indicador de trabalho
+     * cruzado, não soma na linha nem na capacidade desta fábrica. Item de origem
+     * desconhecida e o balde "Sem squad" contam inteiros.
+     */
+    const contaAqui = (itemId: number): { peso: number; outra: string | null } => {
+      const origem = origemPorItem.get(itemId);
+      if (!origem || squad === SEM_SQUAD) return { peso: 1, outra: null };
+      const partes = repartirHora(casas, { epico: SQUADS.includes(origem.dest) ? origem.dest : null, fora: origem.fora });
+      const peso = partes.find((p) => p.squad === squad)?.peso ?? 0;
+      const outra = partes.find((p) => p.squad !== squad);
+      return { peso, outra: outra ? rotuloFabrica(outra.squad) : null };
+    };
+    const minAqui = rows.reduce((s, r) => s + (r.time_minutes || 0) * contaAqui(r.work_item_id).peso, 0);
+    /** Selo do item que não conta (ou conta em parte) aqui. */
+    const seloFora = (peso: number, outra: string | null) => {
+      if (peso >= 1) return null;
+      if (peso > 0) {
+        return (
+          <span className="px-1 rounded border border-dashed border-border text-muted-foreground shrink-0" title={`Só ${Math.round(peso * 100)}% destas horas contam nesta fábrica; o resto vai para ${outra ?? 'a outra casa'}.`}>
+            {Math.round(peso * 100)}% aqui
+          </span>
+        );
+      }
+      return (
+        <span
+          className="px-1 rounded border border-dashed border-border text-muted-foreground shrink-0"
+          title={outra
+            ? `Trabalho de ${outra}: aparece só como indicador de trabalho cruzado. Não soma nas horas nem na capacidade desta fábrica.`
+            : 'Fora das fábricas (Infra ou item sem Épico) e a pessoa não tem casa de área: aparece só como indicador. Não soma aqui.'}
+        >
+          {outra ? `→ ${outra}` : 'fora das fábricas'} · não conta aqui
+        </span>
+      );
+    };
 
     type Grupo = { id: number; minutes: number; rows: LogRow[]; minDia: string; maxDia: string; maxLag: number; posSprint: number; editados: number };
 
@@ -349,7 +411,9 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
         }
         m.set(k, g);
       }
-      return [...m.values()].sort((a, b) => b.minutes - a.minutes);
+      // O que conta nesta fábrica vem primeiro; o esmaecido (outra casa) vai para o fim.
+      const aqui = (g: Grupo) => g.rows.reduce((s, r) => s + (r.time_minutes || 0) * contaAqui(r.work_item_id).peso, 0);
+      return [...m.values()].sort((a, b) => aqui(b) - aqui(a) || b.minutes - a.minutes);
     };
 
     const grupos: Grupo[] = agrupar(rows, (r) => r.work_item_id);
@@ -368,8 +432,9 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
                 const tKey = `${pref}|${g.id}`;
                 const isTaskAberta = taskAberta === tKey;
                 const periodo = g.minDia === g.maxDia ? fmtDia(g.minDia) : `${fmtDia(g.minDia)}–${fmtDia(g.maxDia)}`;
+                const { peso, outra } = contaAqui(g.id);
                 return (
-                  <div key={g.id} className="border-b last:border-b-0 border-border/60">
+                  <div key={g.id} className={`border-b last:border-b-0 border-border/60 ${peso === 0 ? 'opacity-50' : ''}`} data-conta-aqui={peso === 0 ? 'nao' : peso < 1 ? 'parte' : 'sim'}>
                     <div
                       role="button"
                       tabIndex={0}
@@ -391,6 +456,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
                         <span className="font-mono shrink-0">#{g.id}</span>
                       )}
                       <span className="truncate flex-1 min-w-0" title={meta?.title ?? undefined}>{meta?.title ?? '—'}</span>
+                      {seloFora(peso, outra)}
                       {g.editados > 0 && (
                         <span className="px-1 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 font-medium shrink-0" title="Lançamentos editados no DevOps após a criação">
                           {g.editados} editado{g.editados === 1 ? '' : 's'}
@@ -493,8 +559,12 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
                   const isPbiAberto = pbiAberto === pKey;
                   const tasksDoPbi = agrupar(pbi.rows, (r) => r.work_item_id);
                   const periodoPbi = pbi.minDia === pbi.maxDia ? fmtDia(pbi.minDia) : `${fmtDia(pbi.minDia)}–${fmtDia(pbi.maxDia)}`;
+                  // O PBI conta pela soma das tasks dele (podem cair em casas diferentes).
+                  const pbiAqui = pbi.rows.reduce((s, r) => s + (r.time_minutes || 0) * contaAqui(r.work_item_id).peso, 0);
+                  const pesoPbi = pbi.minutes > 0 ? pbiAqui / pbi.minutes : 1;
+                  const outraPbi = pbi.rows.map((r) => contaAqui(r.work_item_id).outra).find(Boolean) ?? null;
                   return (
-                    <div key={pbi.id} className="border-b last:border-b-0 border-border/60">
+                    <div key={pbi.id} className={`border-b last:border-b-0 border-border/60 ${pesoPbi === 0 ? 'opacity-50' : ''}`} data-conta-aqui={pesoPbi === 0 ? 'nao' : pesoPbi < 1 ? 'parte' : 'sim'}>
                       <div
                         role="button"
                         tabIndex={0}
@@ -519,6 +589,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
                           {metaPbi?.work_item_type ?? 'PBI/Bug'}
                         </span>
                         <span className="truncate flex-1 min-w-0" title={metaPbi?.title ?? undefined}>{metaPbi?.title ?? '—'}</span>
+                        {seloFora(pesoPbi, outraPbi)}
                         <span className="text-muted-foreground tabular-nums shrink-0 w-24 text-right">{periodoPbi}</span>
                         <span className="text-muted-foreground tabular-nums shrink-0 w-16 text-right">{tasksDoPbi.length} task{tasksDoPbi.length === 1 ? '' : 's'}</span>
                         <span className="font-mono font-semibold tabular-nums shrink-0 w-14 text-right">{horasHM(pbi.minutes)}</span>
@@ -537,7 +608,16 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
                 {rows.length} lançamento{rows.length === 1 ? '' : 's'} em {grupos.length} task{grupos.length === 1 ? '' : 's'}
                 {pbis && <> · {pbis.length} PBI/Bug</>}
               </span>
-              <span className="ml-auto font-mono font-bold tabular-nums">{horasHM(totalMin)}</span>
+              {Math.round(minAqui) < totalMin ? (
+                <span className="ml-auto tabular-nums" data-testid="conta-aqui-total">
+                  <span className="text-muted-foreground">conta em {rotuloFabrica(squad)} </span>
+                  <span className="font-mono font-bold">{horasHM(Math.round(minAqui))}</span>
+                  <span className="text-muted-foreground"> de </span>
+                  <span className="font-mono text-muted-foreground">{horasHM(totalMin)}</span>
+                </span>
+              ) : (
+                <span className="ml-auto font-mono font-bold tabular-nums">{horasHM(totalMin)}</span>
+              )}
             </div>
           </div>
         )}
@@ -547,6 +627,9 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
           <span className="text-rose-600 dark:text-rose-300"> após a sprint</span> = registrado depois do fim oficial (sexta 23:59).
           Lançamentos anteriores à recarga da coleta (17/07/2026 19:15) aparecem como "sem trilha" — o momento real do registro não ficou rastreado; a trilha é integral daí em diante.
           <span className="text-violet-700 dark:text-violet-300"> vN · editado</span> = lançamento alterado no DevOps após a criação (a versão anterior fica guardada no portal).
+          {Math.round(minAqui) < totalMin && (
+            <> Esmaecido = trabalho da outra casa da pessoa ou fora das fábricas: aparece só como indicador de trabalho cruzado e não soma nas horas nem na capacidade de {rotuloFabrica(squad)}.</>
+          )}
         </p>
       </div>
     );
@@ -604,7 +687,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
                     title={[
                       `${Math.round(d.pct)}% da jornada nesta fábrica: ${horasHM(Math.round(d.hDia * 60))} por dia útil`,
                       d.outrasCasas.length > 0 ? `o restante em ${d.outrasCasas.join(' e ')}` : '',
-                      'As horas desta linha são as do trabalho desta fábrica; ao abrir, os lançamentos são todos os da pessoa.',
+                      'As horas desta linha são as do trabalho desta fábrica; ao abrir, os lançamentos são todos os da pessoa, e o que não conta aqui aparece esmaecido.',
                     ].filter(Boolean).join('. ')}
                   >
                     {Math.round(d.pct)}% · {horasHM(Math.round(d.hDia * 60))}/dia
@@ -652,6 +735,26 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
                     {horasHM(min)} → {dest}
                   </span>
                 ))}
+                {/*
+                  Trabalho que NÃO conta nesta fábrica (a outra casa de quem
+                  divide o tempo, ou fora das fábricas). Esmaecido e tracejado:
+                  é indicador de trabalho cruzado, não soma no realizado nem na
+                  capacidade da linha. Sem ele, ao abrir a pessoa e ver todos os
+                  lançamentos, parecia que a outra fábrica estava sendo somada
+                  (reportado em 15/11/2026).
+                */}
+                {d.foraDaqui.map(([dest, min]) => (
+                  <span
+                    key={`fora-${dest}`}
+                    data-fora-daqui={dest || 'nenhuma'}
+                    title={dest
+                      ? `${horasHM(Math.round(min))} de trabalho em ${rotuloFabricaLongo(dest)}: indicador de trabalho cruzado, não soma nas horas nem na capacidade desta fábrica`
+                      : `${horasHM(Math.round(min))} fora das fábricas (Infra ou item sem Épico): indicador, não soma aqui`}
+                    className="text-[10px] px-1.5 rounded border border-dashed border-border text-muted-foreground/80 font-medium"
+                  >
+                    {horasHM(Math.round(min))} → {dest ? rotuloFabrica(dest) : 'fora das fábricas'}
+                  </span>
+                ))}
                 {d.total === 0 && d.cap === 0 && (
                   <span className="text-[10px] px-1.5 rounded bg-muted text-muted-foreground">{showCap || !temCapacidade ? 'sem apontamento' : 'sem capacity'}</span>
                 )}
@@ -673,7 +776,7 @@ export function AlocacaoLeadDevCard({ fabricaRows, foraDasFabricas, dateFrom, da
                 {showCap && <div className="absolute inset-y-0 right-0 w-px bg-foreground/50" />}
               </div>
             </button>
-            {isDevAberto && renderDetalhe(normName(d.nome))}
+            {isDevAberto && renderDetalhe(normName(d.nome), s.squad, d.casas)}
           </div>
         );
       })}
