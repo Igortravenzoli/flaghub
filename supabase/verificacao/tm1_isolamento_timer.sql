@@ -1,19 +1,19 @@
 -- ============================================================================
--- Verificação TM1: quem tem SÓ o Timer não lê KPI e não se concede nada.
+-- Verifica????o TM1: quem tem S?? o Timer n??o l?? KPI e n??o se concede nada.
 --
--- Roda na bancada (DEV) DEPOIS da migration 20261116120000_tm1_timer_acesso_e_eventos.
--- Tudo acontece num único DO que termina em RAISE: nada fica gravado, nem
--- os usuários de teste. O resultado vem na mensagem do erro final:
---   • "TM1 OK — ..."     → todas as asserções passaram (e nada foi gravado)
---   • "TM1 FALHOU: ..."  → a asserção que quebrou
+-- Roda na bancada (DEV) DEPOIS da migration 20261116130000_tm1_timer_acesso_e_eventos.
+-- Tudo acontece num ??nico DO que termina em RAISE: nada fica gravado, nem
+-- os usu??rios de teste. O resultado vem na mensagem do erro final:
+--   ??? "TM1 OK ??? ..."     ??? todas as asser????es passaram (e nada foi gravado)
+--   ??? "TM1 FALHOU: ..."  ??? a asser????o que quebrou
 --
--- Fora do escopo: as tabelas que já estão abertas para qualquer logado
--- (fabrica_read_entries, comercial_metas, etc.). Elas são da Fase 0 de RLS,
--- noutra sessão, e valem igual para pendente, com ou sem Timer.
+-- Fora do escopo: as tabelas que j?? est??o abertas para qualquer logado
+-- (fabrica_read_entries, comercial_metas, etc.). Elas s??o da Fase 0 de RLS,
+-- noutra sess??o, e valem igual para pendente, com ou sem Timer.
 -- ============================================================================
 DO $$
 DECLARE
-  v_timer   uuid := gen_random_uuid();   -- tem só o Timer
+  v_timer   uuid := gen_random_uuid();   -- tem s?? o Timer
   v_outro   uuid := gen_random_uuid();   -- outra pessoa com Timer
   v_n       bigint;
   v_tabela  text;
@@ -34,7 +34,7 @@ BEGIN
   INSERT INTO public.timer_eventos (user_id, evento, origem) VALUES (v_outro, 'abriu', 'cliente');
 
   -- Linhas que existem de verdade na bancada (como postgres): sem elas, "0
-  -- linhas como Timer" não provaria nada.
+  -- linhas como Timer" n??o provaria nada.
   FOREACH v_tabela IN ARRAY ARRAY[
     'devops_work_items', 'devops_time_logs', 'devops_collaborator_map', 'timelog_post_queue',
     'vdesk_clients', 'vdesk_time_logs', 'comercial_vendas', 'hub_audit_logs', 'hub_sync_runs'
@@ -45,14 +45,14 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- ---- vira o usuário que tem só o Timer -----------------------------------
+  -- ---- vira o usu??rio que tem s?? o Timer -----------------------------------
   PERFORM set_config('request.jwt.claims',
     json_build_object('sub', v_timer, 'role', 'authenticated', 'email', 'tm1.timer@flag.com.br')::text, true);
   EXECUTE 'SET LOCAL ROLE authenticated';
 
-  IF auth.uid() IS DISTINCT FROM v_timer THEN RAISE EXCEPTION 'TM1 FALHOU: auth.uid() não assumiu o usuário de teste'; END IF;
+  IF auth.uid() IS DISTINCT FROM v_timer THEN RAISE EXCEPTION 'TM1 FALHOU: auth.uid() n??o assumiu o usu??rio de teste'; END IF;
   IF NOT public.hub_has_timer() THEN RAISE EXCEPTION 'TM1 FALHOU: hub_has_timer() deveria ser true'; END IF;
-  IF public.hub_is_approved() THEN RAISE EXCEPTION 'TM1 FALHOU: hub_is_approved() deveria ser false para quem tem só o Timer'; END IF;
+  IF public.hub_is_approved() THEN RAISE EXCEPTION 'TM1 FALHOU: hub_is_approved() deveria ser false para quem tem s?? o Timer'; END IF;
   v_ok := v_ok || 'reguas ';
 
   -- KPI: zero linha em cada tabela guardada por hub_is_approved()
@@ -64,20 +64,20 @@ BEGIN
       BEGIN
         EXECUTE format('SELECT count(*) FROM public.%I', v_tabela) INTO v_n;
       EXCEPTION WHEN insufficient_privilege THEN
-        v_n := 0;  -- sem GRANT também é barrado
+        v_n := 0;  -- sem GRANT tamb??m ?? barrado
       END;
       IF v_n <> 0 THEN
-        RAISE EXCEPTION 'TM1 FALHOU: quem tem só o Timer leu % linha(s) de %', v_n, v_tabela;
+        RAISE EXCEPTION 'TM1 FALHOU: quem tem s?? o Timer leu % linha(s) de %', v_n, v_tabela;
       END IF;
     END IF;
   END LOOP;
   v_ok := v_ok || 'kpi=0 ';
 
-  -- timer_access: só a própria linha
+  -- timer_access: s?? a pr??pria linha
   SELECT count(*) INTO v_n FROM public.timer_access;
-  IF v_n <> 1 THEN RAISE EXCEPTION 'TM1 FALHOU: timer_access devolveu % linhas (esperado 1, a própria)', v_n; END IF;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'TM1 FALHOU: timer_access devolveu % linhas (esperado 1, a pr??pria)', v_n; END IF;
 
-  -- não se concede nem se reativa pelo PostgREST
+  -- n??o se concede nem se reativa pelo PostgREST
   v_falhou := false;
   BEGIN
     UPDATE public.timer_access SET status = 'ativo', origem = 'admin' WHERE user_id = v_timer;
@@ -97,10 +97,10 @@ BEGIN
     PERFORM public.timer_revogar_acesso(v_outro, 'teste');
   EXCEPTION WHEN insufficient_privilege THEN v_falhou := true;
   END;
-  IF NOT v_falhou THEN RAISE EXCEPTION 'TM1 FALHOU: não-admin conseguiu revogar acesso'; END IF;
+  IF NOT v_falhou THEN RAISE EXCEPTION 'TM1 FALHOU: n??o-admin conseguiu revogar acesso'; END IF;
   v_ok := v_ok || 'timer_access ';
 
-  -- timer_eventos: append-only, só via RPC, lista fechada, só os próprios
+  -- timer_eventos: append-only, s?? via RPC, lista fechada, s?? os pr??prios
   v_falhou := false;
   BEGIN
     INSERT INTO public.timer_eventos (user_id, evento, origem) VALUES (v_timer, 'acesso_concedido', 'servidor');
@@ -117,7 +117,7 @@ BEGIN
 
   PERFORM public.timer_registrar_evento('abriu', 'web', 'windows', NULL, '{"teste":true}'::jsonb);
   SELECT count(*) INTO v_n FROM public.timer_eventos;
-  IF v_n <> 1 THEN RAISE EXCEPTION 'TM1 FALHOU: timer_eventos devolveu % linhas (esperado 1, o próprio)', v_n; END IF;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'TM1 FALHOU: timer_eventos devolveu % linhas (esperado 1, o pr??prio)', v_n; END IF;
 
   v_falhou := false;
   BEGIN
@@ -126,7 +126,7 @@ BEGIN
   END;
   IF NOT v_falhou THEN RAISE EXCEPTION 'TM1 FALHOU: DELETE em timer_eventos deveria ser negado'; END IF;
 
-  -- teto de frequência: 60 por 10 min, o 61º é descartado sem erro
+  -- teto de frequ??ncia: 60 por 10 min, o 61?? ?? descartado sem erro
   FOR v_n IN 1..70 LOOP
     PERFORM public.timer_registrar_evento('janela_visivel');
   END LOOP;
@@ -134,7 +134,7 @@ BEGIN
   IF v_n <> 60 THEN RAISE EXCEPTION 'TM1 FALHOU: teto de eventos deixou % (esperado 60)', v_n; END IF;
   v_ok := v_ok || 'timer_eventos ';
 
-  -- revogado perde a régua
+  -- revogado perde a r??gua
   EXECUTE 'RESET ROLE';
   UPDATE public.timer_access SET status = 'revogado', revogado_em = now() WHERE user_id = v_timer;
   EXECUTE 'SET LOCAL ROLE authenticated';
@@ -148,5 +148,5 @@ BEGIN
   v_ok := v_ok || 'revogado ';
 
   EXECUTE 'RESET ROLE';
-  RAISE EXCEPTION 'TM1 OK — % | linhas na bancada: % | nada foi gravado', v_ok, v_base;
+  RAISE EXCEPTION 'TM1 OK ??? % | linhas na bancada: % | nada foi gravado', v_ok, v_base;
 END $$;
