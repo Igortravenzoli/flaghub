@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Info, ListTree, Loader2, NotebookPen, Play, Plus, RefreshCw, Search } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, ListTree, Loader2, NotebookPen, Play, Plus, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -46,20 +46,24 @@ export function PainelTarefas({
   onCancelarAnotacao,
   onItemCriado,
   embutido = false,
+  iniciarRecolhido = false,
 }: {
   selecionada: TarefaSelecionada | null;
   onSelecionar: (t: TarefaSelecionada) => void;
   anotacao?: { id: string; texto: string } | null;
   onCancelarAnotacao?: () => void;
   onItemCriado?: (item: ItemTimer) => void;
-  /** dentro de outra coluna: sem a moldura de Card */
+  /** dentro de outra coluna: sem a moldura de Card e sem título */
   embutido?: boolean;
+  /** abre com as épicas recolhidas (o quadro minimizado) */
+  iniciarRecolhido?: boolean;
 }) {
   const minhas = useMinhasTarefasTimer();
   const [busca, setBusca] = useState('');
   const [buscaAtrasada, setBuscaAtrasada] = useState('');
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const [criando, setCriando] = useState<Criando>(null);
+  const [recolheuInicio, setRecolheuInicio] = useState(!iniciarRecolhido);
 
   useEffect(() => {
     const t = window.setTimeout(() => setBuscaAtrasada(busca), 450);
@@ -72,6 +76,18 @@ export function PainelTarefas({
   const ancestrais = useMemo(() => minhas.data?.ancestrais ?? [], [minhas.data]);
   const filtrados = useMemo(() => filtrarAtividades(itens, ancestrais, busca), [itens, ancestrais, busca]);
   const grupos = useMemo(() => agruparPorHierarquia(filtrados, ancestrais, hoje), [filtrados, ancestrais, hoje]);
+
+  // Quadro minimizado: na primeira carga, só as épicas à vista.
+  if (!recolheuInicio && grupos.length > 0) {
+    setRecolheuInicio(true);
+    setRecolhidos(new Set(chavesRecolhiveis(grupos)));
+  }
+
+  // Transformando anotação: abre tudo para achar o PBI.
+  const anotacaoId = anotacao?.id ?? null;
+  useEffect(() => {
+    if (anotacaoId) setRecolhidos(new Set());
+  }, [anotacaoId]);
 
   const conhecidos = useMemo(() => {
     const m = new Map<number, ItemDevops>();
@@ -130,49 +146,70 @@ export function PainelTarefas({
   const Cabeca = embutido ? 'div' : CardHeader;
   const Corpo = embutido ? 'div' : CardContent;
 
+  const ferramentas = (
+    <div className="flex items-center gap-1">
+      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setRecolhidos(new Set())} title="Expandir tudo">
+        <ChevronsUpDown className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0"
+        onClick={() => setRecolhidos(new Set(chavesRecolhiveis(grupos)))}
+        title="Recolher tudo"
+      >
+        <ChevronsDownUp className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0"
+        onClick={() => void minhas.refetch()}
+        disabled={minhas.isFetching}
+        title="Recarregar do Azure DevOps"
+      >
+        <RefreshCw className={cn('h-3.5 w-3.5', minhas.isFetching && 'animate-spin')} />
+      </Button>
+    </div>
+  );
+
+  const campoBusca = (
+    <div className="relative min-w-0 flex-1">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        className="h-9 pl-8 text-sm shadow-[0_1px_2px_0_rgb(16_24_40/0.05)]"
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        placeholder="Filtrar ou buscar no DevOps (#id)"
+        aria-label="Filtrar tarefas ou buscar no Azure DevOps"
+      />
+    </div>
+  );
+
   return (
     <Moldura className={embutido ? 'space-y-3' : undefined}>
       <Cabeca className={embutido ? undefined : 'pb-3'}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide">
-              <ListTree className="h-4 w-4 text-primary" /> Tasks atribuídas
-            </CardTitle>
-            {!embutido && (
-              <CardDescription>O que está atribuído a você no Azure DevOps. Dê play onde marcar o tempo.</CardDescription>
-            )}
-          </div>
+        {embutido ? (
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setRecolhidos(new Set())} title="Expandir tudo">
-              <ChevronsUpDown className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setRecolhidos(new Set(chavesRecolhiveis(grupos)))}
-              title="Recolher tudo"
-            >
-              <ChevronsDownUp className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void minhas.refetch()}
-              disabled={minhas.isFetching}
-              title="Recarregar do Azure DevOps"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', minhas.isFetching && 'animate-spin')} />
-            </Button>
+            {campoBusca}
+            {ferramentas}
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <ListTree className="h-4 w-4 text-muted-foreground" /> Tasks atribuídas
+            </CardTitle>
+            {ferramentas}
+          </div>
+        )}
       </Cabeca>
       <Corpo className="space-y-4">
         {anotacao && (
-          <div className="flex items-start gap-2 rounded-lg border border-flag-gold/60 bg-flag-gold/10 p-3 text-sm">
-            <NotebookPen className="mt-0.5 h-4 w-4 shrink-0 text-flag-gold" />
-            <p className="min-w-0 flex-1">
-              Transformando <span className="font-medium">“{anotacao.texto}”</span> em Task: clique em{' '}
-              <span className="font-medium">+ Task</span> no PBI ou Bug certo. Não está na lista? Busque pelo título ou #id.
+          <div className="flex items-center gap-2 rounded-lg border border-flag-gold/60 bg-flag-gold/10 px-3 py-2 text-sm">
+            <NotebookPen className="h-4 w-4 shrink-0 text-flag-gold" />
+            <p className="min-w-0 flex-1 truncate">
+              <span className="text-muted-foreground">+ Task no PBI de </span>
+              <span className="font-medium">{anotacao.texto}</span>
             </p>
             {onCancelarAnotacao && (
               <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onCancelarAnotacao}>
@@ -181,15 +218,7 @@ export function PainelTarefas({
             )}
           </div>
         )}
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="h-9 pl-8 text-sm"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Filtrar as suas, ou buscar no DevOps: título (3+ letras) ou #16603"
-          />
-        </div>
+        {!embutido && campoBusca}
 
         {minhas.isLoading ? (
           <div className="space-y-2">
@@ -199,9 +228,9 @@ export function PainelTarefas({
         ) : minhas.error ? (
           <Aviso>{(minhas.error as Error).message}</Aviso>
         ) : itens.length === 0 ? (
-          <Aviso>Nada aberto atribuído a você no Azure DevOps. Busque acima para achar ou criar um item.</Aviso>
+          <Aviso>Nada atribuído a você</Aviso>
         ) : grupos.length === 0 ? (
-          <Aviso>Nenhuma das suas tarefas bate com a busca.</Aviso>
+          <Aviso>Nada encontrado nas suas</Aviso>
         ) : (
           <ArvoreAtividades
             grupos={grupos}
@@ -221,7 +250,7 @@ export function PainelTarefas({
         )}
 
         {minhas.data?.truncado && (
-          <p className="text-[11px] text-muted-foreground">Mostrando os 200 itens mexidos mais recentemente.</p>
+          <p className="text-[11px] text-muted-foreground">200 mais recentes</p>
         )}
 
         {buscaRemotaAtiva && (
@@ -233,7 +262,7 @@ export function PainelTarefas({
             {remota.error ? (
               <Aviso>{(remota.error as Error).message}</Aviso>
             ) : remota.data && resultadosDeFora.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nada além das suas tarefas bate com “{termo}”.</p>
+              <p className="text-xs text-muted-foreground">Nada além das suas</p>
             ) : (
               <div className="space-y-1">
                 {resultadosDeFora.map((i) => (
@@ -250,7 +279,7 @@ export function PainelTarefas({
                   />
                 ))}
                 {remota.data?.truncado && (
-                  <p className="text-[11px] text-muted-foreground">Mostrando os 30 mais recentes; refine a busca.</p>
+                  <p className="text-[11px] text-muted-foreground">30 mais recentes</p>
                 )}
               </div>
             )}
@@ -347,16 +376,8 @@ function FormNovoItem({
       }}
     >
       <p className="text-[11px] text-muted-foreground">
-        {tipo === 'Task'
-          ? `Nova Task em #${pai.id}, na mesma sprint dele, atribuída a você.`
-          : `Novo PBI em #${pai.id}, na sprint atual (${getCurrentOfficialSprintCode()}), atribuído a você.`}
-      </p>
-      <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
-        <Info className="mt-px h-3 w-3 shrink-0" />
-        <span>
-          O Timer é para o rápido: aqui vai só o título. Descrição, prints e anexos você completa no Azure DevOps
-          (o link aparece ao criar e fica no ícone ↗ do item).
-        </span>
+        {tipo === 'Task' ? `Task em #${pai.id}` : `PBI em #${pai.id} · ${getCurrentOfficialSprintCode()}`} · atribuída a
+        você · descrição e anexos no DevOps ↗
       </p>
       <div className="flex gap-2">
         <Input

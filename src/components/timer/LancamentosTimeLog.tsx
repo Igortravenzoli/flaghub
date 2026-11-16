@@ -170,9 +170,6 @@ export function LancamentosTimeLog({ fonte, motor, podeLancar, mostrarDia, mostr
               );
             })}
           </ul>
-          <p className="text-xs text-muted-foreground">
-            A conferência acontece quando o FlagHub relê o TimeLog (a cada 15 min).
-          </p>
         </div>
       )}
     </div>
