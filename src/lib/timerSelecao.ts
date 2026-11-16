@@ -10,6 +10,8 @@ export interface TarefaSelecionada {
   /** "Epic › Feature › PBI", para a pessoa saber onde está. */
   caminho: string | null;
   web_url: string | null;
+  /** Team project no Azure DevOps (só para exibir; o servidor confere ao lançar). */
+  projeto?: string | null;
 }
 
 const CHAVE = 'timer-flag:tarefa-selecionada';
@@ -29,6 +31,7 @@ export function lerSelecao(storage: Pick<Storage, 'getItem'> | null = local()): 
       work_item_type: typeof v.work_item_type === 'string' ? v.work_item_type : null,
       caminho: typeof v.caminho === 'string' ? v.caminho : null,
       web_url: typeof v.web_url === 'string' && v.web_url.startsWith('https://dev.azure.com/') ? v.web_url : null,
+      projeto: typeof v.projeto === 'string' ? v.projeto : null,
     };
   } catch {
     return null;

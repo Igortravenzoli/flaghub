@@ -73,6 +73,7 @@ export function PainelTarefas({
       work_item_type: item.work_item_type,
       caminho: caminhoDe(item, conhecidos),
       web_url: item.web_url,
+      projeto: (item as Partial<ItemTimer>).team_project ?? null,
     });
 
   const alternar = (key: string) =>
