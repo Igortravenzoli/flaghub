@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import type { GrupoEpic, GrupoFeature, GrupoPbi, ItemDevops } from '@/lib/minhasAtividades';
 import { prazoSprint, textoPrazo, type NivelPrazo, type PrazoSprint } from '@/lib/prazoSprint';
@@ -21,25 +21,32 @@ export interface AcoesArvore {
   selecionado?: number | null;
 }
 
+/** Coluna estreita (cockpit do Timer): um PBI por linha e linhas que quebram. */
+const Compacto = createContext(false);
+
 export function ArvoreAtividades({
   grupos,
   hoje,
   recolhidos,
   alternar,
   acoes,
+  compacto = false,
 }: {
   grupos: GrupoEpic[];
   hoje: string;
   recolhidos: Set<string>;
   alternar: (k: string) => void;
   acoes?: AcoesArvore;
+  compacto?: boolean;
 }) {
   return (
+    <Compacto.Provider value={compacto}>
     <div className="space-y-5">
       {grupos.map((g) => (
         <SecaoEpic key={g.key} grupo={g} hoje={hoje} recolhidos={recolhidos} alternar={alternar} acoes={acoes} />
       ))}
     </div>
+    </Compacto.Provider>
   );
 }
 
@@ -152,6 +159,7 @@ function SecaoFeature({
   acoes?: AcoesArvore;
 }) {
   const fechado = recolhidos.has(grupo.key);
+  const compacto = useContext(Compacto);
   const { feature } = grupo;
   return (
     <div className="ml-2 border-l border-border pl-3">
@@ -167,7 +175,7 @@ function SecaoFeature({
       />
       {feature && acoes?.depoisDaFeature?.(feature)}
       {!fechado && (
-        <div className="mt-1.5 grid gap-2 xl:grid-cols-2">
+        <div className={`mt-1.5 grid gap-2 ${compacto ? '' : 'xl:grid-cols-2'}`}>
           {grupo.pbis.map((p) => (
             <BlocoPbi key={p.key} grupo={p} hoje={hoje} acoes={acoes} />
           ))}
@@ -183,9 +191,12 @@ function BlocoPbi({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes
   const { pbi } = grupo;
   const contexto = pbi != null && !grupo.pbiAtribuido;
   const pbiSelecionado = pbi != null && acoes?.selecionado === pbi.id;
+  const compacto = useContext(Compacto);
+  const quebra = compacto ? 'flex-wrap' : '';
+  const titulo = compacto ? 'min-w-[9rem]' : 'min-w-0';
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card">
-      <div className={`flex items-center gap-2 px-3 py-2 ${pbiSelecionado ? 'bg-flag-gold/15' : 'bg-muted/40'}`}>
+      <div className={`flex items-center gap-2 px-3 py-2 ${quebra} ${pbiSelecionado ? 'bg-flag-gold/15' : 'bg-muted/40'}`}>
         {pbi ? (
           <>
             <span className="w-8 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -193,7 +204,7 @@ function BlocoPbi({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes
             </span>
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{pbi.id}</span>
             <span
-              className={`min-w-0 flex-1 truncate text-sm ${contexto ? 'text-muted-foreground' : 'font-medium'}`}
+              className={`${titulo} flex-1 truncate text-sm ${contexto ? 'text-muted-foreground' : 'font-medium'}`}
               title={[pbi.title, pbi.state, contexto ? 'Não atribuído a você' : ''].filter(Boolean).join('\n')}
             >
               {pbi.title}
@@ -221,13 +232,13 @@ function BlocoPbi({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes
         return (
           <div
             key={t.id}
-            className={`flex items-center gap-2 border-t border-border/70 py-1.5 pl-5 pr-3 ${
+            className={`flex items-center gap-2 border-t border-border/70 py-1.5 pl-5 pr-3 ${quebra} ${
               selecionada ? 'bg-flag-gold/15' : ''
             }`}
           >
             <PontoEstado state={t.state} />
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{t.id}</span>
-            <span className="min-w-0 flex-1 truncate text-sm" title={t.title ?? ''}>
+            <span className={`${titulo} flex-1 truncate text-sm`} title={t.title ?? ''}>
               {t.title}
             </span>
             <Estado state={t.state} />

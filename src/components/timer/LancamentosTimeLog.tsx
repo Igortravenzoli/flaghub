@@ -23,13 +23,15 @@ interface Props {
   /** a pessoa tem conta no Azure DevOps (sem ela não há em nome de quem lançar) */
   podeLancar: boolean;
   mostrarDia: boolean;
+  /** o cockpit mostra o pendente em Em espera; aqui fica só o já lançado */
+  mostrarPendentes?: boolean;
 }
 
 /**
  * O que falta lançar no TimeLog (TechsBCN) e em que pé está o que já foi.
  * A soma de verdade é do servidor; a prévia aqui usa a mesma conta.
  */
-export function LancamentosTimeLog({ fonte, motor, podeLancar, mostrarDia }: Props) {
+export function LancamentosTimeLog({ fonte, motor, podeLancar, mostrarDia, mostrarPendentes = true }: Props) {
   const hoje = diaSP(fonte.agora);
   const pendentes = useMemo(
     () => gruposPendentes(fonte.trechos).filter((g) => dentroDaJanela(g.dia, hoje)),
@@ -49,11 +51,12 @@ export function LancamentosTimeLog({ fonte, motor, podeLancar, mostrarDia }: Pro
       { onSuccess: () => setNotas({}) },
     );
 
-  if (pendentes.length === 0 && fonte.lancamentos.length === 0) return null;
+  const verPendentes = mostrarPendentes && pendentes.length > 0;
+  if (!verPendentes && fonte.lancamentos.length === 0) return null;
 
   return (
     <div className="space-y-3">
-      {pendentes.length > 0 && (
+      {verPendentes && (
         <div className="space-y-2 rounded-lg border border-flag-gold/50 bg-flag-gold/5 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium">

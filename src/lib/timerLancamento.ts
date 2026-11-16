@@ -50,6 +50,51 @@ export function gruposPendentes(trechos: TrechoFechado[]): GrupoPendente[] {
     .sort((a, b) => (a.dia === b.dia ? b.minutos - a.minutos : a.dia < b.dia ? 1 : -1));
 }
 
+export interface DemandaEmEspera {
+  work_item_id: number;
+  titulo: string;
+  tipo: string;
+  projeto: string | null;
+  /** soma dos grupos (cada dia arredondado, como o servidor lança) */
+  minutos: number;
+  grupos: GrupoPendente[];
+  /** fim do trecho mais recente (para ordenar) */
+  ultimoFim: string;
+}
+
+/**
+ * "Em espera": o que já tem tempo marcado e ainda não foi lançado, por item
+ * (todos os dias da janela juntos), sem o item que está rodando agora.
+ */
+export function demandasEmEspera(trechos: TrechoFechado[], rodandoItemId: number | null, hoje: string): DemandaEmEspera[] {
+  const grupos = gruposPendentes(trechos).filter((g) => dentroDaJanela(g.dia, hoje));
+  const ultimo = new Map<number, string>();
+  const projeto = new Map<number, string | null>();
+  for (const t of trechos) {
+    if (t.descartado || t.lancamento_id) continue;
+    const u = ultimo.get(t.work_item_id);
+    if (!u || t.encerrado_em > u) ultimo.set(t.work_item_id, t.encerrado_em);
+    if (!projeto.has(t.work_item_id)) projeto.set(t.work_item_id, t.projeto);
+  }
+  const mapa = new Map<number, DemandaEmEspera>();
+  for (const g of grupos) {
+    if (g.work_item_id === rodandoItemId) continue;
+    const d = mapa.get(g.work_item_id) ?? {
+      work_item_id: g.work_item_id,
+      titulo: g.titulo,
+      tipo: g.tipo,
+      projeto: projeto.get(g.work_item_id) ?? null,
+      minutos: 0,
+      grupos: [],
+      ultimoFim: ultimo.get(g.work_item_id) ?? '',
+    };
+    d.minutos += g.minutos;
+    d.grupos.push(g);
+    mapa.set(g.work_item_id, d);
+  }
+  return [...mapa.values()].sort((a, b) => (a.ultimoFim < b.ultimoFim ? 1 : -1));
+}
+
 /** Pode lançar? Só os últimos 7 dias (a mesma janela do servidor). */
 export function dentroDaJanela(dia: string, hoje: string): boolean {
   const d = Date.parse(`${dia}T12:00:00Z`);

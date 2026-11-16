@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, ListTree, Loader2, Plus, RefreshCw, Search, Target } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Info, ListTree, Loader2, NotebookPen, Play, Plus, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,16 +31,29 @@ const ROTULO_TIPO: Record<string, string> = {
 };
 
 /**
- * Painel "Minhas tarefas" do Timer: a árvore do que está atribuído à pessoa
+ * Painel "Tasks atribuídas" do Timer: a árvore do que está atribuído à pessoa
  * (a mesma de /minhas-atividades, lida ao vivo do DevOps), a busca no DevOps
  * inteiro e a criação de Task (sob PBI/Bug) e PBI (sob Feature).
+ *
+ * `selecionada` = o item que está rodando (destaque); `onSelecionar` inicia
+ * o timer nele. Com `anotacao`, o painel está transformando uma anotação em
+ * Task: o "+ Task" já vem com o texto dela.
  */
 export function PainelTarefas({
   selecionada,
   onSelecionar,
+  anotacao = null,
+  onCancelarAnotacao,
+  onItemCriado,
+  embutido = false,
 }: {
   selecionada: TarefaSelecionada | null;
   onSelecionar: (t: TarefaSelecionada) => void;
+  anotacao?: { id: string; texto: string } | null;
+  onCancelarAnotacao?: () => void;
+  onItemCriado?: (item: ItemTimer) => void;
+  /** dentro de outra coluna: sem a moldura de Card */
+  embutido?: boolean;
 }) {
   const minhas = useMinhasTarefasTimer();
   const [busca, setBusca] = useState('');
@@ -98,9 +111,11 @@ export function PainelTarefas({
       <FormNovoItem
         tipo={tipo}
         pai={item}
+        tituloInicial={tipo === 'Task' && anotacao ? anotacao.texto : ''}
         onCancelar={() => setCriando(null)}
         onCriado={(novo) => {
           setCriando(null);
+          if (novo) onItemCriado?.(novo);
           if (novo && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
         }}
       />
@@ -111,15 +126,21 @@ export function PainelTarefas({
   const idsMeus = useMemo(() => new Set(itens.map((i) => i.id)), [itens]);
   const resultadosDeFora = (remota.data?.itens ?? []).filter((i) => !idsMeus.has(i.id));
 
+  const Moldura = embutido ? 'div' : Card;
+  const Cabeca = embutido ? 'div' : CardHeader;
+  const Corpo = embutido ? 'div' : CardContent;
+
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Moldura className={embutido ? 'space-y-3' : undefined}>
+      <Cabeca className={embutido ? undefined : 'pb-3'}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ListTree className="h-4 w-4 text-primary" /> Minhas tarefas
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide">
+              <ListTree className="h-4 w-4 text-primary" /> Tasks atribuídas
             </CardTitle>
-            <CardDescription>O que está atribuído a você no Azure DevOps. Escolha onde marcar o tempo.</CardDescription>
+            {!embutido && (
+              <CardDescription>O que está atribuído a você no Azure DevOps. Dê play onde marcar o tempo.</CardDescription>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setRecolhidos(new Set())} title="Expandir tudo">
@@ -144,8 +165,22 @@ export function PainelTarefas({
             </Button>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      </Cabeca>
+      <Corpo className="space-y-4">
+        {anotacao && (
+          <div className="flex items-start gap-2 rounded-lg border border-flag-gold/60 bg-flag-gold/10 p-3 text-sm">
+            <NotebookPen className="mt-0.5 h-4 w-4 shrink-0 text-flag-gold" />
+            <p className="min-w-0 flex-1">
+              Transformando <span className="font-medium">“{anotacao.texto}”</span> em Task: clique em{' '}
+              <span className="font-medium">+ Task</span> no PBI ou Bug certo. Não está na lista? Busque pelo título ou #id.
+            </p>
+            {onCancelarAnotacao && (
+              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onCancelarAnotacao}>
+                Cancelar
+              </Button>
+            )}
+          </div>
+        )}
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -173,6 +208,7 @@ export function PainelTarefas({
             hoje={hoje}
             recolhidos={recolhidos}
             alternar={alternar}
+            compacto={embutido}
             acoes={{
               selecionado: selecionada?.id ?? null,
               task: acoesItem,
@@ -220,8 +256,8 @@ export function PainelTarefas({
             )}
           </section>
         )}
-      </CardContent>
-    </Card>
+      </Corpo>
+    </Moldura>
   );
 }
 
@@ -258,10 +294,11 @@ function AcoesItem({
           size="sm"
           className={cn('h-6 gap-1 px-2 text-[11px]', selecionada && 'bg-flag-gold text-flag-navy hover:bg-flag-gold')}
           onClick={onSelecionar}
-          title="Marcar o tempo nesta tarefa"
+          disabled={selecionada}
+          title={selecionada ? 'O timer está rodando nesta tarefa' : 'Iniciar o timer nesta tarefa'}
         >
-          <Target className="h-3 w-3" />
-          {selecionada ? 'Selecionada' : 'Selecionar'}
+          <Play className="h-3 w-3" />
+          {selecionada ? 'Rodando' : 'Iniciar'}
         </Button>
       )}
     </span>
@@ -271,23 +308,30 @@ function AcoesItem({
 function FormNovoItem({
   tipo,
   pai,
+  tituloInicial = '',
   onCancelar,
   onCriado,
 }: {
   tipo: 'Task' | 'PBI';
   pai: ItemDevops;
+  tituloInicial?: string;
   onCancelar: () => void;
   onCriado: (item: ItemTimer | null) => void;
 }) {
   const criar = useCriarItemTimer();
-  const [titulo, setTitulo] = useState('');
+  const [titulo, setTitulo] = useState(tituloInicial);
   const valido = titulo.trim().length >= 3 && titulo.trim().length <= 255;
 
   const enviar = async () => {
     if (!valido || criar.isPending) return;
     try {
       const r = await criar.mutateAsync({ tipo, titulo: titulo.trim(), paiId: pai.id });
-      toast.success(`${tipo} #${r.item?.id ?? ''} criada e atribuída a você.`);
+      const url = r.item?.web_url;
+      toast.success(`${tipo} #${r.item?.id ?? ''} criada e atribuída a você.`, {
+        description: 'Descrição, prints e anexos: complete direto no Azure DevOps.',
+        duration: 10_000,
+        ...(url ? { action: { label: 'Abrir no DevOps', onClick: () => window.open(url, '_blank', 'noopener') } } : {}),
+      });
       onCriado(r.item ?? null);
     } catch (e) {
       toast.error(e instanceof ErroTimer ? e.message : 'Não foi possível criar o item.');
@@ -306,6 +350,13 @@ function FormNovoItem({
         {tipo === 'Task'
           ? `Nova Task em #${pai.id}, na mesma sprint dele, atribuída a você.`
           : `Novo PBI em #${pai.id}, na sprint atual (${getCurrentOfficialSprintCode()}), atribuído a você.`}
+      </p>
+      <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+        <Info className="mt-px h-3 w-3 shrink-0" />
+        <span>
+          O Timer é para o rápido: aqui vai só o título. Descrição, prints e anexos você completa no Azure DevOps
+          (o link aparece ao criar e fica no ícone ↗ do item).
+        </span>
       </p>
       <div className="flex gap-2">
         <Input
