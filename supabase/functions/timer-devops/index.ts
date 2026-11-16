@@ -12,6 +12,12 @@
 //   • filhos  (fase 2): um nível da hierarquia, para descer na árvore.
 //   • criar   (fase 2): só Task (sob PBI/Bug) e PBI (sob Feature), atribuído à
 //     própria pessoa; PBI sempre na sprint atual do calendário oficial.
+//   • lancar  (fase 4): soma os trechos fechados (item × dia) no BANCO
+//     (timer_lancamento_preparar: só a própria hora, últimos 7 dias, teto de
+//     12 h contando o que já está no TimeLog) e grava UM documento na
+//     TechsBCN com id = id do lançamento. O item é conferido no Azure antes.
+//   • relancar (fase 4): lançamento com erro — procura o documento pelo id
+//     ANTES de regravar; nunca repete POST às cegas.
 //
 // Não há update de work item nem consulta livre: o Timer não vira um proxy do
 // PAT. Toda op além de `ativar` exige timer_access ativo.
@@ -62,6 +68,16 @@ import {
   wiqlMinhas,
   type ItemTarefa,
 } from './tarefas.ts'
+import {
+  API_EXT,
+  desfechoDoPost,
+  erroDoPreparo,
+  itemAceitaHora,
+  montarDocumento,
+  TIMELOG_DOCS,
+  validarPedidoLancar,
+  type Preparado,
+} from './lancamento.ts'
 
 const REDESCOBRIR_GUID_MS = 10 * 60 * 1000
 const TETO_MINHAS = 200
@@ -449,6 +465,142 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
   return responder(req, 200, { ok: true, item })
 }
 
+// ─── lançamento (fase 4) ─────────────────────────────────────────────────────
+
+interface ResultadoLancamento {
+  id?: string
+  dia: string
+  work_item_id: number
+  status: 'lancado' | 'erro' | 'cancelado' | 'recusado'
+  minutos?: number
+  motivo?: string
+  mensagem?: string
+}
+
+async function registrarResultado(id: string, status: 'lancado' | 'erro' | 'cancelado', titulo: string | null, erro: string | null) {
+  const { error } = await admin().rpc('timer_lancamento_resultado', {
+    p_id: id, p_status: status, p_titulo: titulo, p_erro: erro,
+  })
+  if (error) console.error('[timer-devops] timer_lancamento_resultado falhou:', error.message)
+}
+
+/** Existe documento com este id na TechsBCN? (true/false; null = não deu para saber) */
+async function documentoExiste(id: string, pat: string): Promise<boolean | null> {
+  try {
+    const resp = await devopsFetch(
+      `${TIMELOG_DOCS}/${encodeURIComponent(id)}?${API_EXT}`,
+      { method: 'GET', headers: devopsAuthHeaders(pat) },
+      { client: 'timer-lancar', retryOn5xx: true },
+    )
+    await resp.body?.cancel()
+    if (resp.ok) return true
+    if (resp.status === 404) return false
+    console.warn(`[timer-devops] GET do documento ${id} respondeu ${resp.status}`)
+    return null
+  } catch (e) {
+    console.warn('[timer-devops] GET do documento falhou:', e)
+    return null
+  }
+}
+
+/**
+ * Leva um lançamento já preparado (status 'enviando') até o fim.
+ * `conferirAntes` = é reenvio: o POST anterior pode ter chegado.
+ */
+async function enviar(p: Preparado, pat: string, conferirAntes: boolean): Promise<ResultadoLancamento> {
+  const base = { id: p.id, dia: p.dia, work_item_id: p.work_item_id, minutos: p.minutos }
+
+  if (conferirAntes) {
+    const existe = await documentoExiste(p.id, pat)
+    if (existe === true) {
+      await registrarResultado(p.id, 'lancado', null, null)
+      return { ...base, status: 'lancado', mensagem: 'O lançamento já estava no TimeLog.' }
+    }
+    if (existe === null) {
+      const msg = 'Não deu para conferir no TimeLog se o envio anterior chegou. Tente de novo em instantes.'
+      await registrarResultado(p.id, 'erro', null, msg)
+      return { ...base, status: 'erro', mensagem: msg }
+    }
+  }
+
+  // O item, conferido no Azure (antes de gravar: falha aqui cancela sem risco).
+  let item: ItemTarefa | undefined
+  try {
+    ;[item] = await lerItens([p.work_item_id], pat)
+  } catch (e) {
+    const msg = e instanceof ErroDevops && (e.status === 401 || e.status === 403)
+      ? 'O token do Timer não tem permissão para ler o item no Azure DevOps.'
+      : 'O Azure DevOps não respondeu ao conferir o item. Tente de novo.'
+    await registrarResultado(p.id, 'cancelado', null, msg)
+    return { ...base, status: 'cancelado', mensagem: msg }
+  }
+  const aceita = itemAceitaHora(item)
+  if (!aceita.ok) {
+    await registrarResultado(p.id, 'cancelado', null, aceita.mensagem)
+    return { ...base, status: 'cancelado', mensagem: aceita.mensagem }
+  }
+  const titulo = item?.title ?? null
+
+  // Escrita: SEM repetir 5xx (o devopsFetch só repete 429 em POST).
+  let status: number
+  try {
+    const resp = await devopsFetch(
+      `${TIMELOG_DOCS}?${API_EXT}`,
+      { method: 'POST', headers: devopsAuthHeaders(pat), body: JSON.stringify(montarDocumento(p, titulo)) },
+      { client: 'timer-lancar' },
+    )
+    status = resp.status
+    if (!resp.ok) console.warn(`[timer-devops] POST do documento ${p.id}: ${resp.status} ${(await resp.text()).slice(0, 300)}`)
+    else await resp.body?.cancel()
+  } catch (e) {
+    console.warn('[timer-devops] POST do documento falhou na rede:', e)
+    status = 0
+  }
+
+  const desfecho = desfechoDoPost(status)
+  const msg = desfecho === 'lancado'
+    ? null
+    : desfecho === 'cancelado'
+      ? (status === 401 || status === 403
+          ? 'O token do Timer não tem permissão para gravar no TimeLog.'
+          : `O TimeLog recusou o lançamento (HTTP ${status}).`)
+      : 'O TimeLog não confirmou o lançamento. Use "tentar de novo": conferimos antes de regravar.'
+  await registrarResultado(p.id, desfecho, titulo, msg)
+  return { ...base, status: desfecho, ...(msg ? { mensagem: msg } : {}) }
+}
+
+async function lancar(req: Request, userId: string, corpo: Json, pat: string): Promise<Response> {
+  const v = validarPedidoLancar(corpo)
+  if (!v.ok) return responder(req, 400, { ok: false, motivo: v.motivo, mensagem: 'Pedido de lançamento inválido.' })
+
+  const sb = admin()
+  const resultados: ResultadoLancamento[] = []
+  for (const g of v.valor) {
+    const { data, error } = await sb.rpc('timer_lancamento_preparar', {
+      p_user: userId, p_dia: g.dia, p_work_item_id: g.workItemId, p_notas: g.notas,
+    })
+    if (error) {
+      const e = erroDoPreparo(error)
+      resultados.push({ dia: g.dia, work_item_id: g.workItemId, status: 'recusado', motivo: e.motivo, mensagem: e.mensagem })
+      continue
+    }
+    resultados.push(await enviar(data as Preparado, pat, false))
+  }
+  return responder(req, 200, { ok: true, resultados })
+}
+
+async function relancar(req: Request, userId: string, corpo: Json, pat: string): Promise<Response> {
+  const id = typeof corpo.id === 'string' && /^[0-9a-f-]{36}$/i.test(corpo.id) ? corpo.id : null
+  if (!id) return responder(req, 400, { ok: false, motivo: 'id_invalido' })
+  const { data, error } = await admin().rpc('timer_lancamento_reenviar', { p_user: userId, p_id: id })
+  if (error) {
+    const e = erroDoPreparo(error)
+    return responder(req, 409, { ok: false, motivo: e.motivo, mensagem: e.mensagem })
+  }
+  const r = await enviar(data as Preparado, pat, true)
+  return responder(req, 200, { ok: true, resultados: [r] })
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) })
   if (req.method !== 'POST') return responder(req, 405, { ok: false, motivo: 'metodo_nao_permitido' })
@@ -466,7 +618,7 @@ serve(async (req) => {
   if (corpo.op === 'ativar') return await ativar(req, quem.user, quem.token)
 
   const op = corpo.op
-  if (op !== 'minhas' && op !== 'buscar' && op !== 'filhos' && op !== 'criar') {
+  if (op !== 'minhas' && op !== 'buscar' && op !== 'filhos' && op !== 'criar' && op !== 'lancar' && op !== 'relancar') {
     return responder(req, 400, { ok: false, motivo: 'op_desconhecida' })
   }
 
@@ -480,6 +632,8 @@ serve(async (req) => {
     if (op === 'minhas') return await minhas(req, acesso, pat)
     if (op === 'buscar') return await buscar(req, corpo, pat)
     if (op === 'filhos') return await filhos(req, corpo, pat)
+    if (op === 'lancar') return await lancar(req, quem.user.id, corpo, pat)
+    if (op === 'relancar') return await relancar(req, quem.user.id, corpo, pat)
     return await criar(req, quem.user.id, acesso, corpo, pat)
   } catch (e) {
     return erroDevops(req, e)

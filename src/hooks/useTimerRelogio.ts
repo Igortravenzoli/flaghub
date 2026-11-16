@@ -138,7 +138,70 @@ export function useAcoesTimer() {
     onError: falhou,
   });
 
-  return { iniciar, pausar, sinal, corrigir, descartar };
+  // Lançar no TimeLog passa pela edge (ela fala com o Azure); o estado volta
+  // pelo refetch, porque quem muda é o banco.
+  const depoisDeLancar = (r: RespostaLancamento) => {
+    void qc.invalidateQueries({ queryKey: ['timer-estado', user?.id ?? 'anon'] });
+    const ok = r.resultados.filter((x) => x.status === 'lancado');
+    const ruins = r.resultados.filter((x) => x.status !== 'lancado');
+    if (ok.length > 0) {
+      const min = ok.reduce((s, x) => s + (x.minutos ?? 0), 0);
+      toast.success(`${ok.length === 1 ? '1 lançamento' : `${ok.length} lançamentos`} no TimeLog (${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}min).`);
+    }
+    for (const x of ruins) toast.error(`#${x.work_item_id} (${x.dia}): ${x.mensagem ?? 'não lançado.'}`);
+  };
+
+  const lancar = useMutation({
+    mutationFn: (grupos: { dia: string; work_item_id: number; notas?: string | null }[]) =>
+      chamarEdge({ op: 'lancar', grupos }),
+    onSuccess: depoisDeLancar,
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const relancar = useMutation({
+    mutationFn: (id: string) => chamarEdge({ op: 'relancar', id }),
+    onSuccess: depoisDeLancar,
+    onError: (e: Error) => {
+      toast.error(e.message);
+      void qc.invalidateQueries({ queryKey: ['timer-estado', user?.id ?? 'anon'] });
+    },
+  });
+
+  return { iniciar, pausar, sinal, corrigir, descartar, lancar, relancar };
+}
+
+export interface ResultadoLancamento {
+  id?: string;
+  dia: string;
+  work_item_id: number;
+  status: 'lancado' | 'erro' | 'cancelado' | 'recusado';
+  minutos?: number;
+  motivo?: string;
+  mensagem?: string;
+}
+
+export interface RespostaLancamento {
+  ok: boolean;
+  resultados: ResultadoLancamento[];
+}
+
+async function chamarEdge(corpo: Record<string, unknown>): Promise<RespostaLancamento> {
+  const { data, error } = await supabase.functions.invoke('timer-devops', { body: corpo });
+  if (error) {
+    const ctx = (error as { context?: Response }).context;
+    let msg = 'Não foi possível falar com o servidor.';
+    if (ctx && typeof ctx.json === 'function') {
+      try {
+        const j = (await ctx.json()) as { mensagem?: string };
+        if (j?.mensagem) msg = j.mensagem;
+      } catch {
+        /* mensagem genérica */
+      }
+    }
+    throw new Error(msg);
+  }
+  const r = data as RespostaLancamento;
+  return { ok: !!r?.ok, resultados: Array.isArray(r?.resultados) ? r.resultados : [] };
 }
 
 /** Uma tentativa de sinal falha espera isto antes da próxima. */

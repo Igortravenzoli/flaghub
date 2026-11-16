@@ -63,6 +63,29 @@ export interface TrechoFechado {
   encerrado_original_em: string | null;
   motivo_fim: MotivoFim;
   descartado: boolean;
+  /** preenchido quando o trecho entrou num lançamento (aí fica travado) */
+  lancamento_id?: string | null;
+}
+
+export type StatusLancamento = 'enviando' | 'lancado' | 'erro' | 'cancelado';
+
+export interface Lancamento {
+  id: string;
+  work_item_id: number;
+  titulo: string | null;
+  dia: string;
+  inicio: string;
+  minutos: number;
+  notas: string | null;
+  status: StatusLancamento;
+  erro: string | null;
+  tentativas: number;
+  enviado_em: string | null;
+  criado_em: string;
+  /** minutos do documento no TimeLog, depois que o sync o trouxe */
+  minutos_timelog: number | null;
+  conferido: boolean;
+  excluido_na_origem: boolean;
 }
 
 export interface EstadoTimer {
@@ -70,6 +93,7 @@ export interface EstadoTimer {
   regras: RegrasTimer;
   rodando: TrechoRodando | null;
   trechos: TrechoFechado[];
+  lancamentos: Lancamento[];
   fechado_hoje_seg: number;
 }
 
@@ -81,6 +105,7 @@ export function lerEstado(bruto: unknown): EstadoTimer {
     regras: { ...REGRAS_PADRAO, ...(o.regras ?? {}) },
     rodando: o.rodando && typeof o.rodando === 'object' ? (o.rodando as TrechoRodando) : null,
     trechos: Array.isArray(o.trechos) ? (o.trechos as TrechoFechado[]) : [],
+    lancamentos: Array.isArray(o.lancamentos) ? (o.lancamentos as Lancamento[]) : [],
     fechado_hoje_seg: Number(o.fechado_hoje_seg) || 0,
   };
 }
@@ -211,6 +236,7 @@ const MENSAGENS_ERRO: Record<string, string> = {
   timer_trecho_descartado: 'Este trecho já foi descartado.',
   timer_trecho_antigo: 'Só dá para mexer em trechos dos últimos 7 dias.',
   timer_correcao_so_reduz: 'A correção só pode encurtar o trecho (fim entre o início e o fim atual).',
+  timer_trecho_lancado: 'Este trecho já foi lançado no TimeLog: não dá mais para mudar.',
 };
 
 /** Mensagem amigável a partir do erro do PostgREST (o texto do RAISE vem em message). */
