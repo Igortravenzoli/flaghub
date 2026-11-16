@@ -83,5 +83,15 @@ export function useTimerAnotacoes() {
     onError: falhou,
   });
 
-  return { anotacoes: consulta.data ?? [], carregando: consulta.isLoading, anotar, fechar, apagar };
+  const editar = useMutation({
+    mutationFn: async (p: { id: string; texto: string }) => {
+      const { data, error } = await db.rpc('timer_anotacao_editar', { p_id: p.id, p_texto: p.texto });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: gravar,
+    onError: falhou,
+  });
+
+  return { anotacoes: consulta.data ?? [], carregando: consulta.isLoading, anotar, fechar, apagar, editar };
 }

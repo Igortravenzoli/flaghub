@@ -17,8 +17,20 @@ interface Props {
  * e inicia o timer; ✓ feita; ✕ apaga.
  */
 export function ColunaAnotacoes({ emConversao, onVirarTask, className }: Props) {
-  const { anotacoes, anotar, fechar, apagar } = useTimerAnotacoes();
+  const { anotacoes, anotar, fechar, apagar, editar } = useTimerAnotacoes();
   const [texto, setTexto] = useState('');
+  const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null);
+
+  const salvarEdicao = () => {
+    if (!editando) return;
+    const t = editando.texto.trim();
+    const original = anotacoes.find((a) => a.id === editando.id)?.texto;
+    if (!t || t === original) {
+      setEditando(null);
+      return;
+    }
+    editar.mutate({ id: editando.id, texto: t }, { onSuccess: () => setEditando(null) });
+  };
 
   const enviar = () => {
     const t = texto.trim();
@@ -55,9 +67,34 @@ export function ColunaAnotacoes({ emConversao, onVirarTask, className }: Props) 
                   emConversao === a.id ? 'border-flag-gold bg-flag-gold/10' : 'border-border',
                 )}
               >
-                <span className="min-w-0 flex-1 truncate font-medium" title={a.texto}>
-                  {a.texto}
-                </span>
+                {editando?.id === a.id ? (
+                  <Input
+                    autoFocus
+                    value={editando.texto}
+                    maxLength={200}
+                    onChange={(e) => setEditando({ id: a.id, texto: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        salvarEdicao();
+                      } else if (e.key === 'Escape') {
+                        setEditando(null);
+                      }
+                    }}
+                    onBlur={salvarEdicao}
+                    className="h-7 min-w-0 flex-1 px-2 text-sm"
+                    aria-label="Editar anotação"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 truncate text-left font-medium"
+                    title="Clique para editar"
+                    onClick={() => setEditando({ id: a.id, texto: a.texto })}
+                  >
+                    {a.texto}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="rounded-md p-1.5 text-[hsl(var(--success))] hover:bg-[hsl(var(--success)/0.1)]"

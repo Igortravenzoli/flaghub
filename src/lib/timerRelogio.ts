@@ -39,7 +39,19 @@ export type MotivoFim =
   | 'suspensao'
   | 'bloqueio'
   | 'ocioso'
-  | 'acesso_revogado';
+  | 'acesso_revogado'
+  | 'parcial';
+
+/** Demanda aberta: nasceu ao iniciar o item e fica até a pessoa encerrar (TM8). */
+export interface Demanda {
+  id: string;
+  work_item_id: number;
+  titulo: string;
+  tipo: string;
+  projeto: string | null;
+  aberta_em: string;
+  ultima_atividade_em: string;
+}
 
 export interface TrechoRodando {
   id: string;
@@ -94,6 +106,7 @@ export interface EstadoTimer {
   rodando: TrechoRodando | null;
   trechos: TrechoFechado[];
   lancamentos: Lancamento[];
+  demandas: Demanda[];
   fechado_hoje_seg: number;
 }
 
@@ -106,6 +119,7 @@ export function lerEstado(bruto: unknown): EstadoTimer {
     rodando: o.rodando && typeof o.rodando === 'object' ? (o.rodando as TrechoRodando) : null,
     trechos: Array.isArray(o.trechos) ? (o.trechos as TrechoFechado[]) : [],
     lancamentos: Array.isArray(o.lancamentos) ? (o.lancamentos as Lancamento[]) : [],
+    demandas: Array.isArray(o.demandas) ? (o.demandas as Demanda[]) : [],
     fechado_hoje_seg: Number(o.fechado_hoje_seg) || 0,
   };
 }
@@ -217,6 +231,7 @@ export const ROTULO_MOTIVO: Record<MotivoFim, string> = {
   bloqueio: 'Tela bloqueada',
   ocioso: 'Sem uso',
   acesso_revogado: 'Acesso revogado',
+  parcial: 'Lançado sem encerrar',
 };
 
 /** Fechado pelas regras (não pela pessoa): merece destaque na lista. */

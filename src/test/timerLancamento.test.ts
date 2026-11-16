@@ -7,7 +7,15 @@ import {
   TIMELOG_DOCS,
   validarPedidoLancar,
 } from '../../supabase/functions/timer-devops/lancamento';
-import { demandasEmEspera, dentroDaJanela, diaSP, gruposPendentes, situacao } from '@/lib/timerLancamento';
+import {
+  demandasEmEspera,
+  dentroDaJanela,
+  diaSP,
+  gruposPendentes,
+  lancadoHojeSeg,
+  pendentesDoItem,
+  situacao,
+} from '@/lib/timerLancamento';
 import type { Lancamento, TrechoFechado } from '@/lib/timerRelogio';
 
 describe('validarPedidoLancar', () => {
@@ -155,16 +163,29 @@ describe('demandasEmEspera', () => {
     trecho({ work_item_id: 4, titulo: 'Antigo', iniciado_em: '2026-11-01T13:00:00.000Z', encerrado_em: '2026-11-01T14:00:00.000Z' }),
   ];
 
-  it('junta os dias por item, mais recente primeiro, sem lançado nem fora da janela', () => {
-    const d = demandasEmEspera(ts, null, '2026-11-16');
-    expect(d.map((x) => [x.work_item_id, x.minutos, x.grupos.length])).toEqual([
-      [2, 10, 1],
-      [1, 50, 2],
+  const dem = (id: number, ativ: string) => ({
+    id: `d${id}`, work_item_id: id, titulo: `Item ${id}`, tipo: 'Task', projeto: null,
+    aberta_em: ativ, ultima_atividade_em: ativ,
+  });
+  const demandas = [dem(1, '2026-11-16T13:30:00Z'), dem(2, '2026-11-16T16:10:00Z'), dem(3, '2026-11-16T12:00:00Z')];
+
+  it('são as demandas abertas, com o que falta lançar e o tempo de hoje', () => {
+    const d = demandasEmEspera(demandas, ts, null, '2026-11-16');
+    expect(d.map((x) => [x.work_item_id, x.minutos, x.grupos.length, Math.round(x.hojeSeg / 60)])).toEqual([
+      [2, 10, 1, 10],
+      [1, 50, 2, 30],
+      [3, 0, 0, 30], // tudo lançado: segue em espera até encerrar
     ]);
   });
 
-  it('o item que está rodando não fica em espera', () => {
-    expect(demandasEmEspera(ts, 1, '2026-11-16').map((x) => x.work_item_id)).toEqual([2]);
+  it('o item que está rodando não fica em espera; item sem demanda não aparece', () => {
+    expect(demandasEmEspera(demandas, ts, 1, '2026-11-16').map((x) => x.work_item_id)).toEqual([2, 3]);
+    expect(demandasEmEspera([], ts, null, '2026-11-16')).toEqual([]);
+  });
+
+  it('pendentes de um item e lançado de hoje', () => {
+    expect(pendentesDoItem(ts, 1, '2026-11-16').map((g) => g.minutos)).toEqual([30, 20]);
+    expect(Math.round(lancadoHojeSeg(ts, '2026-11-16') / 60)).toBe(30);
   });
 });
 
