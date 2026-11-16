@@ -27,6 +27,7 @@ import TimerWidget from "@/pages/timer/TimerWidget";
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 import Acompanhamento from "@/pages/Acompanhamento";
 import TimelogHibridoDashboard from "@/pages/TimelogHibridoDashboard";
+import MinhasAtividades from "@/pages/MinhasAtividades";
 import QualidadeDashboard from "@/pages/setores/QualidadeDashboard";
 import HelpdeskDashboard from "@/pages/setores/HelpdeskDashboard";
 import ComercialDashboard from "@/pages/setores/ComercialDashboard";
@@ -142,6 +143,7 @@ const App = () => (
                   não-admin vendo só a aba Dados.
                 */}
                 <Route path="/timelog" element={<TimelogHibridoDashboard />} />
+                <Route path="/minhas-atividades" element={<MinhasAtividades />} />
                 {/* Sector dashboards */}
                 <Route path="/setor/qualidade" element={<QualidadeDashboard />} />
                 <Route path="/setor/helpdesk" element={<HelpdeskDashboard />} />

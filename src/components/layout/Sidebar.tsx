@@ -24,6 +24,7 @@ import {
   Download,
   Mail,
   Timer as TimerIcon,
+  ListTree,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,12 @@ const navItems: NavItem[] = [
   { label: 'Dashboards', path: '/home', icon: LayoutDashboard },
 ];
 
-const timerItem: NavItem = { label: 'Timer Flag', path: '/timer', icon: TimerIcon };
+// Visão pessoal (o que é DO usuário logado). Fora do telão: o monitor não tem dono.
+// O Timer Flag abre a casca própria (/timer), fora do MainLayout.
+const personalItems: NavItem[] = [
+  { label: 'Minhas atividades', path: '/minhas-atividades', icon: ListTree },
+  { label: 'Timer Flag', path: '/timer', icon: TimerIcon },
+];
 
 const sectorItems: NavItem[] = [
   { label: 'Comercial', path: '/setor/comercial', icon: TrendingUp, areaKey: 'comercial' },
@@ -229,8 +235,7 @@ export function Sidebar() {
         {/* Monitor user: only show Home, no sectors or admin */}
         {!isMonitor && (
           <>
-            {/* Timer Flag: abre a casca própria (/timer), fora do MainLayout */}
-            {renderNavItem(timerItem)}
+            {personalItems.map(item => renderNavItem(item))}
 
             {/* Separator: Áreas */}
             {!collapsed && (
