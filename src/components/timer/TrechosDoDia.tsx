@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
 import { useTimerEstado } from '@/hooks/useTimerRelogio';
+import { LancamentosTimeLog } from '@/components/timer/LancamentosTimeLog';
 import {
   diaCurto,
   duracaoSeg,
@@ -38,8 +39,8 @@ import {
 
 type Periodo = 1 | 7;
 
-/** Trechos fechados de hoje (ou dos últimos 7 dias), com encurtar e descartar. */
-export function TrechosDoDia({ motor }: { motor: MotorTimer }) {
+/** Trechos fechados de hoje (ou dos últimos 7 dias), com encurtar, descartar e lançar. */
+export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLancar: boolean }) {
   const [periodo, setPeriodo] = useState<Periodo>(1);
   const usarSemana = periodo === 7;
   // a de 7 dias só busca quando pedida
@@ -68,7 +69,9 @@ export function TrechosDoDia({ motor }: { motor: MotorTimer }) {
           <CardTitle className="flex items-center gap-2 text-base">
             <History className="h-4 w-4 text-primary" /> Trechos
           </CardTitle>
-          <CardDescription>Dá para encurtar ou descartar um trecho dos últimos 7 dias. Aumentar, não.</CardDescription>
+          <CardDescription>
+            Encurte ou descarte o que precisar e lance no TimeLog. Trecho lançado não muda mais.
+          </CardDescription>
         </div>
         <div className="flex rounded-md border p-0.5 text-xs">
           {([1, 7] as Periodo[]).map((p) => (
@@ -86,7 +89,10 @@ export function TrechosDoDia({ motor }: { motor: MotorTimer }) {
           ))}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {!carregando && fonte && (
+          <LancamentosTimeLog fonte={fonte} motor={motor} podeLancar={podeLancar} mostrarDia={periodo === 7} />
+        )}
         {carregando ? (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
@@ -193,7 +199,12 @@ function LinhaTrecho({ t, onEncurtar, onDescartar }: { t: TrechoFechado; onEncur
             Encurtado
           </Badge>
         )}
-        {!t.descartado && (
+        {t.lancamento_id && (
+          <Badge variant="outline" className="border-[hsl(var(--success)/0.4)] text-[hsl(var(--success))]">
+            Lançado
+          </Badge>
+        )}
+        {!t.descartado && !t.lancamento_id && (
           <>
             <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onEncurtar} title="Encurtar">
               <Scissors className="h-3.5 w-3.5" />

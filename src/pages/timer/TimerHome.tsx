@@ -79,7 +79,7 @@ export default function TimerHome() {
         </Card>
       </div>
 
-      <TrechosDoDia motor={motor} />
+      <TrechosDoDia motor={motor} podeLancar={!!acesso?.devops_guid} />
 
       <PainelTarefas selecionada={selecionada} onSelecionar={trocarSelecao} />
 
