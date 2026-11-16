@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { History, Loader2, Scissors, Trash2 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SOMBRA_XS } from '@/components/timer/visual';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -63,15 +64,12 @@ export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLan
   }, [fonte]);
 
   return (
-    <Card>
+    <Card className={cn('rounded-xl', SOMBRA_XS)}>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
         <div className="space-y-1.5">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
             <History className="h-4 w-4 text-primary" /> Trechos
           </CardTitle>
-          <CardDescription>
-            Encurte ou descarte o que precisar e lance no TimeLog. Trecho lançado não muda mais.
-          </CardDescription>
         </div>
         <div className="flex rounded-md border p-0.5 text-xs">
           {([1, 7] as Periodo[]).map((p) => (
@@ -99,7 +97,7 @@ export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLan
           </div>
         ) : porDia.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Nenhum trecho fechado {periodo === 1 ? 'hoje' : 'nos últimos 7 dias'}.
+            Nenhum trecho {periodo === 1 ? 'hoje' : 'em 7 dias'}
           </p>
         ) : (
           <div className="space-y-4">

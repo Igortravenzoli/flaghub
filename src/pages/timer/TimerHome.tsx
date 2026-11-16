@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, Clock, Download, Globe, Plus, UserCheck } from 'lucide-react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { Activity, AlertTriangle, Clock, Download, Globe, ListTree, PauseCircle, UserCheck } from 'lucide-react';
+import { Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { PainelTarefas } from '@/components/timer/PainelTarefas';
 import { Cronometro } from '@/components/timer/Cronometro';
 import { ColunaAnotacoes } from '@/components/timer/ColunaAnotacoes';
@@ -13,7 +14,6 @@ import { useTimerAnotacoes, type Anotacao } from '@/hooks/useTimerAnotacoes';
 import { gravarSelecao, type TarefaSelecionada } from '@/lib/timerSelecao';
 import { horas, relogio } from '@/lib/timerRelogio';
 import { dentroDaJanela, demandasEmEspera, diaSP, gruposPendentes, type DemandaEmEspera } from '@/lib/timerLancamento';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -25,11 +25,32 @@ import { detectarCliente, detectarPlataforma } from '@/lib/timerAcesso';
 import { DOWNLOADS_TIMER, ordenarDownloads, urlDownload } from '@/lib/timerDownloads';
 
 /**
- * Cockpit do Timer, em três colunas:
- *   Anotações (lembretes que viram Task) | Iniciar nova demanda + Tasks
- *   atribuídas + Em espera | Em andamento.
+ * Cockpit do Timer, em quatro colunas (padrão visual do Flag.DS):
+ *   Anotações | Iniciar demanda (épicas recolhidas) | Em espera | Em andamento.
  * Embaixo, os trechos e os lançamentos no TimeLog.
  */
+function Metrica({
+  icone: Icone,
+  rotulo,
+  valor,
+  apagado = false,
+}: {
+  icone: ComponentType<{ className?: string }>;
+  rotulo: string;
+  valor: string;
+  apagado?: boolean;
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <Icone className="h-4 w-4 text-muted-foreground" />
+      <span className="text-muted-foreground">{rotulo}</span>
+      <span className={cn('font-mono font-semibold tabular-nums', apagado ? 'text-muted-foreground' : 'text-foreground')}>
+        {valor}
+      </span>
+    </span>
+  );
+}
+
 export default function TimerHome() {
   const { user, isAdmin } = useAuth();
   const { data: acesso } = useTimerAcesso();
@@ -44,7 +65,6 @@ export default function TimerHome() {
   const base = import.meta.env.VITE_TIMER_DOWNLOAD_BASE_URL as string | undefined;
   const downloads = useMemo(() => ordenarDownloads(DOWNLOADS_TIMER, plataforma), [plataforma]);
 
-  const [novaAberta, setNovaAberta] = useState(false);
   const [anotacao, setAnotacao] = useState<Anotacao | null>(null);
   const [encerrando, setEncerrando] = useState<{ id: number; titulo: string } | null>(null);
 
@@ -79,80 +99,83 @@ export default function TimerHome() {
   const encerrarRodando = (item: { id: number; titulo: string }) =>
     motor.acoes.pausar.mutate({ motivo: 'manual' }, { onSuccess: () => setEncerrando(item) });
 
-  const virarTask = (a: Anotacao) => {
-    setAnotacao(a);
-    setNovaAberta(true);
-  };
+  const virarTask = (a: Anotacao) => setAnotacao(a);
 
   const ocupado = motor.acoes.iniciar.isPending || motor.acoes.pausar.isPending;
 
   return (
     <TimerLayout>
       {/* faixa do dia */}
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm">
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <Clock className="h-4 w-4" /> Hoje acumulado:
-            <span className="font-mono font-semibold text-foreground">{horas(motor.totalHoje)}</span>
-          </span>
-          <span className="text-muted-foreground">
-            Rodando agora:{' '}
-            <span className="font-mono font-semibold text-foreground">
-              {rodando ? `#${rodando.work_item_id} · ${relogio(motor.segundos)}` : '—'}
-            </span>
-          </span>
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            {podeLancar ? (
-              <>
-                <UserCheck className="h-3.5 w-3.5 text-[hsl(var(--success))]" /> Lança como {acesso?.devops_display ?? user?.email}
-              </>
-            ) : (
-              <>
-                <AlertTriangle className="h-3.5 w-3.5 text-[hsl(var(--warning))]" /> Conta do DevOps não encontrada:
-                não dá para lançar horas
-              </>
-            )}
-          </span>
-        </CardContent>
-      </Card>
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-x-8 gap-y-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm',
+          SOMBRA_XS,
+        )}
+      >
+        <Metrica icone={Clock} rotulo="Hoje" valor={horas(motor.totalHoje)} />
+        <Metrica
+          icone={Activity}
+          rotulo="Rodando"
+          valor={rodando ? `#${rodando.work_item_id} · ${relogio(motor.segundos)}` : 'nada'}
+          apagado={!rodando}
+        />
+        <Metrica icone={PauseCircle} rotulo="Em espera" valor={String(emEspera.length)} />
+        <span className="ml-auto">
+          {podeLancar ? (
+            <Pilula tom="sucesso" title="Conta do Azure DevOps em que as horas são lançadas">
+              <UserCheck className="h-3 w-3" />
+              {acesso?.devops_display ?? user?.email}
+            </Pilula>
+          ) : (
+            <Pilula tom="alerta">
+              <AlertTriangle className="h-3 w-3" />
+              Conta do DevOps não encontrada
+            </Pilula>
+          )}
+        </span>
+      </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
-        <ColunaAnotacoes emConversao={anotacao?.id ?? null} onVirarTask={virarTask} />
+      {/* 4 colunas: no xl ocupam a altura da tela e rolam por dentro */}
+      <div className="grid gap-4 md:grid-cols-2 xl:h-[calc(100dvh-9.5rem)] xl:min-h-[560px] xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <ColunaAnotacoes
+          emConversao={anotacao?.id ?? null}
+          onVirarTask={virarTask}
+          className="max-h-[70vh] xl:max-h-none"
+        />
 
-        <Card className="min-w-0">
-          <CardContent className="space-y-4 p-4">
-            <Button
-              className="w-full bg-[hsl(var(--success))] text-white hover:bg-[hsl(var(--success)/0.9)]"
-              onClick={() => setNovaAberta((v) => !v)}
-              aria-expanded={novaAberta}
-            >
-              <Plus className="mr-1.5 h-4 w-4" /> Iniciar nova demanda
-              <ChevronDown className={cn('ml-1.5 h-4 w-4 transition-transform', novaAberta && 'rotate-180')} />
-            </Button>
-            {novaAberta && (
-              <PainelTarefas
-                embutido
-                selecionada={
-                  rodando
-                    ? { id: rodando.work_item_id, title: rodando.titulo, work_item_type: rodando.tipo, caminho: null, web_url: null }
-                    : null
-                }
-                onSelecionar={iniciar}
-                anotacao={anotacao}
-                onCancelarAnotacao={() => setAnotacao(null)}
-                onItemCriado={(item) => {
-                  if (anotacao) fecharAnotacao.mutate({ id: anotacao.id, virouItemId: item.id });
-                  setAnotacao(null);
-                }}
-              />
-            )}
-            <EmEspera demandas={emEspera} ocupado={ocupado} onRetomar={retomar} onEncerrar={(d) => setEncerrando({ id: d.work_item_id, titulo: d.titulo })} />
-          </CardContent>
-        </Card>
+        <Coluna
+          icone={ListTree}
+          titulo="Iniciar demanda"
+          destaque={!!anotacao}
+          className="max-h-[70vh] xl:max-h-none"
+        >
+          <PainelTarefas
+            embutido
+            iniciarRecolhido
+            selecionada={
+              rodando
+                ? { id: rodando.work_item_id, title: rodando.titulo, work_item_type: rodando.tipo, caminho: null, web_url: null }
+                : null
+            }
+            onSelecionar={iniciar}
+            anotacao={anotacao}
+            onCancelarAnotacao={() => setAnotacao(null)}
+            onItemCriado={(item) => {
+              if (anotacao) fecharAnotacao.mutate({ id: anotacao.id, virouItemId: item.id });
+              setAnotacao(null);
+            }}
+          />
+        </Coluna>
 
-        <div className="order-first min-w-0 lg:order-none">
-          <Cronometro motor={motor} onEncerrar={encerrarRodando} />
-        </div>
+        <EmEspera
+          demandas={emEspera}
+          ocupado={ocupado}
+          onRetomar={retomar}
+          onEncerrar={(d) => setEncerrando({ id: d.work_item_id, titulo: d.titulo })}
+          className="max-h-[70vh] xl:max-h-none"
+        />
+
+        <Cronometro motor={motor} onEncerrar={encerrarRodando} className="order-first md:order-none" />
       </div>
 
       <TrechosDoDia motor={motor} podeLancar={podeLancar} />

@@ -23,7 +23,7 @@ export function TimerLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))] border-b border-[hsl(var(--sidebar-border))]">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+        <div className="flex h-14 w-full items-center gap-3 px-4 sm:px-6">
           <div className="flex items-center gap-2">
             <div className="rounded-lg bg-flag-gold p-1.5">
               <TimerIcon className="h-5 w-5 text-flag-navy" />
@@ -65,7 +65,7 @@ export function TimerLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 sm:p-6">{children}</main>
+      <main className="w-full flex-1 space-y-4 p-4 sm:px-6">{children}</main>
     </div>
   );
 }

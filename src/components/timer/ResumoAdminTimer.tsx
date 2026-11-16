@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -65,7 +65,6 @@ export function ResumoAdminTimer() {
           <CardTitle className="flex items-center gap-2 text-base">
             <ShieldAlert className="h-4 w-4 text-primary" /> Uso da equipe (admin)
           </CardTitle>
-          <CardDescription>Cortes automáticos e correções por pessoa, para achar uso estranho.</CardDescription>
         </div>
         <div className="flex gap-1">
           {[7, 14, 30].map((d) => (
@@ -121,7 +120,7 @@ export function ResumoAdminTimer() {
                       );
                     })}
                     <td className="py-2 pl-2 text-right text-xs text-muted-foreground">
-                      {l.ultimo_uso ? new Date(l.ultimo_uso).toLocaleDateString('pt-BR') : '—'}
+                      {l.ultimo_uso ? new Date(l.ultimo_uso).toLocaleDateString('pt-BR') : ''}
                     </td>
                   </tr>
                 ))}
