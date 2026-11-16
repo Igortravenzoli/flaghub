@@ -391,13 +391,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.warn("[Auth] Hydration returned empty role; preserving previous roleCode");
           }
 
+          // A pendência é decidida pelo papel EFETIVO (o desta hidratação ou, se ela
+          // voltou vazia, o anterior). Antes era `isPending && !prev.roleCode`: na
+          // re-hidratação (TOKEN_REFRESHED) o s4 do boot já estava em prev.roleCode e
+          // o usuário pendente era liberado. Papel efetivo fora do auto-provisionado
+          // (s1, s2…) nunca é pendente, mesmo que a hidratação tenha voltado sem papel.
+          // Sem perfil nesta hidratação (busca falhou), a contagem não decide nada.
+          const effectiveAutoProvisioned = !nextRoleCode || nextRoleCode === "s4";
+          const decided = isPending === null || userData.profile == null ? null : isPending;
+          const nextPending = !effectiveAutoProvisioned
+            ? false
+            : decided === null
+              ? prev.pendingApproval
+              : decided;
+
           return {
             ...prev,
             profile: userData.profile ?? prev.profile,
             roleCode: nextRoleCode,
             networkId: nextNetworkId,
             mfaRequired: prev.mfaRequired,
-            pendingApproval: isPending === null ? prev.pendingApproval : isPending && !prev.roleCode,
+            pendingApproval: nextPending,
           };
         });
 
