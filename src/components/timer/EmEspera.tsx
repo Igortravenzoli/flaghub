@@ -1,8 +1,7 @@
 import { PauseCircle, Play, Send, Square } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { horas } from '@/lib/timerRelogio';
 import type { DemandaEmEspera } from '@/lib/timerLancamento';
-import { Coluna, Pilula, SOMBRA_XS, Vazio } from '@/components/timer/visual';
+import { BotaoIcone, Coluna, Pilula, SOMBRA_XS, Vazio } from '@/components/timer/visual';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -45,32 +44,24 @@ export function EmEspera({ demandas, ocupado, onRetomar, onLancar, onEncerrar, c
                   <Pilula tom="sucesso">tudo lançado</Pilula>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex items-center gap-1.5">
                 {podeRetomar && (
-                  <Button size="sm" className="h-7 px-2.5" disabled={ocupado} onClick={() => onRetomar(d)}>
-                    <Play className="mr-1 h-3.5 w-3.5" /> Retomar
-                  </Button>
+                  <BotaoIcone icone={Play} rotulo="Retomar" variante="default" disabled={ocupado} onClick={() => onRetomar(d)} />
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={cn('h-7 px-2.5', SOMBRA_XS)}
+                <BotaoIcone
+                  icone={Send}
+                  rotulo="Lançar o que falta (a demanda continua)"
                   disabled={ocupado || d.minutos === 0}
                   onClick={() => onLancar(d)}
-                  title="Lança o que falta sem encerrar a demanda"
-                >
-                  <Send className="mr-1 h-3.5 w-3.5" /> Lançar
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="ml-auto h-7 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                />
+                <BotaoIcone
+                  icone={Square}
+                  rotulo="Encerrar demanda"
+                  variante="ghost"
                   disabled={ocupado}
                   onClick={() => onEncerrar(d)}
-                  title="Lança o que falta e encerra a demanda"
-                >
-                  <Square className="mr-1 h-3.5 w-3.5" /> Encerrar
-                </Button>
+                  className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+                />
               </div>
             </li>
           ))}

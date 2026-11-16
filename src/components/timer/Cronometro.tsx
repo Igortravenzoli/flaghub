@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
 import { foiAutomatico, horaCurta, horas, relogio, ROTULO_MOTIVO } from '@/lib/timerRelogio';
 import { diaSP, lancadoHojeSeg } from '@/lib/timerLancamento';
-import { Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
+import { BotaoIcone, Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
 
 const DESCONTOS_MIN = [5, 10, 15, 30];
@@ -88,23 +88,22 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
           </div>
           <div className="flex items-center gap-1.5">
             <div className="flex">
-              <Button
-                size="sm"
-                variant="outline"
+              <BotaoIcone
+                icone={Pause}
+                rotulo="Pausar"
                 onClick={() => acoes.pausar.mutate({ motivo: 'manual' })}
                 disabled={ocupado}
-                className={cn('h-8 rounded-r-none bg-card px-2.5', SOMBRA_XS)}
-              >
-                <Pause className="mr-1 h-3.5 w-3.5" /> Pausar
-              </Button>
+                className="rounded-r-none"
+              />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     size="sm"
                     variant="outline"
                     disabled={ocupado}
-                    className={cn('h-8 rounded-l-none border-l-0 bg-card px-1.5', SOMBRA_XS)}
+                    className={cn('h-8 w-6 rounded-l-none border-l-0 bg-card px-0', SOMBRA_XS)}
                     aria-label="Pausar descontando os últimos minutos"
+                    title="Pausar descontando os últimos minutos"
                   >
                     <ChevronDown className="h-3.5 w-3.5" />
                   </Button>
@@ -121,25 +120,20 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className={cn('h-8 bg-card px-2.5', SOMBRA_XS)}
+            <BotaoIcone
+              icone={Send}
+              rotulo="Lançar até agora (o timer continua)"
               disabled={ocupado || !podeLancar}
               onClick={() => onLancar(item)}
-              title="Lança até agora sem parar o timer"
-            >
-              <Send className="mr-1 h-3.5 w-3.5" /> Lançar
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              className={cn('ml-auto h-8 px-2.5', SOMBRA_XS)}
+            />
+            <BotaoIcone
+              icone={Square}
+              rotulo="Encerrar demanda"
+              variante="destructive"
               disabled={ocupado}
               onClick={() => onEncerrar(item)}
-            >
-              <Square className="mr-1 h-3.5 w-3.5" /> Encerrar
-            </Button>
+              className={cn('ml-auto', SOMBRA_XS)}
+            />
           </div>
         </div>
       ) : (
