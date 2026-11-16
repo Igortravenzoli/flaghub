@@ -72,6 +72,15 @@ export function detectarPlataforma(userAgent: string): Plataforma {
   return 'outra';
 }
 
+/**
+ * Celular? A mesma regra do servidor (timer__eh_celular, TM6): no celular o
+ * Timer é só consulta. O servidor decide; aqui é só para a tela não oferecer
+ * o que vai ser recusado.
+ */
+export function ehCelular(userAgent: string): boolean {
+  return /(android|iphone|ipad|ipod|mobile|webos|blackberry|opera mini|iemobile|windows phone)/i.test(userAgent);
+}
+
 export type ClienteTimer = 'web' | 'desktop' | 'widget';
 
 /** O app desktop (Electron) se identifica no User-Agent com "TimerFlag/<versão>". */

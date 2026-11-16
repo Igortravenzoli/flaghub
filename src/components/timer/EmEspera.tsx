@@ -11,10 +11,12 @@ interface Props {
   onRetomar: (d: DemandaEmEspera) => void;
   onEncerrar: (d: DemandaEmEspera) => void;
   className?: string;
+  /** false no celular: só consulta, sem Retomar */
+  podeRetomar?: boolean;
 }
 
 /** Em espera: tempo marcado e ainda não lançado, por item. Retomar ou Encerrar (lançar). */
-export function EmEspera({ demandas, ocupado, onRetomar, onEncerrar, className }: Props) {
+export function EmEspera({ demandas, ocupado, onRetomar, onEncerrar, className, podeRetomar = true }: Props) {
   return (
     <Coluna icone={PauseCircle} titulo="Em espera" contagem={demandas.length} className={className}>
       {demandas.length === 0 ? (
@@ -36,9 +38,13 @@ export function EmEspera({ demandas, ocupado, onRetomar, onEncerrar, className }
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-base font-semibold tabular-nums">{horas(d.minutos * 60)}</span>
-                  <Button size="sm" className="ml-auto h-8" disabled={ocupado} onClick={() => onRetomar(d)}>
-                    <Play className="mr-1 h-3.5 w-3.5" /> Retomar
-                  </Button>
+                  {podeRetomar ? (
+                    <Button size="sm" className="ml-auto h-8" disabled={ocupado} onClick={() => onRetomar(d)}>
+                      <Play className="mr-1 h-3.5 w-3.5" /> Retomar
+                    </Button>
+                  ) : (
+                    <span className="ml-auto" />
+                  )}
                   <Button
                     size="sm"
                     variant="outline"

@@ -237,6 +237,7 @@ const MENSAGENS_ERRO: Record<string, string> = {
   timer_trecho_antigo: 'Só dá para mexer em trechos dos últimos 7 dias.',
   timer_correcao_so_reduz: 'A correção só pode encurtar o trecho (fim entre o início e o fim atual).',
   timer_trecho_lancado: 'Este trecho já foi lançado no TimeLog: não dá mais para mudar.',
+  timer_celular: 'No celular o Timer é só consulta. Inicie pelo computador.',
 };
 
 /** Mensagem amigável a partir do erro do PostgREST (o texto do RAISE vem em message). */
