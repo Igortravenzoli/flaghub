@@ -108,4 +108,7 @@ if (Array.isArray(corpo)) {
 } else {
   console.log(typeof corpo === 'string' ? corpo : JSON.stringify(corpo, null, 2));
 }
-process.exit(status >= 200 && status < 300 ? 0 : 1);
+// exitCode (não process.exit): no Windows, sair à força logo depois do fetch
+// dispara "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)" no libuv.
+process.exitCode = status >= 200 && status < 300 ? 0 : 1;
+if (modo === 'conferir' && process.exitCode === 0) console.log('[rls-a] conferência OK (sem RAISE).');
