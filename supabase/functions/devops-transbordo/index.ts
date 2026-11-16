@@ -88,7 +88,7 @@ async function assertAdmin(caller: string, sb: ReturnType<typeof getSupabaseAdmi
   if (r2) return true
   const { data: r3 } = await sb.from('hub_area_members')
     .select('area_role, hub_areas!inner(key)')
-    .eq('user_id', caller).eq('area_role', 'owner').eq('hub_areas.key', 'fabrica').maybeSingle()
+    .eq('user_id', caller).eq('is_active', true).eq('area_role', 'owner').eq('hub_areas.key', 'fabrica').maybeSingle()
   return !!r3
 }
 

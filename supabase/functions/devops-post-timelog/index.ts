@@ -68,11 +68,13 @@ async function assertAdmin(caller: string, sb: ReturnType<typeof getSupabaseAdmi
     .eq('role', 'admin')
     .maybeSingle()
   if (r2) return true
-  // Owner da area 'fabrica' tambem pode operar nivelamento de timelog
+  // Owner ATIVO da area 'fabrica' tambem pode operar nivelamento de timelog
+  // (membership desativada nao vale — mesmo predicado de rpc_timelog_set_status)
   const { data: r3 } = await sb
     .from('hub_area_members')
     .select('area_role, hub_areas!inner(key)')
     .eq('user_id', caller)
+    .eq('is_active', true)
     .eq('area_role', 'owner')
     .eq('hub_areas.key', 'fabrica')
     .maybeSingle()

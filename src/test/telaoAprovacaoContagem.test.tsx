@@ -296,6 +296,34 @@ describe('aprovação preservada para quem realmente aguarda', () => {
     expect(caminho).toBe('/pending-approval');
   });
 
+  it('usuário novo (s4, contagem 0) continua na aprovação depois do TOKEN_REFRESHED', async () => {
+    // Regressão: `isPending && !prev.roleCode` liberava o pendente na re-hidratação,
+    // porque o s4 do boot já estava em prev.roleCode.
+    sb.estado.contagens = [{ count: 0, error: null }];
+    await bootar(USUARIO_NOVO);
+    await avancar(1_000);
+    expect(pendente).toBe(true);
+
+    await avancar(60 * 60_000);
+    await emitir('TOKEN_REFRESHED', USUARIO_NOVO);
+    await avancar(1_000);
+
+    expect(pendente).toBe(true);
+    expect(caminho).toBe('/pending-approval');
+    expect(sb.estado.chamadasContagem).toBe(2);
+  });
+
+  it('aprovado entre um refresh e outro (contagem passa a 1): o TOKEN_REFRESHED tira da pendência', async () => {
+    sb.estado.contagens = [{ count: 0, error: null }, { count: 1, error: null }];
+    await bootar(USUARIO_NOVO);
+    await avancar(1_000);
+    expect(pendente).toBe(true);
+
+    await emitir('TOKEN_REFRESHED', USUARIO_NOVO);
+    await avancar(1_000);
+    expect(pendente).toBe(false);
+  });
+
   it('trade-off: contagem que falha nas duas tentativas deixa o usuário novo entrar; a próxima recarga o leva à aprovação', async () => {
     // Pendência é UX: sem membership, o RLS (hub_user_has_area) não entrega dado de área.
     sb.estado.contagens = [ERRO_57014];
@@ -322,5 +350,19 @@ describe('papéis fora do auto-provisionamento', () => {
     expect(caminho).toBe('/home');
     expect(screen.getByText('rota protegida')).toBeInTheDocument();
     expect(sb.estado.chamadasContagem).toBe(0);
+  });
+
+  it('admin (s1) cuja re-hidratação volta sem papel não vira pendente', async () => {
+    sb.estado.papel = 's1';
+    await bootar('admin@flag.com.br');
+    await avancar(1_000);
+
+    sb.estado.papel = null;
+    sb.estado.contagens = [{ count: 0, error: null }];
+    await emitir('TOKEN_REFRESHED', 'admin@flag.com.br');
+    await avancar(5_000);
+
+    expect(pendente).toBe(false);
+    expect(caminho).toBe('/home');
   });
 });
