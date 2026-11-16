@@ -78,6 +78,7 @@ import {
   validarPedidoLancar,
   type Preparado,
 } from './lancamento.ts'
+import { CacheCurto } from './cache.ts'
 
 const REDESCOBRIR_GUID_MS = 10 * 60 * 1000
 const TETO_MINHAS = 200
@@ -331,12 +332,21 @@ function erroDevops(req: Request, e: unknown): Response {
   return responder(req, 500, { ok: false, motivo: 'erro_interno', mensagem: 'Erro inesperado no servidor.' })
 }
 
-async function minhas(req: Request, acesso: Acesso, pat: string): Promise<Response> {
+/** "Minhas tarefas" por pessoa, 3 min. Ver cache.ts. */
+const cacheMinhas = new CacheCurto<Json>(3 * 60 * 1000)
+
+async function minhas(req: Request, userId: string, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
+  if (corpo.forcar !== true) {
+    const guardado = cacheMinhas.ler(userId)
+    if (guardado) return responder(req, 200, { ...guardado.valor, doCache: true })
+  }
   const email = acesso.devops_email ?? acesso.email
   const r = idsDaWiql(await wiql(wiqlMinhas(email), TETO_MINHAS + 1, pat), TETO_MINHAS)
   const itens = await lerItens(r.ids, pat)
   const ancestrais = await ancestraisDe(itens, pat)
-  return responder(req, 200, { ok: true, itens, ancestrais, truncado: r.truncado, lidoEm: new Date().toISOString() })
+  const corpoResposta: Json = { ok: true, itens, ancestrais, truncado: r.truncado, lidoEm: new Date().toISOString() }
+  cacheMinhas.gravar(userId, corpoResposta)
+  return responder(req, 200, corpoResposta)
 }
 
 async function buscar(req: Request, corpo: Json, pat: string): Promise<Response> {
@@ -462,6 +472,8 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
   })
   if (error) console.warn('[timer-devops] trilha de criação falhou:', error.message)
 
+  // item novo atribuído à pessoa: "minhas tarefas" precisa reler do Azure
+  cacheMinhas.apagar(userId)
   return responder(req, 200, { ok: true, item })
 }
 
@@ -629,7 +641,7 @@ serve(async (req) => {
   if (!pat) return responder(req, 503, { ok: false, motivo: 'pat_ausente', mensagem: 'O Timer está sem token do DevOps no servidor.' })
 
   try {
-    if (op === 'minhas') return await minhas(req, acesso, pat)
+    if (op === 'minhas') return await minhas(req, quem.user.id, acesso, corpo, pat)
     if (op === 'buscar') return await buscar(req, corpo, pat)
     if (op === 'filhos') return await filhos(req, corpo, pat)
     if (op === 'lancar') return await lancar(req, quem.user.id, corpo, pat)

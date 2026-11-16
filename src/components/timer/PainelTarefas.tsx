@@ -169,7 +169,7 @@ export function PainelTarefas({
         variant="ghost"
         size="sm"
         className="h-8 w-8 p-0"
-        onClick={() => void minhas.refetch()}
+        onClick={() => void minhas.recarregar()}
         disabled={minhas.isFetching}
         title="Recarregar do Azure DevOps"
       >
