@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Download, ExternalLink, Globe, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Globe } from 'lucide-react';
 import { PainelTarefas } from '@/components/timer/PainelTarefas';
+import { Cronometro } from '@/components/timer/Cronometro';
+import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
+import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
+import { ResumoAdminTimer } from '@/components/timer/ResumoAdminTimer';
+import { useMotorTimer } from '@/hooks/useTimerRelogio';
 import { gravarSelecao, lerSelecao, type TarefaSelecionada } from '@/lib/timerSelecao';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,8 +19,9 @@ import { detectarCliente, detectarPlataforma } from '@/lib/timerAcesso';
 import { DOWNLOADS_TIMER, ordenarDownloads, urlDownload } from '@/lib/timerDownloads';
 
 export default function TimerHome() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { data: acesso } = useTimerAcesso();
+  const motor = useMotorTimer({ tituloDaAba: true });
 
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
   const plataforma = detectarPlataforma(ua);
@@ -43,46 +49,9 @@ export default function TimerHome() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Clock className="h-4 w-4 text-primary" /> Cronômetro
-            </CardTitle>
-            <CardDescription>
-              {selecionada ? 'Tarefa escolhida. O botão de iniciar chega na próxima entrega.' : 'Escolha uma tarefa em “Minhas tarefas”.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {selecionada ? (
-              <div className="flex items-start gap-3 rounded-lg border border-flag-gold/50 bg-flag-gold/5 p-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs text-muted-foreground">{selecionada.caminho ?? selecionada.work_item_type}</p>
-                  <p className="truncate font-medium">
-                    <span className="mr-1.5 font-mono text-xs text-muted-foreground">#{selecionada.id}</span>
-                    {selecionada.title}
-                  </p>
-                </div>
-                {selecionada.web_url && (
-                  <a
-                    href={selecionada.web_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title={`Abrir #${selecionada.id} no Azure DevOps`}
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                )}
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => trocarSelecao(null)} title="Limpar a escolha">
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : null}
-            <div className="flex items-center justify-center rounded-lg border border-dashed py-8">
-              <span className="font-mono text-5xl font-semibold tabular-nums text-muted-foreground/60">00:00:00</span>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="min-w-0 lg:col-span-2">
+          <Cronometro motor={motor} selecionada={selecionada} onLimparSelecao={() => trocarSelecao(null)} />
+        </div>
 
         <Card>
           <CardHeader>
@@ -110,7 +79,13 @@ export default function TimerHome() {
         </Card>
       </div>
 
+      <TrechosDoDia motor={motor} />
+
       <PainelTarefas selecionada={selecionada} onSelecionar={trocarSelecao} />
+
+      {isAdmin && <ResumoAdminTimer />}
+
+      <DialogoPresenca motor={motor} />
 
       {!noDesktop && (
         <section className="space-y-3" aria-labelledby="timer-downloads">
