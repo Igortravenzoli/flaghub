@@ -4,6 +4,7 @@ import {
   consumirDestino,
   detectarCliente,
   detectarPlataforma,
+  ehCelular,
   ehRotaTimer,
   estadoAcesso,
   guardarDestino,
@@ -95,5 +96,19 @@ describe('downloads', () => {
     expect(urlDownload(win, undefined)).toBeNull();
     expect(ordenarDownloads(DOWNLOADS_TIMER, 'linux')[0].plataforma).toBe('linux');
     expect(ordenarDownloads(DOWNLOADS_TIMER, 'outra').map((d) => d.plataforma)).toEqual(['windows', 'macos', 'linux']);
+  });
+});
+
+describe('ehCelular (mesma regra do servidor)', () => {
+  it('celular e tablet são só consulta', () => {
+    expect(ehCelular('Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36')).toBe(true);
+    expect(ehCelular('Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148')).toBe(true);
+    expect(ehCelular('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15')).toBe(true);
+  });
+  it('computador e app desktop marcam tempo', () => {
+    expect(ehCelular('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36')).toBe(false);
+    expect(ehCelular('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15')).toBe(false);
+    expect(ehCelular('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36')).toBe(false);
+    expect(ehCelular('Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 TimerFlag/1.0.0 Electron/33.0 Safari/537.36')).toBe(false);
   });
 });

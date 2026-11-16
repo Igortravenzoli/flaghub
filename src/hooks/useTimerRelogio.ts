@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { detectarCliente, detectarPlataforma, versaoDesktop } from '@/lib/timerAcesso';
+import { detectarCliente, detectarPlataforma, ehCelular, versaoDesktop } from '@/lib/timerAcesso';
 import {
   desvioServidor,
   devePerguntarPresenca,
@@ -231,6 +231,10 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   acoesRef.current = acoes;
 
   const rodandoId = rodando?.id ?? null;
+  // No celular o Timer é só consulta (o servidor recusa iniciar e não aceita
+  // sinal nem presença de lá): o relógio corre na tela, mas o motor não fala
+  // com o servidor — senão cada visita pelo celular viraria "tentativa".
+  const somenteConsulta = typeof navigator !== 'undefined' && ehCelular(navigator.userAgent);
 
   useEffect(() => {
     if (!rodandoId) return;
@@ -242,6 +246,11 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
       const e = estadoRef.current;
       const a = acoesRef.current;
       if (!e?.rodando) return;
+      if (somenteConsulta) {
+        ultimoTique.current = agora;
+        setAgoraLocal(agora);
+        return;
+      }
 
       // 1. a máquina dormiu: pausa no último tique antes de dormir
       if (houveSuspensao(ultimoTique.current, agora)) {
@@ -281,7 +290,7 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
       }
     }, 1000);
     return () => window.clearInterval(id);
-  }, [rodandoId]);
+  }, [rodandoId, somenteConsulta]);
 
   // Voltou para a aba: o job do servidor pode ter cortado algo enquanto isso.
   const { refetch } = estadoQ;
@@ -295,7 +304,8 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
 
   const agoraServidor = agoraLocal + (estado?.desvioMs ?? 0);
   const segundos = segundosRodando(rodando, agoraServidor);
-  const perguntarPresenca = !!estado && devePerguntarPresenca(rodando, estado.regras, agoraServidor);
+  const perguntarPresenca =
+    !somenteConsulta && !!estado && devePerguntarPresenca(rodando, estado.regras, agoraServidor);
   const prazoPresencaMs = rodando && estado ? presencaPrazo(rodando, estado.regras) : null;
 
   // Título da aba: o tempo correndo, ou o pedido de confirmação.
@@ -326,6 +336,7 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     agoraServidor,
     perguntarPresenca,
     prazoPresencaMs,
+    somenteConsulta,
     acoes,
   };
 }

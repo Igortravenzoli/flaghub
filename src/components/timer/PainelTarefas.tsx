@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ChevronsDownUp, ChevronsUpDown, ListTree, Loader2, NotebookPen, Play, Plus, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,7 @@ export function PainelTarefas({
   onItemCriado,
   embutido = false,
   iniciarRecolhido = false,
+  podeIniciar = true,
 }: {
   selecionada: TarefaSelecionada | null;
   onSelecionar: (t: TarefaSelecionada) => void;
@@ -57,6 +58,8 @@ export function PainelTarefas({
   embutido?: boolean;
   /** abre com as épicas recolhidas (o quadro minimizado) */
   iniciarRecolhido?: boolean;
+  /** false no celular: o Timer é só consulta, sem o botão Iniciar */
+  podeIniciar?: boolean;
 }) {
   const minhas = useMinhasTarefasTimer();
   const [busca, setBusca] = useState('');
@@ -189,6 +192,7 @@ export function PainelTarefas({
   );
 
   return (
+    <PodeIniciar.Provider value={podeIniciar}>
     <Moldura className={embutido ? 'space-y-3' : undefined}>
       <Cabeca className={embutido ? undefined : 'pb-3'}>
         {embutido ? (
@@ -289,10 +293,14 @@ export function PainelTarefas({
         )}
       </Corpo>
     </Moldura>
+    </PodeIniciar.Provider>
   );
 }
 
 // ─── ações de cada linha ─────────────────────────────────────────────────────
+
+/** false no celular (só consulta): some o botão Iniciar de todas as linhas. */
+const PodeIniciar = createContext(true);
 
 function AcoesItem({
   item,
@@ -307,6 +315,7 @@ function AcoesItem({
 }) {
   const tipo = item.work_item_type ?? '';
   const fechado = ['Done', 'Closed', 'Removed'].includes(item.state ?? '');
+  const podeIniciar = useContext(PodeIniciar);
   return (
     <span className="flex shrink-0 items-center gap-1">
       {(tipo === 'Product Backlog Item' || tipo === 'Bug') && !fechado && (
@@ -319,7 +328,7 @@ function AcoesItem({
           <Plus className="h-3 w-3" /> PBI
         </Button>
       )}
-      {TIPOS_SELECIONAVEIS.has(tipo) && (
+      {podeIniciar && TIPOS_SELECIONAVEIS.has(tipo) && (
         <Button
           variant={selecionada ? 'default' : 'outline'}
           size="sm"

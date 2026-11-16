@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
  */
 export default function TimerWidget() {
   const motor = useMotorTimer({ tituloDaAba: true });
-  const { rodando, segundos, acoes, carregando } = motor;
+  const { rodando, segundos, acoes, carregando, somenteConsulta } = motor;
   const [selecionada, setSelecionada] = useState(() => lerSelecao());
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function TimerWidget() {
           >
             <Pause className="h-4 w-4" />
           </button>
-        ) : (
+        ) : somenteConsulta ? null : (
           <button
             type="button"
             onClick={() =>

@@ -23,9 +23,23 @@ interface LinhaResumo {
   auto_limite_dia: number;
   pausas_relatadas: number;
   presencas_confirmadas: number;
+  tentativas_celular: number;
   correcoes: number;
   descartes: number;
+  dias_para_conferir: number;
   ultimo_uso: string | null;
+}
+
+interface LinhaRastro {
+  user_id: string;
+  email: string;
+  devops_display: string | null;
+  dia: string;
+  horas: number;
+  commits: number;
+  prs: number;
+  itens_mexidos: number;
+  para_conferir: boolean;
 }
 
 const db = supabase as unknown as SupabaseClient;
@@ -41,9 +55,98 @@ const COLUNAS: { chave: keyof LinhaResumo; rotulo: string; titulo: string; alert
   { chave: 'auto_limite_dia', rotulo: '12 h', titulo: 'Cortes pelo limite de 12 h no dia', alerta: true },
   { chave: 'pausas_relatadas', rotulo: 'Relatadas', titulo: 'Pausas pelo app: suspensão, bloqueio, sem uso' },
   { chave: 'presencas_confirmadas', rotulo: 'Presenças', titulo: 'Perguntas de presença respondidas' },
+  { chave: 'tentativas_celular', rotulo: 'Celular', titulo: 'Tentativas de marcar tempo ou confirmar presença pelo celular (recusadas)', alerta: true },
   { chave: 'correcoes', rotulo: 'Correções', titulo: 'Trechos encurtados pela pessoa' },
   { chave: 'descartes', rotulo: 'Descartes', titulo: 'Trechos descartados pela pessoa' },
+  {
+    chave: 'dias_para_conferir',
+    rotulo: 'Conferir',
+    titulo: 'Dias com 6 h ou mais e nenhum commit, PR ou work item mexido. Informação, não veredito: reunião, análise e QA não deixam commit.',
+    alerta: true,
+  },
 ];
+
+/** Rastro do dia: horas do Timer ao lado do que ficou no DevOps. */
+function RastroDoDia({ dias }: { dias: number }) {
+  const [soConferir, setSoConferir] = useState(true);
+  const q = useQuery({
+    queryKey: ['timer-admin-rastro', dias],
+    queryFn: async (): Promise<LinhaRastro[]> => {
+      const { data, error } = await db.rpc('timer_admin_rastro_conferir', { p_dias: Math.min(dias, 60) });
+      if (error) throw error;
+      return (data ?? []) as LinhaRastro[];
+    },
+  });
+  const linhas = (q.data ?? []).filter((l) => !soConferir || l.para_conferir);
+
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Rastro do dia</h3>
+        <div className="flex rounded-md border p-0.5 text-xs">
+          {[true, false].map((v) => (
+            <button
+              key={String(v)}
+              type="button"
+              onClick={() => setSoConferir(v)}
+              className={cn(
+                'rounded px-2.5 py-1 font-medium',
+                soConferir === v ? 'bg-flag-navy text-white' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {v ? 'Para conferir' : 'Todos os dias'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {q.isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Carregando
+        </div>
+      ) : q.error ? (
+        <p className="text-sm text-destructive">Não foi possível carregar o rastro.</p>
+      ) : linhas.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{soConferir ? 'Nenhum dia para conferir' : 'Sem horas no período'}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th className="py-2 pr-3 font-medium">Pessoa</th>
+                <th className="px-2 py-2 font-medium">Dia</th>
+                <th className="px-2 py-2 text-right font-medium">Horas</th>
+                <th className="px-2 py-2 text-right font-medium">Commits</th>
+                <th className="px-2 py-2 text-right font-medium">PRs</th>
+                <th className="px-2 py-2 text-right font-medium" title="Work items atribuídos à pessoa, ou em que o Timer marcou hora, alterados no dia">
+                  Itens
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((l) => (
+                <tr
+                  key={`${l.user_id}-${l.dia}`}
+                  className={cn('border-b last:border-0', l.para_conferir && 'bg-[hsl(var(--warning)/0.08)]')}
+                >
+                  <td className="max-w-[16rem] truncate py-1.5 pr-3" title={l.email}>
+                    {l.devops_display ?? l.email}
+                  </td>
+                  <td className="px-2 py-1.5 tabular-nums">{new Date(`${l.dia}T12:00:00Z`).toLocaleDateString('pt-BR')}</td>
+                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">{Number(l.horas).toFixed(1)}</td>
+                  {[l.commits, l.prs, l.itens_mexidos].map((n, i) => (
+                    <td key={i} className={cn('px-2 py-1.5 text-right tabular-nums', n === 0 && 'text-muted-foreground')}>
+                      {n}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Só para admin (o servidor recusa os outros). Carrega sob demanda. */
 export function ResumoAdminTimer() {
@@ -79,7 +182,7 @@ export function ResumoAdminTimer() {
           <p className="text-sm text-muted-foreground">Escolha o período para carregar.</p>
         ) : q.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+            <Loader2 className="h-4 w-4 animate-spin" /> Carregando
           </div>
         ) : q.error ? (
           <p className="text-sm text-destructive">Não foi possível carregar o resumo.</p>
@@ -128,6 +231,7 @@ export function ResumoAdminTimer() {
             </table>
           </div>
         )}
+        {dias != null && !q.isLoading && !q.error && <RastroDoDia dias={dias} />}
       </CardContent>
     </Card>
   );

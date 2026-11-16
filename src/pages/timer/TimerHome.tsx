@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
-import { Activity, AlertTriangle, Clock, Download, Globe, ListTree, PauseCircle, UserCheck } from 'lucide-react';
+import { Activity, AlertTriangle, Clock, Download, Globe, ListTree, PauseCircle, Smartphone, UserCheck } from 'lucide-react';
+import { toast } from 'sonner';
 import { Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { PainelTarefas } from '@/components/timer/PainelTarefas';
 import { Cronometro } from '@/components/timer/Cronometro';
@@ -85,8 +86,13 @@ export default function TimerHome() {
     void registrarEventoTimer('abriu');
   }, []);
 
+  const somenteConsulta = motor.somenteConsulta;
   const iniciar = (t: TarefaSelecionada) => {
     gravarSelecao(t); // o widget retoma por aqui
+    if (somenteConsulta) {
+      toast.info('No celular o Timer é só consulta. Inicie pelo computador.');
+      return;
+    }
     motor.acoes.iniciar.mutate({
       id: t.id,
       titulo: t.title ?? `#${t.id}`,
@@ -135,23 +141,31 @@ export default function TimerHome() {
         </span>
       </div>
 
-      {/* 4 colunas: no xl ocupam a altura da tela e rolam por dentro */}
-      <div className="grid gap-4 md:grid-cols-2 xl:h-[calc(100dvh-9.5rem)] xl:min-h-[560px] xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      {somenteConsulta && (
+        <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--warning)/0.1)] px-4 py-2.5 text-sm">
+          <Smartphone className="h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
+          No celular o Timer é só consulta. Iniciar e confirmar presença, só pelo computador.
+        </div>
+      )}
+
+      {/* 4 colunas: crescem com o conteúdo até a altura da tela e aí rolam por dentro */}
+      <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <ColunaAnotacoes
           emConversao={anotacao?.id ?? null}
           onVirarTask={virarTask}
-          className="max-h-[70vh] xl:max-h-none"
+          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
         />
 
         <Coluna
           icone={ListTree}
           titulo="Iniciar demanda"
           destaque={!!anotacao}
-          className="max-h-[70vh] xl:max-h-none"
+          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
         >
           <PainelTarefas
             embutido
             iniciarRecolhido
+            podeIniciar={!somenteConsulta}
             selecionada={
               rodando
                 ? { id: rodando.work_item_id, title: rodando.titulo, work_item_type: rodando.tipo, caminho: null, web_url: null }
@@ -170,12 +184,13 @@ export default function TimerHome() {
         <EmEspera
           demandas={emEspera}
           ocupado={ocupado}
+          podeRetomar={!somenteConsulta}
           onRetomar={retomar}
           onEncerrar={(d) => setEncerrando({ id: d.work_item_id, titulo: d.titulo })}
-          className="max-h-[70vh] xl:max-h-none"
+          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
         />
 
-        <Cronometro motor={motor} onEncerrar={encerrarRodando} className="order-first md:order-none" />
+        <Cronometro motor={motor} onEncerrar={encerrarRodando} className="order-first max-h-[70vh] md:order-none xl:max-h-[calc(100dvh-9.5rem)]" />
       </div>
 
       <TrechosDoDia motor={motor} podeLancar={podeLancar} />
