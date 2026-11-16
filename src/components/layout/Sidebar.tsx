@@ -23,6 +23,7 @@ import {
   Lock,
   Download,
   Mail,
+  ListTree,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,11 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboards', path: '/home', icon: LayoutDashboard },
+];
+
+// Visão pessoal (o que é DO usuário logado). Fora do telão: o monitor não tem dono.
+const personalItems: NavItem[] = [
+  { label: 'Minhas atividades', path: '/minhas-atividades', icon: ListTree },
 ];
 
 const sectorItems: NavItem[] = [
@@ -226,6 +232,8 @@ export function Sidebar() {
         {/* Monitor user: only show Home, no sectors or admin */}
         {!isMonitor && (
           <>
+            {personalItems.map(item => renderNavItem(item))}
+
             {/* Separator: Áreas */}
             {!collapsed && (
               <div className="pt-3 pb-1 px-3">
