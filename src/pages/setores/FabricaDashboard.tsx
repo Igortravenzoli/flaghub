@@ -2952,7 +2952,9 @@ export default function FabricaDashboard() {
                                 {d.capacidade != null && (
                                   <>
                                     <p>
-                                      <span className="text-muted-foreground">Capacidade </span>
+                                      <span className="text-muted-foreground">
+                                        {(d.casas?.length ?? 0) > 1 ? 'Capacidade da pessoa (todas as casas) ' : 'Capacidade '}
+                                      </span>
                                       <span className="font-mono">{horasHM(Math.round(d.capacidade * 60))}</span>
                                       <span className="font-semibold"> · {Math.round((d.consolidado / d.capacidade) * 100)}%</span>
                                       {d.diasFora ? <span className="text-sky-700 dark:text-sky-300"> · ausente {d.diasFora}d</span> : null}
@@ -2962,6 +2964,9 @@ export default function FabricaDashboard() {
                                         {c.rotulo} · {Math.round(c.pct)}% · <span className="font-mono">{horasHM(Math.round(c.hDia * 60))}</span>/dia
                                       </p>
                                     ))}
+                                    {(d.casas?.length ?? 0) > 1 && (
+                                      <p className="text-muted-foreground/80 italic">A divisão por fábrica fica em Capacidade × Realizado.</p>
+                                    )}
                                   </>
                                 )}
                               </div>
