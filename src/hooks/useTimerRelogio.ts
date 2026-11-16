@@ -18,6 +18,7 @@ import {
   sinalDevido,
   totalHojeSeg,
   type EstadoTimer,
+  type TrechoRodando,
 } from '@/lib/timerRelogio';
 
 /**
@@ -31,6 +32,14 @@ import {
  */
 export interface EstadoNoCliente extends EstadoTimer {
   /** servidor − máquina, em ms, no momento da resposta */
+  desvioMs: number;
+}
+
+/** Resposta curta do sinal quando nada mudou (TM7). */
+interface ResumoSinal {
+  resumo: true;
+  agora: string;
+  rodando: TrechoRodando;
   desvioMs: number;
 }
 
@@ -108,10 +117,29 @@ export function useAcoesTimer() {
     onError: falhou,
   });
 
+  // Sinal enxuto (TM7): sem mudança, o servidor devolve só agora + rodando, e
+  // isso é mesclado no estado que a tela já tem. Se as regras cortaram algo,
+  // vem o estado completo.
   const sinal = useMutation({
-    mutationFn: (presenca: boolean) => rpc('timer_sinal', { p_presenca: presenca }),
-    // o sinal pode fechar um trecho (corte do servidor): aí a semana muda
-    onSuccess: (e) => gravar(e, !e.rodando),
+    mutationFn: async (presenca: boolean): Promise<EstadoNoCliente | ResumoSinal> => {
+      const { data, error } = await db.rpc('timer_sinal', { p_presenca: presenca, p_resumo: true });
+      if (error) throw error;
+      const d = data as { resumo?: boolean; agora?: string; rodando?: unknown } | null;
+      if (d?.resumo && typeof d.agora === 'string' && d.rodando && typeof d.rodando === 'object') {
+        return { resumo: true, agora: d.agora, rodando: d.rodando as TrechoRodando, desvioMs: desvioServidor(d.agora, Date.now()) };
+      }
+      return noCliente(data);
+    },
+    onSuccess: (r) => {
+      if ('resumo' in r) {
+        qc.setQueryData<EstadoNoCliente>(chave(user?.id, 1), (velho) =>
+          velho ? { ...velho, agora: r.agora, rodando: r.rodando, desvioMs: r.desvioMs } : velho,
+        );
+        return;
+      }
+      // o sinal fechou um trecho (corte do servidor): aí a semana muda
+      gravar(r, !r.rodando);
+    },
     // sinal falho é silencioso: tenta de novo no próximo ciclo
   });
 

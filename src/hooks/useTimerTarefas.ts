@@ -1,3 +1,4 @@
+import { useCallback, useRef } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -46,14 +47,29 @@ async function chamar<T>(corpo: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+/**
+ * A edge guarda "minhas tarefas" por 3 min (um token só para todos os devs:
+ * alivia o Azure no pico). O botão de recarregar pede `forcar` e vai ao Azure.
+ */
 export function useMinhasTarefasTimer() {
   const { user } = useAuth();
-  return useQuery({
+  const forcarProxima = useRef(false);
+  const consulta = useQuery({
     queryKey: ['timer-tarefas', 'minhas', user?.id ?? null],
     enabled: !!user?.id,
     retry: false,
-    queryFn: () => chamar<RespostaTarefas>({ op: 'minhas' }),
+    queryFn: () => {
+      const forcar = forcarProxima.current;
+      forcarProxima.current = false;
+      return chamar<RespostaTarefas>(forcar ? { op: 'minhas', forcar: true } : { op: 'minhas' });
+    },
   });
+  const { refetch } = consulta;
+  const recarregar = useCallback(() => {
+    forcarProxima.current = true;
+    return refetch();
+  }, [refetch]);
+  return { ...consulta, recarregar };
 }
 
 /** Busca no DevOps (título com 3+ letras ou #id). `texto` já vem com debounce. */
