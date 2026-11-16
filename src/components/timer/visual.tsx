@@ -1,5 +1,7 @@
 import type { ComponentType, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 /**
  * Peças visuais do Timer no padrão do Flag.DS (linguagem Untitled UI):
@@ -83,6 +85,45 @@ export function Pilula({
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * Botão só com ícone; o texto aparece ao passar o mouse (e é o nome do botão
+ * para leitor de tela). Para colunas estreitas, onde texto estoura.
+ */
+export function BotaoIcone({
+  icone: Icone,
+  rotulo,
+  onClick,
+  disabled,
+  variante = 'outline',
+  className,
+}: {
+  icone: ComponentType<{ className?: string }>;
+  rotulo: string;
+  onClick: () => void;
+  disabled?: boolean;
+  variante?: 'default' | 'outline' | 'destructive' | 'ghost';
+  className?: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant={variante}
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={rotulo}
+          className={cn('h-8 w-8', variante === 'outline' && cn('bg-card', SOMBRA_XS), className)}
+        >
+          <Icone className="h-4 w-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{rotulo}</TooltipContent>
+    </Tooltip>
   );
 }
 

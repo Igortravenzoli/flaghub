@@ -197,7 +197,26 @@ export function useAcoesTimer() {
     },
   });
 
-  return { iniciar, pausar, sinal, corrigir, descartar, lancar, relancar };
+  // TM8: corta o trecho rodando agora (o pedaço fechado pode ser lançado) e
+  // segue contando. A semana é relida para o lançamento enxergar o pedaço.
+  const partir = useMutation({
+    mutationFn: async () => {
+      const e = await rpc('timer_partir');
+      await qc.refetchQueries({ queryKey: chave(user?.id, 7) });
+      return e;
+    },
+    onSuccess: (e) => qc.setQueryData(chave(user?.id, 1), e),
+    onError: falhou,
+  });
+
+  // TM8: encerra a demanda (sai do Em espera); se estiver rodando, pausa antes.
+  const encerrarDemanda = useMutation({
+    mutationFn: (workItemId: number) => rpc('timer_demanda_encerrar', { p_work_item_id: workItemId }),
+    onSuccess: (e) => gravar(e),
+    onError: falhou,
+  });
+
+  return { iniciar, pausar, sinal, corrigir, descartar, lancar, relancar, partir, encerrarDemanda };
 }
 
 export interface ResultadoLancamento {

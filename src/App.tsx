@@ -41,6 +41,7 @@ import SyncCentral from "@/pages/admin/SyncCentral";
 import IpAllowlist from "@/pages/admin/IpAllowlist";
 import ManualUploads from "@/pages/admin/ManualUploads";
 import AuditLogs from "@/pages/admin/AuditLogs";
+import TimerEquipe from "@/pages/admin/TimerEquipe";
 import EmailWebhookConfig from "@/pages/admin/EmailWebhookConfig";
 
 /**
@@ -160,6 +161,7 @@ const App = () => (
                 <Route path="/admin/uploads" element={<ProtectedRoute requiredRoles={["admin"]}><ManualUploads /></ProtectedRoute>} />
                 <Route path="/admin/audit" element={<ProtectedRoute requiredRoles={["admin"]}><AuditLogs /></ProtectedRoute>} />
                 <Route path="/admin/email-config" element={<ProtectedRoute requiredRoles={["admin"]}><EmailWebhookConfig /></ProtectedRoute>} />
+                <Route path="/admin/timer" element={<ProtectedRoute requiredRoles={["admin"]}><TimerEquipe /></ProtectedRoute>} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

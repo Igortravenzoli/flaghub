@@ -41,7 +41,19 @@ import {
 type Periodo = 1 | 7;
 
 /** Trechos fechados de hoje (ou dos últimos 7 dias), com encurtar, descartar e lançar. */
-export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLancar: boolean }) {
+export function TrechosDoDia({
+  motor,
+  podeLancar,
+  embutido = false,
+}: {
+  motor: MotorTimer;
+  podeLancar: boolean;
+  /** dentro do Em andamento (recolhível): sem moldura, com o título Lançamentos */
+  embutido?: boolean;
+}) {
+  const Moldura = embutido ? 'div' : Card;
+  const Cabeca = embutido ? 'div' : CardHeader;
+  const Corpo = embutido ? 'div' : CardContent;
   const [periodo, setPeriodo] = useState<Periodo>(1);
   const usarSemana = periodo === 7;
   // a de 7 dias só busca quando pedida
@@ -64,13 +76,15 @@ export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLan
   }, [fonte]);
 
   return (
-    <Card className={cn('rounded-xl', SOMBRA_XS)}>
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
-        <div className="space-y-1.5">
+    <Moldura className={embutido ? 'space-y-3' : cn('rounded-xl', SOMBRA_XS)}>
+      <Cabeca className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+        {embutido ? (
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Por período</span>
+        ) : (
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <History className="h-4 w-4 text-primary" /> Trechos
+            <History className="h-4 w-4 text-primary" /> Lançamentos
           </CardTitle>
-        </div>
+        )}
         <div className="flex rounded-md border p-0.5 text-xs">
           {([1, 7] as Periodo[]).map((p) => (
             <button
@@ -86,14 +100,14 @@ export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLan
             </button>
           ))}
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      </Cabeca>
+      <Corpo className="space-y-4">
         {!carregando && fonte && (
           <LancamentosTimeLog fonte={fonte} motor={motor} podeLancar={podeLancar} mostrarDia={periodo === 7} mostrarPendentes={false} />
         )}
         {carregando ? (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+            <Loader2 className="h-4 w-4 animate-spin" /> Carregando
           </div>
         ) : porDia.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
@@ -126,7 +140,7 @@ export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLan
             })}
           </div>
         )}
-      </CardContent>
+      </Corpo>
 
       <DialogoEncurtar
         trecho={encurtando}
@@ -162,7 +176,7 @@ export function TrechosDoDia({ motor, podeLancar }: { motor: MotorTimer; podeLan
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </Moldura>
   );
 }
 

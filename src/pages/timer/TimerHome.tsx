@@ -1,92 +1,56 @@
-import { useEffect, useMemo, useState, type ComponentType } from 'react';
-import { Activity, AlertTriangle, Clock, Download, Globe, ListTree, PauseCircle, Smartphone, UserCheck } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, ListTree, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
-import { Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { PainelTarefas } from '@/components/timer/PainelTarefas';
 import { Cronometro } from '@/components/timer/Cronometro';
 import { ColunaAnotacoes } from '@/components/timer/ColunaAnotacoes';
 import { EmEspera } from '@/components/timer/EmEspera';
-import { DialogoEncerrar } from '@/components/timer/DialogoEncerrar';
+import { DialogoEncerrar, type AlvoLancamento } from '@/components/timer/DialogoEncerrar';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
-import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
-import { ResumoAdminTimer } from '@/components/timer/ResumoAdminTimer';
+import { Coluna } from '@/components/timer/visual';
+import { TimerLayout } from '@/components/timer/TimerLayout';
 import { useMotorTimer, useTimerEstado } from '@/hooks/useTimerRelogio';
 import { useTimerAnotacoes, type Anotacao } from '@/hooks/useTimerAnotacoes';
-import { gravarSelecao, type TarefaSelecionada } from '@/lib/timerSelecao';
-import { horas, relogio } from '@/lib/timerRelogio';
-import { dentroDaJanela, demandasEmEspera, diaSP, gruposPendentes, type DemandaEmEspera } from '@/lib/timerLancamento';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { useAuth } from '@/hooks/useAuth';
 import { registrarEventoTimer, useTimerAcesso } from '@/hooks/useTimerAcesso';
-import { TimerLayout } from '@/components/timer/TimerLayout';
-import { IconeSistema } from '@/components/timer/IconesSistema';
-import { detectarCliente, detectarPlataforma } from '@/lib/timerAcesso';
-import { DOWNLOADS_TIMER, ordenarDownloads, urlDownload } from '@/lib/timerDownloads';
+import { gravarSelecao, type TarefaSelecionada } from '@/lib/timerSelecao';
+import { demandasEmEspera, diaSP, pendentesDoItem, type DemandaEmEspera } from '@/lib/timerLancamento';
 
 /**
- * Cockpit do Timer, em quatro colunas (padrão visual do Flag.DS):
- *   Anotações | Iniciar demanda (épicas recolhidas) | Em espera | Em andamento.
- * Embaixo, os trechos e os lançamentos no TimeLog.
+ * Cockpit do Timer, em quatro colunas do mesmo tamanho (padrão visual do
+ * Flag.DS): Anotações | Iniciar demanda | Em espera | Em andamento. Cada
+ * coluna tem altura fixa e rola por dentro.
  */
-function Metrica({
-  icone: Icone,
-  rotulo,
-  valor,
-  apagado = false,
-}: {
-  icone: ComponentType<{ className?: string }>;
-  rotulo: string;
-  valor: string;
-  apagado?: boolean;
-}) {
-  return (
-    <span className="flex items-center gap-2">
-      <Icone className="h-4 w-4 text-muted-foreground" />
-      <span className="text-muted-foreground">{rotulo}</span>
-      <span className={cn('font-mono font-semibold tabular-nums', apagado ? 'text-muted-foreground' : 'text-foreground')}>
-        {valor}
-      </span>
-    </span>
-  );
-}
+const COLUNA = 'h-[70vh] md:h-[min(640px,calc(100dvh-7.5rem))]';
 
 export default function TimerHome() {
-  const { user, isAdmin } = useAuth();
   const { data: acesso } = useTimerAcesso();
   const motor = useMotorTimer({ tituloDaAba: true });
   const semana = useTimerEstado(7);
   const { fechar: fecharAnotacao } = useTimerAnotacoes();
   const podeLancar = !!acesso?.devops_guid;
-
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  const plataforma = detectarPlataforma(ua);
-  const noDesktop = detectarCliente(ua, '/timer') === 'desktop';
-  const base = import.meta.env.VITE_TIMER_DOWNLOAD_BASE_URL as string | undefined;
-  const downloads = useMemo(() => ordenarDownloads(DOWNLOADS_TIMER, plataforma), [plataforma]);
+  const somenteConsulta = motor.somenteConsulta;
 
   const [anotacao, setAnotacao] = useState<Anotacao | null>(null);
-  const [encerrando, setEncerrando] = useState<{ id: number; titulo: string } | null>(null);
+  const [alvo, setAlvo] = useState<AlvoLancamento | null>(null);
 
   const rodando = motor.rodando;
   const hoje = diaSP(motor.estado?.agora ?? new Date().toISOString());
   const emEspera = useMemo(
-    () => (semana.data ? demandasEmEspera(semana.data.trechos, rodando?.work_item_id ?? null, hoje) : []),
+    () =>
+      semana.data
+        ? demandasEmEspera(semana.data.demandas, semana.data.trechos, rodando?.work_item_id ?? null, hoje)
+        : [],
     [semana.data, rodando?.work_item_id, hoje],
   );
-  const gruposEncerrando = useMemo(() => {
-    if (!encerrando || !semana.data || semana.isFetching) return null;
-    return gruposPendentes(semana.data.trechos).filter(
-      (g) => g.work_item_id === encerrando.id && dentroDaJanela(g.dia, hoje),
-    );
-  }, [encerrando, semana.data, semana.isFetching, hoje]);
+  const gruposDoAlvo = useMemo(() => {
+    if (!alvo || !semana.data || semana.isFetching) return null;
+    return pendentesDoItem(semana.data.trechos, alvo.id, hoje);
+  }, [alvo, semana.data, semana.isFetching, hoje]);
 
   useEffect(() => {
     void registrarEventoTimer('abriu');
   }, []);
 
-  const somenteConsulta = motor.somenteConsulta;
   const iniciar = (t: TarefaSelecionada) => {
     gravarSelecao(t); // o widget retoma por aqui
     if (somenteConsulta) {
@@ -102,66 +66,36 @@ export default function TimerHome() {
   };
   const retomar = (d: DemandaEmEspera) =>
     iniciar({ id: d.work_item_id, title: d.titulo, work_item_type: d.tipo, caminho: null, web_url: null, projeto: d.projeto });
+
+  // Em andamento → Lançar: corta o trecho agora (o relógio segue) e abre o lançamento.
+  const lancarRodando = (item: { id: number; titulo: string }) =>
+    motor.acoes.partir.mutate(undefined, { onSuccess: () => setAlvo({ ...item, encerrar: false }) });
+  // Em andamento → Encerrar: pausa e abre o lançamento + encerramento.
   const encerrarRodando = (item: { id: number; titulo: string }) =>
-    motor.acoes.pausar.mutate({ motivo: 'manual' }, { onSuccess: () => setEncerrando(item) });
+    motor.acoes.pausar.mutate({ motivo: 'manual' }, { onSuccess: () => setAlvo({ ...item, encerrar: true }) });
 
-  const virarTask = (a: Anotacao) => setAnotacao(a);
-
-  const ocupado = motor.acoes.iniciar.isPending || motor.acoes.pausar.isPending;
+  const ocupado = motor.acoes.iniciar.isPending || motor.acoes.pausar.isPending || motor.acoes.partir.isPending;
 
   return (
     <TimerLayout>
-      {/* faixa do dia */}
-      <div
-        className={cn(
-          'flex flex-wrap items-center gap-x-8 gap-y-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm',
-          SOMBRA_XS,
-        )}
-      >
-        <Metrica icone={Clock} rotulo="Hoje" valor={horas(motor.totalHoje)} />
-        <Metrica
-          icone={Activity}
-          rotulo="Rodando"
-          valor={rodando ? `#${rodando.work_item_id} · ${relogio(motor.segundos)}` : 'nada'}
-          apagado={!rodando}
-        />
-        <Metrica icone={PauseCircle} rotulo="Em espera" valor={String(emEspera.length)} />
-        <span className="ml-auto">
-          {podeLancar ? (
-            <Pilula tom="sucesso" title="Conta do Azure DevOps em que as horas são lançadas">
-              <UserCheck className="h-3 w-3" />
-              {acesso?.devops_display ?? user?.email}
-            </Pilula>
-          ) : (
-            <Pilula tom="alerta">
-              <AlertTriangle className="h-3 w-3" />
-              Conta do DevOps não encontrada
-            </Pilula>
-          )}
-        </span>
-      </div>
-
       {somenteConsulta && (
         <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--warning)/0.1)] px-4 py-2.5 text-sm">
           <Smartphone className="h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
           No celular o Timer é só consulta. Iniciar e confirmar presença, só pelo computador.
         </div>
       )}
+      {acesso && !podeLancar && (
+        <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--warning)/0.1)] px-4 py-2.5 text-sm">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
+          Conta do Azure DevOps não encontrada: dá para marcar o tempo, mas não para lançar.
+        </div>
+      )}
 
-      {/* 4 colunas: crescem com o conteúdo até a altura da tela e aí rolam por dentro */}
-      <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        <ColunaAnotacoes
-          emConversao={anotacao?.id ?? null}
-          onVirarTask={virarTask}
-          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
-        />
+      {/* 4 colunas do mesmo tamanho; o conteúdo rola dentro de cada uma */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <ColunaAnotacoes emConversao={anotacao?.id ?? null} onVirarTask={setAnotacao} className={COLUNA} />
 
-        <Coluna
-          icone={ListTree}
-          titulo="Iniciar demanda"
-          destaque={!!anotacao}
-          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
-        >
+        <Coluna icone={ListTree} titulo="Iniciar demanda" destaque={!!anotacao} className={COLUNA}>
           <PainelTarefas
             embutido
             iniciarRecolhido
@@ -186,85 +120,22 @@ export default function TimerHome() {
           ocupado={ocupado}
           podeRetomar={!somenteConsulta}
           onRetomar={retomar}
-          onEncerrar={(d) => setEncerrando({ id: d.work_item_id, titulo: d.titulo })}
-          className="max-h-[70vh] xl:max-h-[calc(100dvh-9.5rem)]"
+          onLancar={(d) => setAlvo({ id: d.work_item_id, titulo: d.titulo, encerrar: false })}
+          onEncerrar={(d) => setAlvo({ id: d.work_item_id, titulo: d.titulo, encerrar: true })}
+          className={COLUNA}
         />
 
-        <Cronometro motor={motor} onEncerrar={encerrarRodando} className="order-first max-h-[70vh] md:order-none xl:max-h-[calc(100dvh-9.5rem)]" />
+        <Cronometro
+          motor={motor}
+          podeLancar={podeLancar}
+          onLancar={lancarRodando}
+          onEncerrar={encerrarRodando}
+          className={`order-first md:order-none ${COLUNA}`}
+        />
       </div>
 
-      <TrechosDoDia motor={motor} podeLancar={podeLancar} />
-
-      {isAdmin && <ResumoAdminTimer />}
-
       <DialogoPresenca motor={motor} />
-      <DialogoEncerrar
-        alvo={encerrando}
-        grupos={gruposEncerrando}
-        motor={motor}
-        podeLancar={podeLancar}
-        onFechar={() => setEncerrando(null)}
-      />
-
-      {!noDesktop && (
-        <section className="space-y-3" aria-labelledby="timer-downloads">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 id="timer-downloads" className="flex items-center gap-2 text-lg font-semibold">
-                <Download className="h-4 w-4 text-primary" /> Baixe o app
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                O app fica na bandeja do sistema com um widget flutuante. Entra com a mesma conta Microsoft.
-              </p>
-            </div>
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Globe className="h-3.5 w-3.5" /> Ou use aqui mesmo, no navegador.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            {downloads.map((d) => {
-              const url = urlDownload(d, base);
-              const recomendado = d.plataforma === plataforma;
-              const conteudo = (
-                <>
-                  <IconeSistema plataforma={d.plataforma} className="h-10 w-10" />
-                  <div className="space-y-0.5 text-center">
-                    <p className="font-semibold">{d.rotulo}</p>
-                    <p className="text-xs text-muted-foreground">{d.formato}</p>
-                  </div>
-                  {recomendado && <Badge className="bg-flag-gold text-flag-navy hover:bg-flag-gold">Para o seu sistema</Badge>}
-                  {!url && <Badge variant="outline">Em breve</Badge>}
-                </>
-              );
-              const classe = cn(
-                'flex h-full flex-col items-center gap-3 rounded-xl border p-5 transition-colors',
-                recomendado ? 'border-flag-gold/60 bg-flag-gold/5' : 'bg-card',
-              );
-              return url ? (
-                <Button
-                  key={d.plataforma}
-                  asChild
-                  variant="ghost"
-                  className={cn(classe, 'h-auto hover:border-flag-gold hover:bg-flag-gold/10')}
-                >
-                  <a
-                    href={url}
-                    rel="noopener"
-                    onClick={() => void registrarEventoTimer('baixou_instalador', { plataforma: d.plataforma })}
-                  >
-                    {conteudo}
-                  </a>
-                </Button>
-              ) : (
-                <div key={d.plataforma} className={cn(classe, 'cursor-not-allowed opacity-70')} aria-disabled>
-                  {conteudo}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      <DialogoEncerrar alvo={alvo} grupos={gruposDoAlvo} motor={motor} podeLancar={podeLancar} onFechar={() => setAlvo(null)} />
     </TimerLayout>
   );
 }

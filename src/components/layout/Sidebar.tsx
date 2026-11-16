@@ -71,6 +71,7 @@ const adminItems: NavItem[] = [
   { label: 'Retenção de Dados', path: '/configuracoes', icon: Settings, adminOnly: true },
   { label: 'IP Allowlist', path: '/admin/ip-allowlist', icon: Globe, adminOnly: true },
   { label: 'Audit Log', path: '/admin/audit', icon: ScrollText, adminOnly: true },
+  { label: 'Timer da equipe', path: '/admin/timer', icon: TimerIcon, adminOnly: true },
 ];
 
 export function Sidebar() {

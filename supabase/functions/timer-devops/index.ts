@@ -613,9 +613,72 @@ async function relancar(req: Request, userId: string, corpo: Json, pat: string):
   return responder(req, 200, { ok: true, resultados: [r] })
 }
 
+// ─── lançamento automático das 23:50 (cron) ─────────────────────────────────
+
+function cronValido(req: Request): boolean {
+  const recebido = req.headers.get('x-cron-secret')
+  const esperado = Deno.env.get('CRON_SECRET')
+  return !!recebido && !!esperado && recebido === esperado
+}
+
+/**
+ * O job `timer-lanca-23h50` chama isto. O banco parte os timers rodando e
+ * devolve, por pessoa, os itens com tempo pendente no dia; cada um é
+ * preparado e enviado como no botão Lançar. Roda em segundo plano para o
+ * cron não esperar o Azure.
+ */
+async function lancarDiaAuto(req: Request): Promise<Response> {
+  const pat = patDoTimer()
+  if (!pat) return responder(req, 503, { ok: false, motivo: 'pat_ausente' })
+  const dia = hojeSaoPaulo()
+  const sb = admin()
+  const { data, error } = await sb.rpc('timer_auto_pendencias', { p_dia: dia })
+  if (error) {
+    console.error('[timer-devops] timer_auto_pendencias falhou:', error.message)
+    return responder(req, 500, { ok: false, motivo: 'erro_interno' })
+  }
+  const pendencias = (data ?? []) as { user_id: string; work_item_id: number }[]
+
+  const trabalho = (async () => {
+    let lancados = 0
+    let falhas = 0
+    for (const p of pendencias) {
+      const prep = await sb.rpc('timer_lancamento_preparar', {
+        p_user: p.user_id, p_dia: dia, p_work_item_id: p.work_item_id, p_notas: 'Timer Flag (automático 23:50)',
+      })
+      if (prep.error) {
+        falhas++
+        console.warn(`[timer-devops] auto: preparo recusado (${p.work_item_id}): ${prep.error.message}`)
+        continue
+      }
+      const r = await enviar(prep.data as Preparado, pat, false)
+      if (r.status === 'lancado') lancados++
+      else falhas++
+    }
+    console.log(`[timer-devops] auto 23:50 ${dia}: ${pendencias.length} pendência(s), ${lancados} lançada(s), ${falhas} falha(s)`)
+  })()
+
+  // @ts-ignore EdgeRuntime existe nas Edge Functions da Supabase
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(trabalho)
+  else await trabalho
+  return responder(req, 202, { ok: true, dia, pendencias: pendencias.length })
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) })
   if (req.method !== 'POST') return responder(req, 405, { ok: false, motivo: 'metodo_nao_permitido' })
+
+  // O cron não é uma pessoa: entra só pelo segredo, e só para esta op.
+  if (cronValido(req)) {
+    let corpoCron: Json = {}
+    try {
+      corpoCron = await req.json()
+    } catch {
+      return responder(req, 400, { ok: false, motivo: 'corpo_invalido' })
+    }
+    if (corpoCron.op === 'lancar_dia_auto') return await lancarDiaAuto(req)
+    return responder(req, 400, { ok: false, motivo: 'op_desconhecida' })
+  }
 
   const quem = await usuarioDoJwt(req)
   if (!quem) return responder(req, 401, { ok: false, motivo: 'nao_autenticado' })

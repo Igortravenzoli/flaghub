@@ -4,7 +4,7 @@
  * banco (timer_lancamento_preparar); aqui é só a prévia da tela, com a mesma
  * conta (segundos somados, arredondados para minutos).
  */
-import { duracaoSeg, REGRAS_PADRAO, type Lancamento, type TrechoFechado } from '@/lib/timerRelogio';
+import { duracaoSeg, REGRAS_PADRAO, type Demanda, type Lancamento, type TrechoFechado } from '@/lib/timerRelogio';
 
 export interface GrupoPendente {
   chave: string;
@@ -55,44 +55,56 @@ export interface DemandaEmEspera {
   titulo: string;
   tipo: string;
   projeto: string | null;
-  /** soma dos grupos (cada dia arredondado, como o servidor lança) */
+  /** falta lançar: soma dos grupos pendentes (cada dia arredondado, como o servidor lança) */
   minutos: number;
+  /** tempo do item hoje, lançado ou não */
+  hojeSeg: number;
   grupos: GrupoPendente[];
-  /** fim do trecho mais recente (para ordenar) */
-  ultimoFim: string;
+  ultimaAtividade: string;
 }
 
 /**
- * "Em espera": o que já tem tempo marcado e ainda não foi lançado, por item
- * (todos os dias da janela juntos), sem o item que está rodando agora.
+ * "Em espera" (TM8): as DEMANDAS abertas (iniciadas e não encerradas) que não
+ * estão rodando agora, com o que falta lançar e o tempo de hoje.
  */
-export function demandasEmEspera(trechos: TrechoFechado[], rodandoItemId: number | null, hoje: string): DemandaEmEspera[] {
+export function demandasEmEspera(
+  demandas: Demanda[],
+  trechos: TrechoFechado[],
+  rodandoItemId: number | null,
+  hoje: string,
+): DemandaEmEspera[] {
   const grupos = gruposPendentes(trechos).filter((g) => dentroDaJanela(g.dia, hoje));
-  const ultimo = new Map<number, string>();
-  const projeto = new Map<number, string | null>();
-  for (const t of trechos) {
-    if (t.descartado || t.lancamento_id) continue;
-    const u = ultimo.get(t.work_item_id);
-    if (!u || t.encerrado_em > u) ultimo.set(t.work_item_id, t.encerrado_em);
-    if (!projeto.has(t.work_item_id)) projeto.set(t.work_item_id, t.projeto);
-  }
-  const mapa = new Map<number, DemandaEmEspera>();
-  for (const g of grupos) {
-    if (g.work_item_id === rodandoItemId) continue;
-    const d = mapa.get(g.work_item_id) ?? {
-      work_item_id: g.work_item_id,
-      titulo: g.titulo,
-      tipo: g.tipo,
-      projeto: projeto.get(g.work_item_id) ?? null,
-      minutos: 0,
-      grupos: [],
-      ultimoFim: ultimo.get(g.work_item_id) ?? '',
-    };
-    d.minutos += g.minutos;
-    d.grupos.push(g);
-    mapa.set(g.work_item_id, d);
-  }
-  return [...mapa.values()].sort((a, b) => (a.ultimoFim < b.ultimoFim ? 1 : -1));
+  return demandas
+    .filter((d) => d.work_item_id !== rodandoItemId)
+    .map((d) => {
+      const meus = grupos.filter((g) => g.work_item_id === d.work_item_id);
+      const hojeSeg = trechos
+        .filter((t) => t.work_item_id === d.work_item_id && !t.descartado && diaSP(t.iniciado_em) === hoje)
+        .reduce((s, t) => s + duracaoSeg(t), 0);
+      return {
+        work_item_id: d.work_item_id,
+        titulo: d.titulo,
+        tipo: d.tipo,
+        projeto: d.projeto,
+        minutos: meus.reduce((s, g) => s + g.minutos, 0),
+        hojeSeg,
+        grupos: meus,
+        ultimaAtividade: d.ultima_atividade_em,
+      };
+    })
+    .sort((a, b) => (a.ultimaAtividade < b.ultimaAtividade ? 1 : -1));
+}
+
+/** Grupos pendentes (por dia) de um item, na janela de lançamento. */
+export function pendentesDoItem(trechos: TrechoFechado[], workItemId: number, hoje: string): GrupoPendente[] {
+  return gruposPendentes(trechos).filter((g) => g.work_item_id === workItemId && dentroDaJanela(g.dia, hoje));
+}
+
+/** Segundos de hoje já lançados (trechos com lançamento). */
+export function lancadoHojeSeg(trechos: TrechoFechado[], hoje: string): number {
+  return trechos
+    .filter((t) => t.lancamento_id && !t.descartado && diaSP(t.iniciado_em) === hoje)
+    .reduce((s, t) => s + duracaoSeg(t), 0);
 }
 
 /** Pode lançar? Só os últimos 7 dias (a mesma janela do servidor). */

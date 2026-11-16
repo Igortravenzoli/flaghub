@@ -4,6 +4,7 @@ import { LayoutDashboard, LogOut, Timer as TimerIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
+import { BaixarApp } from '@/components/timer/BaixarApp';
 
 /**
  * Casca do Timer Flag: barra no azul do hub, sem a sidebar dos KPIs. Quem
@@ -51,6 +52,7 @@ export function TimerLayout({ children }: { children: ReactNode }) {
                 </Link>
               </Button>
             )}
+            <BaixarApp className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <ThemeToggle />
             <Button
               variant="ghost"
