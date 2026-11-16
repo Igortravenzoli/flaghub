@@ -146,19 +146,21 @@ export function PainelTarefas({
   const Cabeca = embutido ? 'div' : CardHeader;
   const Corpo = embutido ? 'div' : CardContent;
 
+  // Um botão só: com tudo recolhido, expande; com algo aberto, recolhe.
+  const chaves = chavesRecolhiveis(grupos);
+  const tudoRecolhido = chaves.length > 0 && chaves.every((k) => recolhidos.has(k));
   const ferramentas = (
     <div className="flex items-center gap-1">
-      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setRecolhidos(new Set())} title="Expandir tudo">
-        <ChevronsUpDown className="h-3.5 w-3.5" />
-      </Button>
       <Button
         variant="ghost"
         size="sm"
         className="h-8 w-8 p-0"
-        onClick={() => setRecolhidos(new Set(chavesRecolhiveis(grupos)))}
-        title="Recolher tudo"
+        onClick={() => setRecolhidos(tudoRecolhido ? new Set() : new Set(chaves))}
+        title={tudoRecolhido ? 'Expandir tudo' : 'Recolher tudo'}
+        aria-label={tudoRecolhido ? 'Expandir tudo' : 'Recolher tudo'}
+        disabled={chaves.length === 0}
       >
-        <ChevronsDownUp className="h-3.5 w-3.5" />
+        {tudoRecolhido ? <ChevronsUpDown className="h-3.5 w-3.5" /> : <ChevronsDownUp className="h-3.5 w-3.5" />}
       </Button>
       <Button
         variant="ghost"
