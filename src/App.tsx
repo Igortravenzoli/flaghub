@@ -20,6 +20,9 @@ import Configuracoes from "@/pages/Configuracoes";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
 import MfaChallenge from "@/pages/MfaChallenge";
+import { TimerRoute } from "@/components/timer/TimerRoute";
+import TimerHome from "@/pages/timer/TimerHome";
+import TimerWidget from "@/pages/timer/TimerWidget";
 
 import TicketBuscaComponente from "@/pages/TicketBuscaComponente";
 import Acompanhamento from "@/pages/Acompanhamento";
@@ -91,7 +94,16 @@ const App = () => (
               <Route path="/pending-approval" element={<PendingApproval />} />
               <Route path="/login" element={<Login />} />
               <Route path="/mfa" element={<MfaChallenge />} />
-              
+
+              {/*
+                Timer Flag: fora do ProtectedRoute de propósito. Quem tem só o
+                Timer é "pendente" para o hub (não tem área) e o ProtectedRoute
+                o mandaria para /pending-approval. O TimerRoute exige sessão +
+                timer_access ativo; os dados de KPI seguem barrados pela RLS.
+              */}
+              <Route path="/timer" element={<TimerRoute><TimerHome /></TimerRoute>} />
+              <Route path="/timer/widget" element={<TimerRoute><TimerWidget /></TimerRoute>} />
+
               <Route
                 element={
                   <ProtectedRoute>

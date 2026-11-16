@@ -2,11 +2,13 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
+import { consumirDestino } from '@/lib/timerAcesso';
 
 /**
  * Handles OAuth callback redirects (e.g. Azure SSO).
  * Supabase appends #access_token=... to the URL after OAuth.
- * This page waits for the session to be established, then redirects to /home.
+ * This page waits for the session to be established, then redirects to the
+ * destination saved before the SSO left the site (e.g. /timer), or /home.
  */
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -16,7 +18,7 @@ export default function AuthCallback() {
       if (event === 'SIGNED_IN' && session) {
         // Small delay to let AuthContext hydrate
         setTimeout(() => {
-          navigate('/home', { replace: true });
+          navigate(consumirDestino() ?? '/home', { replace: true });
         }, 300);
       }
     });

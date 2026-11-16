@@ -23,6 +23,7 @@ import {
   Lock,
   Download,
   Mail,
+  Timer as TimerIcon,
   ListTree,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -47,8 +48,10 @@ const navItems: NavItem[] = [
 ];
 
 // Visão pessoal (o que é DO usuário logado). Fora do telão: o monitor não tem dono.
+// O Timer Flag abre a casca própria (/timer), fora do MainLayout.
 const personalItems: NavItem[] = [
   { label: 'Minhas atividades', path: '/minhas-atividades', icon: ListTree },
+  { label: 'Timer Flag', path: '/timer', icon: TimerIcon },
 ];
 
 const sectorItems: NavItem[] = [
