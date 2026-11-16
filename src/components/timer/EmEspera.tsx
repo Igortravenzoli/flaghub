@@ -60,7 +60,7 @@ export function EmEspera({ demandas, ocupado, onRetomar, onLancar, onEncerrar, c
                   variante="ghost"
                   disabled={ocupado}
                   onClick={() => onEncerrar(d)}
-                  className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 />
               </div>
             </li>

@@ -1,0 +1,221 @@
+// Timer Flag para o computador (Electron).
+//
+// A tela é a MESMA do navegador: carrega https://flaghub.flag.com.br/timer
+// (login, regras e lançamento continuam no servidor; nada de segredo aqui).
+// O que o app acrescenta é o que o navegador não sabe fazer:
+//   • janela própria e ícone na bandeja; fechar a janela esconde e abre o
+//     mini timer (sempre por cima), em vez de sair;
+//   • avisos do sistema para o timer pausar sozinho: tela bloqueada,
+//     suspensão e 30 min sem uso (powerMonitor);
+//   • abrir junto com o computador (opção na bandeja).
+//
+// O app se identifica no User-Agent com "TimerFlag/<versão>": o FlagHub usa
+// isso para registrar o cliente 'desktop' e esconder o "Baixar app".
+//
+// Segurança: contextIsolation + sandbox + sem nodeIntegration; a única ponte
+// é o preload (window.timerFlagDesktop). Navegação na MESMA janela é livre
+// (o login passa pela Microsoft); janela nova (links do DevOps) abre no
+// navegador do sistema.
+import { app, BrowserWindow, Menu, Tray, nativeImage, powerMonitor, screen, shell, ipcMain } from 'electron';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const URL_TIMER = process.env.TIMER_FLAG_URL ?? 'https://flaghub.flag.com.br/timer';
+const HOST = new URL(URL_TIMER).host;
+const URL_MINI = new URL('/timer/widget', URL_TIMER).toString();
+
+const ICONE = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(__dirname, '..', 'build', 'icon.png');
+const ICONE_BANDEJA = app.isPackaged ? path.join(process.resourcesPath, 'tray.png') : path.join(__dirname, '..', 'build', 'tray.png');
+
+const OCIOSO_S = 30 * 60; // 30 min sem uso = pausa
+const VERIFICAR_OCIOSO_MS = 30_000;
+const TAMANHO_MINI = { width: 360, height: 76 };
+
+// Antes do ready: o FlagHub reconhece o app por aqui.
+app.userAgentFallback = `${app.userAgentFallback} TimerFlag/${app.getVersion()}`;
+
+let principal: BrowserWindow | null = null;
+let mini: BrowserWindow | null = null;
+let bandeja: Tray | null = null;
+let saindo = false;
+
+const preferencias = {
+  preload: path.join(__dirname, 'preload.cjs'),
+  contextIsolation: true,
+  nodeIntegration: false,
+  sandbox: true,
+  webSecurity: true,
+};
+
+function abrirForaSeExterno(win: BrowserWindow) {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      if (new URL(url).host === HOST) return { action: 'allow' };
+    } catch {
+      /* URL inválida: cai no navegador do sistema */
+    }
+    void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+}
+
+function criarPrincipal(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 960,
+    minHeight: 620,
+    title: 'Timer Flag',
+    icon: ICONE,
+    backgroundColor: '#0F172A',
+    webPreferences: preferencias,
+  });
+  win.setMenu(null);
+  abrirForaSeExterno(win);
+  win.on('close', (e) => {
+    if (saindo) return;
+    e.preventDefault();
+    win.hide();
+    mostrarMini();
+  });
+  win.on('show', () => esconderMini());
+  void win.loadURL(URL_TIMER);
+  return win;
+}
+
+function cantoInferiorDireito() {
+  const tela = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  return { x: tela.x + tela.width - TAMANHO_MINI.width - 16, y: tela.y + tela.height - TAMANHO_MINI.height - 16 };
+}
+
+function mostrarMini() {
+  if (mini && !mini.isDestroyed()) {
+    mini.show();
+    return;
+  }
+  mini = new BrowserWindow({
+    ...TAMANHO_MINI,
+    ...cantoInferiorDireito(),
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    title: 'Timer Flag',
+    backgroundColor: '#0F172A',
+    webPreferences: preferencias,
+  });
+  mini.setAlwaysOnTop(true, 'screen-saver');
+  mini.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  abrirForaSeExterno(mini);
+  mini.on('closed', () => {
+    mini = null;
+  });
+  void mini.loadURL(URL_MINI);
+}
+
+function esconderMini() {
+  if (mini && !mini.isDestroyed()) mini.close();
+}
+
+function mostrarPrincipal() {
+  if (!principal || principal.isDestroyed()) principal = criarPrincipal();
+  if (principal.isMinimized()) principal.restore();
+  principal.show();
+  principal.focus();
+  esconderMini();
+}
+
+function montarBandeja() {
+  const icone = nativeImage.createFromPath(ICONE_BANDEJA);
+  bandeja = new Tray(icone.isEmpty() ? nativeImage.createFromPath(ICONE).resize({ width: 16, height: 16 }) : icone);
+  bandeja.setToolTip('Timer Flag');
+  const menu = () =>
+    Menu.buildFromTemplate([
+      { label: 'Abrir Timer Flag', click: () => mostrarPrincipal() },
+      { label: 'Mini timer', type: 'checkbox', checked: !!mini && !mini.isDestroyed(), click: (i) => (i.checked ? mostrarMini() : esconderMini()) },
+      {
+        label: 'Abrir ao iniciar o computador',
+        type: 'checkbox',
+        checked: app.getLoginItemSettings().openAtLogin,
+        click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }),
+      },
+      { type: 'separator' },
+      {
+        label: 'Sair',
+        click: () => {
+          saindo = true;
+          app.quit();
+        },
+      },
+    ]);
+  bandeja.setContextMenu(menu());
+  bandeja.on('click', () => {
+    bandeja?.setContextMenu(menu());
+    mostrarPrincipal();
+  });
+  bandeja.on('right-click', () => bandeja?.setContextMenu(menu()));
+}
+
+// ─── avisos do sistema → o timer pausa ──────────────────────────────────────
+
+type Motivo = 'bloqueio' | 'suspensao' | 'ocioso';
+
+function avisar(motivo: Motivo, fimMs: number) {
+  for (const w of [principal, mini]) {
+    if (w && !w.isDestroyed()) w.webContents.send('sistema:pausar', { motivo, fimMs });
+  }
+}
+
+function vigiarSistema() {
+  powerMonitor.on('lock-screen', () => avisar('bloqueio', Date.now()));
+  powerMonitor.on('suspend', () => avisar('suspensao', Date.now()));
+
+  let avisouOcioso = false;
+  setInterval(() => {
+    const ocioso = powerMonitor.getSystemIdleTime();
+    if (ocioso >= OCIOSO_S) {
+      if (!avisouOcioso) {
+        avisouOcioso = true;
+        avisar('ocioso', Date.now() - ocioso * 1000);
+      }
+    } else {
+      avisouOcioso = false;
+    }
+  }, VERIFICAR_OCIOSO_MS);
+}
+
+// ─── ponte com a tela ───────────────────────────────────────────────────────
+
+const remetenteConhecido = (e: Electron.IpcMainEvent) =>
+  e.sender === principal?.webContents || e.sender === mini?.webContents;
+
+ipcMain.on('janela:abrir-completo', (e) => {
+  if (remetenteConhecido(e)) mostrarPrincipal();
+});
+ipcMain.on('janela:abrir-mini', (e) => {
+  if (remetenteConhecido(e)) mostrarMini();
+});
+
+// ─── ciclo de vida ──────────────────────────────────────────────────────────
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => mostrarPrincipal());
+  void app.whenReady().then(() => {
+    principal = criarPrincipal();
+    montarBandeja();
+    vigiarSistema();
+    app.on('activate', () => mostrarPrincipal());
+  });
+  app.on('before-quit', () => {
+    saindo = true;
+  });
+  // Fica na bandeja com as janelas fechadas (Windows/Linux); no macOS o dock segura.
+  app.on('window-all-closed', () => undefined);
+}

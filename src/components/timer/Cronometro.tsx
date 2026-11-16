@@ -16,6 +16,7 @@ import { foiAutomatico, horaCurta, horas, relogio, ROTULO_MOTIVO } from '@/lib/t
 import { diaSP, lancadoHojeSeg } from '@/lib/timerLancamento';
 import { BotaoIcone, Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
+import { MiniTimer } from '@/components/timer/MiniTimer';
 
 const DESCONTOS_MIN = [5, 10, 15, 30];
 
@@ -40,7 +41,7 @@ function Contador({ rotulo, valor, destaque = false }: { rotulo: string; valor: 
 
 /** Em andamento: contadores do dia, o timer rodando (um por vez) e os lançamentos recolhidos. */
 export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className }: Props) {
-  const { estado, rodando, segundos, totalHoje, acoes, agoraServidor } = motor;
+  const { estado, rodando, segundos, segundosTrecho, totalHoje, acoes, agoraServidor } = motor;
   const regras = estado?.regras;
   const ocupado = acoes.iniciar.isPending || acoes.pausar.isPending || acoes.partir.isPending;
   const [verLancamentos, setVerLancamentos] = useState(false);
@@ -61,14 +62,19 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
       titulo="Em andamento"
       destaque={!!rodando}
       className={className}
-      acoes={<Pilula tom={rodando ? 'sucesso' : 'neutro'}>{rodando ? '1 ativo' : 'parado'}</Pilula>}
+      acoes={
+        <>
+          <MiniTimer motor={motor} />
+          <Pilula tom={rodando ? 'sucesso' : 'neutro'}>{rodando ? '1 ativo' : 'parado'}</Pilula>
+        </>
+      }
       corpoClassName="space-y-3"
     >
       {/* contadores do dia: um timer por vez, então acumulado = tempo real trabalhado */}
       <div className="grid grid-cols-3 gap-1.5">
         <Contador rotulo="Hoje acumulado" valor={horas(totalHoje)} />
         <Contador rotulo="Lançado" valor={horas(lancado)} />
-        <Contador rotulo="Rodando agora" valor={rodando ? `1 · ${relogio(segundos).slice(0, 5)}` : '0'} />
+        <Contador rotulo="Rodando agora" valor={rodando ? relogio(segundos) : '0'} />
       </div>
 
       {rodando && item ? (
@@ -79,7 +85,7 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
                 {rodando.titulo}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                <span className="font-mono">#{rodando.work_item_id}</span> · desde {horaCurta(rodando.iniciado_em)}
+                <span className="font-mono">#{rodando.work_item_id}</span> · acumulado hoje
               </p>
             </div>
             <span className="shrink-0 font-mono text-xl font-semibold tabular-nums" aria-live="off">
@@ -87,39 +93,38 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="flex">
-              <BotaoIcone
-                icone={Pause}
-                rotulo="Pausar"
-                onClick={() => acoes.pausar.mutate({ motivo: 'manual' })}
-                disabled={ocupado}
-                className="rounded-r-none"
-              />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={ocupado}
-                    className={cn('h-8 w-6 rounded-l-none border-l-0 bg-card px-0', SOMBRA_XS)}
-                    aria-label="Pausar descontando os últimos minutos"
-                    title="Pausar descontando os últimos minutos"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuLabel>Parei há</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {DESCONTOS_MIN.filter((m) => m * 60 < segundos).map((m) => (
-                    <DropdownMenuItem key={m} onSelect={() => pausarDescontando(m)}>
-                      {m} min
-                    </DropdownMenuItem>
-                  ))}
-                  {segundos <= DESCONTOS_MIN[0] * 60 && <DropdownMenuItem disabled>Trecho curto</DropdownMenuItem>}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            {/* Pausar: um botão só; o menu oferece pausar agora ou descontar os últimos minutos */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  disabled={ocupado}
+                  className={cn('h-8 w-8 bg-card', SOMBRA_XS)}
+                  aria-label="Pausar"
+                  title="Pausar"
+                >
+                  <Pause className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem onSelect={() => acoes.pausar.mutate({ motivo: 'manual' })}>
+                  <Pause className="mr-2 h-4 w-4" /> Pausar agora
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  Parei antes e esqueci de pausar
+                </DropdownMenuLabel>
+                {DESCONTOS_MIN.filter((m) => m * 60 < segundosTrecho).map((m) => (
+                  <DropdownMenuItem key={m} onSelect={() => pausarDescontando(m)}>
+                    Pausar há {m} min
+                  </DropdownMenuItem>
+                ))}
+                {segundosTrecho <= DESCONTOS_MIN[0] * 60 && (
+                  <DropdownMenuItem disabled>Trecho ainda curto</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <BotaoIcone
               icone={Send}
               rotulo="Lançar até agora (o timer continua)"
@@ -132,7 +137,7 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
               variante="destructive"
               disabled={ocupado}
               onClick={() => onEncerrar(item)}
-              className={cn('ml-auto', SOMBRA_XS)}
+              className={SOMBRA_XS}
             />
           </div>
         </div>

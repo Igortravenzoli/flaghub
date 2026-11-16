@@ -1,0 +1,41 @@
+# Empacotamento do Timer Flag — `npm run dist:win` (ou :mac / :linux).
+#
+# Os nomes dos arquivos são FIXOS (sem versão) de propósito: a pasta de
+# liberação no SharePoint recebe sempre os mesmos nomes por cima, e o link do
+# FlagHub (VITE_TIMER_DOWNLOAD_URL) nunca envelhece.
+#
+# Sem assinatura de código por enquanto: Windows e macOS mostram o aviso de
+# "app não reconhecido" até haver certificado (CSC_LINK / WIN_CSC_LINK).
+# Nenhum segredo vive no app: ele só abre https://flaghub.flag.com.br/timer.
+appId: br.com.flag.timer
+productName: Timer Flag
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+extraResources:
+  - from: build/tray.png
+    to: tray.png
+  - from: build/icon.png
+    to: icon.png
+win:
+  target: nsis
+  icon: build/icon.png
+  artifactName: TimerFlag-Setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Timer Flag
+mac:
+  target: dmg
+  icon: build/icon.png
+  category: public.app-category.productivity
+  artifactName: TimerFlag.${ext}
+linux:
+  target: AppImage
+  icon: build/icon.png
+  category: Office
+  artifactName: TimerFlag.${ext}

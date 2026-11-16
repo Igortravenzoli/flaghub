@@ -24,7 +24,17 @@ export const DOWNLOADS_TIMER: DownloadTimer[] = [
   { plataforma: 'linux', rotulo: 'Linux', formato: 'AppImage', arquivo: 'TimerFlag.AppImage' },
 ];
 
-export function urlDownload(item: DownloadTimer, base: string | undefined | null): string | null {
+/**
+ * Link de download do item.
+ *   • `pasta` (VITE_TIMER_DOWNLOAD_URL): link de compartilhamento de uma PASTA
+ *     do SharePoint ("liberação"), o mesmo para os três sistemas — link de
+ *     pasta do SharePoint não aceita o nome do arquivo no fim;
+ *   • senão `base` (VITE_TIMER_DOWNLOAD_BASE_URL) + nome do arquivo.
+ * Só https.
+ */
+export function urlDownload(item: DownloadTimer, base: string | undefined | null, pasta?: string | null): string | null {
+  const p = (pasta ?? '').trim();
+  if (/^https:\/\//i.test(p)) return p;
   const limpa = (base ?? '').trim().replace(/\/+$/, '');
   if (!/^https:\/\//i.test(limpa)) return null;
   return `${limpa}/${item.arquivo}`;
