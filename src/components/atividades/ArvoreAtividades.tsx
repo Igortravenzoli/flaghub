@@ -1,5 +1,6 @@
-import { createContext, useContext, type ReactNode } from 'react';
-import { ChevronRight, ExternalLink } from 'lucide-react';
+import { createContext, useContext, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
+import { ChevronRight, ExternalLink, Loader2, Plus } from 'lucide-react';
+import { ehArrastoDeAnotacao, recebeTask } from '@/lib/timerArrastar';
 import type { GrupoEpic, GrupoFeature, GrupoPbi, ItemDevops } from '@/lib/minhasAtividades';
 import { prazoSprint, textoPrazo, type NivelPrazo, type PrazoSprint } from '@/lib/prazoSprint';
 
@@ -19,6 +20,19 @@ export interface AcoesArvore {
   depoisDaFeature?: (feature: ItemDevops) => ReactNode;
   /** Linha destacada (a tarefa selecionada no Timer). */
   selecionado?: number | null;
+  /** PBI/Bug como alvo de uma anotação (Timer): clicar ou soltar cria a Task. */
+  alvo?: AlvoAnotacao;
+}
+
+export interface AlvoAnotacao {
+  /** ▶ na anotação: um clique no PBI/Bug cria a Task */
+  escolhendo: boolean;
+  /** uma anotação está sendo arrastada: os PBIs/Bugs se mostram como alvo */
+  arrastando: boolean;
+  /** PBI em que a Task está sendo criada (spinner) */
+  ocupado: number | null;
+  onEscolher: (pbi: ItemDevops) => void;
+  onSoltar: (pbi: ItemDevops, dt: DataTransfer) => void;
 }
 
 /** Coluna estreita (cockpit do Timer): um PBI por linha e linhas que quebram. */
@@ -80,6 +94,35 @@ function CabecalhoGrupo({
   extra?: ReactNode;
 }) {
   const ponto = PONTO_URGENCIA[urgencia];
+  const compacto = useContext(Compacto);
+  if (compacto) {
+    // Coluna estreita (Timer): selo de uma letra no lugar da palavra, o título
+    // com a largura toda e as ações (+ PBI, link) só no hover ou no foco.
+    return (
+      <div className="group/cab flex min-w-0 items-center gap-1.5">
+        <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left">
+          <ChevronRight
+            className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${recolhido ? '' : 'rotate-90'}`}
+          />
+          <SeloTipo tipo={tipo} />
+          <span
+            className={`min-w-0 flex-1 truncate text-sm ${
+              item ? (forte ? 'font-semibold' : 'font-medium') : 'italic text-muted-foreground'
+            }`}
+            title={item ? `${tipo} #${item.id} ${item.title ?? ''}` : vazio}
+          >
+            {item ? item.title : vazio}
+          </span>
+          {ponto && <span className={`h-2 w-2 shrink-0 rounded-full ${ponto}`} />}
+        </button>
+        <span className="hidden shrink-0 items-center gap-0.5 group-focus-within/cab:flex group-hover/cab:flex">
+          {extra}
+          {item && <LinkDevops item={item} />}
+        </span>
+        <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">{total}</span>
+      </div>
+    );
+  }
   return (
     <div className="flex min-w-0 items-center gap-2">
       <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left">
@@ -120,6 +163,7 @@ function SecaoEpic({
   acoes?: AcoesArvore;
 }) {
   const fechado = recolhidos.has(grupo.key);
+  const compacto = useContext(Compacto);
   return (
     <section>
       <div className="border-b border-border pb-1">
@@ -135,7 +179,7 @@ function SecaoEpic({
         />
       </div>
       {!fechado && (
-        <div className="mt-2 space-y-3">
+        <div className={compacto ? 'mt-1 space-y-1.5' : 'mt-2 space-y-3'}>
           {grupo.features.map((f) => (
             <SecaoFeature key={f.key} grupo={f} hoje={hoje} recolhidos={recolhidos} alternar={alternar} acoes={acoes} />
           ))}
@@ -162,7 +206,7 @@ function SecaoFeature({
   const compacto = useContext(Compacto);
   const { feature } = grupo;
   return (
-    <div className="ml-2 border-l border-border pl-3">
+    <div className={compacto ? 'ml-1.5 border-l border-border pl-2' : 'ml-2 border-l border-border pl-3'}>
       <CabecalhoGrupo
         tipo="Feature"
         item={feature}
@@ -175,7 +219,7 @@ function SecaoFeature({
       />
       {feature && acoes?.depoisDaFeature?.(feature)}
       {!fechado && (
-        <div className={`mt-1.5 grid gap-2 ${compacto ? '' : 'xl:grid-cols-2'}`}>
+        <div className={compacto ? 'mt-1 space-y-1.5' : 'mt-1.5 grid gap-2 xl:grid-cols-2'}>
           {grupo.pbis.map((p) => (
             <BlocoPbi key={p.key} grupo={p} hoje={hoje} acoes={acoes} />
           ))}
@@ -188,10 +232,11 @@ function SecaoFeature({
 // ─── PBI + Tasks ──────────────────────────────────────────────────────────────
 
 function BlocoPbi({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes?: AcoesArvore }) {
+  const compacto = useContext(Compacto);
+  if (compacto) return <BlocoPbiCompacto grupo={grupo} hoje={hoje} acoes={acoes} />;
   const { pbi } = grupo;
   const contexto = pbi != null && !grupo.pbiAtribuido;
   const pbiSelecionado = pbi != null && acoes?.selecionado === pbi.id;
-  const compacto = useContext(Compacto);
   const quebra = compacto ? 'flex-wrap' : '';
   const titulo = compacto ? 'min-w-[9rem]' : 'min-w-0';
   return (
@@ -252,7 +297,185 @@ function BlocoPbi({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes
   );
 }
 
+/** A sprint da Task só aparece quando foge da do PBI ou pede atenção. */
+function mostrarSprintDaTask(t: ItemDevops, grupo: GrupoPbi, p: PrazoSprint) {
+  return (
+    !grupo.prazo ||
+    t.iteration_path !== grupo.pbi?.iteration_path ||
+    p.nivel === 'vencida' ||
+    p.nivel === 'ultimo_dia' ||
+    p.nivel === 'reta_final'
+  );
+}
+
+/**
+ * PBI na coluna estreita (Timer, pedido do Igor 17/11/2026: nada encavalado):
+ * título na linha de cima com a largura toda; número, estado, sprint e ações
+ * na de baixo. O mesmo para cada Task.
+ */
+function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes?: AcoesArvore }) {
+  const { pbi } = grupo;
+  const contexto = pbi != null && !grupo.pbiAtribuido;
+  const pbiSelecionado = pbi != null && acoes?.selecionado === pbi.id;
+  return (
+    <div className="overflow-hidden rounded-md border border-border bg-card">
+      {pbi ? (
+        <AlvoPbi item={pbi} alvo={acoes?.alvo} className={pbiSelecionado ? 'bg-flag-gold/15' : 'bg-muted/40'}>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <SeloTipo tipo={pbi.work_item_type === 'Bug' ? 'Bug' : 'PBI'} />
+            <span
+              className={`min-w-0 flex-1 truncate text-sm ${contexto ? 'text-muted-foreground' : 'font-medium'}`}
+              title={[pbi.title, pbi.state, contexto ? 'Não atribuído a você' : ''].filter(Boolean).join('\n')}
+            >
+              {pbi.title}
+            </span>
+          </div>
+          <div className="mt-0.5 flex min-w-0 items-center gap-2 pl-[1.375rem] text-[11px] text-muted-foreground">
+            <span className="shrink-0 font-mono">#{pbi.id}</span>
+            {pbi.state && <span className="min-w-0 truncate">{pbi.state}</span>}
+            {grupo.prazo && <RotuloSprint prazo={grupo.prazo} tags={pbi.tags} />}
+            <span className="ml-auto flex shrink-0 items-center gap-0.5">
+              <SinalAlvo item={pbi} alvo={acoes?.alvo} />
+              {!acoes?.alvo?.escolhendo && !acoes?.alvo?.arrastando && acoes?.pbi?.(pbi)}
+              <LinkDevops item={pbi} />
+            </span>
+          </div>
+        </AlvoPbi>
+      ) : (
+        <div className="bg-muted/40 px-2.5 py-1.5 text-sm italic text-muted-foreground">Tasks sem PBI</div>
+      )}
+      {pbi && acoes?.depoisDoPbi?.(pbi)}
+      {grupo.tasks.map((t) => {
+        const p = prazoSprint(t, hoje);
+        const selecionada = acoes?.selecionado === t.id;
+        return (
+          <div key={t.id} className={`border-t border-border/70 py-1.5 pl-3 pr-2.5 ${selecionada ? 'bg-flag-gold/15' : ''}`}>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <PontoEstado state={t.state} />
+              <span className="min-w-0 flex-1 truncate text-sm" title={t.title ?? ''}>
+                {t.title}
+              </span>
+            </div>
+            <div className="mt-0.5 flex min-w-0 items-center gap-2 pl-3 text-[11px] text-muted-foreground">
+              <span className="shrink-0 font-mono">#{t.id}</span>
+              {t.state && <span className="min-w-0 truncate">{t.state}</span>}
+              {mostrarSprintDaTask(t, grupo, p) && <RotuloSprint prazo={p} tags={t.tags} />}
+              <span className="ml-auto flex shrink-0 items-center gap-0.5">
+                {acoes?.task?.(t)}
+                <LinkDevops item={t} />
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── anotação → Task: o PBI como alvo (clique ou soltar) ─────────────────────
+
+/**
+ * Envolve o cabeçalho de um PBI/Bug: aceita soltar uma anotação arrastada e,
+ * no modo "escolher o PBI" (▶ na anotação), cria a Task no clique. Cliques
+ * em botões e links de dentro seguem com a função deles.
+ */
+export function AlvoPbi({
+  item,
+  alvo,
+  className = '',
+  children,
+}: {
+  item: ItemDevops;
+  alvo?: AlvoAnotacao;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [sobre, setSobre] = useState(false);
+  const aceita = !!alvo && recebeTask(item.work_item_type) && !['Done', 'Closed', 'Removed'].includes(item.state ?? '');
+  const escolhendo = aceita && alvo.escolhendo;
+
+  const aoArrastarSobre = (e: DragEvent<HTMLDivElement>) => {
+    if (!aceita || !ehArrastoDeAnotacao(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!sobre) setSobre(true);
+  };
+  const aoSoltar = (e: DragEvent<HTMLDivElement>) => {
+    if (!aceita || !ehArrastoDeAnotacao(e.dataTransfer)) return;
+    e.preventDefault();
+    setSobre(false);
+    alvo.onSoltar(item, e.dataTransfer);
+  };
+  const aoClicar = (e: MouseEvent<HTMLDivElement>) => {
+    if (!escolhendo || (e.target as HTMLElement).closest('a,button,input,textarea')) return;
+    alvo.onEscolher(item);
+  };
+
+  return (
+    <div
+      className={`px-2.5 py-1.5 transition-colors ${className} ${
+        sobre
+          ? '!bg-flag-gold/25 outline outline-2 -outline-offset-2 outline-flag-gold'
+          : aceita && alvo.arrastando
+            ? 'outline-dashed outline-1 -outline-offset-2 outline-flag-gold/70'
+            : ''
+      } ${escolhendo ? 'cursor-pointer hover:!bg-flag-gold/15' : ''}`}
+      onDragOver={aoArrastarSobre}
+      onDragEnter={aoArrastarSobre}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSobre(false);
+      }}
+      onDrop={aoSoltar}
+      onClick={aoClicar}
+      role={escolhendo ? 'button' : undefined}
+      tabIndex={escolhendo ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (escolhendo && (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+          e.preventDefault();
+          alvo.onEscolher(item);
+        }
+      }}
+      title={escolhendo ? `Criar a Task em #${item.id}` : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** No modo de escolha (ou arrastando), o selo "+ Task aqui"; criando, o spinner. */
+export function SinalAlvo({ item, alvo }: { item: ItemDevops; alvo?: AlvoAnotacao }) {
+  if (!alvo || !recebeTask(item.work_item_type) || ['Done', 'Closed', 'Removed'].includes(item.state ?? '')) return null;
+  if (alvo.ocupado === item.id) return <Loader2 className="h-3.5 w-3.5 animate-spin text-flag-gold" />;
+  if (!alvo.escolhendo && !alvo.arrastando) return null;
+  return (
+    <span className="flex items-center gap-0.5 rounded-full bg-flag-gold/15 px-1.5 py-0.5 text-[10px] font-semibold text-flag-gold">
+      <Plus className="h-3 w-3" /> Task aqui
+    </span>
+  );
+}
+
 // ─── peças pequenas ───────────────────────────────────────────────────────────
+
+const SELO: Record<string, { letra: string; cor: string }> = {
+  Epic: { letra: 'E', cor: 'bg-violet-500/15 text-violet-600 dark:text-violet-300' },
+  Feature: { letra: 'F', cor: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
+  PBI: { letra: 'P', cor: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
+  Bug: { letra: 'B', cor: 'bg-red-500/15 text-red-700 dark:text-red-300' },
+};
+
+/** Selo de uma letra (E, F, P, B) no lugar da palavra do tipo, na coluna estreita. */
+function SeloTipo({ tipo }: { tipo: string }) {
+  const s = SELO[tipo] ?? { letra: tipo.slice(0, 1).toUpperCase(), cor: 'bg-muted text-muted-foreground' };
+  return (
+    <span
+      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px] font-bold ${s.cor}`}
+      title={tipo}
+      aria-label={tipo}
+    >
+      {s.letra}
+    </span>
+  );
+}
 
 const COR_SPRINT: Partial<Record<NivelPrazo, string>> = {
   vencida: 'text-red-600 dark:text-red-400',

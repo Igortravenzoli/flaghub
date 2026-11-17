@@ -33,6 +33,8 @@ export default function TimerHome() {
   const somenteConsulta = motor.somenteConsulta;
 
   const [anotacao, setAnotacao] = useState<Anotacao | null>(null);
+  // anotação sendo arrastada até um PBI (a árvore realça os alvos)
+  const [arrastada, setArrastada] = useState<Anotacao | null>(null);
   const [alvo, setAlvo] = useState<AlvoLancamento | null>(null);
   // Paralelo (TM9): ligado, iniciar outra demanda NÃO pausa as que rodam.
   const [paralelo, setParalelo] = useState(() => lerModoParalelo());
@@ -132,7 +134,12 @@ export default function TimerHome() {
 
       {/* 4 colunas do mesmo tamanho; o conteúdo rola dentro de cada uma */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <ColunaAnotacoes emConversao={anotacao?.id ?? null} onVirarTask={setAnotacao} className={COLUNA} />
+        <ColunaAnotacoes
+          emConversao={anotacao?.id ?? null}
+          onVirarTask={setAnotacao}
+          onArrastar={setArrastada}
+          className={COLUNA}
+        />
 
         <Coluna icone={ListTree} titulo="Iniciar demanda" destaque={!!anotacao} className={COLUNA}>
           <PainelTarefas
@@ -147,10 +154,12 @@ export default function TimerHome() {
             rodandoIds={rodandoIds}
             onSelecionar={iniciar}
             anotacao={anotacao}
+            anotacaoArrastada={arrastada}
             onCancelarAnotacao={() => setAnotacao(null)}
-            onItemCriado={(item) => {
-              if (anotacao) fecharAnotacao.mutate({ id: anotacao.id, virouItemId: item.id });
+            onItemCriado={(item, anotacaoId) => {
+              if (anotacaoId) fecharAnotacao.mutate({ id: anotacaoId, virouItemId: item.id });
               setAnotacao(null);
+              setArrastada(null);
             }}
           />
         </Coluna>

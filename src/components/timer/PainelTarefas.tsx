@@ -7,7 +7,16 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { ArvoreAtividades, Aviso, LinkDevops, RotuloSprint } from '@/components/atividades/ArvoreAtividades';
+import {
+  AlvoPbi,
+  ArvoreAtividades,
+  Aviso,
+  LinkDevops,
+  RotuloSprint,
+  SinalAlvo,
+  type AlvoAnotacao,
+} from '@/components/atividades/ArvoreAtividades';
+import { lerArrasto, type AnotacaoArrastada } from '@/lib/timerArrastar';
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
 import { hojeISO, prazoSprint } from '@/lib/prazoSprint';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
@@ -37,14 +46,16 @@ const ROTULO_TIPO: Record<string, string> = {
  * inteiro e a criação de Task (sob PBI/Bug) e PBI (sob Feature).
  *
  * `selecionada` = o item que está rodando (destaque); `onSelecionar` inicia
- * o timer nele. Com `anotacao`, o painel está transformando uma anotação em
- * Task: o "+ Task" já vem com o texto dela.
+ * o timer nele. Com `anotacao` (▶ na anotação), o painel está no modo
+ * "escolha o PBI": um clique num PBI/Bug cria a Task com o texto da anotação e
+ * inicia o timer. Arrastar a anotação para um PBI/Bug faz o mesmo.
  */
 export function PainelTarefas({
   selecionada,
   rodandoIds,
   onSelecionar,
   anotacao = null,
+  anotacaoArrastada = null,
   onCancelarAnotacao,
   onItemCriado,
   embutido = false,
@@ -56,8 +67,11 @@ export function PainelTarefas({
   rodandoIds?: number[];
   onSelecionar: (t: TarefaSelecionada) => void;
   anotacao?: { id: string; texto: string } | null;
+  /** anotação sendo arrastada da outra coluna: os PBIs/Bugs se mostram como alvo */
+  anotacaoArrastada?: AnotacaoArrastada | null;
   onCancelarAnotacao?: () => void;
-  onItemCriado?: (item: ItemTimer) => void;
+  /** item criado; `anotacaoId` = a anotação que virou esta Task (▶ ou arrastada) */
+  onItemCriado?: (item: ItemTimer, anotacaoId?: string) => void;
   /** dentro de outra coluna: sem a moldura de Card e sem título */
   embutido?: boolean;
   /** abre com as épicas recolhidas (o quadro minimizado) */
@@ -71,6 +85,8 @@ export function PainelTarefas({
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const [criando, setCriando] = useState<Criando>(null);
   const [recolheuInicio, setRecolheuInicio] = useState(!iniciarRecolhido);
+  const criarTask = useCriarItemTimer();
+  const [criandoEm, setCriandoEm] = useState<number | null>(null);
 
   useEffect(() => {
     const t = window.setTimeout(() => setBuscaAtrasada(busca), 450);
@@ -124,6 +140,48 @@ export function PainelTarefas({
       return n;
     });
 
+  // Anotação → Task num clique (ou ao soltar): o título é o texto da anotação.
+  const criarDaAnotacao = async (pai: ItemDevops, a: AnotacaoArrastada) => {
+    const titulo = a.texto.trim();
+    if (criarTask.isPending) return;
+    if (titulo.length < 3) {
+      setCriando({ tipo: 'Task', pai }); // curto demais: abre o formulário para completar
+      return;
+    }
+    setCriandoEm(pai.id);
+    try {
+      const r = await criarTask.mutateAsync({ tipo: 'Task', titulo, paiId: pai.id });
+      const novo = r.item ?? null;
+      const url = novo?.web_url;
+      toast.success(`Task #${novo?.id ?? ''} criada em #${pai.id} e atribuída a você.`, {
+        description: 'Descrição, prints e anexos: complete direto no Azure DevOps.',
+        duration: 10_000,
+        ...(url ? { action: { label: 'Abrir no DevOps', onClick: () => window.open(url, '_blank', 'noopener') } } : {}),
+      });
+      if (novo) {
+        onItemCriado?.(novo, a.id);
+        if (TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
+      }
+    } catch (e) {
+      toast.error(e instanceof ErroTimer ? e.message : 'Não foi possível criar a Task.');
+    } finally {
+      setCriandoEm(null);
+    }
+  };
+
+  const alvo: AlvoAnotacao = {
+    escolhendo: !!anotacao,
+    arrastando: !!anotacaoArrastada,
+    ocupado: criandoEm,
+    onEscolher: (pai) => {
+      if (anotacao) void criarDaAnotacao(pai, anotacao);
+    },
+    onSoltar: (pai, dt) => {
+      const a = lerArrasto(dt) ?? anotacaoArrastada;
+      if (a) void criarDaAnotacao(pai, a);
+    },
+  };
+
   const acoesItem = (item: ItemDevops) => (
     <AcoesItem
       item={item}
@@ -142,7 +200,7 @@ export function PainelTarefas({
         onCancelar={() => setCriando(null)}
         onCriado={(novo) => {
           setCriando(null);
-          if (novo) onItemCriado?.(novo);
+          if (novo) onItemCriado?.(novo, tipo === 'Task' ? anotacao?.id : undefined);
           if (novo && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
         }}
       />
@@ -221,9 +279,13 @@ export function PainelTarefas({
         {anotacao && (
           <div className="flex items-center gap-2 rounded-lg border border-flag-gold/60 bg-flag-gold/10 px-3 py-2 text-sm">
             <NotebookPen className="h-4 w-4 shrink-0 text-flag-gold" />
-            <p className="min-w-0 flex-1 truncate">
-              <span className="text-muted-foreground">+ Task no PBI de </span>
-              <span className="font-medium">{anotacao.texto}</span>
+            <p className="min-w-0 flex-1">
+              <span className="block truncate font-medium" title={anotacao.texto}>
+                {anotacao.texto}
+              </span>
+              <span className="block text-[11px] text-muted-foreground">
+                Clique no PBI em que esta Task vai entrar (ou arraste a anotação até ele).
+              </span>
             </p>
             {onCancelarAnotacao && (
               <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onCancelarAnotacao}>
@@ -242,34 +304,24 @@ export function PainelTarefas({
             ) : (
               <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
                 {daSprint.map((p) => {
-                  const aberto = criando?.pai.id === p.id && criando.tipo === 'Task';
                   const onde = caminhoDe(p, conhecidos);
                   return (
                     <div key={p.id}>
-                      <button
-                        type="button"
-                        className={cn(
-                          'flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-muted/40',
-                          aberto && 'bg-flag-gold/10',
-                        )}
-                        onClick={() => setCriando(aberto ? null : { tipo: 'Task', pai: p })}
-                        aria-expanded={aberto}
-                        title={`Criar a Task em #${p.id}`}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm" title={p.title ?? ''}>
-                            {p.title}
+                      <AlvoPbi item={p} alvo={alvo}>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm" title={p.title ?? ''}>
+                              {p.title}
+                            </span>
+                            <span className="block truncate text-[11px] text-muted-foreground">
+                              {ROTULO_TIPO[p.work_item_type ?? ''] ?? p.work_item_type}{' '}
+                              <span className="font-mono">#{p.id}</span>
+                              {onde ? ` · ${onde}` : ''}
+                            </span>
                           </span>
-                          <span className="block truncate text-[11px] text-muted-foreground">
-                            {ROTULO_TIPO[p.work_item_type ?? ''] ?? p.work_item_type}{' '}
-                            <span className="font-mono">#{p.id}</span>
-                            {onde ? ` · ${onde}` : ''}
-                          </span>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-flag-gold">
-                          <Plus className="h-3 w-3" /> Task
-                        </span>
-                      </button>
+                          <SinalAlvo item={p} alvo={alvo} />
+                        </div>
+                      </AlvoPbi>
                       {formPara(p, 'Task')}
                     </div>
                   );
@@ -300,6 +352,7 @@ export function PainelTarefas({
             alternar={alternar}
             compacto={embutido}
             acoes={{
+              alvo,
               selecionado: selecionada?.id ?? null,
               task: acoesItem,
               pbi: acoesItem,
@@ -337,6 +390,7 @@ export function PainelTarefas({
                     criando={criando}
                     setCriando={setCriando}
                     formPara={formPara}
+                    alvo={alvo}
                   />
                 ))}
                 {remota.data?.truncado && (
@@ -496,8 +550,10 @@ function LinhaRemota({
   criando,
   setCriando,
   formPara,
+  alvo,
 }: {
   item: ItemDevops;
+  alvo?: AlvoAnotacao;
   conhecidos: Map<number, ItemDevops>;
   nivel: number;
   selecionadaId: number | null;
@@ -515,7 +571,7 @@ function LinhaRemota({
   return (
     <div className={cn(nivel > 0 && 'ml-4 border-l pl-2')}>
       {/* duas linhas: na coluna estreita o título não some atrás das ações */}
-      <div className={cn('rounded-md px-2 py-1.5', selecionadaId === item.id ? 'bg-flag-gold/15' : 'hover:bg-muted/40')}>
+      <AlvoPbi item={item} alvo={alvo} className={cn('rounded-md', selecionadaId === item.id ? 'bg-flag-gold/15' : 'hover:bg-muted/40')}>
         <div className="flex items-center gap-2">
           {desce ? (
             <button type="button" onClick={() => setAberto((a) => !a)} className="shrink-0" title={aberto ? 'Recolher' : 'Ver os filhos'}>
@@ -537,15 +593,18 @@ function LinhaRemota({
             {[item.state, caminho].filter(Boolean).join(' · ')}
           </span>
           <RotuloSprint prazo={prazo} tags={item.tags} />
-          <AcoesItem
-            item={item}
-            selecionada={selecionadaId === item.id}
-            onSelecionar={() => onSelecionar(item)}
-            onNovo={(t) => setCriando({ tipo: t, pai: item })}
-          />
+          <SinalAlvo item={item} alvo={alvo} />
+          {!alvo?.escolhendo && !alvo?.arrastando && (
+            <AcoesItem
+              item={item}
+              selecionada={selecionadaId === item.id}
+              onSelecionar={() => onSelecionar(item)}
+              onNovo={(t) => setCriando({ tipo: t, pai: item })}
+            />
+          )}
           <LinkDevops item={item} />
         </div>
-      </div>
+      </AlvoPbi>
       {formPara(item, tipo === 'Feature' ? 'PBI' : 'Task')}
       {aberto && (
         <Filhos
@@ -557,6 +616,7 @@ function LinhaRemota({
           criando={criando}
           setCriando={setCriando}
           formPara={formPara}
+          alvo={alvo}
         />
       )}
     </div>
@@ -572,6 +632,7 @@ function Filhos(props: {
   criando: Criando;
   setCriando: (c: Criando) => void;
   formPara: (item: ItemDevops, tipo: 'Task' | 'PBI') => React.ReactNode;
+  alvo?: AlvoAnotacao;
 }) {
   const { id, ...linha } = props;
   const { data, isLoading, error } = useFilhosTimer(id);
