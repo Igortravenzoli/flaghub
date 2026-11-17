@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return Response.json({ error: "Missing authorization" }, { status: 401, headers: corsHeaders });
+      return Response.json({ error: "Missing authorization" }, { status: 401, headers: corsHeaders(req) });
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
 
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) {
-      return Response.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
+      return Response.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders(req) });
     }
 
     // ── Autorização — SEC2 (17/11/2026) ──────────────────────────
@@ -199,10 +199,10 @@ Deno.serve(async (req) => {
     };
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
-      return Response.json({ error: "No rows provided" }, { status: 400, headers: corsHeaders });
+      return Response.json({ error: "No rows provided" }, { status: 400, headers: corsHeaders(req) });
     }
     if (!import_name || !file_name) {
-      return Response.json({ error: "import_name and file_name are required" }, { status: 400, headers: corsHeaders });
+      return Response.json({ error: "import_name and file_name are required" }, { status: 400, headers: corsHeaders(req) });
     }
 
     if (import_mode === "purge" && isAdmin !== true) {
@@ -250,7 +250,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (impErr || !importRec) {
-        return Response.json({ error: `Failed to create import: ${impErr?.message}` }, { status: 500, headers: corsHeaders });
+        return Response.json({ error: `Failed to create import: ${impErr?.message}` }, { status: 500, headers: corsHeaders(req) });
       }
       importId = importRec.id;
     }
@@ -600,7 +600,7 @@ Deno.serve(async (req) => {
     console.error("survey-import error:", error);
     return Response.json(
       { error: error instanceof Error ? error.message : "unexpected_error" },
-      { status: 500, headers: corsHeaders },
+      { status: 500, headers: corsHeaders(req) },
     );
   }
 });
