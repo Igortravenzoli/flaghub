@@ -26,12 +26,19 @@ concedido à anon (o RLS segura, mas é uma camada só); default privileges dão
 
 ## Fases (ordem = maior risco fechado por menor chance de quebrar)
 
-### SEC1 — views sem "dono" e sem anon (banco) · PRONTA para ensaio
+### SEC1 — views sem "dono" e sem anon (banco) · ENSAIADA em 16/11, espera o ok para aplicar
 - **O quê:** `security_invoker = true` em `v_timelog_unified`, `v_colaborador_ausencias`,
   `vw_infraestrutura_kpis`; `REVOKE ALL ... FROM anon` em todas as views do public.
-  Arquivos: `migrations/20261117090000_sec1_views_sem_definer.sql`, `verificacao/sec1_views.sql`.
-- **Prova:** cada um dos 23 usuários aprovados lê exatamente as mesmas linhas antes e depois; monitor > 0;
-  pendente 0; anon sem privilégio; nenhuma view sem invoker.
+  Arquivos: `migrations/20261117090000_sec1_views_sem_definer.sql`, `verificacao/sec1_views.sql`
+  (ensaio da DDL), `verificacao/sec1_views_conferencia.sql` (pós), `scripts/sec1-compara-invoker.mjs`.
+- **Prova (feita):** os 23 usuários aprovados, o monitor entre eles, leem exatamente as mesmas linhas
+  (8826/8806 na `v_timelog_unified`, 27, 1640, 8826/8806); o pendente passa de 1621/27/1535/1621 para 0
+  nas quatro; o tempo fica igual (~1,2–1,5 s na `v_timelog_unified`, contra ~1,8 s hoje). Ensaio da DDL:
+  `SEC1 OK` em ~2 s, nada gravado.
+- **Lição do 1º ensaio:** contar linhas DEPOIS do `ALTER VIEW` na mesma transação segura a trava
+  exclusiva por minutos (o 1º ensaio passou de 100 s e caiu no limite do Cloudflare; desfeito, conferido).
+  Daí a separação: comparação só leitura sem DDL, e ensaio da DDL só com catálogo e `lock_timeout` 3 s.
+  Vale para as próximas fases.
 - **Risco:** baixo. Se um usuário perder linha, o ensaio falha e diz quem e onde (sinal de que a policy da
   base estava mais fechada que a tela supunha) — aí não se aplica.
 - **Volta:** `verificacao/sec1_views_volta.sql` (RESET da opção; o GRANT à anon fica comentado).

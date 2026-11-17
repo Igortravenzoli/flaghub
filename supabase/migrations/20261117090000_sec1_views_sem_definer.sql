@@ -21,10 +21,19 @@
 --      view antes do login).
 -- Não mexe em tabela, função nem policy.
 --
--- Prova: supabase/verificacao/sec1_views.sql (ensaio = roda o mesmo bloco e
--- desfaz no RAISE; conferência pós-aplicação = o mesmo arquivo de novo).
+-- Prova (16/11/2026, em produção):
+--   scripts/sec1-compara-invoker.mjs (só leitura): os 23 aprovados e o monitor
+--     leem as mesmas linhas com a definição rodada como eles; pendente 0; tempo
+--     igual ao de hoje (~1–2 s na maior);
+--   supabase/verificacao/sec1_views.sql (ensaio da DDL, desfeito no RAISE): OK em ~2 s.
+-- Depois de aplicar: supabase/verificacao/sec1_views_conferencia.sql.
 -- Volta: supabase/verificacao/sec1_views_volta.sql.
+--
+-- lock_timeout: o ALTER VIEW pede trava exclusiva; se uma leitura longa estiver
+-- na frente, desiste em 3 s em vez de enfileirar o telão atrás dele (é só rodar de novo).
 -- ============================================================================
+
+SET lock_timeout = '3s';
 
 ALTER VIEW public.v_timelog_unified       SET (security_invoker = true);
 ALTER VIEW public.v_colaborador_ausencias SET (security_invoker = true);
