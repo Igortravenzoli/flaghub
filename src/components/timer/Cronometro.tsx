@@ -238,7 +238,8 @@ function ChaveParalelo({ ligado, maximo, onMudar }: { ligado: boolean; maximo: n
           onClick={() => onMudar(!ligado)}
           className={cn(
             'h-8 w-8',
-            ligado ? 'bg-flag-gold/15 text-flag-gold hover:bg-flag-gold/25 hover:text-flag-gold' : 'text-muted-foreground/60',
+            // mesmo tamanho e estilo do botão do mini timer: sem fundo; ligado = ícone dourado
+            ligado ? 'text-flag-gold hover:text-flag-gold' : 'text-muted-foreground/60',
           )}
         >
           <Split className="h-4 w-4" />
