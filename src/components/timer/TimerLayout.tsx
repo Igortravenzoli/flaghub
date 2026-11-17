@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { BaixarApp } from '@/components/timer/BaixarApp';
+import { versaoDesktop } from '@/lib/timerAcesso';
 
 /**
  * Casca do Timer Flag: barra azul, sem a sidebar do hub e SEM nenhum caminho
@@ -17,6 +18,7 @@ export function TimerLayout({ children }: { children: ReactNode }) {
   const { profile, user, signOut } = useAuth();
   const navigate = useNavigate();
   const nome = profile?.full_name || user?.email || '';
+  const versaoApp = typeof navigator !== 'undefined' ? versaoDesktop(navigator.userAgent) : null;
 
   // Só nas rotas do Timer: manifest + service worker (o Timer instalável).
   useEffect(() => {
@@ -38,7 +40,11 @@ export function TimerLayout({ children }: { children: ReactNode }) {
             </div>
             <div className="leading-tight">
               <p className="text-base font-bold tracking-tight text-flag-gold">Timer Flag</p>
-              <p className="text-[11px] text-sidebar-foreground/60">Horas direto no DevOps</p>
+              <p className="text-[11px] text-sidebar-foreground/60">
+                Horas direto no DevOps
+                {/* No app desktop, a versão instalada, discreta (para saber se precisa reinstalar). */}
+                {versaoApp && <span className="ml-1.5 text-sidebar-foreground/40">· app {versaoApp}</span>}
+              </p>
             </div>
           </div>
 

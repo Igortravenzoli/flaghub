@@ -86,6 +86,13 @@ function criarPrincipal(): BrowserWindow {
   });
   win.setMenu(null);
   abrirForaSeExterno(win);
+  // O título da barra de tarefas nunca mostra o do site ("FLAG - Painel
+  // Operacional" entrega o hub); o do Timer ("▶ 00:22 · #19100 · Timer Flag") passa.
+  win.on('page-title-updated', (e, titulo) => {
+    if (titulo.includes('Timer Flag')) return;
+    e.preventDefault();
+    win.setTitle('Timer Flag');
+  });
   win.on('close', (e) => {
     if (saindo) return;
     e.preventDefault();

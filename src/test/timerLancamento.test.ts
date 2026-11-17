@@ -78,7 +78,7 @@ describe('documento e desfecho', () => {
     );
     expect(doc).toEqual({
       id: 'a1b2', user: 'Pessoa', userId: 'guid', workItemId: 77, workItemName: 'Título',
-      startTime: '09:05', date: '2026-11-16', time: 45, notes: 'Timer Flag',
+      startTime: '09:05', date: '2026-11-16 09:05', time: 45, notes: 'Timer Flag',
     });
     expect(TIMELOG_DOCS).toContain('/TechsBCN/DevOps-TimeLog/');
     expect(TIMELOG_DOCS).toContain('/Collections/TimeLogData/Documents');

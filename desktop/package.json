@@ -1,7 +1,7 @@
 {
   "name": "timer-flag-desktop",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "description": "Timer Flag para o computador: a tela /timer do FlagHub numa janela própria, com bandeja, mini timer sempre por cima e pausa automática (tela bloqueada, suspensão, 30 min sem uso).",
   "main": "dist/main.js",
