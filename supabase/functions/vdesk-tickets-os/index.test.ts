@@ -5,7 +5,7 @@ import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert
 const SUPABASE_URL = Deno.env.get("VITE_SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("VITE_SUPABASE_PUBLISHABLE_KEY")!;
 
-const BASE = `${SUPABASE_URL}/functions/v1/vdesk-proxy`;
+const BASE = `${SUPABASE_URL}/functions/v1/vdesk-tickets-os`; // a vdesk-proxy (órfã) saiu na SEC2
 
 Deno.test("vdesk-proxy: rejeita sem auth", async () => {
   const res = await fetch(`${BASE}?action=status`, {

@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return Response.json({ error: "Missing authorization" }, { status: 401, headers: corsHeaders });
+      return Response.json({ error: "Missing authorization" }, { status: 401, headers: corsHeaders(req) });
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
@@ -145,7 +145,36 @@ Deno.serve(async (req) => {
 
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) {
-      return Response.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
+      return Response.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders(req) });
+    }
+
+    // ── Autorização — SEC2 (17/11/2026) ──────────────────────────
+    // A mesma régua da policy survey_imports_insert_auth: admin OU membro ativo da
+    // área Comercial. Sem isto, qualquer login (e o cadastro estava aberto) usava a
+    // service role abaixo — inclusive o purge, que apaga a pesquisa inteira.
+    // O purge fica só para admin. Decide ANTES de ler o corpo e de qualquer escrita.
+    const { data: isAdmin, error: adminErr } = await userClient.rpc("hub_is_admin");
+    if (adminErr) {
+      console.error("survey-import: hub_is_admin falhou", adminErr.message);
+      return Response.json({ error: "Forbidden" }, { status: 403, headers: corsHeaders(req) });
+    }
+    let podeImportar = isAdmin === true;
+    if (!podeImportar) {
+      const { data: membro, error: membroErr } = await supabaseAdmin
+        .from("hub_area_members")
+        .select("id, hub_areas!inner(key)")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .eq("hub_areas.key", "comercial")
+        .limit(1);
+      if (membroErr) {
+        console.error("survey-import: checagem da área falhou", membroErr.message);
+        return Response.json({ error: "Forbidden" }, { status: 403, headers: corsHeaders(req) });
+      }
+      podeImportar = (membro?.length ?? 0) > 0;
+    }
+    if (!podeImportar) {
+      return Response.json({ error: "Forbidden" }, { status: 403, headers: corsHeaders(req) });
     }
 
     const body = await req.json();
@@ -170,10 +199,14 @@ Deno.serve(async (req) => {
     };
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
-      return Response.json({ error: "No rows provided" }, { status: 400, headers: corsHeaders });
+      return Response.json({ error: "No rows provided" }, { status: 400, headers: corsHeaders(req) });
     }
     if (!import_name || !file_name) {
-      return Response.json({ error: "import_name and file_name are required" }, { status: 400, headers: corsHeaders });
+      return Response.json({ error: "import_name and file_name are required" }, { status: 400, headers: corsHeaders(req) });
+    }
+
+    if (import_mode === "purge" && isAdmin !== true) {
+      return Response.json({ error: "Purge restrito a administradores" }, { status: 403, headers: corsHeaders(req) });
     }
 
     const isFirstChunk = !existingImportId || chunk_index === 0;
@@ -217,7 +250,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (impErr || !importRec) {
-        return Response.json({ error: `Failed to create import: ${impErr?.message}` }, { status: 500, headers: corsHeaders });
+        return Response.json({ error: `Failed to create import: ${impErr?.message}` }, { status: 500, headers: corsHeaders(req) });
       }
       importId = importRec.id;
     }
@@ -567,7 +600,7 @@ Deno.serve(async (req) => {
     console.error("survey-import error:", error);
     return Response.json(
       { error: error instanceof Error ? error.message : "unexpected_error" },
-      { status: 500, headers: corsHeaders },
+      { status: 500, headers: corsHeaders(req) },
     );
   }
 });

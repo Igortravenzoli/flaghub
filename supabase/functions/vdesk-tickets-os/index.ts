@@ -4,11 +4,22 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
-// Endpoints disponíveis (ordem de prioridade)
+// Endpoints disponíveis (ordem de prioridade).
+// SEC2 (17/11/2026): saiu o fallback HTTP — ele mandava o GATEWAY_SERVICE_SECRET e o
+// token de serviço em texto claro quando o HTTPS não respondia no teste de 8 s.
 const VDESK_ENDPOINTS = [
   { url: 'https://clientes.flag.com.br/Flag.AI.Gateway', name: 'externo (HTTPS)' },
-  { url: 'http://clientes.flag.com.br/Flag.AI.Gateway', name: 'fallback (HTTP)' },
 ]
+
+// SEC2: limites do que um login pode pedir ao gateway com o token de serviço.
+const MAX_TICKETS_BATCH = 500 // a tela manda os pendentes de uma vez; hoje são dezenas
+const MAX_PAGE_SIZE = 200
+const TICKET_RE = /^[A-Za-z0-9._/-]{1,64}$/
+const CONSULTAR_PARAMS = ['ticketNestle', 'osNumber', 'programador', 'dateFrom', 'dateTo', 'cliente', 'bandeira', 'pageNumber', 'pageSize']
+
+function jsonResp(req: Request, status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } })
+}
 
 // Timeouts por etapa (evita aborts "genéricos" e facilita diagnóstico)
 const ENDPOINT_TEST_TIMEOUT_MS = 8000 // teste rápido de conectividade
@@ -65,7 +76,7 @@ async function fetchWithTimeout(
  * Valida autenticação do usuário via JWT
  * Retorna o user_id se autenticado, ou null se falhar
  */
-async function validateAuthentication(req: Request): Promise<{ userId: string; userRole: string | null } | null> {
+async function validateAuthentication(req: Request): Promise<{ userId: string; userRole: string | null; aprovado: boolean; admin: boolean } | null> {
   const authHeader = req.headers.get('authorization')
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -105,11 +116,21 @@ async function validateAuthentication(req: Request): Promise<{ userId: string; u
       .eq('user_id', userId)
       .single()
 
-    console.log(`[VdeskProxy] Usuário autenticado: ${userId}, role: ${roleData?.role || 'sem role'}`)
-    
-    return { 
-      userId, 
-      userRole: roleData?.role || null 
+    // SEC2: login não basta — o proxy usa o token de serviço do gateway. Só quem é
+    // aprovado no hub (membro ativo de área ou admin) passa; falha da checagem = negado.
+    const [{ data: aprovado, error: aprErr }, { data: admin, error: admErr }] = await Promise.all([
+      supabaseClient.rpc('hub_is_approved'),
+      supabaseClient.rpc('hub_is_admin'),
+    ])
+    if (aprErr || admErr) console.error('[VdeskProxy] Falha ao checar aprovação:', aprErr?.message ?? admErr?.message)
+
+    console.log(`[VdeskProxy] Usuário autenticado: ${userId}, role: ${roleData?.role || 'sem role'}, aprovado: ${aprovado === true}`)
+
+    return {
+      userId,
+      userRole: roleData?.role || null,
+      aprovado: !aprErr && aprovado === true,
+      admin: !admErr && admin === true,
     }
   } catch (err) {
     console.error('[VdeskProxy] Erro ao validar autenticação:', err)
@@ -323,7 +344,7 @@ serve(async (req) => {
     const url = new URL(req.url)
     const action = url.searchParams.get('action')
     
-    // Ação especial: reset do endpoint (requer autenticação)
+    // Ação especial: reset do endpoint (SEC2: só admin)
     if (action === 'reset') {
       const auth = await validateAuthentication(req)
       if (!auth) {
@@ -332,7 +353,8 @@ serve(async (req) => {
           { status: 401, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
         )
       }
-      
+      if (!auth.admin) return jsonResp(req, 403, { error: 'Acesso negado' })
+
       resetActiveEndpoint()
       return new Response(
         JSON.stringify({ 
@@ -352,7 +374,8 @@ serve(async (req) => {
           { status: 401, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
         )
       }
-      
+      if (!auth.aprovado) return jsonResp(req, 403, { error: 'Acesso negado' })
+
       const endpoint = await getActiveEndpoint()
       return new Response(
         JSON.stringify({ 
@@ -383,9 +406,13 @@ serve(async (req) => {
         { status: 401, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
+    if (!auth.aprovado) return jsonResp(req, 403, { error: 'Acesso negado' })
 
     if (action === 'correlacao') {
       const ticketNestle = url.searchParams.get('ticketNestle')
+      if (ticketNestle && !TICKET_RE.test(ticketNestle)) {
+        return jsonResp(req, 400, { success: false, error: 'ticketNestle inválido' })
+      }
       if (!ticketNestle) {
         return new Response(
           JSON.stringify({ success: false, error: 'ticketNestle é obrigatório' }),
@@ -414,6 +441,13 @@ serve(async (req) => {
           JSON.stringify({ success: false, error: 'Body deve conter { tickets: ["INC001", ...] }' }),
           { status: 400, headers: { ...corsHeaders(req), 'Content-Type': 'application/json' } }
         )
+      }
+
+      if (tickets.length > MAX_TICKETS_BATCH) {
+        return jsonResp(req, 413, { success: false, error: `No máximo ${MAX_TICKETS_BATCH} tickets por lote` })
+      }
+      if (!tickets.every((t) => typeof t === 'string' && TICKET_RE.test(t))) {
+        return jsonResp(req, 400, { success: false, error: 'Lote com ticket inválido' })
       }
 
       console.log(`[VdeskProxy] Correlação batch: ${tickets.length} tickets`)
@@ -538,11 +572,18 @@ serve(async (req) => {
     if (action === 'consultar') {
       const params = new URLSearchParams()
       
-      // Copiar parâmetros de consulta
-      for (const [key, value] of url.searchParams.entries()) {
-        if (key !== 'action') {
-          params.append(key, value)
+      // SEC2: só os parâmetros que a tela usa (antes ia a querystring inteira ao gateway)
+      for (const key of CONSULTAR_PARAMS) {
+        const value = url.searchParams.get(key)
+        if (value === null || value === '') continue
+        if (value.length > 100) return jsonResp(req, 400, { success: false, error: `Parâmetro ${key} inválido` })
+        if (key === 'pageSize' || key === 'pageNumber') {
+          const n = Number(value)
+          if (!Number.isInteger(n) || n < 1 || (key === 'pageSize' && n > MAX_PAGE_SIZE)) {
+            return jsonResp(req, 400, { success: false, error: `Parâmetro ${key} inválido` })
+          }
         }
+        params.append(key, value)
       }
       
       return await executeProxyWithRetry(`/api/tickets-os/consultar?${params}`, req)
