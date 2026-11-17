@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aLancarDoItem,
   desvioServidor,
   devePerguntarPresenca,
   duracaoSeg,
@@ -16,7 +17,10 @@ import {
   relogio,
   segundosRodando,
   sinalDevido,
+  situacaoTrecho,
   totalHojeSeg,
+  NOTA_LANCAMENTO_AUTO,
+  type TrechoFechado,
   type TrechoRodando,
 } from '@/lib/timerRelogio';
 
@@ -139,5 +143,53 @@ describe('horaNoDia (correção do fim)', () => {
     expect(horaNoDia('2026-11-16T13:00:00.000Z', '24:00')).toBeNull();
     expect(horaNoDia('2026-11-16T13:00:00.000Z', '10:60')).toBeNull();
     expect(horaNoDia('2026-11-16T13:00:00.000Z', 'abc')).toBeNull();
+  });
+});
+
+const fechado = (over: Partial<TrechoFechado> = {}): TrechoFechado => ({
+  id: Math.random().toString(36),
+  work_item_id: 123,
+  titulo: 'Tarefa',
+  tipo: 'Task',
+  projeto: null,
+  iniciado_em: '2026-11-16T13:00:00.000Z',
+  encerrado_em: '2026-11-16T13:10:00.000Z',
+  encerrado_original_em: null,
+  motivo_fim: 'manual',
+  descartado: false,
+  lancamento_id: null,
+  ...over,
+});
+
+describe('a lançar (o relógio zera ao lançar)', () => {
+  it('soma só o que não foi lançado nem descartado, do item', () => {
+    const ts = [
+      fechado({}), // 10 min a lançar
+      fechado({ lancamento_id: 'l1', motivo_fim: 'parcial' }), // lançado: sai
+      fechado({ descartado: true }), // descartado: sai
+      fechado({ work_item_id: 9 }), // outro item: sai
+    ];
+    expect(aLancarDoItem(ts, 123)).toBe(600);
+    expect(aLancarDoItem([fechado({ lancamento_id: 'l1', motivo_fim: 'parcial' })], 123)).toBe(0);
+  });
+});
+
+describe('situacaoTrecho (Hora | Tempo | Situação)', () => {
+  it('lançado pelo botão: só "Lançado"', () => {
+    expect(situacaoTrecho(fechado({ lancamento_id: 'l1', motivo_fim: 'parcial' }), [{ id: 'l1', notas: null }])).toEqual({
+      estado: 'lancado', rotulo: 'Lançado', detalhe: null, alerta: false,
+    });
+  });
+  it('lançado às 23:50: "fim do dia"', () => {
+    const s = situacaoTrecho(fechado({ lancamento_id: 'l1', motivo_fim: 'parcial' }), [{ id: 'l1', notas: NOTA_LANCAMENTO_AUTO }]);
+    expect([s.rotulo, s.detalhe]).toEqual(['Lançado', 'fim do dia']);
+  });
+  it('a conexão caiu: "sem conexão", em destaque', () => {
+    const s = situacaoTrecho(fechado({ lancamento_id: 'l1', motivo_fim: 'sem_sinal' }), []);
+    expect(s).toEqual({ estado: 'lancado', rotulo: 'Lançado', detalhe: 'sem conexão', alerta: true });
+  });
+  it('a lançar e descartado', () => {
+    expect(situacaoTrecho(fechado({ motivo_fim: 'manual' }), [])).toMatchObject({ estado: 'a_lancar', rotulo: 'A lançar', detalhe: 'pausa' });
+    expect(situacaoTrecho(fechado({ descartado: true, motivo_fim: 'sem_sinal' }), [])).toMatchObject({ estado: 'descartado', alerta: false });
   });
 });

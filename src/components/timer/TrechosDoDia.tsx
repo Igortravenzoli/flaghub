@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
 import { useTimerEstado } from '@/hooks/useTimerRelogio';
 import { LancamentosTimeLog } from '@/components/timer/LancamentosTimeLog';
+import { TabelaTrechos } from '@/components/timer/TabelaTrechos';
 import {
   diaCurto,
   duracaoSeg,
@@ -308,18 +309,13 @@ function ListaPorTarefa({
             {aberto && (
               <div className="space-y-2 border-t border-border bg-muted/30 px-2.5 py-2">
                 {g.trechos.length > 0 && (
-                  <ul className="divide-y divide-border/60">
-                    {g.trechos.map((t) => (
-                      <LinhaTrecho
-                        key={t.id}
-                        t={t}
-                        semItem
-                        mostrarDia={mostrarDia}
-                        onEncurtar={() => onEncurtar(t)}
-                        onDescartar={() => onDescartar(t)}
-                      />
-                    ))}
-                  </ul>
+                  <TabelaTrechos
+                    trechos={g.trechos}
+                    lancamentos={g.lancamentos}
+                    mostrarDia={mostrarDia}
+                    onEncurtar={onEncurtar}
+                    onDescartar={onDescartar}
+                  />
                 )}
                 {g.lancamentos.length > 0 && (
                   <ul className="space-y-1">
