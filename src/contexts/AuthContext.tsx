@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { Session, User } from "@supabase/supabase-js";
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -541,8 +541,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await setSignedIn(session);
     };
 
-    // Listener primeiro (padrão recomendado pelo Supabase)
-    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Listener primeiro (padrão recomendado pelo Supabase).
+    //
+    // O callback NUNCA espera (await) o login terminar: o login chama outras
+    // funções da Supabase (perfil, papel), e o cliente só libera essas chamadas
+    // depois que o callback termina. Esperar aqui dentro trava tudo (documentado
+    // pela Supabase). Era o que pendurava o mini timer do app desktop, que abre
+    // com a sessão já gravada: nenhuma requisição saía e o timer aparecia
+    // parado (17/11/2026). O começo do login (marcar autenticado) segue
+    // imediato; só a hidratação continua depois que o callback devolve.
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      void tratarEvento(event, session);
+    });
+
+    async function tratarEvento(event: AuthChangeEvent, session: Session | null) {
       if (cancelled) return;
 
       console.log("[Auth] onAuthStateChange:", event);
@@ -579,7 +591,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await handleSession(session, event);
         }
       }
-    });
+    }
 
     // Fallback: getSession() para casos onde INITIAL_SESSION não dispara
     // Aguardar um pequeno delay para dar prioridade ao listener
