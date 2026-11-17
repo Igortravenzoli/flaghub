@@ -97,3 +97,43 @@ export function gravarModoParalelo(ligado: boolean, storage: Pick<Storage, 'setI
     // storage bloqueado: vale só nesta tela
   }
 }
+
+// ─── anotação → Task: os PBIs da sprint corrente ─────────────────────────────
+
+const FECHADOS = new Set(['Done', 'Closed', 'Removed']);
+const PAIS_DE_TASK = new Set(['Product Backlog Item', 'Bug']);
+
+interface ItemSprint {
+  id: number;
+  state: string | null;
+  work_item_type: string | null;
+  parent_id: number | null;
+  iteration_path: string | null;
+}
+
+const sprintDe = (iterationPath: string | null) => iterationPath?.match(/S\d+-\d{4}/i)?.[0].toUpperCase() ?? null;
+
+/**
+ * Onde a anotação pode virar Task sem descer a árvore (pedido do Igor,
+ * 17/11/2026): os PBIs/Bugs abertos da sprint corrente que são da pessoa —
+ * atribuídos a ela, ou pai de uma Task dela aberta na sprint. Primeiro os
+ * atribuídos, depois os mais novos.
+ */
+export function pbisDaSprint<T extends ItemSprint>(itens: T[], ancestrais: T[], sprint: string): T[] {
+  const alvo = sprint.toUpperCase();
+  const porId = new Map<number, T>();
+  for (const i of [...ancestrais, ...itens]) porId.set(i.id, i);
+  const meus = new Set(itens.map((i) => i.id));
+  const aberto = (i: T) => !FECHADOS.has(i.state ?? '');
+
+  const ids = new Set<number>();
+  for (const i of itens) {
+    if (!aberto(i) || sprintDe(i.iteration_path) !== alvo) continue;
+    if (PAIS_DE_TASK.has(i.work_item_type ?? '')) ids.add(i.id);
+    else if (i.work_item_type === 'Task' && i.parent_id != null) ids.add(i.parent_id);
+  }
+  return [...ids]
+    .map((id) => porId.get(id))
+    .filter((p): p is T => !!p && PAIS_DE_TASK.has(p.work_item_type ?? '') && aberto(p))
+    .sort((a, b) => Number(meus.has(b.id)) - Number(meus.has(a.id)) || b.id - a.id);
+}
