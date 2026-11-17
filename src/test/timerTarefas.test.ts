@@ -168,16 +168,16 @@ describe('seleção do Timer', () => {
 });
 
 describe('modo paralelo (preferência do navegador)', () => {
-  it('liga, desliga e não quebra sem storage', async () => {
+  it('ligado por padrão; desliga, religa e não quebra sem storage', async () => {
     const { lerModoParalelo, gravarModoParalelo } = await import('@/lib/timerSelecao');
     const mem = new Map<string, string>();
     const st = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
-    expect(lerModoParalelo(st)).toBe(false);
-    gravarModoParalelo(true, st);
     expect(lerModoParalelo(st)).toBe(true);
     gravarModoParalelo(false, st);
     expect(lerModoParalelo(st)).toBe(false);
-    expect(lerModoParalelo(null)).toBe(false);
+    gravarModoParalelo(true, st);
+    expect(lerModoParalelo(st)).toBe(true);
+    expect(lerModoParalelo(null)).toBe(true);
   });
 });
 
