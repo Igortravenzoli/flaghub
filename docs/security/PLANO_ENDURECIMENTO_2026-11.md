@@ -80,7 +80,22 @@ Código no ramo (f4b4f7e, 856dd81, 15f5b64); deploy por `scripts/sec2-edges-prod
   Deno nesta máquina, só a sintaxe foi checada aqui; o deploy compila no servidor e o script para no 1º erro.
 - **Volta:** `node scripts/sec2-edges-prod.mjs volta <guarda>`. Não depende de merge nem de migration.
 
-### SEC3 — cadastro só pelo SSO (config do Auth + função)
+### SEC3 — cadastro só pelo SSO (config do Auth + função) · APLICADA em 17/11 (BRT), conferida
+- **Como ficou:** migration `20261117100000` (schema `privado`, fora da API: a função
+  `privado.hub_antes_de_criar_usuario` e a tabela `privado.cadastro_permitido`), verificação
+  `verificacao/sec3_cadastro.sql` (`SEC3 OK` no ensaio e depois de aplicada), config do Auth por
+  `scripts/sec3-auth-prod.mjs` (guarda em `_seguranca\sec3-guarda\auth-antes.json`). Hook ligado; autoconfirm
+  desligado; senha mínima 12; `uri_allow_list` só com os localhost. A checagem de senha vazada respondeu
+  **402 (exige plano Pro)** e ficou desligada. Sonda: cadastro por e-mail com a anon key → 403 "Cadastro só
+  pela conta Microsoft da Flag." e nenhuma conta criada.
+- **Conta por senha nova (ex.: outro telão):** o admin insere o e-mail em `privado.cadastro_permitido`
+  (SQL editor; vale 1 vez, vence em 7 dias) e cria a conta logo depois.
+- **Atenção na aplicação:** o PowerShell 5.1 leu o .sql como ANSI e a mensagem saiu "sÃ³"; a verificação
+  pegou e foi reaplicado em UTF-8 (`Get-Content -Encoding UTF8`). Mandar SQL sempre lido como UTF-8.
+- Os 2 pendentes são da Flag (SSO, nunca aprovados). Há 1 conta aprovada `gmail.com`, por senha, de 16/04
+  (`fd0c8724…`): conferir.
+
+Plano original:
 - `disable_signup` **não** serve: bloqueia também o primeiro login SSO de quem entra na Flag.
 - Em vez disso, o hook **before-user-created** (`hook_before_user_created`) com uma função
   `public.hub_hook_antes_de_criar_usuario(event jsonb)` que recusa quem não vem do provedor `azure`;
@@ -96,7 +111,15 @@ Código no ramo (f4b4f7e, 856dd81, 15f5b64); deploy por `scripts/sec2-edges-prod
 - **Volta:** `PATCH /config/auth` com `hook_before_user_created_enabled=false` (um comando).
 - Os 2 usuários que hoje não têm área, papel nem Timer: listar ao Igor (podem ser cadastros de fora).
 
-### SEC4 — a anon fica só com o que o login precisa (banco)
+### SEC4 — a anon fica só com o que o login precisa (banco) · APLICADA em 17/11 (BRT), conferida
+- **Como ficou:** migration `20261117110000`: a anon sem NENHUM privilégio em tabela/view/sequência/função do
+  public (inclusive SELECT: nenhuma tela lê antes do login); as 14 funções abertas a PUBLIC passaram a
+  authenticated + service_role explícitos; default privileges do postgres sem anon e sem EXECUTE para PUBLIC.
+  Ensaio com foto: os 1155 privilégios de authenticated/service_role intactos. Depois de aplicada, o FlagHub
+  recarregado com a sessão do Igor: 15 chamadas, todas 200. Volta: `verificacao/sec4_anon_volta.sql` (127
+  GRANTs gerados das ACLs reais antes da aplicação).
+
+Plano original:
 - `REVOKE INSERT, UPDATE, DELETE, TRUNCATE ... FROM anon` nas 79 tabelas (nada escreve como anon:
   `auth-rate-limit` usa a service role).
 - `REVOKE EXECUTE ... FROM PUBLIC, anon` nas 3 funções de IP (o front só chama `hub_check_my_ip` com
@@ -108,7 +131,13 @@ Código no ramo (f4b4f7e, 856dd81, 15f5b64); deploy por `scripts/sec2-edges-prod
   monitor com as mesmas contagens nas tabelas que já leem; login por senha (o `auth-rate-limit`) inalterado.
 - **Risco:** baixo. **Volta:** GRANT gerado do snapshot das ACLs tirado no ensaio.
 
-### SEC5 — as 116 definer (banco, em lotes de ~20)
+### SEC5 — as 116 definer (banco, em lotes de ~20) · NÃO APLICADA, só o inventário (17/11)
+- **Inventário:** as 116 já têm `search_path` fixo (o advisor das 15 estava desatualizado); 2 são de trigger;
+  20 não são citadas por policy, view, outra função, front, edge nem cron (candidatas a perder o EXECUTE de
+  authenticated); 51 são chamadas pelo front sem régua no corpo — várias do Timer e algumas escrevem. Essas
+  pedem revisão uma a uma com o Igor antes de qualquer lote.
+
+Plano original:
 - Classificar cada uma: régua de policy (`hub_is_*`, fica), RPC de dado (guard
   `IF NOT hub_is_approved() THEN RAISE 42501` ou virar invoker), de admin (guard `hub_is_admin()`), de
   trigger/cron (tirar EXECUTE de `authenticated`). A RLS-A já fez 41; sobram ~75.
