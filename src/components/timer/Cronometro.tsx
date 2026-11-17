@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { AlertTriangle, ChevronDown, Pause, PlayCircle, Send, Square } from 'lucide-react';
-import { Switch } from '@/components/ui/switch';
+import { AlertTriangle, ChevronDown, Pause, PlayCircle, Send, Split, Square } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
 import {
@@ -75,6 +76,7 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onLancar, 
       acoes={
         <>
           <MiniTimer motor={motor} />
+          <ChaveParalelo ligado={paralelo} maximo={regras?.paralelo_max ?? 3} onMudar={onParalelo} />
           <Pilula tom={n > 0 ? 'sucesso' : 'neutro'}>{n === 0 ? 'parado' : n === 1 ? '1 ativo' : `${n} ativos`}</Pilula>
         </>
       }
@@ -109,20 +111,6 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onLancar, 
           <span className="font-mono text-xl font-semibold tabular-nums text-muted-foreground/50">00:00:00</span>
         </div>
       )}
-
-      {/* Paralelo (decisão do Igor, 17/11/2026): a hora sobreposta conta inteira
-          em cada tarefa; a capacidade do dia soma todas. */}
-      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border px-3 py-2">
-        <Switch checked={paralelo} onCheckedChange={onParalelo} className="mt-0.5" aria-label="Rodar em paralelo" />
-        <span className="min-w-0 text-xs leading-snug">
-          <span className="font-medium">Paralelo</span>
-          <span className="block text-muted-foreground">
-            {paralelo
-              ? `Iniciar outra demanda mantém as que rodam (até ${regras?.paralelo_max ?? 3}). Cada uma conta a hora inteira.`
-              : 'Desligado: iniciar outra demanda pausa a que está rodando.'}
-          </span>
-        </span>
-      </label>
 
       {paradaAutomatica && (
         <div className="flex items-start gap-2 rounded-lg border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--warning)/0.1)] p-2.5 text-xs">
@@ -226,5 +214,37 @@ function CartaoRodando({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * Liga/desliga do Paralelo, ao lado do mini timer (decisão do Igor,
+ * 17/11/2026): só o ícone, ligado por padrão; a explicação vem na dica. A hora
+ * sobreposta conta inteira em cada tarefa; a capacidade do dia soma todas.
+ */
+function ChaveParalelo({ ligado, maximo, onMudar }: { ligado: boolean; maximo: number; onMudar: (v: boolean) => void }) {
+  const dica = ligado
+    ? `Paralelo ligado: iniciar outra demanda mantém as que rodam (até ${maximo}). Cada uma conta a hora inteira.`
+    : 'Paralelo desligado: iniciar outra demanda pausa a que está rodando.';
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          aria-label="Atividades em paralelo"
+          aria-pressed={ligado}
+          onClick={() => onMudar(!ligado)}
+          className={cn(
+            'h-8 w-8',
+            ligado ? 'bg-flag-gold/15 text-flag-gold hover:bg-flag-gold/25 hover:text-flag-gold' : 'text-muted-foreground/60',
+          )}
+        >
+          <Split className="h-4 w-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[16rem]">{dica}</TooltipContent>
+    </Tooltip>
   );
 }

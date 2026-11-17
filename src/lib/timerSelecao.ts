@@ -77,22 +77,23 @@ export function caminhoDe(item: ComPai, conhecidos: Map<number, ComPai>): string
 }
 
 // ─── modo paralelo (TM9): conveniência por navegador ─────────────────────────
+// Ligado por padrão (decisão do Igor, 17/11/2026); só um "0" gravado desliga.
 
 const CHAVE_PARALELO = 'timer-flag:paralelo';
 
 export function lerModoParalelo(storage: Pick<Storage, 'getItem'> | null = local()): boolean {
   try {
-    return storage?.getItem(CHAVE_PARALELO) === '1';
+    return storage?.getItem(CHAVE_PARALELO) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
 export function gravarModoParalelo(ligado: boolean, storage: Pick<Storage, 'setItem' | 'removeItem'> | null = local()): void {
   try {
     if (!storage) return;
-    if (ligado) storage.setItem(CHAVE_PARALELO, '1');
-    else storage.removeItem(CHAVE_PARALELO);
+    if (ligado) storage.removeItem(CHAVE_PARALELO);
+    else storage.setItem(CHAVE_PARALELO, '0');
   } catch {
     // storage bloqueado: vale só nesta tela
   }
