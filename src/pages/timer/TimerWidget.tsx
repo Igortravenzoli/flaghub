@@ -61,7 +61,11 @@ export default function TimerWidget() {
     <>
       <PilulaMini ativo={!!rodando}>
         <span
-          className={cn('h-2 w-2 shrink-0 rounded-full', rodando ? 'bg-emerald-400' : 'bg-white/30')}
+          // rodando: verde piscando leve, para mostrar que está em atividade
+          className={cn(
+            'h-2 w-2 shrink-0 rounded-full',
+            rodando ? 'animate-[pulse_2.4s_ease-in-out_infinite] bg-emerald-400' : 'bg-white/30',
+          )}
           aria-hidden
         />
         <span

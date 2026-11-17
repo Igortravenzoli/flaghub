@@ -19,9 +19,11 @@ export interface DownloadTimer {
 }
 
 export const DOWNLOADS_TIMER: DownloadTimer[] = [
-  { plataforma: 'windows', rotulo: 'Windows', formato: 'Instalador .exe', arquivo: 'TimerFlag-Setup.exe' },
+  // Windows e Linux vão compactados: o .exe sem assinatura solto é barrado pelo
+  // navegador, e o .tar.gz guarda a permissão de execução do AppImage.
+  { plataforma: 'windows', rotulo: 'Windows', formato: 'Instalador (.zip)', arquivo: 'TimerFlag-Windows.zip' },
   { plataforma: 'macos', rotulo: 'macOS', formato: 'Imagem .dmg', arquivo: 'TimerFlag.dmg' },
-  { plataforma: 'linux', rotulo: 'Linux', formato: 'AppImage', arquivo: 'TimerFlag.AppImage' },
+  { plataforma: 'linux', rotulo: 'Linux', formato: 'AppImage (.tar.gz)', arquivo: 'TimerFlag-Linux.tar.gz' },
 ];
 
 /**

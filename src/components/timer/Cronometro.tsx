@@ -2,14 +2,6 @@ import { useState } from 'react';
 import { AlertTriangle, ChevronDown, Pause, PlayCircle, Send, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
 import { foiAutomatico, horaCurta, horas, relogio, ROTULO_MOTIVO } from '@/lib/timerRelogio';
@@ -17,8 +9,6 @@ import { diaSP, lancadoHojeSeg } from '@/lib/timerLancamento';
 import { BotaoIcone, Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
 import { MiniTimer } from '@/components/timer/MiniTimer';
-
-const DESCONTOS_MIN = [5, 10, 15, 30];
 
 interface Props {
   motor: MotorTimer;
@@ -41,13 +31,10 @@ function Contador({ rotulo, valor, destaque = false }: { rotulo: string; valor: 
 
 /** Em andamento: contadores do dia, o timer rodando (um por vez) e os lançamentos recolhidos. */
 export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className }: Props) {
-  const { estado, rodando, segundos, segundosTrecho, totalHoje, acoes, agoraServidor } = motor;
+  const { estado, rodando, segundos, totalHoje, acoes } = motor;
   const regras = estado?.regras;
   const ocupado = acoes.iniciar.isPending || acoes.pausar.isPending || acoes.partir.isPending;
   const [verLancamentos, setVerLancamentos] = useState(false);
-
-  const pausarDescontando = (min: number) =>
-    acoes.pausar.mutate({ motivo: 'manual', fim: new Date(agoraServidor - min * 60_000).toISOString() });
 
   const ultimo = estado?.trechos[0];
   const paradaAutomatica = !rodando && ultimo && foiAutomatico(ultimo.motivo_fim) ? ultimo : null;
@@ -93,38 +80,14 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            {/* Pausar: um botão só; o menu oferece pausar agora ou descontar os últimos minutos */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  disabled={ocupado}
-                  className={cn('h-8 w-8 bg-card', SOMBRA_XS)}
-                  aria-label="Pausar"
-                  title="Pausar"
-                >
-                  <Pause className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuItem onSelect={() => acoes.pausar.mutate({ motivo: 'manual' })}>
-                  <Pause className="mr-2 h-4 w-4" /> Pausar agora
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                  Parei antes e esqueci de pausar
-                </DropdownMenuLabel>
-                {DESCONTOS_MIN.filter((m) => m * 60 < segundosTrecho).map((m) => (
-                  <DropdownMenuItem key={m} onSelect={() => pausarDescontando(m)}>
-                    Pausar há {m} min
-                  </DropdownMenuItem>
-                ))}
-                {segundosTrecho <= DESCONTOS_MIN[0] * 60 && (
-                  <DropdownMenuItem disabled>Trecho ainda curto</DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Pausar: um clique, pausa na hora (decisão do Igor, 17/11/2026: sem menu).
+                Trecho esquecido rodando se acerta depois em Lançamentos (encurtar). */}
+            <BotaoIcone
+              icone={Pause}
+              rotulo="Pausar"
+              disabled={ocupado}
+              onClick={() => acoes.pausar.mutate({ motivo: 'manual' })}
+            />
             <BotaoIcone
               icone={Send}
               rotulo="Lançar até agora (o timer continua)"

@@ -105,7 +105,7 @@ describe('estadoAcesso', () => {
 describe('downloads', () => {
   it('monta a URL só com base https e põe o sistema do usuário primeiro', () => {
     const win = DOWNLOADS_TIMER.find((d) => d.plataforma === 'windows')!;
-    expect(urlDownload(win, 'https://downloads.flag.com.br/timer/')).toBe('https://downloads.flag.com.br/timer/TimerFlag-Setup.exe');
+    expect(urlDownload(win, 'https://downloads.flag.com.br/timer/')).toBe('https://downloads.flag.com.br/timer/TimerFlag-Windows.zip');
     expect(urlDownload(win, 'http://inseguro')).toBeNull();
     expect(urlDownload(win, undefined)).toBeNull();
     expect(ordenarDownloads(DOWNLOADS_TIMER, 'linux')[0].plataforma).toBe('linux');

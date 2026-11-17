@@ -45,7 +45,7 @@ describe('urlDownload com a pasta do SharePoint', () => {
   });
   it('sem pasta, usa base + arquivo; pasta sem https é ignorada', () => {
     expect(urlDownload(win, 'https://downloads.flag.com.br/timer/', 'http://inseguro')).toBe(
-      'https://downloads.flag.com.br/timer/TimerFlag-Setup.exe',
+      'https://downloads.flag.com.br/timer/TimerFlag-Windows.zip',
     );
     expect(urlDownload(win, undefined, undefined)).toBeNull();
   });
