@@ -50,8 +50,12 @@ concedido à anon (o RLS segura, mas é uma camada só); default privileges dão
 Código no ramo (f4b4f7e, 856dd81, 15f5b64); deploy por `scripts/sec2-edges-prod.mjs` (pre | aplicar | conferir | volta).
 - **Publicada (ok do Igor):** survey-import v40, vdesk-tickets-os v57, webhook-test v40 (as três com a marca SEC2, sobem
   sem erro: OPTIONS 200 com a origem do FlagHub); vdesk-proxy e vdesk-ticket-os removidas (404); anon 401 nas três; o
-  pacote da webhook-test tem a lista de hosts e o da vdesk-tickets-os não tem mais o endereço HTTP. Falta a rodada com
-  JWT (admin passa sem gravar; pendente 403).
+  pacote da webhook-test tem a lista de hosts e o da vdesk-tickets-os não tem mais o endereço HTTP.
+- **Rodada com JWT de admin (17/11 00:31, sessão do Igor no navegador do app, sem gravar nada):** vdesk status 200; lote
+  de 501 → 413; pageSize 500 → 400; ticket inválido → 400; webhook tipo inválido → 400; webhook para 169.254.169.254 →
+  400 "Blocked webhook host"; survey-import sem linhas → 400 (pelos logs: a resposta de erro saía sem CORS — bug antigo,
+  `headers: corsHeaders` sem `(req)` em 6 respostas; consertado em a52b4d9, **não publicado**). O 403 do pendente segue
+  provado só pelo código (não há conta pendente de teste).
 - `survey-import`: admin ou membro ativo da área Comercial (a régua da policy `survey_imports_insert_auth`),
   decidido antes de ler o corpo e de qualquer escrita; `purge` só admin. Só houve 1 importação até hoje, de um
   admin. O publicado (v39, 21/04) é o mesmo código do main (só tipos e formatação diferem): o deploy só acrescenta
