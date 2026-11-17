@@ -1,22 +1,26 @@
 import { useState } from 'react';
-import { Check, NotebookPen, Play, X } from 'lucide-react';
+import { Check, GripVertical, NotebookPen, Play, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useTimerAnotacoes, type Anotacao } from '@/hooks/useTimerAnotacoes';
 import { Coluna, SOMBRA_XS, Vazio } from '@/components/timer/visual';
+import { escreverArrasto } from '@/lib/timerArrastar';
 
 interface Props {
   /** anotação em conversão para Task (destacada) */
   emConversao: string | null;
   onVirarTask: (a: Anotacao) => void;
+  /** arrastando uma anotação (para soltar num PBI); null ao soltar ou desistir */
+  onArrastar?: (a: Anotacao | null) => void;
   className?: string;
 }
 
 /**
- * Anotações: lembrete, não marca tempo. ▶ vira Task (escolhendo o PBI/Bug)
- * e inicia o timer; ✓ feita; ✕ apaga.
+ * Anotações: lembrete, não marca tempo. ▶ vira Task: pede o PBI/Bug, e um
+ * clique nele cria a Task e inicia o timer. Arrastar a anotação até o PBI faz
+ * o mesmo. ✓ feita; ✕ apaga.
  */
-export function ColunaAnotacoes({ emConversao, onVirarTask, className }: Props) {
+export function ColunaAnotacoes({ emConversao, onVirarTask, onArrastar, className }: Props) {
   const { anotacoes, anotar, fechar, apagar, editar } = useTimerAnotacoes();
   const [texto, setTexto] = useState('');
   const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null);
@@ -62,11 +66,20 @@ export function ColunaAnotacoes({ emConversao, onVirarTask, className }: Props) 
             {anotacoes.map((a) => (
               <li
                 key={a.id}
+                draggable={editando?.id !== a.id}
+                onDragStart={(e) => {
+                  escreverArrasto(e.dataTransfer, a);
+                  onArrastar?.(a);
+                }}
+                onDragEnd={() => onArrastar?.(null)}
+                title="Arraste até um PBI para virar Task nele"
                 className={cn(
-                  'group flex items-center gap-1 rounded-lg border bg-card py-1.5 pl-3 pr-1.5 text-sm transition-colors hover:bg-muted/50',
+                  'group flex items-center gap-1 rounded-lg border bg-card py-1.5 pl-1 pr-1.5 text-sm transition-colors hover:bg-muted/50',
+                  editando?.id !== a.id && 'cursor-grab active:cursor-grabbing',
                   emConversao === a.id ? 'border-flag-gold bg-flag-gold/10' : 'border-border',
                 )}
               >
+                <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground" aria-hidden />
                 {editando?.id === a.id ? (
                   <Input
                     autoFocus
@@ -99,8 +112,8 @@ export function ColunaAnotacoes({ emConversao, onVirarTask, className }: Props) 
                   type="button"
                   className="rounded-md p-1.5 text-[hsl(var(--success))] hover:bg-[hsl(var(--success)/0.1)]"
                   onClick={() => onVirarTask(a)}
-                  title="Virar Task e iniciar"
-                  aria-label={`Virar "${a.texto}" em Task e iniciar`}
+                  title="Virar Task: escolha o PBI e o timer inicia"
+                  aria-label={`Virar "${a.texto}" em Task: escolher o PBI`}
                 >
                   <Play className="h-3.5 w-3.5" />
                 </button>
