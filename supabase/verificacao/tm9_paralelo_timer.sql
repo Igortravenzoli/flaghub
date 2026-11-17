@@ -45,7 +45,11 @@ BEGIN
   v_e := public.timer_iniciar(801, 'Um', 'Task');
   v_e := public.timer_iniciar(802, 'Dois', 'Task', p_paralelo => true);
   IF jsonb_array_length(v_e->'rodando_todos') <> 2 THEN RAISE EXCEPTION 'TM9 FALHOU: paralelo não manteve os dois: %', v_e->'rodando_todos'; END IF;
-  IF (v_e->'rodando'->>'work_item_id')::int <> 802 THEN RAISE EXCEPTION 'TM9 FALHOU: rodando não é o mais recente'; END IF;
+  -- na transação o now() é fixo (os dois começam no mesmo instante): confere só
+  -- que o 'rodando' (compatível) é o primeiro da lista
+  IF v_e->'rodando'->>'id' IS DISTINCT FROM v_e->'rodando_todos'->0->>'id' THEN
+    RAISE EXCEPTION 'TM9 FALHOU: rodando não é o primeiro de rodando_todos';
+  END IF;
   -- sem p_paralelo (o app antigo): troca, fecha os dois
   v_e := public.timer_iniciar(803, 'Três', 'Bug');
   IF jsonb_array_length(v_e->'rodando_todos') <> 1 OR (v_e->'rodando'->>'work_item_id')::int <> 803 THEN
