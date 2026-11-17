@@ -16,7 +16,7 @@
 --     bloqueio e ociosidade, o job das 23:50), todos;
 --   • o teto de 12 h/dia soma os que estão rodando (é teto de hora LANÇADA,
 --     coerente com o teto do TimeLog em timer_lancamento_preparar, que não
---     muda); o corte cai primeiro no que atingiria o teto mais cedo;
+--     muda); todos os que rodam param no instante em que a soma chega ao teto;
 --   • sinal e presença valem para todos os que rodam (a pessoa é uma só);
 --   • timer__estado: 'rodando' segue sendo UM (o mais recente; o app antigo
 --     continua funcionando) e ganha 'rodando_todos' (lista).
@@ -57,10 +57,39 @@ DROP INDEX IF EXISTS public.uq_timer_trechos_rodando;
 -- 2. Internas
 -- ---------------------------------------------------------------------------
 
--- Segundos dos trechos que ESTÃO rodando no dia, contados até p_agora (sem o
--- p_exceto). Trecho rodando sempre começa no dia (a virada parte o trecho).
--- Cada um conta só até o próprio corte já vencido (sem sinal, sem presença,
+-- Os trechos que ESTÃO rodando no dia, como intervalos (início, fim efetivo).
+-- Trecho rodando sempre começa no dia (a virada parte o trecho). O fim de
+-- cada um é p_agora ou o próprio corte já vencido (sem sinal, sem presença,
 -- 4 h, virada): um paralelo abandonado não come o teto de quem trabalha.
+CREATE OR REPLACE FUNCTION public.timer__rodando_intervalos(p_user uuid, p_dia date, p_agora timestamptz)
+RETURNS TABLE (id uuid, ini timestamptz, fim timestamptz)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  WITH r AS (SELECT public.timer_regras() AS j)
+  SELECT t.id, t.iniciado_em,
+         greatest(t.iniciado_em, least(
+           p_agora,
+           public.timer__inicio_dia(p_dia + 1),
+           t.iniciado_em + make_interval(secs => (r.j->>'trecho_max_seg')::int),
+           CASE WHEN p_agora > t.ultimo_sinal_em + make_interval(secs => (r.j->>'sem_sinal_seg')::int)
+                THEN t.ultimo_sinal_em END,
+           CASE WHEN p_agora > t.ultima_presenca_em
+                               + make_interval(secs => (r.j->>'presenca_seg')::int + (r.j->>'presenca_tolerancia_seg')::int)
+                THEN t.ultima_presenca_em + make_interval(secs => (r.j->>'presenca_seg')::int) END
+         ))
+  FROM public.timer_trechos t, r
+  WHERE t.user_id = p_user
+    AND t.encerrado_em IS NULL
+    AND t.iniciado_em >= public.timer__inicio_dia(p_dia)
+    AND t.iniciado_em <  public.timer__inicio_dia(p_dia + 1);
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.timer__rodando_intervalos(uuid, date, timestamptz) FROM PUBLIC, anon, authenticated;
+
+-- Segundos dos que estão rodando no dia, até p_agora (sem o p_exceto).
 CREATE OR REPLACE FUNCTION public.timer__rodando_no_dia(p_user uuid, p_dia date, p_exceto uuid, p_agora timestamptz)
 RETURNS numeric
 LANGUAGE sql
@@ -68,30 +97,67 @@ STABLE
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  WITH r AS (SELECT public.timer_regras() AS j)
-  SELECT coalesce(sum(greatest(0, extract(epoch FROM (
-           least(
-             p_agora,
-             public.timer__inicio_dia(p_dia + 1),
-             t.iniciado_em + make_interval(secs => (r.j->>'trecho_max_seg')::int),
-             CASE WHEN p_agora > t.ultimo_sinal_em + make_interval(secs => (r.j->>'sem_sinal_seg')::int)
-                  THEN t.ultimo_sinal_em END,
-             CASE WHEN p_agora > t.ultima_presenca_em
-                                 + make_interval(secs => (r.j->>'presenca_seg')::int + (r.j->>'presenca_tolerancia_seg')::int)
-                  THEN t.ultima_presenca_em + make_interval(secs => (r.j->>'presenca_seg')::int) END
-           ) - t.iniciado_em)))), 0)
-  FROM public.timer_trechos t, r
-  WHERE t.user_id = p_user
-    AND t.encerrado_em IS NULL
-    AND t.id IS DISTINCT FROM p_exceto
-    AND t.iniciado_em >= public.timer__inicio_dia(p_dia)
-    AND t.iniciado_em <  public.timer__inicio_dia(p_dia + 1);
+  SELECT coalesce(sum(extract(epoch FROM (i.fim - i.ini))), 0)
+  FROM public.timer__rodando_intervalos(p_user, p_dia, p_agora) i
+  WHERE i.id IS DISTINCT FROM p_exceto;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.timer__rodando_no_dia(uuid, date, uuid, timestamptz) FROM PUBLIC, anon, authenticated;
 
--- O corte de um trecho rodando: igual ao da TM3, com o teto do dia
--- descontando também o que os OUTROS trechos rodando já somam até p_agora.
+-- O instante em que o dia chega ao teto (dia_max_seg), somando os fechados e
+-- os que rodam (a hora sobreposta conta inteira em cada). NULL = não chegou
+-- até p_agora. Varre os intervalos: em cada pedaço entre dois marcos, o total
+-- cresce n segundos por segundo (n = quantos rodam naquele pedaço).
+CREATE OR REPLACE FUNCTION public.timer__teto_em(p_user uuid, p_dia date, p_agora timestamptz)
+RETURNS timestamptz
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_cap   numeric := (public.timer_regras()->>'dia_max_seg')::numeric;
+  v_total numeric := public.timer__usado_no_dia(p_user, p_dia, NULL);
+  v_iv    record;
+  v_ini   timestamptz[] := '{}';
+  v_fim   timestamptz[] := '{}';
+  v_ant   timestamptz;
+  v_t     timestamptz;
+  v_n     integer;
+  v_len   numeric;
+BEGIN
+  FOR v_iv IN SELECT i.ini, i.fim FROM public.timer__rodando_intervalos(p_user, p_dia, p_agora) i LOOP
+    v_ini := v_ini || v_iv.ini;
+    v_fim := v_fim || v_iv.fim;
+  END LOOP;
+  IF cardinality(v_ini) = 0 THEN
+    RETURN NULL;
+  END IF;
+  IF v_total >= v_cap THEN
+    RETURN (SELECT min(x) FROM unnest(v_ini) x);
+  END IF;
+
+  FOR v_t IN SELECT DISTINCT x FROM unnest(v_ini || v_fim) x ORDER BY x LOOP
+    IF v_ant IS NOT NULL THEN
+      SELECT count(*) INTO v_n
+        FROM unnest(v_ini, v_fim) AS iv(a, b)
+       WHERE iv.a <= v_ant AND iv.b >= v_t;
+      v_len := extract(epoch FROM (v_t - v_ant));
+      IF v_n > 0 AND v_total + v_n * v_len >= v_cap THEN
+        RETURN v_ant + make_interval(secs => ((v_cap - v_total) / v_n)::double precision);
+      END IF;
+      v_total := v_total + v_n * v_len;
+    END IF;
+    v_ant := v_t;
+  END LOOP;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.timer__teto_em(uuid, date, timestamptz) FROM PUBLIC, anon, authenticated;
+
+-- O corte de um trecho rodando: igual ao da TM3, com o teto do dia pelo
+-- instante em que a soma do dia (fechados + paralelos) chega a 12 h.
 CREATE OR REPLACE FUNCTION public.timer__corte(
   t        public.timer_trechos,
   p_agora  timestamptz,
@@ -107,7 +173,6 @@ DECLARE
   r       jsonb := public.timer_regras();
   v_dia   date;
   v_cand  timestamptz;
-  v_resto numeric;
 BEGIN
   IF t.id IS NULL OR t.encerrado_em IS NOT NULL THEN
     RETURN;
@@ -132,12 +197,10 @@ BEGIN
     corte := v_cand; motivo := 'limite_trecho';
   END IF;
 
-  -- 12 h por dia, somando os fechados e os outros que rodam
-  v_resto := greatest(0, (r->>'dia_max_seg')::numeric
-                         - public.timer__usado_no_dia(t.user_id, v_dia, t.id)
-                         - public.timer__rodando_no_dia(t.user_id, v_dia, t.id, p_agora));
-  v_cand := t.iniciado_em + make_interval(secs => v_resto::double precision);
-  IF p_agora >= v_cand AND (corte IS NULL OR v_cand < corte) THEN
+  -- 12 h por dia, somando os fechados e os que rodam: todos os que ainda
+  -- rodam param no instante em que a soma do dia chega ao teto
+  v_cand := public.timer__teto_em(t.user_id, v_dia, p_agora);
+  IF v_cand IS NOT NULL AND (corte IS NULL OR v_cand < corte) THEN
     corte := v_cand; motivo := 'limite_dia';
   END IF;
 

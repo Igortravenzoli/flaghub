@@ -32,7 +32,8 @@ BEGIN
   END IF;
   IF has_function_privilege('anon', 'public.timer_iniciar(integer,text,text,text,text,text,text,boolean)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.timer__partir(uuid,integer)', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.timer__rodando_no_dia(uuid,date,uuid,timestamptz)', 'EXECUTE') THEN
+     OR has_function_privilege('authenticated', 'public.timer__rodando_no_dia(uuid,date,uuid,timestamptz)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.timer__teto_em(uuid,date,timestamptz)', 'EXECUTE') THEN
     RAISE EXCEPTION 'TM9 FALHOU: privilégio a mais';
   END IF;
   v_ok := v_ok || 'catalogo ';
@@ -45,7 +46,11 @@ BEGIN
   v_e := public.timer_iniciar(801, 'Um', 'Task');
   v_e := public.timer_iniciar(802, 'Dois', 'Task', p_paralelo => true);
   IF jsonb_array_length(v_e->'rodando_todos') <> 2 THEN RAISE EXCEPTION 'TM9 FALHOU: paralelo não manteve os dois: %', v_e->'rodando_todos'; END IF;
-  IF (v_e->'rodando'->>'work_item_id')::int <> 802 THEN RAISE EXCEPTION 'TM9 FALHOU: rodando não é o mais recente'; END IF;
+  -- na transação o now() é fixo (os dois começam no mesmo instante): confere só
+  -- que o 'rodando' (compatível) é o primeiro da lista
+  IF v_e->'rodando'->>'id' IS DISTINCT FROM v_e->'rodando_todos'->0->>'id' THEN
+    RAISE EXCEPTION 'TM9 FALHOU: rodando não é o primeiro de rodando_todos';
+  END IF;
   -- sem p_paralelo (o app antigo): troca, fecha os dois
   v_e := public.timer_iniciar(803, 'Três', 'Bug');
   IF jsonb_array_length(v_e->'rodando_todos') <> 1 OR (v_e->'rodando'->>'work_item_id')::int <> 803 THEN
@@ -97,8 +102,8 @@ BEGIN
   EXECUTE 'RESET ROLE';
 
   -- ==== teto do dia somando os paralelos ====================================
-  -- 6 h fechadas + dois rodando há 3h30 = 13 h: um corta 1 h atrás, o outro
-  -- agora; total do dia = 12 h. Só depois das 04:00 de São Paulo.
+  -- 6 h fechadas + dois rodando há 3h30: a soma chega a 12 h há 30 min (cada
+  -- um com 3 h) e os dois param ali. Só depois das 04:00 de São Paulo.
   IF now() - v_ini >= interval '4 hours' THEN
     UPDATE public.timer_trechos SET lancamento_id = NULL WHERE user_id = v_a;
     INSERT INTO public.timer_trechos (user_id, work_item_id, work_item_titulo, work_item_tipo, iniciado_em, encerrado_em, motivo_fim)
@@ -113,8 +118,9 @@ BEGIN
     SELECT round(sum(extract(epoch FROM (encerrado_em - iniciado_em)))) INTO v_seg
       FROM public.timer_trechos WHERE user_id = v_a AND NOT descartado AND iniciado_em >= v_ini;
     IF v_seg <> 43200 THEN RAISE EXCEPTION 'TM9 FALHOU: dia somou % s (esperado 43200)', v_seg; END IF;
-    SELECT count(*) INTO v_n FROM public.timer_trechos WHERE user_id = v_a AND work_item_id IN (902, 903) AND motivo_fim = 'limite_dia';
-    IF v_n <> 2 THEN RAISE EXCEPTION 'TM9 FALHOU: % paralelos cortados por limite_dia (esperado 2)', v_n; END IF;
+    SELECT count(*) INTO v_n FROM public.timer_trechos WHERE user_id = v_a AND work_item_id IN (902, 903)
+       AND motivo_fim = 'limite_dia' AND round(extract(epoch FROM (now() - encerrado_em)) / 60) = 30;
+    IF v_n <> 2 THEN RAISE EXCEPTION 'TM9 FALHOU: % paralelos cortados por limite_dia há 30 min (esperado 2)', v_n; END IF;
     EXECUTE 'SET LOCAL ROLE authenticated';
     v_falhou := false;
     BEGIN PERFORM public.timer_iniciar(904, 'Depois do teto', 'Task', p_paralelo => true);
