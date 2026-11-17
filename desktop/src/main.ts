@@ -38,6 +38,13 @@ const MARGEM_MINI = 12;
 // Antes do ready: o FlagHub reconhece o app por aqui.
 app.userAgentFallback = `${app.userAgentFallback} TimerFlag/${app.getVersion()}`;
 
+// Sem aceleração por GPU (17/11/2026): quando o processo de GPU cai (depois de
+// suspender, ou com alguns drivers), a janela transparente do mini fica com as
+// quinas pretas e para de redesenhar: o relógio congela. Testado no Windows: sem
+// GPU a transparência e o relógio seguem certos depois de esconder e mostrar. A
+// tela do Timer é leve; o custo de CPU não aparece.
+app.disableHardwareAcceleration();
+
 let principal: BrowserWindow | null = null;
 let mini: BrowserWindow | null = null;
 let bandeja: Tray | null = null;
@@ -112,7 +119,7 @@ function mostrarMini() {
     mini.webContents.send('janela:mostrada');
     return;
   }
-  mini = new BrowserWindow({
+  const nova = new BrowserWindow({
     ...TAMANHO_MINI,
     ...cantoInferiorDireito(),
     frame: false,
@@ -129,14 +136,31 @@ function mostrarMini() {
     backgroundColor: '#00000000',
     webPreferences: preferencias,
   });
-  mini.once('ready-to-show', () => mini?.showInactive());
-  mini.setAlwaysOnTop(true, 'screen-saver');
-  mini.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  abrirForaSeExterno(mini);
-  mini.on('closed', () => {
-    mini = null;
+  mini = nova;
+  nova.once('ready-to-show', () => {
+    if (!nova.isDestroyed()) nova.showInactive();
   });
-  void mini.loadURL(URL_MINI);
+  nova.setAlwaysOnTop(true, 'screen-saver');
+  nova.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  abrirForaSeExterno(nova);
+  nova.webContents.on('render-process-gone', () => setTimeout(recriarMini, 500));
+  nova.on('closed', () => {
+    if (mini === nova) mini = null; // só zera se ainda for esta janela
+  });
+  void nova.loadURL(URL_MINI);
+}
+
+/**
+ * Rede de segurança: joga fora o mini e, se estava na tela, abre um novo.
+ * Usada na volta da suspensão e se a página do mini cair.
+ */
+function recriarMini() {
+  if (!mini || mini.isDestroyed()) return;
+  const estavaVisivel = mini.isVisible();
+  const velha = mini;
+  mini = null;
+  velha.destroy();
+  if (estavaVisivel) mostrarMini();
 }
 
 function esconderMini() {
@@ -196,6 +220,7 @@ function avisar(motivo: Motivo, fimMs: number) {
 function vigiarSistema() {
   powerMonitor.on('lock-screen', () => avisar('bloqueio', Date.now()));
   powerMonitor.on('suspend', () => avisar('suspensao', Date.now()));
+  powerMonitor.on('resume', () => setTimeout(recriarMini, 2000));
 
   let avisouOcioso = false;
   setInterval(() => {
