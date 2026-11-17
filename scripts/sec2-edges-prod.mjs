@@ -82,7 +82,9 @@ async function aplicar() {
   const g = join(pasta, 'guarda.json');
   if (!existsSync(g)) throw new Error('rode o pre antes (a guarda é a volta)');
   const guarda = JSON.parse(readFileSync(g, 'utf8'));
-  for (const slug of MUDAM) {
+  // SO=slug1,slug2 publica só essas (e não mexe nas órfãs)
+  const so = process.env.SO ? process.env.SO.split(',') : null;
+  for (const slug of MUDAM.filter((s) => !so || so.includes(s))) {
     const { ent, fs } = arquivos(slug);
     const form = new FormData();
     form.append('metadata', JSON.stringify({ entrypoint_path: ent, name: slug, verify_jwt: guarda[slug]?.verify_jwt ?? true }));
@@ -92,7 +94,7 @@ async function aplicar() {
     console.log(`${slug}: deploy HTTP ${r.status} ${t.slice(0, 200)}`);
     if (!r.ok) throw new Error(`${slug}: deploy falhou — parar e rodar a volta só desta, se preciso`);
   }
-  for (const slug of SAEM) {
+  for (const slug of so ? [] : SAEM) {
     if (!guarda[slug]) { console.log(`${slug}: sem guarda, não apago`); continue; }
     const r = await fetch(`${API}/${slug}`, { method: 'DELETE', headers: H });
     console.log(`${slug}: DELETE HTTP ${r.status}`);
