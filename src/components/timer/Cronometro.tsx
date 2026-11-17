@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { AlertTriangle, ChevronDown, Pause, PlayCircle, Send, Square } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
-import { duracaoSeg, foiAutomatico, horaCurta, horas, relogio, ROTULO_MOTIVO } from '@/lib/timerRelogio';
+import { duracaoSeg, foiAutomatico, horaCurta, horas, relogio, ROTULO_MOTIVO, type TrechoRodando } from '@/lib/timerRelogio';
 import { diaSP, lancadoHojeSeg } from '@/lib/timerLancamento';
 import { BotaoIcone, Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
@@ -13,6 +13,9 @@ import { MiniTimer } from '@/components/timer/MiniTimer';
 interface Props {
   motor: MotorTimer;
   podeLancar: boolean;
+  /** TM9: ligado, iniciar outra demanda não pausa as que rodam */
+  paralelo: boolean;
+  onParalelo: (v: boolean) => void;
   /** Lançar: corta o trecho agora e lança o que falta, sem encerrar */
   onLancar: (item: { id: number; titulo: string }) => void;
   /** Encerrar: pausa, lança o que falta e encerra a demanda */
@@ -29,15 +32,22 @@ function Contador({ rotulo, valor, destaque = false }: { rotulo: string; valor: 
   );
 }
 
-/** Em andamento: contadores do dia, o timer rodando (um por vez) e os lançamentos recolhidos. */
-export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className }: Props) {
-  const { estado, rodando, segundos, totalHoje, acoes } = motor;
+/**
+ * Em andamento: contadores do dia, os timers rodando (um cartão por tarefa;
+ * com o Paralelo ligado podem ser vários) e os lançamentos recolhidos.
+ */
+export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onLancar, onEncerrar, className }: Props) {
+  const { estado, rodandoTodos, segundosDe, totalHoje, acoes } = motor;
   const regras = estado?.regras;
   const ocupado = acoes.iniciar.isPending || acoes.pausar.isPending || acoes.partir.isPending;
   const [verLancamentos, setVerLancamentos] = useState(false);
+  const n = rodandoTodos.length;
 
   const ultimo = estado?.trechos[0];
-  const paradaAutomatica = !rodando && ultimo && foiAutomatico(ultimo.motivo_fim) ? ultimo : null;
+  const paradaAutomatica =
+    ultimo && foiAutomatico(ultimo.motivo_fim) && !rodandoTodos.some((r) => r.work_item_id === ultimo.work_item_id)
+      ? ultimo
+      : null;
   const pctDia = regras ? Math.min(100, (totalHoje / regras.dia_max_seg) * 100) : 0;
   const hoje = diaSP(estado?.agora ?? new Date().toISOString());
   const lancado = lancadoHojeSeg(estado?.trechos ?? [], hoje);
@@ -45,19 +55,18 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
   const aLancar =
     (estado?.trechos ?? [])
       .filter((t) => diaSP(t.iniciado_em) === hoje && !t.descartado && !t.lancamento_id)
-      .reduce((s, t) => s + duracaoSeg(t), 0) + motor.segundosTrecho;
-  const item = rodando ? { id: rodando.work_item_id, titulo: rodando.titulo } : null;
+      .reduce((s, t) => s + duracaoSeg(t), 0) + motor.segundosRodandoTodos;
 
   return (
     <Coluna
       icone={PlayCircle}
       titulo="Em andamento"
-      destaque={!!rodando}
+      destaque={n > 0}
       className={className}
       acoes={
         <>
           <MiniTimer motor={motor} />
-          <Pilula tom={rodando ? 'sucesso' : 'neutro'}>{rodando ? '1 ativo' : 'parado'}</Pilula>
+          <Pilula tom={n > 0 ? 'sucesso' : 'neutro'}>{n === 0 ? 'parado' : n === 1 ? '1 ativo' : `${n} ativos`}</Pilula>
         </>
       }
       corpoClassName="space-y-3"
@@ -69,45 +78,21 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
         <Contador rotulo="A lançar" valor={horas(aLancar)} />
       </div>
 
-      {rodando && item ? (
-        <div className={cn('space-y-2 rounded-lg border border-flag-gold/50 bg-flag-gold/5 p-3', SOMBRA_XS)}>
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold" title={rodando.titulo}>
-                {rodando.titulo}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                <span className="font-mono">#{rodando.work_item_id}</span> · a lançar
-              </p>
-            </div>
-            <span className="shrink-0 font-mono text-xl font-semibold tabular-nums" aria-live="off">
-              {relogio(segundos)}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {/* Pausar: um clique, pausa na hora (decisão do Igor, 17/11/2026: sem menu).
-                Trecho esquecido rodando se acerta depois em Lançamentos (encurtar). */}
-            <BotaoIcone
-              icone={Pause}
-              rotulo="Pausar"
-              disabled={ocupado}
-              onClick={() => acoes.pausar.mutate({ motivo: 'manual' })}
+      {n > 0 ? (
+        <div className="space-y-2">
+          {rodandoTodos.map((r) => (
+            <CartaoRodando
+              key={r.id}
+              rodando={r}
+              segundos={segundosDe(r)}
+              compacto={n > 1}
+              ocupado={ocupado}
+              podeLancar={podeLancar}
+              onPausar={() => acoes.pausar.mutate({ motivo: 'manual', workItemId: r.work_item_id })}
+              onLancar={() => onLancar({ id: r.work_item_id, titulo: r.titulo })}
+              onEncerrar={() => onEncerrar({ id: r.work_item_id, titulo: r.titulo })}
             />
-            <BotaoIcone
-              icone={Send}
-              rotulo="Lançar até agora (o timer continua)"
-              disabled={ocupado || !podeLancar}
-              onClick={() => onLancar(item)}
-            />
-            <BotaoIcone
-              icone={Square}
-              rotulo="Encerrar demanda"
-              variante="destructive"
-              disabled={ocupado}
-              onClick={() => onEncerrar(item)}
-              className={SOMBRA_XS}
-            />
-          </div>
+          ))}
         </div>
       ) : (
         <div className="flex items-center justify-between rounded-lg border border-dashed border-border px-3 py-2.5">
@@ -115,6 +100,20 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
           <span className="font-mono text-xl font-semibold tabular-nums text-muted-foreground/50">00:00:00</span>
         </div>
       )}
+
+      {/* Paralelo (decisão do Igor, 17/11/2026): a hora sobreposta conta inteira
+          em cada tarefa; o teto de 12 h do dia soma todas. */}
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border px-3 py-2">
+        <Switch checked={paralelo} onCheckedChange={onParalelo} className="mt-0.5" aria-label="Rodar em paralelo" />
+        <span className="min-w-0 text-xs leading-snug">
+          <span className="font-medium">Paralelo</span>
+          <span className="block text-muted-foreground">
+            {paralelo
+              ? `Iniciar outra demanda mantém as que rodam (até ${regras?.paralelo_max ?? 3}). Cada uma conta a hora inteira.`
+              : 'Desligado: iniciar outra demanda pausa a que está rodando.'}
+          </span>
+        </span>
+      </label>
 
       {paradaAutomatica && (
         <div className="flex items-start gap-2 rounded-lg border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--warning)/0.1)] p-2.5 text-xs">
@@ -155,5 +154,58 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
         )}
       </div>
     </Coluna>
+  );
+}
+
+/** Um timer rodando: título, relógio da tarefa (a lançar hoje) e as ações dela. */
+function CartaoRodando({
+  rodando,
+  segundos,
+  compacto,
+  ocupado,
+  podeLancar,
+  onPausar,
+  onLancar,
+  onEncerrar,
+}: {
+  rodando: TrechoRodando;
+  segundos: number;
+  compacto: boolean;
+  ocupado: boolean;
+  podeLancar: boolean;
+  onPausar: () => void;
+  onLancar: () => void;
+  onEncerrar: () => void;
+}) {
+  return (
+    <div className={cn('space-y-2 rounded-lg border border-flag-gold/50 bg-flag-gold/5', compacto ? 'p-2.5' : 'p-3', SOMBRA_XS)}>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold" title={rodando.titulo}>
+            {rodando.titulo}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            <span className="font-mono">#{rodando.work_item_id}</span> · a lançar
+          </p>
+        </div>
+        <span className={cn('shrink-0 font-mono font-semibold tabular-nums', compacto ? 'text-base' : 'text-xl')} aria-live="off">
+          {relogio(segundos)}
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {/* Pausar: um clique, pausa na hora (decisão do Igor, 17/11/2026: sem menu).
+            Trecho esquecido rodando se acerta depois em Lançamentos (encurtar). */}
+        <BotaoIcone icone={Pause} rotulo="Pausar" disabled={ocupado} onClick={onPausar} />
+        <BotaoIcone icone={Send} rotulo="Lançar até agora (o timer continua)" disabled={ocupado || !podeLancar} onClick={onLancar} />
+        <BotaoIcone
+          icone={Square}
+          rotulo="Encerrar demanda"
+          variante="destructive"
+          disabled={ocupado}
+          onClick={onEncerrar}
+          className={SOMBRA_XS}
+        />
+      </div>
+    </div>
   );
 }

@@ -15,6 +15,8 @@ export interface RegrasTimer {
   presenca_tolerancia_seg: number;
   trecho_max_seg: number;
   dia_max_seg: number;
+  /** timers rodando ao mesmo tempo (TM9) */
+  paralelo_max: number;
   fuso: string;
 }
 
@@ -25,6 +27,7 @@ export const REGRAS_PADRAO: RegrasTimer = {
   presenca_tolerancia_seg: 600,
   trecho_max_seg: 14400,
   dia_max_seg: 43200,
+  paralelo_max: 3,
   fuso: 'America/Sao_Paulo',
 };
 
@@ -103,7 +106,10 @@ export interface Lancamento {
 export interface EstadoTimer {
   agora: string;
   regras: RegrasTimer;
+  /** o mais recente dos que rodam (compatível com o servidor de antes da TM9) */
   rodando: TrechoRodando | null;
+  /** todos os que rodam, do mais recente ao mais antigo (TM9: paralelo) */
+  rodandoTodos: TrechoRodando[];
   trechos: TrechoFechado[];
   lancamentos: Lancamento[];
   demandas: Demanda[];
@@ -112,16 +118,37 @@ export interface EstadoTimer {
 
 /** Normaliza o jsonb de timer_estado (e das RPCs que devolvem o estado). */
 export function lerEstado(bruto: unknown): EstadoTimer {
-  const o = (bruto ?? {}) as Partial<EstadoTimer>;
+  const o = (bruto ?? {}) as Partial<EstadoTimer> & { rodando_todos?: unknown };
+  const rodando = o.rodando && typeof o.rodando === 'object' ? (o.rodando as TrechoRodando) : null;
   return {
     agora: typeof o.agora === 'string' ? o.agora : new Date().toISOString(),
     regras: { ...REGRAS_PADRAO, ...(o.regras ?? {}) },
-    rodando: o.rodando && typeof o.rodando === 'object' ? (o.rodando as TrechoRodando) : null,
+    rodando,
+    rodandoTodos: lerRodandoTodos(o.rodando_todos, rodando),
     trechos: Array.isArray(o.trechos) ? (o.trechos as TrechoFechado[]) : [],
     lancamentos: Array.isArray(o.lancamentos) ? (o.lancamentos as Lancamento[]) : [],
     demandas: Array.isArray(o.demandas) ? (o.demandas as Demanda[]) : [],
     fechado_hoje_seg: Number(o.fechado_hoje_seg) || 0,
   };
+}
+
+/** A lista de quem roda; servidor sem a TM9 manda só o `rodando`. */
+export function lerRodandoTodos(bruto: unknown, rodando: TrechoRodando | null): TrechoRodando[] {
+  if (Array.isArray(bruto)) return bruto.filter((x): x is TrechoRodando => !!x && typeof x === 'object');
+  return rodando ? [rodando] : [];
+}
+
+/**
+ * Sinal e presença valem para a pessoa, não para a tarefa: com vários
+ * rodando, o relógio olha o mais atrasado de cada um (o servidor corta pelo
+ * trecho, então o primeiro a vencer manda).
+ */
+export function referenciaPresenca(lista: TrechoRodando[]): TrechoRodando | null {
+  if (lista.length === 0) return null;
+  const menor = (campo: 'ultimo_sinal_em' | 'ultima_presenca_em') =>
+    lista.reduce((a, b) => (ms(b[campo]) < ms(a[campo]) ? b : a));
+  const presenca = menor('ultima_presenca_em');
+  return { ...presenca, ultimo_sinal_em: menor('ultimo_sinal_em').ultimo_sinal_em };
 }
 
 /** Diferença (ms) entre o relógio do servidor e o da máquina, no momento da resposta. */
@@ -149,9 +176,9 @@ export function aLancarDoItem(trechos: TrechoFechado[], workItemId: number): num
     .reduce((s, t) => s + duracaoSeg(t), 0);
 }
 
-/** Total do dia: o que já fechou (servidor) + o que está rodando. */
+/** Total do dia: o que já fechou (servidor) + o que está rodando (somando os paralelos). */
 export function totalHojeSeg(estado: EstadoTimer, agoraServidorMs: number): number {
-  return estado.fechado_hoje_seg + segundosRodando(estado.rodando, agoraServidorMs);
+  return estado.rodandoTodos.reduce((s, r) => s + segundosRodando(r, agoraServidorMs), estado.fechado_hoje_seg);
 }
 
 /** "01:02:03" */
@@ -298,6 +325,7 @@ const MENSAGENS_ERRO: Record<string, string> = {
   timer_tipo_invalido: 'Só Task, PBI e Bug recebem horas.',
   timer_muitas_acoes: 'Muitas ações em pouco tempo. Espere um pouco e tente de novo.',
   timer_limite_dia: 'Você já chegou às 12 h de hoje.',
+  timer_muitos_paralelos: 'No máximo 3 timers ao mesmo tempo. Pause um antes de iniciar outro.',
   timer_motivo_invalido: 'Motivo de pausa inválido.',
   timer_trecho_inexistente: 'Trecho não encontrado.',
   timer_trecho_rodando: 'Pause o timer antes de mexer neste trecho.',

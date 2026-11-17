@@ -13,6 +13,7 @@ import {
   mensagemErroTimer,
   presencaPerguntarEm,
   presencaPrazo,
+  referenciaPresenca,
   REGRAS_PADRAO,
   relogio,
   segundosRodando,
@@ -191,5 +192,32 @@ describe('situacaoTrecho (Hora | Tempo | Situação)', () => {
   it('a lançar e descartado', () => {
     expect(situacaoTrecho(fechado({ motivo_fim: 'manual' }), [])).toMatchObject({ estado: 'a_lancar', rotulo: 'A lançar', detalhe: 'pausa' });
     expect(situacaoTrecho(fechado({ descartado: true, motivo_fim: 'sem_sinal' }), [])).toMatchObject({ estado: 'descartado', alerta: false });
+  });
+});
+describe('paralelo (TM9)', () => {
+  const a = rodando({ id: 'a', work_item_id: 1, iniciado_em: '2026-11-16T13:00:00.000Z', ultimo_sinal_em: '2026-11-16T13:20:00.000Z', ultima_presenca_em: '2026-11-16T13:00:00.000Z' });
+  const b = rodando({ id: 'b', work_item_id: 2, iniciado_em: '2026-11-16T13:05:00.000Z', ultimo_sinal_em: '2026-11-16T13:10:00.000Z', ultima_presenca_em: '2026-11-16T13:05:00.000Z' });
+
+  it('lê a lista; servidor sem a TM9 vira lista de um', () => {
+    expect(lerEstado({ rodando: b, rodando_todos: [b, a] }).rodandoTodos.map((r) => r.id)).toEqual(['b', 'a']);
+    expect(lerEstado({ rodando: a }).rodandoTodos.map((r) => r.id)).toEqual(['a']);
+    expect(lerEstado({ rodando: null }).rodandoTodos).toEqual([]);
+  });
+
+  it('total do dia soma os paralelos (a hora conta inteira em cada)', () => {
+    const e = lerEstado({ rodando: b, rodando_todos: [b, a], fechado_hoje_seg: 600 });
+    // a: 10 min, b: 5 min, + 10 fechados
+    expect(totalHojeSeg(e, t('2026-11-16T13:10:00.000Z'))).toBe(600 + 600 + 300);
+  });
+
+  it('sinal e presença pelo mais atrasado de cada', () => {
+    const ref = referenciaPresenca([b, a])!;
+    expect(ref.ultima_presenca_em).toBe(a.ultima_presenca_em); // a perguntaria primeiro
+    expect(ref.ultimo_sinal_em).toBe(b.ultimo_sinal_em); // b é o sinal mais velho
+    expect(referenciaPresenca([])).toBeNull();
+  });
+
+  it('erro de paralelos demais tem mensagem', () => {
+    expect(mensagemErroTimer({ message: 'timer_muitos_paralelos' })).toMatch(/3 timers/);
   });
 });

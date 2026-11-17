@@ -12,7 +12,7 @@ import { TimerLayout } from '@/components/timer/TimerLayout';
 import { useMotorTimer, useTimerEstado } from '@/hooks/useTimerRelogio';
 import { useTimerAnotacoes, type Anotacao } from '@/hooks/useTimerAnotacoes';
 import { registrarEventoTimer, useTimerAcesso } from '@/hooks/useTimerAcesso';
-import { gravarSelecao, type TarefaSelecionada } from '@/lib/timerSelecao';
+import { gravarModoParalelo, gravarSelecao, lerModoParalelo, type TarefaSelecionada } from '@/lib/timerSelecao';
 import { demandasEmEspera, diaSP, pendentesDoItem, type DemandaEmEspera } from '@/lib/timerLancamento';
 import { CHAVE_PEDIDO_ENCERRAR, lerPedidoEncerrar } from '@/lib/timerDesktop';
 
@@ -34,15 +34,22 @@ export default function TimerHome() {
 
   const [anotacao, setAnotacao] = useState<Anotacao | null>(null);
   const [alvo, setAlvo] = useState<AlvoLancamento | null>(null);
+  // Paralelo (TM9): ligado, iniciar outra demanda NÃO pausa as que rodam.
+  const [paralelo, setParalelo] = useState(() => lerModoParalelo());
+  const mudarParalelo = (v: boolean) => {
+    setParalelo(v);
+    gravarModoParalelo(v);
+  };
 
   const rodando = motor.rodando;
+  const rodandoIds = useMemo(() => motor.rodandoTodos.map((r) => r.work_item_id), [motor.rodandoTodos]);
   const hoje = diaSP(motor.estado?.agora ?? new Date().toISOString());
   const emEspera = useMemo(
     () =>
       semana.data
-        ? demandasEmEspera(semana.data.demandas, semana.data.trechos, rodando?.work_item_id ?? null, hoje)
+        ? demandasEmEspera(semana.data.demandas, semana.data.trechos, rodandoIds, hoje)
         : [],
-    [semana.data, rodando?.work_item_id, hoje],
+    [semana.data, rodandoIds, hoje],
   );
   const gruposDoAlvo = useMemo(() => {
     if (!alvo || !semana.data || semana.isFetching) return null;
@@ -90,6 +97,7 @@ export default function TimerHome() {
       titulo: t.title ?? `#${t.id}`,
       tipo: t.work_item_type ?? 'Task',
       projeto: t.projeto,
+      paralelo: paralelo && motor.rodandoTodos.length > 0,
     });
   };
   const retomar = (d: DemandaEmEspera) =>
@@ -97,10 +105,13 @@ export default function TimerHome() {
 
   // Em andamento → Lançar: corta o trecho agora (o relógio segue) e abre o lançamento.
   const lancarRodando = (item: { id: number; titulo: string }) =>
-    motor.acoes.partir.mutate(undefined, { onSuccess: () => setAlvo({ ...item, encerrar: false }) });
+    motor.acoes.partir.mutate(item.id, { onSuccess: () => setAlvo({ ...item, encerrar: false }) });
   // Em andamento → Encerrar: pausa e abre o lançamento + encerramento.
   const encerrarRodando = (item: { id: number; titulo: string }) =>
-    motor.acoes.pausar.mutate({ motivo: 'manual' }, { onSuccess: () => setAlvo({ ...item, encerrar: true }) });
+    motor.acoes.pausar.mutate(
+      { motivo: 'manual', workItemId: item.id },
+      { onSuccess: () => setAlvo({ ...item, encerrar: true }) },
+    );
 
   const ocupado = motor.acoes.iniciar.isPending || motor.acoes.pausar.isPending || motor.acoes.partir.isPending;
 
@@ -133,6 +144,7 @@ export default function TimerHome() {
                 ? { id: rodando.work_item_id, title: rodando.titulo, work_item_type: rodando.tipo, caminho: null, web_url: null }
                 : null
             }
+            rodandoIds={rodandoIds}
             onSelecionar={iniciar}
             anotacao={anotacao}
             onCancelarAnotacao={() => setAnotacao(null)}
@@ -156,6 +168,8 @@ export default function TimerHome() {
         <Cronometro
           motor={motor}
           podeLancar={podeLancar}
+          paralelo={paralelo}
+          onParalelo={mudarParalelo}
           onLancar={lancarRodando}
           onEncerrar={encerrarRodando}
           className={`order-first md:order-none ${COLUNA}`}

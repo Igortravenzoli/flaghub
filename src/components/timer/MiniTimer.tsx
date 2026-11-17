@@ -62,7 +62,8 @@ export function MiniTimer({ motor }: { motor: MotorTimer }) {
     setJanela(w);
   };
 
-  const { rodando, segundos, acoes } = motor;
+  const { rodando, rodandoTodos, segundos, acoes } = motor;
+  const mais = rodandoTodos.length > 1 ? ` (+${rodandoTodos.length - 1})` : '';
 
   return (
     <>
@@ -73,14 +74,14 @@ export function MiniTimer({ motor }: { motor: MotorTimer }) {
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-flag-gold" aria-hidden />
             <div className="min-w-0 flex-1">
               <p className="font-mono text-xl font-semibold leading-tight tabular-nums">{relogio(segundos)}</p>
-              <p className="truncate text-xs opacity-75">{rodando ? `#${rodando.work_item_id} ${rodando.titulo}` : 'Nada rodando'}</p>
+              <p className="truncate text-xs opacity-75">{rodando ? `#${rodando.work_item_id} ${rodando.titulo}${mais}` : 'Nada rodando'}</p>
             </div>
             {rodando && (
               <button
                 type="button"
                 className="rounded-lg bg-white/10 p-2 hover:bg-white/20 disabled:opacity-50"
                 disabled={acoes.pausar.isPending}
-                onClick={() => acoes.pausar.mutate({ motivo: 'manual' })}
+                onClick={() => acoes.pausar.mutate({ motivo: 'manual', workItemId: rodando.work_item_id })}
                 aria-label="Pausar"
                 title="Pausar"
               >

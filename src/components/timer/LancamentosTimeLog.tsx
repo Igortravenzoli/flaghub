@@ -43,7 +43,7 @@ export function LancamentosTimeLog({ fonte, motor, podeLancar, mostrarDia, mostr
   const escolhidos = pendentes.filter((g) => !desmarcados.has(g.chave));
   const totalMin = escolhidos.reduce((s, g) => s + g.minutos, 0);
   const { lancar, relancar } = motor.acoes;
-  const rodandoHoje = motor.rodando && diaSP(motor.rodando.iniciado_em) === hoje;
+  const rodandoHoje = motor.rodandoTodos.some((r) => diaSP(r.iniciado_em) === hoje);
 
   const enviar = () =>
     lancar.mutate(

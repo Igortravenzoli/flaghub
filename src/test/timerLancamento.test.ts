@@ -170,7 +170,7 @@ describe('demandasEmEspera', () => {
   const demandas = [dem(1, '2026-11-16T13:30:00Z'), dem(2, '2026-11-16T16:10:00Z'), dem(3, '2026-11-16T12:00:00Z')];
 
   it('são as demandas abertas, com o que falta lançar e o tempo de hoje', () => {
-    const d = demandasEmEspera(demandas, ts, null, '2026-11-16');
+    const d = demandasEmEspera(demandas, ts, [], '2026-11-16');
     expect(d.map((x) => [x.work_item_id, x.minutos, x.grupos.length, Math.round(x.hojeSeg / 60)])).toEqual([
       [2, 10, 1, 10],
       [1, 50, 2, 30],
@@ -179,8 +179,10 @@ describe('demandasEmEspera', () => {
   });
 
   it('o item que está rodando não fica em espera; item sem demanda não aparece', () => {
-    expect(demandasEmEspera(demandas, ts, 1, '2026-11-16').map((x) => x.work_item_id)).toEqual([2, 3]);
-    expect(demandasEmEspera([], ts, null, '2026-11-16')).toEqual([]);
+    expect(demandasEmEspera(demandas, ts, [1], '2026-11-16').map((x) => x.work_item_id)).toEqual([2, 3]);
+    // paralelo: nenhum dos que rodam fica em espera
+    expect(demandasEmEspera(demandas, ts, [1, 2], '2026-11-16').map((x) => x.work_item_id)).toEqual([3]);
+    expect(demandasEmEspera([], ts, [], '2026-11-16')).toEqual([]);
   });
 
   it('pendentes de um item e lançado de hoje', () => {

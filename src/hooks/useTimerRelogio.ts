@@ -13,9 +13,11 @@ import {
   devePerguntarPresenca,
   houveSuspensao,
   lerEstado,
+  lerRodandoTodos,
   mensagemErroTimer,
   presencaPerguntarEm,
   presencaPrazo,
+  referenciaPresenca,
   relogio,
   segundosRodando,
   sinalDevido,
@@ -43,6 +45,7 @@ interface ResumoSinal {
   resumo: true;
   agora: string;
   rodando: TrechoRodando;
+  rodandoTodos: TrechoRodando[];
   desvioMs: number;
 }
 
@@ -78,6 +81,8 @@ export interface IniciarTimer {
   titulo: string;
   tipo: string;
   projeto?: string | null;
+  /** true = roda junto com os que já rodam (TM9); false = troca */
+  paralelo?: boolean;
 }
 
 export function useAcoesTimer() {
@@ -108,6 +113,8 @@ export function useAcoesTimer() {
         p_cliente: detectarCliente(ua, path),
         p_plataforma: detectarPlataforma(ua),
         p_versao_app: versaoDesktop(ua),
+        // só manda quando é paralelo: o servidor sem a TM9 não conhece o parâmetro
+        ...(item.paralelo ? { p_paralelo: true } : {}),
       });
     },
     onSuccess: (e) => gravar(e),
@@ -115,8 +122,16 @@ export function useAcoesTimer() {
   });
 
   const pausar = useMutation({
-    mutationFn: (p: { motivo?: 'manual' | 'suspensao' | 'bloqueio' | 'ocioso' | 'sem_confirmacao'; fim?: string | null } = {}) =>
-      rpc('timer_pausar', { p_motivo: p.motivo ?? 'manual', p_fim: p.fim ?? null }),
+    // sem workItemId pausa todos os que rodam (suspensão, bloqueio, ociosidade,
+    // presença: valem para a pessoa)
+    mutationFn: (
+      p: { motivo?: 'manual' | 'suspensao' | 'bloqueio' | 'ocioso' | 'sem_confirmacao'; fim?: string | null; workItemId?: number } = {},
+    ) =>
+      rpc('timer_pausar', {
+        p_motivo: p.motivo ?? 'manual',
+        p_fim: p.fim ?? null,
+        ...(p.workItemId ? { p_work_item_id: p.workItemId } : {}),
+      }),
     onSuccess: (e) => gravar(e),
     onError: falhou,
   });
@@ -128,16 +143,23 @@ export function useAcoesTimer() {
     mutationFn: async (presenca: boolean): Promise<EstadoNoCliente | ResumoSinal> => {
       const { data, error } = await db.rpc('timer_sinal', { p_presenca: presenca, p_resumo: true });
       if (error) throw error;
-      const d = data as { resumo?: boolean; agora?: string; rodando?: unknown } | null;
+      const d = data as { resumo?: boolean; agora?: string; rodando?: unknown; rodando_todos?: unknown } | null;
       if (d?.resumo && typeof d.agora === 'string' && d.rodando && typeof d.rodando === 'object') {
-        return { resumo: true, agora: d.agora, rodando: d.rodando as TrechoRodando, desvioMs: desvioServidor(d.agora, Date.now()) };
+        const rodando = d.rodando as TrechoRodando;
+        return {
+          resumo: true,
+          agora: d.agora,
+          rodando,
+          rodandoTodos: lerRodandoTodos(d.rodando_todos, rodando),
+          desvioMs: desvioServidor(d.agora, Date.now()),
+        };
       }
       return noCliente(data);
     },
     onSuccess: (r) => {
       if ('resumo' in r) {
         qc.setQueryData<EstadoNoCliente>(chave(user?.id, 1), (velho) =>
-          velho ? { ...velho, agora: r.agora, rodando: r.rodando, desvioMs: r.desvioMs } : velho,
+          velho ? { ...velho, agora: r.agora, rodando: r.rodando, rodandoTodos: r.rodandoTodos, desvioMs: r.desvioMs } : velho,
         );
         return;
       }
@@ -207,8 +229,9 @@ export function useAcoesTimer() {
   // TM8: corta o trecho rodando agora (o pedaço fechado pode ser lançado) e
   // segue contando. A semana é relida para o lançamento enxergar o pedaço.
   const partir = useMutation({
-    mutationFn: async () => {
-      const e = await rpc('timer_partir');
+    // com o item, parte só ele (os outros paralelos seguem intactos)
+    mutationFn: async (workItemId?: number) => {
+      const e = await rpc('timer_partir', workItemId ? { p_work_item_id: workItemId } : {});
       await qc.refetchQueries({ queryKey: chave(user?.id, 7) });
       return e;
     },
@@ -290,6 +313,9 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   const acoes = useAcoesTimer();
   const estado = estadoQ.data ?? null;
   const rodando = estado?.rodando ?? null;
+  const rodandoTodos = useMemo(() => estado?.rodandoTodos ?? [], [estado]);
+  // sinal e presença valem para a pessoa: o mais atrasado dos que rodam
+  const referencia = useMemo(() => referenciaPresenca(rodandoTodos), [rodandoTodos]);
 
   const [agoraLocal, setAgoraLocal] = useState(() => Date.now());
   const ultimoTique = useRef(Date.now());
@@ -302,7 +328,7 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   const acoesRef = useRef(acoes);
   acoesRef.current = acoes;
 
-  const rodandoId = rodando?.id ?? null;
+  const rodandoId = rodandoTodos.map((r) => r.id).join(',') || null;
   // No celular o Timer é só consulta (o servidor recusa iniciar e não aceita
   // sinal nem presença de lá): o relógio corre na tela, mas o motor não fala
   // com o servidor — senão cada visita pelo celular viraria "tentativa".
@@ -317,7 +343,8 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
       const agora = Date.now();
       const e = estadoRef.current;
       const a = acoesRef.current;
-      if (!e?.rodando) return;
+      const ref = e ? referenciaPresenca(e.rodandoTodos) : null;
+      if (!e || !ref) return;
       if (somenteConsulta) {
         ultimoTique.current = agora;
         setAgoraLocal(agora);
@@ -342,18 +369,19 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
       const agoraServ = agora + e.desvioMs;
 
       // 2. prazo da presença vencido: o servidor já não conta; fecha agora
-      if (agoraServ >= presencaPrazo(e.rodando, e.regras) && prazoTratado.current !== e.rodando.id) {
-        prazoTratado.current = e.rodando.id;
+      const chavePrazo = `${ref.id}:${ref.ultima_presenca_em}`;
+      if (agoraServ >= presencaPrazo(ref, e.regras) && prazoTratado.current !== chavePrazo) {
+        prazoTratado.current = chavePrazo;
         a.pausar.mutate({
           motivo: 'sem_confirmacao',
-          fim: new Date(presencaPerguntarEm(e.rodando, e.regras)).toISOString(),
+          fim: new Date(presencaPerguntarEm(ref, e.regras)).toISOString(),
         });
         return;
       }
 
       // 3. sinal a cada sinal_seg
       if (
-        sinalDevido(e.rodando, e.regras, agoraServ) &&
+        sinalDevido(ref, e.regras, agoraServ) &&
         !a.sinal.isPending &&
         agora - ultimaTentativaSinal.current >= ESPERA_APOS_FALHA_MS
       ) {
@@ -372,7 +400,7 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     const pausarPorSistema = (motivo: MotivoSistema, fimMs: number) => {
       const e = estadoRef.current;
       const a = acoesRef.current;
-      if (!e?.rodando || a.pausar.isPending) return;
+      if (!e?.rodandoTodos.length || a.pausar.isPending) return;
       a.pausar.mutate(
         { motivo, fim: new Date(fimMs + e.desvioMs).toISOString() },
         { onSuccess: () => toast.info(AVISO_SISTEMA[motivo]) },
@@ -446,9 +474,16 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     [rodando, estado],
   );
   const segundos = rodando ? aLancarDoItemHoje + segundosTrecho : 0;
+  /** relógio de um dos que rodam: o que ele tem a lançar hoje + o trecho atual */
+  const segundosDe = useCallback(
+    (r: TrechoRodando) => (estado ? aLancarDoItem(estado.trechos, r.work_item_id) : 0) + segundosRodando(r, agoraServidor),
+    [estado, agoraServidor],
+  );
+  /** só os trechos que estão rodando agora, somados (para o "A lançar") */
+  const segundosRodandoTodos = rodandoTodos.reduce((s, r) => s + segundosRodando(r, agoraServidor), 0);
   const perguntarPresenca =
-    !somenteConsulta && !!estado && devePerguntarPresenca(rodando, estado.regras, agoraServidor);
-  const prazoPresencaMs = rodando && estado ? presencaPrazo(rodando, estado.regras) : null;
+    !somenteConsulta && !!estado && devePerguntarPresenca(referencia, estado.regras, agoraServidor);
+  const prazoPresencaMs = referencia && estado ? presencaPrazo(referencia, estado.regras) : null;
 
   // Título da aba: o tempo correndo, ou o pedido de confirmação.
   const tituloDaAba = opcoes.tituloDaAba ?? false;
@@ -463,8 +498,11 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     if (!tituloDaAba) return;
     if (!rodando) document.title = 'Timer Flag';
     else if (perguntarPresenca) document.title = '⚠ Confirme a presença · Timer Flag';
-    else document.title = `▶ ${relogio(segundos)} · #${rodando.work_item_id} · Timer Flag`;
-  }, [tituloDaAba, rodando, perguntarPresenca, segundos]);
+    else {
+      const mais = rodandoTodos.length > 1 ? ` +${rodandoTodos.length - 1}` : '';
+      document.title = `▶ ${relogio(segundos)} · #${rodando.work_item_id}${mais} · Timer Flag`;
+    }
+  }, [tituloDaAba, rodando, rodandoTodos.length, perguntarPresenca, segundos]);
 
   const totalHoje = useMemo(() => (estado ? totalHojeSeg(estado, agoraServidor) : 0), [estado, agoraServidor]);
 
@@ -472,11 +510,18 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     estado,
     carregando: estadoQ.isLoading,
     erro: estadoQ.error,
+    /** o mais recente dos que rodam (mini, título, compatibilidade) */
     rodando,
+    /** todos os que rodam (TM9: paralelo), do mais recente ao mais antigo */
+    rodandoTodos,
+    /** o mais atrasado em sinal/presença (é por ele que o servidor corta) */
+    referencia,
     /** o que a tarefa rodando tem a lançar hoje (zera ao lançar) */
     segundos,
+    segundosDe,
     /** só o trecho atual (base do "parei há") */
     segundosTrecho,
+    segundosRodandoTodos,
     totalHoje,
     agoraServidor,
     perguntarPresenca,

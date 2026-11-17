@@ -75,3 +75,25 @@ export function caminhoDe(item: ComPai, conhecidos: Map<number, ComPai>): string
   }
   return nomes.length > 0 ? nomes.join(' › ') : null;
 }
+
+// ─── modo paralelo (TM9): conveniência por navegador ─────────────────────────
+
+const CHAVE_PARALELO = 'timer-flag:paralelo';
+
+export function lerModoParalelo(storage: Pick<Storage, 'getItem'> | null = local()): boolean {
+  try {
+    return storage?.getItem(CHAVE_PARALELO) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function gravarModoParalelo(ligado: boolean, storage: Pick<Storage, 'setItem' | 'removeItem'> | null = local()): void {
+  try {
+    if (!storage) return;
+    if (ligado) storage.setItem(CHAVE_PARALELO, '1');
+    else storage.removeItem(CHAVE_PARALELO);
+  } catch {
+    // storage bloqueado: vale só nesta tela
+  }
+}
