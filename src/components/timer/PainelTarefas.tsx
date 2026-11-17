@@ -4,13 +4,14 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { ArvoreAtividades, Aviso, Estado, LinkDevops, RotuloSprint } from '@/components/atividades/ArvoreAtividades';
+import { ArvoreAtividades, Aviso, LinkDevops, RotuloSprint } from '@/components/atividades/ArvoreAtividades';
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
 import { hojeISO, prazoSprint } from '@/lib/prazoSprint';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
-import { caminhoDe, TIPOS_SELECIONAVEIS, type TarefaSelecionada } from '@/lib/timerSelecao';
+import { caminhoDe, pbisDaSprint, TIPOS_SELECIONAVEIS, type TarefaSelecionada } from '@/lib/timerSelecao';
 import {
   ErroTimer,
   useBuscaTimer,
@@ -86,11 +87,15 @@ export function PainelTarefas({
     setRecolhidos(new Set(chavesRecolhiveis(grupos)));
   }
 
-  // Transformando anotação: abre tudo para achar o PBI.
+  // Transformando anotação: primeiro os PBIs da sprint corrente (um clique);
+  // a árvore só abre inteira quando não há nenhum para oferecer.
+  const sprintAtual = getCurrentOfficialSprintCode();
+  const daSprint = useMemo(() => pbisDaSprint(itens, ancestrais, sprintAtual), [itens, ancestrais, sprintAtual]);
   const anotacaoId = anotacao?.id ?? null;
+  const semAtalho = daSprint.length === 0;
   useEffect(() => {
-    if (anotacaoId) setRecolhidos(new Set());
-  }, [anotacaoId]);
+    if (anotacaoId && semAtalho) setRecolhidos(new Set());
+  }, [anotacaoId, semAtalho]);
 
   const conhecidos = useMemo(() => {
     const m = new Map<number, ItemDevops>();
@@ -223,6 +228,53 @@ export function PainelTarefas({
               </Button>
             )}
           </div>
+        )}
+        {anotacao && !minhas.isLoading && (
+          <section className="space-y-1.5" aria-label={`PBIs da sprint ${sprintAtual}`}>
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Na sprint {sprintAtual}
+            </h3>
+            {daSprint.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhum PBI seu aberto nesta sprint.</p>
+            ) : (
+              <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
+                {daSprint.map((p) => {
+                  const aberto = criando?.pai.id === p.id && criando.tipo === 'Task';
+                  const onde = caminhoDe(p, conhecidos);
+                  return (
+                    <div key={p.id}>
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-muted/40',
+                          aberto && 'bg-flag-gold/10',
+                        )}
+                        onClick={() => setCriando(aberto ? null : { tipo: 'Task', pai: p })}
+                        aria-expanded={aberto}
+                        title={`Criar a Task em #${p.id}`}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm" title={p.title ?? ''}>
+                            {p.title}
+                          </span>
+                          <span className="block truncate text-[11px] text-muted-foreground">
+                            {ROTULO_TIPO[p.work_item_type ?? ''] ?? p.work_item_type}{' '}
+                            <span className="font-mono">#{p.id}</span>
+                            {onde ? ` · ${onde}` : ''}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-0.5 text-[11px] font-medium text-flag-gold">
+                          <Plus className="h-3 w-3" /> Task
+                        </span>
+                      </button>
+                      {formPara(p, 'Task')}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <p className="pt-0.5 text-[11px] text-muted-foreground">Outro PBI: na árvore abaixo ou busque por #id.</p>
+          </section>
         )}
         {!embutido && campoBusca}
 
@@ -380,7 +432,7 @@ function FormNovoItem({
 
   return (
     <form
-      className="space-y-2 border-t border-dashed bg-muted/20 px-3 py-2"
+      className="space-y-2 border-t border-dashed bg-muted/20 px-3 py-2.5"
       onSubmit={(e) => {
         e.preventDefault();
         void enviar();
@@ -390,21 +442,41 @@ function FormNovoItem({
         {tipo === 'Task' ? `Task em #${pai.id}` : `PBI em #${pai.id} · ${getCurrentOfficialSprintCode()}`} · atribuída a
         você · descrição e anexos no DevOps ↗
       </p>
-      <div className="flex gap-2">
-        <Input
-          autoFocus
-          className="h-8 text-sm"
-          value={titulo}
-          maxLength={255}
-          onChange={(e) => setTitulo(e.target.value)}
-          placeholder={tipo === 'Task' ? 'Título da Task' : 'Título do PBI'}
-        />
-        <Button type="submit" size="sm" className="h-8" disabled={!valido || criar.isPending}>
-          {criar.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Criar'}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" className="h-8" onClick={onCancelar}>
-          Cancelar
-        </Button>
+      {/* título com a largura toda e quebra de linha, para ler o que vai ser criado
+          (pedido do Igor, 17/11/2026). Enter cria; no DevOps o título é uma linha só. */}
+      <Textarea
+        autoFocus
+        rows={3}
+        className="min-h-0 resize-none text-sm leading-snug"
+        value={titulo}
+        maxLength={255}
+        onChange={(e) => setTitulo(e.target.value.replace(/[\r\n]+/g, ' '))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void enviar();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancelar();
+          }
+        }}
+        onFocus={(e) => {
+          const fimTexto = e.currentTarget.value.length;
+          e.currentTarget.setSelectionRange(fimTexto, fimTexto);
+        }}
+        placeholder={tipo === 'Task' ? 'Título da Task' : 'Título do PBI'}
+        aria-label={tipo === 'Task' ? 'Título da Task' : 'Título do PBI'}
+      />
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] tabular-nums text-muted-foreground">{titulo.trim().length}/255</span>
+        <div className="flex gap-1.5">
+          <Button type="button" size="sm" variant="ghost" className="h-8" onClick={onCancelar}>
+            Cancelar
+          </Button>
+          <Button type="submit" size="sm" className="h-8 min-w-[5.5rem]" disabled={!valido || criar.isPending}>
+            {criar.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : `Criar ${tipo}`}
+          </Button>
+        </div>
       </div>
     </form>
   );
@@ -439,38 +511,37 @@ function LinhaRemota({
 
   return (
     <div className={cn(nivel > 0 && 'ml-4 border-l pl-2')}>
-      <div
-        className={cn(
-          'flex items-center gap-2 rounded-md px-2 py-1.5',
-          selecionadaId === item.id ? 'bg-flag-gold/15' : 'hover:bg-muted/40',
-        )}
-      >
-        {desce ? (
-          <button type="button" onClick={() => setAberto((a) => !a)} className="shrink-0" title={aberto ? 'Recolher' : 'Ver os filhos'}>
-            <ChevronRight className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', aberto && 'rotate-90')} />
-          </button>
-        ) : (
-          <span className="w-3.5 shrink-0" />
-        )}
-        <span className="w-12 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {ROTULO_TIPO[tipo] ?? tipo}
-        </span>
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{item.id}</span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm" title={item.title ?? ''}>
+      {/* duas linhas: na coluna estreita o título não some atrás das ações */}
+      <div className={cn('rounded-md px-2 py-1.5', selecionadaId === item.id ? 'bg-flag-gold/15' : 'hover:bg-muted/40')}>
+        <div className="flex items-center gap-2">
+          {desce ? (
+            <button type="button" onClick={() => setAberto((a) => !a)} className="shrink-0" title={aberto ? 'Recolher' : 'Ver os filhos'}>
+              <ChevronRight className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', aberto && 'rotate-90')} />
+            </button>
+          ) : (
+            <span className="w-3.5 shrink-0" />
+          )}
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {ROTULO_TIPO[tipo] ?? tipo}
+          </span>
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{item.id}</span>
+          <span className="block min-w-0 flex-1 truncate text-sm" title={item.title ?? ''}>
             {item.title}
           </span>
-          {caminho && <span className="block truncate text-[11px] text-muted-foreground">{caminho}</span>}
-        </span>
-        <Estado state={item.state} />
-        <RotuloSprint prazo={prazo} tags={item.tags} />
-        <AcoesItem
-          item={item}
-          selecionada={selecionadaId === item.id}
-          onSelecionar={() => onSelecionar(item)}
-          onNovo={(t) => setCriando({ tipo: t, pai: item })}
-        />
-        <LinkDevops item={item} />
+        </div>
+        <div className="flex min-w-0 items-center gap-2 pl-5">
+          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+            {[item.state, caminho].filter(Boolean).join(' · ')}
+          </span>
+          <RotuloSprint prazo={prazo} tags={item.tags} />
+          <AcoesItem
+            item={item}
+            selecionada={selecionadaId === item.id}
+            onSelecionar={() => onSelecionar(item)}
+            onNovo={(t) => setCriando({ tipo: t, pai: item })}
+          />
+          <LinkDevops item={item} />
+        </div>
       </div>
       {formPara(item, tipo === 'Feature' ? 'PBI' : 'Task')}
       {aberto && (
