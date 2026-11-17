@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Download, MonitorDown, UserX } from 'lucide-react';
+import { AppWindow, CheckCircle2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,43 @@ import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
 import { IconeSistema } from '@/components/timer/IconesSistema';
 import { detectarCliente, detectarPlataforma } from '@/lib/timerAcesso';
 import { DOWNLOADS_TIMER, ordenarDownloads, urlDownload } from '@/lib/timerDownloads';
-import { aoMudarInstalacao, instalarPwa, podeInstalar, rodandoInstalado, temDeteccaoAusencia } from '@/lib/timerPwa';
+import { aoMudarInstalacao, instalarPwa, podeInstalar, rodandoInstalado } from '@/lib/timerPwa';
+
+const CARD = 'flex h-full flex-col items-center gap-2.5 rounded-xl border bg-card p-4 transition-colors';
+
+/**
+ * O mesmo Timer instalado pelo próprio navegador (PWA, Chrome/Edge): janela
+ * própria, sem instalador. Fica ao lado dos sistemas, no mesmo formato.
+ */
+function CardNavegador({ instalado, instalavel, onInstalar }: { instalado: boolean; instalavel: boolean; onInstalar: () => void }) {
+  const conteudo = (
+    <>
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+        <AppWindow className="h-5 w-5 text-foreground/80" />
+      </div>
+      <div className="space-y-0.5 text-center">
+        <p className="font-semibold">Navegador</p>
+        <p className="text-xs text-muted-foreground">Chrome ou Edge</p>
+      </div>
+      {instalado ? (
+        <Badge variant="outline" className="gap-1 border-[hsl(var(--success))]/40 text-[hsl(var(--success))]">
+          <CheckCircle2 className="h-3 w-3" /> Instalado
+        </Badge>
+      ) : instalavel ? (
+        <Badge variant="outline">Instalar</Badge>
+      ) : (
+        <p className="text-center text-[11px] leading-tight text-muted-foreground">Menu ⋮ › Instalar</p>
+      )}
+    </>
+  );
+  return instalavel && !instalado ? (
+    <Button variant="ghost" onClick={onInstalar} className={cn(CARD, 'h-auto font-normal hover:border-flag-gold hover:bg-flag-gold/10')}>
+      {conteudo}
+    </Button>
+  ) : (
+    <div className={CARD}>{conteudo}</div>
+  );
+}
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -22,10 +58,14 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 
 /**
  * "Baixar app" no topo do Timer (popup):
- *   1. instalar pelo navegador (PWA, Chrome/Edge): janela própria, sem instalador;
- *   2. detectar ausência (Chrome/Edge): pausa com a tela bloqueada ou 30 min sem uso;
- *   3. o app para o computador (Electron), baixado da pasta do SharePoint.
+ *   • instalar pelo navegador (PWA, Chrome/Edge): janela própria, sem instalador;
+ *   • o app para o computador (Electron), baixado da pasta do SharePoint.
  * Some dentro do próprio app desktop.
+ *
+ * Sem o pedido de "detectar ausência" (decisão do Igor, 17/11/2026): o
+ * anti-boicote não depende dele (servidor: sinal, presença e tetos; app
+ * desktop: pausa pelo sistema). Quem já tinha dado a permissão segue com a
+ * pausa antecipada no navegador (useMotorTimer).
  */
 export function BaixarApp({ className }: { className?: string }) {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -36,30 +76,13 @@ export function BaixarApp({ className }: { className?: string }) {
   const downloads = useMemo(() => ordenarDownloads(DOWNLOADS_TIMER, plataforma), [plataforma]);
 
   const [instalavel, setInstalavel] = useState(podeInstalar());
-  const [ausencia, setAusencia] = useState<'sem_suporte' | 'pedir' | 'ligada' | 'negada'>('sem_suporte');
 
   useEffect(() => aoMudarInstalacao(() => setInstalavel(podeInstalar())), []);
-  useEffect(() => {
-    if (!temDeteccaoAusencia()) return;
-    navigator.permissions
-      .query({ name: 'idle-detection' as PermissionName })
-      .then((p) => setAusencia(p.state === 'granted' ? 'ligada' : p.state === 'denied' ? 'negada' : 'pedir'))
-      .catch(() => setAusencia('pedir'));
-  }, []);
 
   if (noDesktop) return null;
 
   const instalar = async () => {
     if (await instalarPwa()) toast.success('Timer Flag instalado. Ele abre na própria janela.');
-  };
-  const pedirAusencia = async () => {
-    try {
-      const r = await (window as unknown as { IdleDetector: { requestPermission: () => Promise<string> } }).IdleDetector.requestPermission();
-      setAusencia(r === 'granted' ? 'ligada' : 'negada');
-      if (r === 'granted') toast.success('Detecção de ausência ligada. Recarregue a página do Timer.');
-    } catch {
-      setAusencia('negada');
-    }
   };
 
   return (
@@ -77,40 +100,9 @@ export function BaixarApp({ className }: { className?: string }) {
         </DialogHeader>
 
         <div className="space-y-5">
-          <Secao titulo="Instalar pelo navegador">
-            {rodandoInstalado() ? (
-              <p className="flex items-center gap-2 text-sm text-[hsl(var(--success))]">
-                <CheckCircle2 className="h-4 w-4" /> Você já está no Timer instalado.
-              </p>
-            ) : instalavel ? (
-              <Button onClick={() => void instalar()} className="gap-2">
-                <MonitorDown className="h-4 w-4" /> Instalar Timer Flag
-              </Button>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No Chrome ou no Edge: menu <span className="font-medium text-foreground">⋮</span> › Instalar Timer Flag.
-              </p>
-            )}
-          </Secao>
-
-          {ausencia !== 'sem_suporte' && (
-            <Secao titulo="Pausar quando eu sair">
-              {ausencia === 'ligada' ? (
-                <p className="flex items-center gap-2 text-sm text-[hsl(var(--success))]">
-                  <CheckCircle2 className="h-4 w-4" /> Ligado: tela bloqueada ou 30 min sem uso pausam o timer.
-                </p>
-              ) : ausencia === 'negada' ? (
-                <p className="text-sm text-muted-foreground">Permissão negada no navegador (cadeado na barra de endereço).</p>
-              ) : (
-                <Button variant="outline" onClick={() => void pedirAusencia()} className="gap-2">
-                  <UserX className="h-4 w-4" /> Permitir detectar ausência
-                </Button>
-              )}
-            </Secao>
-          )}
-
-          <Secao titulo="App para o computador">
-            <div className="grid gap-3 sm:grid-cols-3">
+          <Secao titulo="Instalar">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <CardNavegador instalado={rodandoInstalado()} instalavel={instalavel} onInstalar={() => void instalar()} />
               {downloads.map((d) => {
                 const url = urlDownload(d, base, pasta);
                 const recomendado = d.plataforma === plataforma;
@@ -121,14 +113,11 @@ export function BaixarApp({ className }: { className?: string }) {
                       <p className="font-semibold">{d.rotulo}</p>
                       <p className="text-xs text-muted-foreground">{d.formato}</p>
                     </div>
-                    {recomendado && <Badge className="bg-flag-gold text-flag-navy hover:bg-flag-gold">Para o seu sistema</Badge>}
+                    {recomendado && <Badge className="bg-flag-gold text-flag-navy hover:bg-flag-gold">Seu sistema</Badge>}
                     {!url && <Badge variant="outline">Em breve</Badge>}
                   </>
                 );
-                const classe = cn(
-                  'flex h-full flex-col items-center gap-2.5 rounded-xl border p-4 transition-colors',
-                  recomendado ? 'border-flag-gold/60 bg-flag-gold/5' : 'bg-card',
-                );
+                const classe = cn(CARD, recomendado && 'border-flag-gold/60 bg-flag-gold/5');
                 return url ? (
                   <Button
                     key={d.plataforma}

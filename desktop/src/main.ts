@@ -109,6 +109,7 @@ function mostrarMini() {
   if (mini && !mini.isDestroyed()) {
     mini.setBounds({ ...TAMANHO_MINI, ...cantoInferiorDireito() });
     mini.showInactive();
+    mini.webContents.send('janela:mostrada');
     return;
   }
   mini = new BrowserWindow({
@@ -147,6 +148,7 @@ function mostrarPrincipal() {
   if (principal.isMinimized()) principal.restore();
   principal.show();
   principal.focus();
+  principal.webContents.send('janela:mostrada');
   esconderMini();
 }
 

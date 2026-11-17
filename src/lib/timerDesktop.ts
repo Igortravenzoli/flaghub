@@ -18,8 +18,24 @@ export interface PausaSistema {
 export interface PonteDesktop {
   versao: string;
   onPausar: (cb: (p: PausaSistema) => void) => () => void;
+  /** a janela acabou de aparecer (app 1.0.2+; no 1.0.1 não existe) */
+  onMostrada?: (cb: () => void) => () => void;
   abrirCompleto: () => void;
   abrirMini: () => void;
+}
+
+// ─── sincronia entre janelas (app + mini, ou abas do navegador) ─────────────
+// Toda ação que muda o timer avisa as outras janelas, que releem o estado.
+// O evento 'storage' só chega nas OUTRAS janelas, nunca na que gravou.
+
+export const CHAVE_ESTADO_MUDOU = 'timer-flag:estado-mudou';
+
+export function avisarEstadoMudou(agoraMs = Date.now()): void {
+  try {
+    localStorage.setItem(CHAVE_ESTADO_MUDOU, `${agoraMs}:${Math.random().toString(36).slice(2, 8)}`);
+  } catch {
+    /* sem storage: a outra janela relê ao aparecer */
+  }
 }
 
 declare global {
