@@ -1,20 +1,27 @@
-import { ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, LogOut, Timer as TimerIcon } from 'lucide-react';
+import { ReactNode, useEffect } from 'react';
+import { prepararPwaTimer } from '@/lib/timerPwa';
+import { useNavigate } from 'react-router-dom';
+import { LogOut, Timer as TimerIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { BaixarApp } from '@/components/timer/BaixarApp';
 
 /**
- * Casca do Timer Flag: barra no azul do hub, sem a sidebar dos KPIs. Quem
- * tem só o Timer não vê caminho nenhum para o resto do hub; quem também tem
- * KPI ganha o atalho "Hub de KPIs".
+ * Casca do Timer Flag: barra azul, sem a sidebar do hub e SEM nenhum caminho
+ * ou menção ao hub de KPIs (decisão do Igor, 16/11/2026: quem usa o Timer não
+ * deve saber que o hub existe). Quem também tem KPI entra no hub pelo
+ * endereço dele.
  */
 export function TimerLayout({ children }: { children: ReactNode }) {
-  const { profile, user, pendingApproval, signOut } = useAuth();
+  const { profile, user, signOut } = useAuth();
   const navigate = useNavigate();
   const nome = profile?.full_name || user?.email || '';
+
+  // Só nas rotas do Timer: manifest + service worker (o Timer instalável).
+  useEffect(() => {
+    prepararPwaTimer();
+  }, []);
 
   const sair = async () => {
     await signOut();
@@ -38,19 +45,6 @@ export function TimerLayout({ children }: { children: ReactNode }) {
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             {nome && (
               <span className="hidden max-w-[220px] truncate text-xs text-sidebar-foreground/70 sm:inline">{nome}</span>
-            )}
-            {!pendingApproval && (
-              <Button
-                asChild
-                variant="ghost"
-                size="sm"
-                className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              >
-                <Link to="/home" className="gap-2">
-                  <LayoutDashboard className="h-4 w-4" />
-                  <span className="hidden sm:inline">Hub de KPIs</span>
-                </Link>
-              </Button>
             )}
             <BaixarApp className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <ThemeToggle />

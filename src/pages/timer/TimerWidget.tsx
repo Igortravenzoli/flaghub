@@ -6,6 +6,7 @@ import { useMotorTimer } from '@/hooks/useTimerRelogio';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
 import { lerSelecao } from '@/lib/timerSelecao';
 import { relogio } from '@/lib/timerRelogio';
+import { ponteDesktop } from '@/lib/timerDesktop';
 import { cn } from '@/lib/utils';
 
 /**
@@ -88,9 +89,15 @@ export default function TimerWidget() {
             <Play className="h-4 w-4" />
           </button>
         )}
-        <Link to="/timer" className="text-xs text-flag-gold hover:underline">
-          Abrir
-        </Link>
+        {ponteDesktop() ? (
+          <button type="button" onClick={() => ponteDesktop()?.abrirCompleto()} className="text-xs text-flag-gold hover:underline">
+            Abrir
+          </button>
+        ) : (
+          <Link to="/timer" className="text-xs text-flag-gold hover:underline">
+            Abrir
+          </Link>
+        )}
       </div>
       <DialogoPresenca motor={motor} />
     </div>

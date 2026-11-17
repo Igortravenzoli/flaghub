@@ -1,0 +1,23 @@
+{
+  "name": "timer-flag-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Timer Flag para o computador: a tela /timer do FlagHub numa janela própria, com bandeja, mini timer sempre por cima e pausa automática (tela bloqueada, suspensão, 30 min sem uso).",
+  "main": "dist/main.js",
+  "author": "Flag",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "npm run build && electron dist/main.js",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { History, Loader2, Scissors, Trash2 } from 'lucide-react';
+import { ChevronRight, ExternalLink, History, Loader2, RotateCcw, Scissors, Send, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SOMBRA_XS } from '@/components/timer/visual';
+import { Pilula, SOMBRA_XS, Vazio } from '@/components/timer/visual';
+import { pedeAtencao, ROTULO_SITUACAO, rotuloDia, situacao } from '@/lib/timerLancamento';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,7 @@ import {
   horaNoDia,
   horas,
   ROTULO_MOTIVO,
+  type Lancamento,
   type TrechoFechado,
 } from '@/lib/timerRelogio';
 
@@ -102,10 +104,27 @@ export function TrechosDoDia({
         </div>
       </Cabeca>
       <Corpo className="space-y-4">
-        {!carregando && fonte && (
+        {embutido ? (
+          carregando ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando
+            </div>
+          ) : (
+            <ListaPorTarefa
+              trechos={fonte?.trechos ?? []}
+              lancamentos={fonte?.lancamentos ?? []}
+              mostrarDia={periodo === 7}
+              onEncurtar={setEncurtando}
+              onDescartar={setDescartando}
+              onRelancar={(id) => motor.acoes.relancar.mutate(id)}
+              relancando={motor.acoes.relancar.isPending}
+            />
+          )
+        ) : null}
+        {!embutido && !carregando && fonte && (
           <LancamentosTimeLog fonte={fonte} motor={motor} podeLancar={podeLancar} mostrarDia={periodo === 7} mostrarPendentes={false} />
         )}
-        {carregando ? (
+        {embutido ? null : carregando ? (
           <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Carregando
           </div>
@@ -180,21 +199,193 @@ export function TrechosDoDia({
   );
 }
 
-function LinhaTrecho({ t, onEncurtar, onDescartar }: { t: TrechoFechado; onEncurtar: () => void; onDescartar: () => void }) {
+const URL_ITEM = (id: number) => `https://dev.azure.com/FlagIW/_workitems/edit/${id}`;
+
+interface GrupoTarefa {
+  id: number;
+  titulo: string;
+  trechos: TrechoFechado[];
+  lancamentos: Lancamento[];
+  total: number;
+  pendente: number;
+  ultimo: string;
+}
+
+/** Lançamentos por tarefa: uma linha por item (recolhida), com link para o DevOps; abre os trechos e os lançamentos. */
+function ListaPorTarefa({
+  trechos,
+  lancamentos,
+  mostrarDia,
+  onEncurtar,
+  onDescartar,
+  onRelancar,
+  relancando,
+}: {
+  trechos: TrechoFechado[];
+  lancamentos: Lancamento[];
+  mostrarDia: boolean;
+  onEncurtar: (t: TrechoFechado) => void;
+  onDescartar: (t: TrechoFechado) => void;
+  onRelancar: (id: string) => void;
+  relancando: boolean;
+}) {
+  const [abertos, setAbertos] = useState<Set<number>>(new Set());
+  const grupos = useMemo(() => {
+    const m = new Map<number, GrupoTarefa>();
+    const pegar = (id: number, titulo: string | null) => {
+      let g = m.get(id);
+      if (!g) {
+        g = { id, titulo: titulo ?? `#${id}`, trechos: [], lancamentos: [], total: 0, pendente: 0, ultimo: '' };
+        m.set(id, g);
+      }
+      return g;
+    };
+    for (const t of trechos) {
+      const g = pegar(t.work_item_id, t.titulo);
+      g.trechos.push(t);
+      if (!t.descartado) {
+        g.total += duracaoSeg(t);
+        if (!t.lancamento_id) g.pendente += duracaoSeg(t);
+      }
+      if (t.encerrado_em > g.ultimo) g.ultimo = t.encerrado_em;
+    }
+    for (const l of lancamentos) {
+      const g = pegar(l.work_item_id, l.titulo);
+      g.lancamentos.push(l);
+      if (l.criado_em > g.ultimo) g.ultimo = l.criado_em;
+    }
+    return [...m.values()].sort((a, b) => (a.ultimo < b.ultimo ? 1 : -1));
+  }, [trechos, lancamentos]);
+
+  if (grupos.length === 0) return <Vazio>Nada no período</Vazio>;
+
+  const alternar = (id: number) =>
+    setAbertos((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  return (
+    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+      {grupos.map((g) => {
+        const aberto = abertos.has(g.id);
+        return (
+          <li key={g.id}>
+            <div className="flex items-center gap-2 px-2.5 py-2">
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                onClick={() => alternar(g.id)}
+                aria-expanded={aberto}
+              >
+                <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', aberto && 'rotate-90')} />
+                <span className="min-w-0 flex-1 truncate text-sm" title={g.titulo}>
+                  <span className="mr-1 font-mono text-[11px] text-muted-foreground">#{g.id}</span>
+                  {g.titulo}
+                </span>
+              </button>
+              <span className="shrink-0 text-xs font-semibold tabular-nums">{horas(g.total)}</span>
+              {g.pendente >= 60 ? (
+                <Pilula tom="alerta" title="Ainda não lançado">
+                  falta {horas(g.pendente)}
+                </Pilula>
+              ) : g.lancamentos.length > 0 ? (
+                <Pilula tom="sucesso">lançado</Pilula>
+              ) : null}
+              <a
+                href={URL_ITEM(g.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                title={`Abrir #${g.id} no Azure DevOps`}
+                aria-label={`Abrir #${g.id} no Azure DevOps`}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+            {aberto && (
+              <div className="space-y-2 border-t border-border bg-muted/30 px-2.5 py-2">
+                {g.trechos.length > 0 && (
+                  <ul className="divide-y divide-border/60">
+                    {g.trechos.map((t) => (
+                      <LinhaTrecho
+                        key={t.id}
+                        t={t}
+                        semItem
+                        mostrarDia={mostrarDia}
+                        onEncurtar={() => onEncurtar(t)}
+                        onDescartar={() => onDescartar(t)}
+                      />
+                    ))}
+                  </ul>
+                )}
+                {g.lancamentos.length > 0 && (
+                  <ul className="space-y-1">
+                    {g.lancamentos.map((l) => {
+                      const s = situacao(l);
+                      return (
+                        <li key={l.id} className="flex flex-wrap items-center gap-2 text-xs">
+                          <Send className="h-3 w-3 text-muted-foreground" />
+                          {mostrarDia && <span className="text-muted-foreground">{rotuloDia(l.dia)}</span>}
+                          <span className="font-medium tabular-nums">{horas(l.minutos * 60)}</span>
+                          <Pilula tom={s === 'conferido' ? 'sucesso' : pedeAtencao(s) ? 'alerta' : 'neutro'}>{ROTULO_SITUACAO[s]}</Pilula>
+                          {s === 'erro' && (
+                            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs" disabled={relancando} onClick={() => onRelancar(l.id)}>
+                              <RotateCcw className="mr-1 h-3 w-3" /> Tentar de novo
+                            </Button>
+                          )}
+                          {l.erro && (s === 'erro' || s === 'cancelado') && (
+                            <span className="basis-full text-muted-foreground">{l.erro}</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function LinhaTrecho({
+  t,
+  onEncurtar,
+  onDescartar,
+  semItem = false,
+  mostrarDia = false,
+}: {
+  t: TrechoFechado;
+  onEncurtar: () => void;
+  onDescartar: () => void;
+  /** dentro do grupo da tarefa: sem repetir #id e título */
+  semItem?: boolean;
+  mostrarDia?: boolean;
+}) {
   const corrigido = t.encerrado_original_em && t.encerrado_original_em !== t.encerrado_em;
   const auto = foiAutomatico(t.motivo_fim);
   return (
-    <li className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm', t.descartado && 'opacity-60')}>
-      <span className={cn('w-24 shrink-0 font-mono text-xs tabular-nums', t.descartado && 'line-through')}>
+    <li className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm', t.descartado && 'opacity-60')}>
+      <span className={cn('shrink-0 font-mono text-xs tabular-nums', !semItem && 'w-24', t.descartado && 'line-through')}>
+        {mostrarDia && semItem ? `${diaCurto(t.iniciado_em)} ` : ''}
         {horaCurta(t.iniciado_em)}–{horaCurta(t.encerrado_em)}
       </span>
-      <span className={cn('w-16 shrink-0 text-right font-medium tabular-nums', t.descartado && 'line-through')}>
+      <span className={cn('shrink-0 text-right font-medium tabular-nums', !semItem && 'w-16', t.descartado && 'line-through')}>
         {horas(duracaoSeg(t))}
       </span>
-      <span className="min-w-0 flex-1 truncate">
-        <span className="mr-1.5 font-mono text-xs text-muted-foreground">#{t.work_item_id}</span>
-        {t.titulo}
-      </span>
+      {semItem ? (
+        <span className="flex-1" />
+      ) : (
+        <span className="min-w-0 flex-1 truncate">
+          <span className="mr-1.5 font-mono text-xs text-muted-foreground">#{t.work_item_id}</span>
+          {t.titulo}
+        </span>
+      )}
       <span className="flex shrink-0 items-center gap-1.5">
         {t.descartado ? (
           <Badge variant="outline">Descartado</Badge>

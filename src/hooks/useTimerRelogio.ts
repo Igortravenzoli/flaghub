@@ -5,8 +5,11 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { detectarCliente, detectarPlataforma, ehCelular, versaoDesktop } from '@/lib/timerAcesso';
+import { lerPausaSistema, ponteDesktop, type MotivoSistema } from '@/lib/timerDesktop';
+import { temDeteccaoAusencia } from '@/lib/timerPwa';
 import {
   desvioServidor,
+  duracaoSeg,
   devePerguntarPresenca,
   houveSuspensao,
   lerEstado,
@@ -253,6 +256,21 @@ async function chamarEdge(corpo: Record<string, unknown>): Promise<RespostaLanca
   return { ok: !!r?.ok, resultados: Array.isArray(r?.resultados) ? r.resultados : [] };
 }
 
+/** 30 min sem uso do computador = pausa (o tempo ocioso não conta). */
+const OCIOSO_MS = 30 * 60 * 1000;
+
+const AVISO_SISTEMA: Record<MotivoSistema, string> = {
+  bloqueio: 'Tela bloqueada: o timer foi pausado.',
+  suspensao: 'Computador suspenso: o timer foi pausado no momento em que ele dormiu.',
+  ocioso: '30 min sem uso do computador: o timer foi pausado e o tempo parado não contou.',
+};
+
+interface IdleDetectorLike extends EventTarget {
+  userState: 'active' | 'idle' | null;
+  screenState: 'locked' | 'unlocked' | null;
+  start: (o: { threshold: number; signal: AbortSignal }) => Promise<void>;
+}
+
 /** Uma tentativa de sinal falha espera isto antes da próxima. */
 const ESPERA_APOS_FALHA_MS = 60_000;
 
@@ -339,6 +357,52 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     return () => window.clearInterval(id);
   }, [rodandoId, somenteConsulta]);
 
+  // Avisos do sistema: o app desktop (tela bloqueada, suspensão, 30 min sem
+  // uso) e, no Chrome/Edge com permissão, a detecção de ausência. Pausa no
+  // momento em que a pessoa parou; o servidor só aceita fim para trás.
+  useEffect(() => {
+    if (somenteConsulta) return;
+    const pausarPorSistema = (motivo: MotivoSistema, fimMs: number) => {
+      const e = estadoRef.current;
+      const a = acoesRef.current;
+      if (!e?.rodando || a.pausar.isPending) return;
+      a.pausar.mutate(
+        { motivo, fim: new Date(fimMs + e.desvioMs).toISOString() },
+        { onSuccess: () => toast.info(AVISO_SISTEMA[motivo]) },
+      );
+    };
+
+    const desligar: (() => void)[] = [];
+    const ponte = ponteDesktop();
+    if (ponte) {
+      desligar.push(
+        ponte.onPausar((bruto) => {
+          const p = lerPausaSistema(bruto);
+          if (p) pausarPorSistema(p.motivo, p.fimMs);
+        }),
+      );
+    } else if (temDeteccaoAusencia()) {
+      const controle = new AbortController();
+      desligar.push(() => controle.abort());
+      void (async () => {
+        try {
+          const permissao = await navigator.permissions.query({ name: 'idle-detection' as PermissionName });
+          if (permissao.state !== 'granted') return;
+          const Detector = (window as unknown as { IdleDetector: new () => IdleDetectorLike }).IdleDetector;
+          const d = new Detector();
+          d.addEventListener('change', () => {
+            if (d.screenState === 'locked') pausarPorSistema('bloqueio', Date.now());
+            else if (d.userState === 'idle') pausarPorSistema('ocioso', Date.now() - OCIOSO_MS);
+          });
+          await d.start({ threshold: OCIOSO_MS, signal: controle.signal });
+        } catch {
+          // sem permissão ou sem suporte: segue só com sinal e presença
+        }
+      })();
+    }
+    return () => desligar.forEach((f) => f());
+  }, [somenteConsulta]);
+
   // Voltou para a aba: o job do servidor pode ter cortado algo enquanto isso.
   const { refetch } = estadoQ;
   useEffect(() => {
@@ -350,7 +414,20 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   }, [refetch]);
 
   const agoraServidor = agoraLocal + (estado?.desvioMs ?? 0);
-  const segundos = segundosRodando(rodando, agoraServidor);
+  // Trecho atual (desde o último iniciar/lançar) e o ACUMULADO da tarefa hoje.
+  // A tela mostra o acumulado: depois de "Lançar" o trecho recomeça do zero,
+  // mas o tempo da tarefa no dia segue subindo.
+  const segundosTrecho = segundosRodando(rodando, agoraServidor);
+  const fechadoDoItemHoje = useMemo(
+    () =>
+      rodando && estado
+        ? estado.trechos
+            .filter((t) => t.work_item_id === rodando.work_item_id && !t.descartado)
+            .reduce((s, t) => s + duracaoSeg(t), 0)
+        : 0,
+    [rodando, estado],
+  );
+  const segundos = rodando ? fechadoDoItemHoje + segundosTrecho : 0;
   const perguntarPresenca =
     !somenteConsulta && !!estado && devePerguntarPresenca(rodando, estado.regras, agoraServidor);
   const prazoPresencaMs = rodando && estado ? presencaPrazo(rodando, estado.regras) : null;
@@ -378,7 +455,10 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     carregando: estadoQ.isLoading,
     erro: estadoQ.error,
     rodando,
+    /** acumulado da tarefa rodando, hoje */
     segundos,
+    /** só o trecho atual (base do "parei há") */
+    segundosTrecho,
     totalHoje,
     agoraServidor,
     perguntarPresenca,
