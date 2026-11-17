@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { lerPausaSistema } from '@/lib/timerDesktop';
+import { lerPausaSistema, lerPedidoEncerrar } from '@/lib/timerDesktop';
+
+describe('lerPedidoEncerrar (mini -> janela completa)', () => {
+  const agora = 1_800_000_000_000;
+  const pedido = (o: object) => JSON.stringify(o);
+  it('aceita pedido recente e bem formado', () => {
+    expect(lerPedidoEncerrar(pedido({ id: 19100, titulo: 'Ajustes', ts: agora - 2000 }), agora)).toEqual({
+      id: 19100,
+      titulo: 'Ajustes',
+      ts: agora - 2000,
+    });
+  });
+  it('recusa vencido, futuro, sem id, sem título ou lixo', () => {
+    expect(lerPedidoEncerrar(pedido({ id: 1, titulo: 'x', ts: agora - 120_000 }), agora)).toBeNull();
+    expect(lerPedidoEncerrar(pedido({ id: 1, titulo: 'x', ts: agora + 60_000 }), agora)).toBeNull();
+    expect(lerPedidoEncerrar(pedido({ id: 0, titulo: 'x', ts: agora }), agora)).toBeNull();
+    expect(lerPedidoEncerrar(pedido({ id: 1, ts: agora }), agora)).toBeNull();
+    expect(lerPedidoEncerrar('{', agora)).toBeNull();
+    expect(lerPedidoEncerrar(null, agora)).toBeNull();
+  });
+});
 import { DOWNLOADS_TIMER, urlDownload } from '@/lib/timerDownloads';
 
 describe('lerPausaSistema (aviso do app desktop)', () => {

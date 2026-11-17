@@ -14,13 +14,15 @@ import { useTimerAnotacoes, type Anotacao } from '@/hooks/useTimerAnotacoes';
 import { registrarEventoTimer, useTimerAcesso } from '@/hooks/useTimerAcesso';
 import { gravarSelecao, type TarefaSelecionada } from '@/lib/timerSelecao';
 import { demandasEmEspera, diaSP, pendentesDoItem, type DemandaEmEspera } from '@/lib/timerLancamento';
+import { CHAVE_PEDIDO_ENCERRAR, lerPedidoEncerrar } from '@/lib/timerDesktop';
 
 /**
  * Cockpit do Timer, em quatro colunas do mesmo tamanho (padrão visual do
  * Flag.DS): Anotações | Iniciar demanda | Em espera | Em andamento. Cada
  * coluna tem altura fixa e rola por dentro.
  */
-const COLUNA = 'h-[70vh] md:h-[min(640px,calc(100dvh-7.5rem))]';
+// Ocupa a altura toda da janela (barra 3,5rem + margens 2rem), sem sobra embaixo.
+const COLUNA = 'h-[70vh] md:h-[calc(100dvh-5.5rem)] md:min-h-[420px]';
 
 export default function TimerHome() {
   const { data: acesso } = useTimerAcesso();
@@ -50,6 +52,32 @@ export default function TimerHome() {
   useEffect(() => {
     void registrarEventoTimer('abriu');
   }, []);
+
+  // App desktop: o mini timer pausou e pediu "encerrar e lançar" aqui.
+  const { refetch: refazerSemana } = semana;
+  useEffect(() => {
+    const atender = (bruto: string | null) => {
+      const p = lerPedidoEncerrar(bruto);
+      if (!p) return;
+      try {
+        localStorage.removeItem(CHAVE_PEDIDO_ENCERRAR);
+      } catch {
+        /* segue */
+      }
+      void refazerSemana();
+      setAlvo({ id: p.id, titulo: p.titulo, encerrar: true });
+    };
+    try {
+      atender(localStorage.getItem(CHAVE_PEDIDO_ENCERRAR));
+    } catch {
+      /* sem storage */
+    }
+    const aoMudar = (e: StorageEvent) => {
+      if (e.key === CHAVE_PEDIDO_ENCERRAR) atender(e.newValue);
+    };
+    window.addEventListener('storage', aoMudar);
+    return () => window.removeEventListener('storage', aoMudar);
+  }, [refazerSemana]);
 
   const iniciar = (t: TarefaSelecionada) => {
     gravarSelecao(t); // o widget retoma por aqui

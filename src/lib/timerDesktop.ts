@@ -32,6 +32,42 @@ export function ponteDesktop(): PonteDesktop | null {
   return typeof window !== 'undefined' && window.timerFlagDesktop ? window.timerFlagDesktop : null;
 }
 
+// ─── mini → janela completa: "encerrar e lançar" ───────────────────────────
+// O mini pausa e pede à janela completa o diálogo de lançamento. As duas
+// janelas compartilham o localStorage, e o evento 'storage' chega na outra.
+
+export const CHAVE_PEDIDO_ENCERRAR = 'timer-flag:pedido-encerrar';
+const VALIDADE_PEDIDO_MS = 60_000;
+
+export interface PedidoEncerrar {
+  id: number;
+  titulo: string;
+  ts: number;
+}
+
+export function pedirEncerrar(item: { id: number; titulo: string }, agoraMs = Date.now()): void {
+  try {
+    localStorage.setItem(CHAVE_PEDIDO_ENCERRAR, JSON.stringify({ id: item.id, titulo: item.titulo, ts: agoraMs }));
+  } catch {
+    /* sem storage: a pessoa encerra pela janela completa */
+  }
+}
+
+/** Lê e valida o pedido (vencido ou malformado = nada). */
+export function lerPedidoEncerrar(bruto: string | null, agoraMs = Date.now()): PedidoEncerrar | null {
+  if (!bruto) return null;
+  try {
+    const o = JSON.parse(bruto) as Partial<PedidoEncerrar>;
+    const id = Number(o.id);
+    const ts = Number(o.ts);
+    if (!Number.isInteger(id) || id <= 0 || typeof o.titulo !== 'string') return null;
+    if (!Number.isFinite(ts) || agoraMs - ts > VALIDADE_PEDIDO_MS || ts > agoraMs + 5_000) return null;
+    return { id, titulo: o.titulo.slice(0, 300), ts };
+  } catch {
+    return null;
+  }
+}
+
 /** Valida o que vem do processo principal antes de agir (defensivo). */
 export function lerPausaSistema(bruto: unknown, agoraMs = Date.now()): PausaSistema | null {
   const o = bruto as Partial<PausaSistema> | null;

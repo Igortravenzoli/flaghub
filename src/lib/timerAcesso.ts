@@ -93,6 +93,16 @@ export function versaoDesktop(userAgent: string): string | null {
   return userAgent.match(/TimerFlag\/([\d.]+)/)?.[1] ?? null;
 }
 
+/**
+ * A consulta saiu sem a sessão do usuário (token vencido e ainda não renovado,
+ * comum ao voltar da suspensão ou com duas janelas abertas): a API responde
+ * como anônimo, "permission denied" (42501), ou JWT vencido (PGRST301/302/303).
+ */
+export function erroDeSessao(error: { code?: string | null; message?: string | null } | null): boolean {
+  if (!error) return false;
+  return ['42501', 'PGRST301', 'PGRST302', 'PGRST303'].includes(error.code ?? '') || /jwt/i.test(error.message ?? '');
+}
+
 /** O que a tela faz com o estado do acesso ao Timer. */
 export type EstadoAcessoTimer =
   | { tipo: 'carregando' }

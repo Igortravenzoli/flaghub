@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { detectarCliente, detectarPlataforma, versaoDesktop } from '@/lib/timerAcesso';
+import { detectarCliente, detectarPlataforma, erroDeSessao, versaoDesktop } from '@/lib/timerAcesso';
 
 export interface TimerAcessoLinha {
   status: 'ativo' | 'revogado';
@@ -26,6 +26,30 @@ const chave = (userId: string | undefined) => ['timer-acesso', userId ?? 'anon']
 /** timer_access e timer_eventos ainda não estão no types.ts gerado. */
 const db = supabase as unknown as SupabaseClient;
 
+// Último acesso confirmado, por usuário. A janela nova (o mini do app desktop,
+// outra aba, a volta da suspensão) abre na hora com ele e confere por trás.
+// É só UX: quem barra de verdade é a RLS em cada tabela e RPC do Timer.
+const chaveCache = (userId: string) => `timer-flag:acesso:${userId}`;
+
+function lerCacheAcesso(userId: string | undefined): TimerAcessoLinha | undefined {
+  if (!userId) return undefined;
+  try {
+    const o = JSON.parse(localStorage.getItem(chaveCache(userId)) ?? 'null') as TimerAcessoLinha | null;
+    return o && (o.status === 'ativo' || o.status === 'revogado') ? o : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function gravarCacheAcesso(userId: string, linha: TimerAcessoLinha | null) {
+  try {
+    if (linha) localStorage.setItem(chaveCache(userId), JSON.stringify(linha));
+    else localStorage.removeItem(chaveCache(userId));
+  } catch {
+    /* sem storage: só não lembra */
+  }
+}
+
 /**
  * A linha do próprio usuário em timer_access (a RLS só devolve a dele).
  * Muda só quando a pessoa ativa ou o admin revoga, então herda o staleTime
@@ -36,14 +60,31 @@ export function useTimerAcesso() {
   return useQuery({
     queryKey: chave(user?.id),
     enabled: isAuthenticated && !!user?.id,
+    initialData: () => lerCacheAcesso(user?.id),
+    initialDataUpdatedAt: 0, // o cache abre a tela, mas confere já
+    retry: 4,
+    retryDelay: (n) => Math.min(1000 * 2 ** n, 8000),
     queryFn: async (): Promise<TimerAcessoLinha | null> => {
-      const { data, error } = await db
-        .from('timer_access')
-        .select('status, origem, devops_guid, devops_display, concedido_em, motivo_revogacao')
-        .eq('user_id', user!.id)
-        .maybeSingle();
-      if (error) throw error;
-      return (data as TimerAcessoLinha | null) ?? null;
+      const consultar = () =>
+        db
+          .from('timer_access')
+          .select('status, origem, devops_guid, devops_display, concedido_em, motivo_revogacao')
+          .eq('user_id', user!.id)
+          .maybeSingle();
+      let { data, error } = await consultar();
+      if (erroDeSessao(error)) {
+        // renova a sessão uma vez e tenta de novo
+        await supabase.auth.refreshSession().catch(() => undefined);
+        ({ data, error } = await consultar());
+      }
+      if (error) {
+        console.warn('[Timer] não conferiu o acesso:', error.code, error.message);
+        void registrarEventoTimer('erro_cliente', { etapa: 'acesso', codigo: error.code ?? null });
+        throw error;
+      }
+      const linha = (data as TimerAcessoLinha | null) ?? null;
+      gravarCacheAcesso(user!.id, linha);
+      return linha;
     },
   });
 }

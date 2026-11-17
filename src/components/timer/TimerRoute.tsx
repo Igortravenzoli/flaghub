@@ -1,6 +1,8 @@
 import { ReactNode, useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { Loader2, ShieldX, Timer as TimerIcon, RefreshCw } from 'lucide-react';
+import { Loader2, ShieldX, Timer as TimerIcon, RefreshCw, Maximize2 } from 'lucide-react';
+import { PilulaMini, BotaoMini, useFundoTransparente } from '@/components/timer/PilulaMini';
+import { ponteDesktop } from '@/lib/timerDesktop';
 import { useAuth } from '@/hooks/useAuth';
 import { useAtivarTimer, useTimerAcesso } from '@/hooks/useTimerAcesso';
 import { estadoAcesso, guardarDestino } from '@/lib/timerAcesso';
@@ -15,10 +17,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
  * régua é outra: autenticado + linha ativa em timer_access. A segurança de
  * verdade é a RLS — este guard só decide o que a tela mostra.
  */
-export function TimerRoute({ children }: { children: ReactNode }) {
+export function TimerRoute({ children, compacto = false }: { children: ReactNode; compacto?: boolean }) {
   const { isAuthenticated, isLoading, isMonitor, mfaRequired } = useAuth();
   const location = useLocation();
   const acesso = useTimerAcesso();
+
+  // Mini timer (/timer/widget): cabe numa pílula. Nada de cartão, login ou
+  // ativação ali; tudo o que não for "rodar o timer" abre a janela completa.
+  if (compacto) {
+    const estado = estadoAcesso({ carregando: acesso.isLoading, linha: acesso.data });
+    if (isLoading || (isAuthenticated && estado.tipo === 'carregando' && !acesso.isError)) {
+      return <AvisoMini texto="Timer Flag" />;
+    }
+    if (isAuthenticated && !isMonitor && !mfaRequired && estado.tipo === 'ativo') return <>{children}</>;
+    if (acesso.isError && acesso.data === undefined) {
+      return <AvisoMini texto="Sem conexão" acao={{ titulo: 'Tentar de novo', fazer: () => void acesso.refetch() }} />;
+    }
+    return <AvisoMini texto="Abra o Timer para entrar" />;
+  }
 
   if (isLoading) return <Carregando />;
   if (!isAuthenticated) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
@@ -26,7 +42,9 @@ export function TimerRoute({ children }: { children: ReactNode }) {
   if (isMonitor) return <Navigate to="/home" replace />;
   if (mfaRequired) return <Navigate to="/mfa" replace />;
 
-  if (acesso.isError) {
+  // Erro só quando não há nenhum acesso conhecido: com o último confirmado na
+  // mão, a tela segue e a conferência tenta de novo por trás.
+  if (acesso.isError && acesso.data === undefined) {
     return (
       <Centro>
         <p className="text-sm text-muted-foreground">Não foi possível conferir seu acesso ao Timer.</p>
@@ -117,6 +135,26 @@ function AtivacaoTimer({ revogado, motivoRevogacao }: { revogado: boolean; motiv
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
       <p className="text-sm text-muted-foreground">Liberando o Timer para a sua conta…</p>
     </Centro>
+  );
+}
+
+function AvisoMini({ texto, acao }: { texto: string; acao?: { titulo: string; fazer: () => void } }) {
+  useFundoTransparente();
+  return (
+    <PilulaMini>
+      <span className="h-2 w-2 shrink-0 rounded-full bg-white/30" aria-hidden />
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/70">{texto}</span>
+      {acao && (
+        <BotaoMini titulo={acao.titulo} onClick={acao.fazer}>
+          <RefreshCw className="h-3.5 w-3.5" />
+        </BotaoMini>
+      )}
+      {ponteDesktop() && (
+        <BotaoMini titulo="Abrir o Timer" onClick={() => ponteDesktop()?.abrirCompleto()}>
+          <Maximize2 className="h-3.5 w-3.5" />
+        </BotaoMini>
+      )}
+    </PilulaMini>
   );
 }
 
