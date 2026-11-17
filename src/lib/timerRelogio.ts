@@ -142,6 +142,13 @@ export function duracaoSeg(t: Pick<TrechoFechado, 'iniciado_em' | 'encerrado_em'
   return Math.max(0, Math.round((ms(t.encerrado_em) - ms(t.iniciado_em)) / 1000));
 }
 
+/** Segundos fechados de um item que ainda não foram lançados nem descartados. */
+export function aLancarDoItem(trechos: TrechoFechado[], workItemId: number): number {
+  return trechos
+    .filter((t) => t.work_item_id === workItemId && !t.descartado && !t.lancamento_id)
+    .reduce((s, t) => s + duracaoSeg(t), 0);
+}
+
 /** Total do dia: o que já fechou (servidor) + o que está rodando. */
 export function totalHojeSeg(estado: EstadoTimer, agoraServidorMs: number): number {
   return estado.fechado_hoje_seg + segundosRodando(estado.rodando, agoraServidorMs);
@@ -233,6 +240,52 @@ export const ROTULO_MOTIVO: Record<MotivoFim, string> = {
   acesso_revogado: 'Acesso revogado',
   parcial: 'Lançado sem encerrar',
 };
+
+/**
+ * Por que o trecho terminou, curto, para a coluna Situação ("Lançado · sem
+ * conexão"). null = nada a acrescentar (o "Lançar" da própria pessoa).
+ */
+export const MOTIVO_CURTO: Record<MotivoFim, string | null> = {
+  manual: 'pausa',
+  troca_tarefa: 'troca de tarefa',
+  sem_sinal: 'sem conexão',
+  sem_confirmacao: 'ausência',
+  limite_trecho: 'limite de 4 h',
+  limite_dia: 'limite de 12 h',
+  meia_noite: 'virada do dia',
+  suspensao: 'PC suspenso',
+  bloqueio: 'tela bloqueada',
+  ocioso: 'inatividade',
+  acesso_revogado: 'acesso revogado',
+  parcial: null,
+};
+
+/** As notas que a edge grava no lançamento automático das 23:50. */
+export const NOTA_LANCAMENTO_AUTO = 'Timer Flag (automático 23:50)';
+
+export type EstadoTrecho = 'lancado' | 'a_lancar' | 'descartado';
+
+export interface SituacaoTrecho {
+  estado: EstadoTrecho;
+  /** "Lançado", "A lançar", "Descartado" */
+  rotulo: string;
+  /** o motivo curto ("sem conexão", "fim do dia"), ou null */
+  detalhe: string | null;
+  /** parou pelas regras, não pela pessoa: merece destaque */
+  alerta: boolean;
+}
+
+/** Hora | Tempo | Situação: o que aconteceu com o trecho, numa expressão só. */
+export function situacaoTrecho(t: TrechoFechado, lancamentos: Pick<Lancamento, 'id' | 'notas'>[]): SituacaoTrecho {
+  const estado: EstadoTrecho = t.descartado ? 'descartado' : t.lancamento_id ? 'lancado' : 'a_lancar';
+  const rotulo = estado === 'lancado' ? 'Lançado' : estado === 'descartado' ? 'Descartado' : 'A lançar';
+  const auto =
+    t.motivo_fim === 'parcial' &&
+    !!t.lancamento_id &&
+    lancamentos.some((l) => l.id === t.lancamento_id && l.notas === NOTA_LANCAMENTO_AUTO);
+  const detalhe = auto ? 'fim do dia' : MOTIVO_CURTO[t.motivo_fim] ?? null;
+  return { estado, rotulo, detalhe, alerta: !t.descartado && foiAutomatico(t.motivo_fim) };
+}
 
 /** Fechado pelas regras (não pela pessoa): merece destaque na lista. */
 export function foiAutomatico(motivo: MotivoFim): boolean {

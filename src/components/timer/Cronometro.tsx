@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
-import { foiAutomatico, horaCurta, horas, relogio, ROTULO_MOTIVO } from '@/lib/timerRelogio';
+import { duracaoSeg, foiAutomatico, horaCurta, horas, relogio, ROTULO_MOTIVO } from '@/lib/timerRelogio';
 import { diaSP, lancadoHojeSeg } from '@/lib/timerLancamento';
 import { BotaoIcone, Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
@@ -41,6 +41,11 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
   const pctDia = regras ? Math.min(100, (totalHoje / regras.dia_max_seg) * 100) : 0;
   const hoje = diaSP(estado?.agora ?? new Date().toISOString());
   const lancado = lancadoHojeSeg(estado?.trechos ?? [], hoje);
+  // tudo o que ainda não foi para o TimeLog hoje (todas as tarefas + o trecho rodando)
+  const aLancar =
+    (estado?.trechos ?? [])
+      .filter((t) => diaSP(t.iniciado_em) === hoje && !t.descartado && !t.lancamento_id)
+      .reduce((s, t) => s + duracaoSeg(t), 0) + motor.segundosTrecho;
   const item = rodando ? { id: rodando.work_item_id, titulo: rodando.titulo } : null;
 
   return (
@@ -61,7 +66,7 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
       <div className="grid grid-cols-3 gap-1.5">
         <Contador rotulo="Hoje acumulado" valor={horas(totalHoje)} />
         <Contador rotulo="Lançado" valor={horas(lancado)} />
-        <Contador rotulo="Rodando agora" valor={rodando ? relogio(segundos) : '0'} />
+        <Contador rotulo="A lançar" valor={horas(aLancar)} />
       </div>
 
       {rodando && item ? (
@@ -72,7 +77,7 @@ export function Cronometro({ motor, podeLancar, onLancar, onEncerrar, className 
                 {rodando.titulo}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                <span className="font-mono">#{rodando.work_item_id}</span> · acumulado hoje
+                <span className="font-mono">#{rodando.work_item_id}</span> · a lançar
               </p>
             </div>
             <span className="shrink-0 font-mono text-xl font-semibold tabular-nums" aria-live="off">

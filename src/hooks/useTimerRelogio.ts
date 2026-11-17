@@ -8,8 +8,8 @@ import { detectarCliente, detectarPlataforma, ehCelular, versaoDesktop } from '@
 import { avisarEstadoMudou, CHAVE_ESTADO_MUDOU, lerPausaSistema, ponteDesktop, type MotivoSistema } from '@/lib/timerDesktop';
 import { temDeteccaoAusencia } from '@/lib/timerPwa';
 import {
+  aLancarDoItem,
   desvioServidor,
-  duracaoSeg,
   devePerguntarPresenca,
   houveSuspensao,
   lerEstado,
@@ -437,20 +437,15 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   }, [refetch, qc, user?.id]);
 
   const agoraServidor = agoraLocal + (estado?.desvioMs ?? 0);
-  // Trecho atual (desde o último iniciar/lançar) e o ACUMULADO da tarefa hoje.
-  // A tela mostra o acumulado: depois de "Lançar" o trecho recomeça do zero,
-  // mas o tempo da tarefa no dia segue subindo.
+  // Trecho atual (desde o último iniciar/lançar) e o que a tarefa tem A LANÇAR
+  // hoje. Lançou, zera (decisão do Igor, 17/11/2026: o que já foi para o
+  // TimeLog sai do relógio); pausar e retomar sem lançar segue somando.
   const segundosTrecho = segundosRodando(rodando, agoraServidor);
-  const fechadoDoItemHoje = useMemo(
-    () =>
-      rodando && estado
-        ? estado.trechos
-            .filter((t) => t.work_item_id === rodando.work_item_id && !t.descartado)
-            .reduce((s, t) => s + duracaoSeg(t), 0)
-        : 0,
+  const aLancarDoItemHoje = useMemo(
+    () => (rodando && estado ? aLancarDoItem(estado.trechos, rodando.work_item_id) : 0),
     [rodando, estado],
   );
-  const segundos = rodando ? fechadoDoItemHoje + segundosTrecho : 0;
+  const segundos = rodando ? aLancarDoItemHoje + segundosTrecho : 0;
   const perguntarPresenca =
     !somenteConsulta && !!estado && devePerguntarPresenca(rodando, estado.regras, agoraServidor);
   const prazoPresencaMs = rodando && estado ? presencaPrazo(rodando, estado.regras) : null;
@@ -478,7 +473,7 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     carregando: estadoQ.isLoading,
     erro: estadoQ.error,
     rodando,
-    /** acumulado da tarefa rodando, hoje */
+    /** o que a tarefa rodando tem a lançar hoje (zera ao lançar) */
     segundos,
     /** só o trecho atual (base do "parei há") */
     segundosTrecho,
