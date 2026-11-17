@@ -1,10 +1,19 @@
 import { useState } from 'react';
 import { AlertTriangle, ChevronDown, Pause, PlayCircle, Send, Square } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
-import { duracaoSeg, foiAutomatico, horaCurta, horas, relogio, ROTULO_MOTIVO, type TrechoRodando } from '@/lib/timerRelogio';
+import {
+  CAPACIDADE_DIA_SEG,
+  capacidadeDia,
+  duracaoSeg,
+  foiAutomatico,
+  horaCurta,
+  horas,
+  relogio,
+  ROTULO_MOTIVO,
+  type TrechoRodando,
+} from '@/lib/timerRelogio';
 import { diaSP, lancadoHojeSeg } from '@/lib/timerLancamento';
 import { BotaoIcone, Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
@@ -48,7 +57,7 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onLancar, 
     ultimo && foiAutomatico(ultimo.motivo_fim) && !rodandoTodos.some((r) => r.work_item_id === ultimo.work_item_id)
       ? ultimo
       : null;
-  const pctDia = regras ? Math.min(100, (totalHoje / regras.dia_max_seg) * 100) : 0;
+  const capacidade = capacidadeDia(totalHoje);
   const hoje = diaSP(estado?.agora ?? new Date().toISOString());
   const lancado = lancadoHojeSeg(estado?.trechos ?? [], hoje);
   // tudo o que ainda não foi para o TimeLog hoje (todas as tarefas + o trecho rodando)
@@ -102,7 +111,7 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onLancar, 
       )}
 
       {/* Paralelo (decisão do Igor, 17/11/2026): a hora sobreposta conta inteira
-          em cada tarefa; o teto de 12 h do dia soma todas. */}
+          em cada tarefa; a capacidade do dia soma todas. */}
       <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border px-3 py-2">
         <Switch checked={paralelo} onCheckedChange={onParalelo} className="mt-0.5" aria-label="Rodar em paralelo" />
         <span className="min-w-0 text-xs leading-snug">
@@ -125,17 +134,27 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onLancar, 
         </div>
       )}
 
-      {regras && (
-        <div className="space-y-1">
-          <div className="flex items-baseline justify-between text-xs">
-            <span className="text-muted-foreground">Teto do dia</span>
-            <span className="tabular-nums">
-              {horas(totalHoje)} <span className="text-muted-foreground">/ {horas(regras.dia_max_seg)}</span>
-            </span>
-          </div>
-          <Progress value={pctDia} className="h-1.5" />
+      {/* Capacidade do dia (decisão do Igor, 17/11/2026): só indicação, 7 h.
+          Verde até 7 h; passando, amarela até ficar vermelha. O teto de 12 h
+          segue valendo no servidor, mas saiu da tela. */}
+      <div className="space-y-1">
+        <div className="flex items-baseline justify-between text-xs">
+          <span className="text-muted-foreground">Capacidade do dia</span>
+          <span className="tabular-nums">
+            {horas(totalHoje)} <span className="text-muted-foreground">/ {horas(CAPACIDADE_DIA_SEG)}</span>
+          </span>
         </div>
-      )}
+        <div
+          className="h-1.5 w-full overflow-hidden rounded-full bg-secondary"
+          role="progressbar"
+          aria-label="Capacidade do dia (7 h)"
+          aria-valuemin={0}
+          aria-valuemax={CAPACIDADE_DIA_SEG}
+          aria-valuenow={Math.round(totalHoje)}
+        >
+          <div className="h-full rounded-full transition-all" style={{ width: `${capacidade.pct}%`, backgroundColor: capacidade.cor }} />
+        </div>
+      </div>
 
       <div className="border-t border-border pt-2">
         <button

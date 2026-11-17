@@ -355,3 +355,33 @@ export function horaNoDia(baseIso: string, hhmm: string): string | null {
   const iso = `${dia}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00-03:00`;
   return Number.isFinite(Date.parse(iso)) ? new Date(iso).toISOString() : null;
 }
+
+// ─── capacidade do dia (barra indicativa) ───────────────────────────────────
+// Decisão do Igor (17/11/2026): no lugar do "Teto do dia" (12 h), só uma
+// barra de CAPACIDADE de 7 h — verde até 7 h; passando, vai amarelando até
+// ficar vermelha (vermelho cheio em 10 h). É indicação, não regra: o teto de
+// 12 h continua no servidor (timer_regras), só saiu da tela.
+export const CAPACIDADE_DIA_SEG = 7 * 3600;
+export const CAPACIDADE_VERMELHO_SEG = 10 * 3600;
+
+export interface Capacidade {
+  /** largura da barra, 0–100 (cheia a partir de 7 h) */
+  pct: number;
+  /** cor da barra: verde (142) → amarelo (~48) → vermelho (0) */
+  cor: string;
+  /** passou das 7 h */
+  acima: boolean;
+}
+
+export function capacidadeDia(seg: number): Capacidade {
+  const s = Math.max(0, seg);
+  const pct = Math.min(100, (s / CAPACIDADE_DIA_SEG) * 100);
+  const acima = s > CAPACIDADE_DIA_SEG;
+  const frac = Math.min(
+    1,
+    Math.max(0, (s - CAPACIDADE_DIA_SEG) / (CAPACIDADE_VERMELHO_SEG - CAPACIDADE_DIA_SEG)),
+  );
+  const hue = Math.round(142 * (1 - frac));
+  const luz = Math.round(40 + 8 * Math.sin(Math.PI * frac)); // um pouco mais claro no amarelo
+  return { pct, cor: `hsl(${hue} 72% ${luz}%)`, acima };
+}

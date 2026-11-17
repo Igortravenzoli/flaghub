@@ -221,3 +221,29 @@ describe('paralelo (TM9)', () => {
     expect(mensagemErroTimer({ message: 'timer_muitos_paralelos' })).toMatch(/3 timers/);
   });
 });
+
+describe('capacidadeDia (barra de 7 h)', () => {
+  it('até 7 h: verde, enchendo proporcional', async () => {
+    const { capacidadeDia } = await import('@/lib/timerRelogio');
+    expect(capacidadeDia(0)).toMatchObject({ pct: 0, acima: false });
+    expect(capacidadeDia(3.5 * 3600)).toMatchObject({ pct: 50, acima: false });
+    expect(capacidadeDia(7 * 3600).cor).toMatch(/^hsl\(142 /);
+    expect(capacidadeDia(7 * 3600).pct).toBe(100);
+  });
+
+  it('passou de 7 h: cheia, amarelando até vermelho em 10 h', async () => {
+    const { capacidadeDia } = await import('@/lib/timerRelogio');
+    const hue = (s: number) => Number(capacidadeDia(s).cor.match(/^hsl\((\d+)/)![1]);
+    expect(capacidadeDia(8 * 3600)).toMatchObject({ pct: 100, acima: true });
+    expect(hue(8 * 3600)).toBeLessThan(142);
+    expect(hue(8.5 * 3600)).toBeGreaterThan(50);
+    expect(hue(8.5 * 3600)).toBeLessThan(90); // faixa do amarelo
+    expect(hue(10 * 3600)).toBe(0);
+    expect(hue(14 * 3600)).toBe(0);
+  });
+
+  it('valor negativo não quebra', async () => {
+    const { capacidadeDia } = await import('@/lib/timerRelogio');
+    expect(capacidadeDia(-5).pct).toBe(0);
+  });
+});
