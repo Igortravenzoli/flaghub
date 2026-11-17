@@ -54,7 +54,7 @@ async function pre() {
     if (!m) { console.log(`${slug}: não existe (nada a guardar)`); continue; }
     const arq = join(pasta, `${slug}.v${m.version}.eszip`);
     if (!existsSync(arq)) writeFileSync(arq, await corpo(slug));
-    guarda[slug] = { version: m.version, verify_jwt: m.verify_jwt, name: m.name, arquivo: arq, sec2_no_ar: readFileSync(arq).includes(MARCA) };
+    guarda[slug] = { version: m.version, verify_jwt: m.verify_jwt, name: m.name, arquivo: `${slug}.v${m.version}.eszip`, sec2_no_ar: readFileSync(arq).includes(MARCA) };
     console.log(`${slug}: v${m.version} verify_jwt=${m.verify_jwt} guardado em ${arq}${guarda[slug].sec2_no_ar ? ' (JÁ É A SEC2)' : ''}`);
   }
   const g = join(pasta, 'guarda.json');
@@ -150,14 +150,14 @@ async function volta() {
     const g = guarda[slug];
     if (!g) continue;
     const r = await fetch(`${API}/${slug}?verify_jwt=${g.verify_jwt}`, {
-      method: 'PATCH', headers: { ...H, 'Content-Type': 'application/vnd.denoland.eszip' }, body: readFileSync(g.arquivo) });
+      method: 'PATCH', headers: { ...H, 'Content-Type': 'application/vnd.denoland.eszip' }, body: readFileSync(join(pasta, g.arquivo)) });
     console.log(`${slug}: volta para o pacote da v${g.version} → HTTP ${r.status}`);
   }
   for (const slug of SAEM) {
     const g = guarda[slug];
     if (!g || (await meta(slug))) continue;
     const r = await fetch(`${API}?slug=${slug}&name=${encodeURIComponent(g.name ?? slug)}&verify_jwt=${g.verify_jwt}`, {
-      method: 'POST', headers: { ...H, 'Content-Type': 'application/vnd.denoland.eszip' }, body: readFileSync(g.arquivo) });
+      method: 'POST', headers: { ...H, 'Content-Type': 'application/vnd.denoland.eszip' }, body: readFileSync(join(pasta, g.arquivo)) });
     console.log(`${slug}: recriada do pacote da v${g.version} → HTTP ${r.status}`);
   }
 }
