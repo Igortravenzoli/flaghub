@@ -46,18 +46,31 @@ concedido à anon (o RLS segura, mas é uma camada só); default privileges dão
   base estava mais fechada que a tela supunha) — aí não se aplica.
 - **Volta:** `verificacao/sec1_views_volta.sql` (RESET da opção; o GRANT à anon fica comentado).
 
-### SEC2 — edges que apagam ou repassam (código + deploy de edge)
-- `survey-import`: exigir admin ou membro ativo da área Comercial (a mesma régua da policy de
-  `survey_*`), `purge` só admin; checagem com o cliente do usuário (RPC) antes de abrir a service role.
-- `vdesk-tickets-os`: exigir `hub_is_approved()`; teto no `correlacao-batch` (ex.: 200); só repassar os
-  parâmetros conhecidos (não a querystring inteira); remover o fallback HTTP; `reset` só admin.
-- Apagar as órfãs `vdesk-proxy` e `vdesk-ticket-os` (bundles guardados em `sec/edges-orfas/`).
-- `webhook-test`: só admin.
-- **Prova:** curl com JWT de pendente → 403 em cada uma; com o do Igor → igual a hoje; tela de
-  importação do Comercial e a tela de tickets usadas por quem usa hoje.
-- **Risco:** baixo-médio (um usuário legítimo sem a área certa perde a importação → aparece no 403).
-- **Volta:** redeploy da versão anterior (v39 da `survey-import`; os bundles das órfãs). Não depende de merge:
-  o deploy de edge é à parte do front.
+### SEC2 — edges que apagam ou repassam (código + deploy de edge) · PRONTA, espera o ok para publicar
+Código no ramo (f4b4f7e, 856dd81, 15f5b64); deploy por `scripts/sec2-edges-prod.mjs` (pre | aplicar | conferir | volta).
+- `survey-import`: admin ou membro ativo da área Comercial (a régua da policy `survey_imports_insert_auth`),
+  decidido antes de ler o corpo e de qualquer escrita; `purge` só admin. Só houve 1 importação até hoje, de um
+  admin. O publicado (v39, 21/04) é o mesmo código do main (só tipos e formatação diferem): o deploy só acrescenta
+  a régua.
+- `vdesk-tickets-os`: exige `hub_is_approved()`; `reset` só admin; sem o fallback HTTP; `correlacao-batch` até 500
+  tickets validados (a tabela tem 41 hoje); `consultar` repassa só os 9 parâmetros da tela, `pageSize` até 200.
+  O publicado (v56) é igual ao main.
+- `webhook-test`: só admin; `redirect: 'manual'`. **Achado novo:** o publicado é a v39 de 21/04, ANTERIOR ao
+  endurecimento de 15/05 (f8e1ac7, nunca publicado). Hoje qualquer login faz o servidor dar POST em QUALQUER URL
+  (http, IP interno, metadados da nuvem) e devolve os primeiros 300 caracteres da resposta — SSRF. O deploy leva o
+  endurecimento de 15/05 + a régua de admin.
+- Apaga as órfãs `vdesk-proxy` (v71, verify_jwt false) e `vdesk-ticket-os` (v41). Nada chama: nem o front, nem outra
+  edge, nem cron; o teste Deno que apontava para a `vdesk-proxy` agora aponta para a `vdesk-tickets-os`.
+- CORS: o `_shared/cors.ts` que vai no pacote tem as mesmas origens do publicado.
+- **Guarda (a volta):** `D:\Mode.IA\Projetos_Flag\Portal FlagHub\_seguranca\sec2-guarda\` — os 5 pacotes eszip no ar
+  em 17/11 + `guarda.json`. A `volta` republica os três pelo PATCH com o eszip e recria as órfãs.
+- **Prova:** `conferir` sem JWT: versão nova com a marca, órfãs 404, anon 401. Com `JWT_ADMIN` (o do Igor, tirado do
+  navegador): passa a régua em cada uma sem gravar nada (survey sem linhas → 400; webhook com tipo inválido → 400;
+  vdesk status 200; lote de 501 → 413). Com `JWT_PENDENTE`: 403 nas três — não há conta pendente de teste; fica
+  provado pelo código até existir uma (a SEC3 fecha o cadastro de onde ela viria).
+- **Risco:** baixo. Quem usa hoje (admin, Comercial, aprovados) segue igual; perde só quem não devia ter acesso. Sem
+  Deno nesta máquina, só a sintaxe foi checada aqui; o deploy compila no servidor e o script para no 1º erro.
+- **Volta:** `node scripts/sec2-edges-prod.mjs volta <guarda>`. Não depende de merge nem de migration.
 
 ### SEC3 — cadastro só pelo SSO (config do Auth + função)
 - `disable_signup` **não** serve: bloqueia também o primeiro login SSO de quem entra na Flag.
