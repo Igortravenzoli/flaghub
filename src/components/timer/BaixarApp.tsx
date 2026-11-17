@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AppWindow, CheckCircle2, Download, UserX } from 'lucide-react';
+import { AppWindow, CheckCircle2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,7 @@ import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
 import { IconeSistema } from '@/components/timer/IconesSistema';
 import { detectarCliente, detectarPlataforma } from '@/lib/timerAcesso';
 import { DOWNLOADS_TIMER, ordenarDownloads, urlDownload } from '@/lib/timerDownloads';
-import { aoMudarInstalacao, instalarPwa, podeInstalar, rodandoInstalado, temDeteccaoAusencia } from '@/lib/timerPwa';
+import { aoMudarInstalacao, instalarPwa, podeInstalar, rodandoInstalado } from '@/lib/timerPwa';
 
 const CARD = 'flex h-full flex-col items-center gap-2.5 rounded-xl border bg-card p-4 transition-colors';
 
@@ -58,10 +58,14 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 
 /**
  * "Baixar app" no topo do Timer (popup):
- *   1. instalar pelo navegador (PWA, Chrome/Edge): janela própria, sem instalador;
- *   2. detectar ausência (Chrome/Edge): pausa com a tela bloqueada ou 30 min sem uso;
- *   3. o app para o computador (Electron), baixado da pasta do SharePoint.
+ *   • instalar pelo navegador (PWA, Chrome/Edge): janela própria, sem instalador;
+ *   • o app para o computador (Electron), baixado da pasta do SharePoint.
  * Some dentro do próprio app desktop.
+ *
+ * Sem o pedido de "detectar ausência" (decisão do Igor, 17/11/2026): o
+ * anti-boicote não depende dele (servidor: sinal, presença e tetos; app
+ * desktop: pausa pelo sistema). Quem já tinha dado a permissão segue com a
+ * pausa antecipada no navegador (useMotorTimer).
  */
 export function BaixarApp({ className }: { className?: string }) {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -72,30 +76,13 @@ export function BaixarApp({ className }: { className?: string }) {
   const downloads = useMemo(() => ordenarDownloads(DOWNLOADS_TIMER, plataforma), [plataforma]);
 
   const [instalavel, setInstalavel] = useState(podeInstalar());
-  const [ausencia, setAusencia] = useState<'sem_suporte' | 'pedir' | 'ligada' | 'negada'>('sem_suporte');
 
   useEffect(() => aoMudarInstalacao(() => setInstalavel(podeInstalar())), []);
-  useEffect(() => {
-    if (!temDeteccaoAusencia()) return;
-    navigator.permissions
-      .query({ name: 'idle-detection' as PermissionName })
-      .then((p) => setAusencia(p.state === 'granted' ? 'ligada' : p.state === 'denied' ? 'negada' : 'pedir'))
-      .catch(() => setAusencia('pedir'));
-  }, []);
 
   if (noDesktop) return null;
 
   const instalar = async () => {
     if (await instalarPwa()) toast.success('Timer Flag instalado. Ele abre na própria janela.');
-  };
-  const pedirAusencia = async () => {
-    try {
-      const r = await (window as unknown as { IdleDetector: { requestPermission: () => Promise<string> } }).IdleDetector.requestPermission();
-      setAusencia(r === 'granted' ? 'ligada' : 'negada');
-      if (r === 'granted') toast.success('Detecção de ausência ligada. Recarregue a página do Timer.');
-    } catch {
-      setAusencia('negada');
-    }
   };
 
   return (
@@ -155,22 +142,6 @@ export function BaixarApp({ className }: { className?: string }) {
               })}
             </div>
           </Secao>
-
-          {ausencia !== 'sem_suporte' && (
-            <Secao titulo="Pausar quando eu sair">
-              {ausencia === 'ligada' ? (
-                <p className="flex items-center gap-2 text-sm text-[hsl(var(--success))]">
-                  <CheckCircle2 className="h-4 w-4" /> Ligado: tela bloqueada ou 30 min sem uso pausam o timer.
-                </p>
-              ) : ausencia === 'negada' ? (
-                <p className="text-sm text-muted-foreground">Permissão negada no navegador (cadeado na barra de endereço).</p>
-              ) : (
-                <Button variant="outline" size="sm" onClick={() => void pedirAusencia()} className="gap-2">
-                  <UserX className="h-4 w-4" /> Permitir detectar ausência
-                </Button>
-              )}
-            </Secao>
-          )}
         </div>
       </DialogContent>
     </Dialog>
