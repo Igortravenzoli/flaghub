@@ -21,7 +21,8 @@ import { cn } from '@/lib/utils';
 export default function TimerWidget() {
   useFundoTransparente();
   const motor = useMotorTimer({ tituloDaAba: true });
-  const { rodando, segundos, acoes, carregando, somenteConsulta } = motor;
+  const { rodando, rodandoTodos, segundos, acoes, carregando, somenteConsulta } = motor;
+  const outros = Math.max(0, rodandoTodos.length - 1);
   const [selecionada, setSelecionada] = useState(() => lerSelecao());
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export default function TimerWidget() {
     if (!rodando) return;
     const item = { id: rodando.work_item_id, titulo: rodando.titulo };
     acoes.pausar.mutate(
-      { motivo: 'manual' },
+      { motivo: 'manual', workItemId: item.id },
       {
         onSuccess: () => {
           pedirEncerrar(item);
@@ -74,13 +75,25 @@ export default function TimerWidget() {
         >
           {carregando ? 'Timer Flag' : alvo ? alvo.titulo : 'Escolha uma tarefa'}
         </span>
+        {rodando && outros > 0 && (
+          <span
+            className="shrink-0 rounded-full bg-white/15 px-1.5 text-[11px] font-semibold tabular-nums text-white/85"
+            title={`Mais ${outros} ${outros === 1 ? 'timer rodando' : 'timers rodando'} em paralelo`}
+          >
+            +{outros}
+          </span>
+        )}
         <span className={cn('font-mono text-[13px] font-semibold tabular-nums', rodando ? 'text-white' : 'text-white/45')}>
           {relogio(segundos)}
         </span>
 
         {rodando ? (
           <>
-            <BotaoMini titulo="Pausar" onClick={() => acoes.pausar.mutate({ motivo: 'manual' })} disabled={ocupado}>
+            <BotaoMini
+              titulo="Pausar"
+              onClick={() => acoes.pausar.mutate({ motivo: 'manual', workItemId: rodando.work_item_id })}
+              disabled={ocupado}
+            >
               <Pause className="h-3.5 w-3.5" />
             </BotaoMini>
             {ponteDesktop() && (

@@ -18,11 +18,12 @@ import { horaCurta, presencaPerguntarEm, relogio } from '@/lib/timerRelogio';
  * faria o mesmo sozinho).
  */
 export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
-  const { rodando, estado, perguntarPresenca, prazoPresencaMs, agoraServidor, acoes } = motor;
-  if (!rodando || !estado) return null;
+  const { rodandoTodos, referencia, estado, perguntarPresenca, prazoPresencaMs, agoraServidor, acoes } = motor;
+  if (!referencia || !estado) return null;
 
   const restante = prazoPresencaMs != null ? Math.max(0, Math.floor((prazoPresencaMs - agoraServidor) / 1000)) : 0;
-  const perguntouEm = presencaPerguntarEm(rodando, estado.regras);
+  const perguntouEm = presencaPerguntarEm(referencia, estado.regras);
+  const varios = rodandoTodos.length > 1;
   const ocupado = acoes.sinal.isPending || acoes.pausar.isPending;
 
   return (
@@ -35,13 +36,18 @@ export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <UserCheck className="h-5 w-5 text-flag-gold" /> Ainda está nesta tarefa?
+            <UserCheck className="h-5 w-5 text-flag-gold" /> {varios ? 'Ainda está nestas tarefas?' : 'Ainda está nesta tarefa?'}
           </DialogTitle>
           <DialogDescription>
-            O timer está rodando em{' '}
-            <span className="font-medium text-foreground">
-              #{rodando.work_item_id} {rodando.titulo}
-            </span>
+            {varios ? 'Os timers estão rodando em' : 'O timer está rodando em'}{' '}
+            {rodandoTodos.map((r, i) => (
+              <span key={r.id}>
+                {i > 0 && (i === rodandoTodos.length - 1 ? ' e ' : ', ')}
+                <span className="font-medium text-foreground">
+                  #{r.work_item_id} {r.titulo}
+                </span>
+              </span>
+            ))}
             .
           </DialogDescription>
         </DialogHeader>
@@ -49,7 +55,7 @@ export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
           <p className="text-xs text-muted-foreground">Tempo para responder</p>
           <p className="font-mono text-2xl font-semibold tabular-nums">{relogio(restante).slice(3)}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Sem resposta, o timer pausa e conta só até {horaCurta(new Date(perguntouEm).toISOString())}, a hora da pergunta.
+            Sem resposta, {varios ? 'todos pausam e contam' : 'o timer pausa e conta'} só até {horaCurta(new Date(perguntouEm).toISOString())}, a hora da pergunta.
           </p>
         </div>
         <DialogFooter className="gap-2 sm:gap-0">

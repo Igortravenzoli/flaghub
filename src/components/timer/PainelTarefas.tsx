@@ -42,6 +42,7 @@ const ROTULO_TIPO: Record<string, string> = {
  */
 export function PainelTarefas({
   selecionada,
+  rodandoIds,
   onSelecionar,
   anotacao = null,
   onCancelarAnotacao,
@@ -51,6 +52,8 @@ export function PainelTarefas({
   podeIniciar = true,
 }: {
   selecionada: TarefaSelecionada | null;
+  /** com timers em paralelo, todos os que rodam (TM9) */
+  rodandoIds?: number[];
   onSelecionar: (t: TarefaSelecionada) => void;
   anotacao?: { id: string; texto: string } | null;
   onCancelarAnotacao?: () => void;
@@ -124,7 +127,7 @@ export function PainelTarefas({
   const acoesItem = (item: ItemDevops) => (
     <AcoesItem
       item={item}
-      selecionada={selecionada?.id === item.id}
+      selecionada={rodandoIds ? rodandoIds.includes(item.id) : selecionada?.id === item.id}
       onSelecionar={() => selecionar(item)}
       onNovo={(tipo) => setCriando({ tipo, pai: item })}
     />

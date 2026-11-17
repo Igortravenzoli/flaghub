@@ -70,12 +70,12 @@ export interface DemandaEmEspera {
 export function demandasEmEspera(
   demandas: Demanda[],
   trechos: TrechoFechado[],
-  rodandoItemId: number | null,
+  rodandoItemIds: number[],
   hoje: string,
 ): DemandaEmEspera[] {
   const grupos = gruposPendentes(trechos).filter((g) => dentroDaJanela(g.dia, hoje));
   return demandas
-    .filter((d) => d.work_item_id !== rodandoItemId)
+    .filter((d) => !rodandoItemIds.includes(d.work_item_id))
     .map((d) => {
       const meus = grupos.filter((g) => g.work_item_id === d.work_item_id);
       const hojeSeg = trechos
