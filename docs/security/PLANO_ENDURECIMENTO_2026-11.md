@@ -26,7 +26,7 @@ concedido à anon (o RLS segura, mas é uma camada só); default privileges dão
 
 ## Fases (ordem = maior risco fechado por menor chance de quebrar)
 
-### SEC1 — views sem "dono" e sem anon (banco) · ENSAIADA em 16/11, espera o ok para aplicar
+### SEC1 — views sem "dono" e sem anon (banco) · APLICADA em 16/11 23:51 (BRT), conferida
 - **O quê:** `security_invoker = true` em `v_timelog_unified`, `v_colaborador_ausencias`,
   `vw_infraestrutura_kpis`; `REVOKE ALL ... FROM anon` em todas as views do public.
   Arquivos: `migrations/20261117090000_sec1_views_sem_definer.sql`, `verificacao/sec1_views.sql`
@@ -39,6 +39,9 @@ concedido à anon (o RLS segura, mas é uma camada só); default privileges dão
   exclusiva por minutos (o 1º ensaio passou de 100 s e caiu no limite do Cloudflare; desfeito, conferido).
   Daí a separação: comparação só leitura sem DDL, e ensaio da DDL só com catálogo e `lock_timeout` 3 s.
   Vale para as próximas fases.
+- **Aplicada (16/11 23:51 BRT, ok do Igor):** `SEC1 CONFERIDA` (monitor 8826/27/1640/8826, pendente 0, anon sem
+  views, todas invoker, registrada). Pela API com a anon key: 401 nas quatro. Sonda só leitura: a anon
+  lê 0 linhas em tudo; o pendente só vê `hub_areas` (7).
 - **Risco:** baixo. Se um usuário perder linha, o ensaio falha e diz quem e onde (sinal de que a policy da
   base estava mais fechada que a tela supunha) — aí não se aplica.
 - **Volta:** `verificacao/sec1_views_volta.sql` (RESET da opção; o GRANT à anon fica comentado).
