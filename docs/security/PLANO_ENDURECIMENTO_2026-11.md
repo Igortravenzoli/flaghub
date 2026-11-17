@@ -54,7 +54,7 @@ Código no ramo (f4b4f7e, 856dd81, 15f5b64); deploy por `scripts/sec2-edges-prod
 - **Rodada com JWT de admin (17/11 00:31, sessão do Igor no navegador do app, sem gravar nada):** vdesk status 200; lote
   de 501 → 413; pageSize 500 → 400; ticket inválido → 400; webhook tipo inválido → 400; webhook para 169.254.169.254 →
   400 "Blocked webhook host"; survey-import sem linhas → 400 (pelos logs: a resposta de erro saía sem CORS — bug antigo,
-  `headers: corsHeaders` sem `(req)` em 6 respostas; consertado em a52b4d9, **não publicado**). O 403 do pendente segue
+  `headers: corsHeaders` sem `(req)` em 6 respostas; consertado em a52b4d9 e publicado como survey-import v41 em 17/11 00:45: o navegador agora lê o 400 "No rows provided"). O 403 do pendente segue
   provado só pelo código (não há conta pendente de teste).
 - `survey-import`: admin ou membro ativo da área Comercial (a régua da policy `survey_imports_insert_auth`),
   decidido antes de ler o corpo e de qualquer escrita; `purge` só admin. Só houve 1 importação até hoje, de um
