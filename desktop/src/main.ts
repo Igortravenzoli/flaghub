@@ -31,7 +31,9 @@ const ICONE_BANDEJA = app.isPackaged ? path.join(process.resourcesPath, 'tray.pn
 
 const OCIOSO_S = 30 * 60; // 30 min sem uso = pausa
 const VERIFICAR_OCIOSO_MS = 30_000;
-const TAMANHO_MINI = { width: 360, height: 76 };
+// A pílula do mini (/timer/widget) tem 40px de altura e 6px de folga em volta.
+const TAMANHO_MINI = { width: 320, height: 52 };
+const MARGEM_MINI = 12;
 
 // Antes do ready: o FlagHub reconhece o app por aqui.
 app.userAgentFallback = `${app.userAgentFallback} TimerFlag/${app.getVersion()}`;
@@ -47,6 +49,9 @@ const preferencias = {
   nodeIntegration: false,
   sandbox: true,
   webSecurity: true,
+  // Escondida, a janela segue contando: sem isto o Chromium estica os timers
+  // de janela oculta (até 1 por minuto) e o motor confundiria com suspensão.
+  backgroundThrottling: false,
 };
 
 function abrirForaSeExterno(win: BrowserWindow) {
@@ -80,6 +85,12 @@ function criarPrincipal(): BrowserWindow {
     win.hide();
     mostrarMini();
   });
+  // Minimizar também vira o mini flutuante (decisão do Igor, 16/11/2026).
+  win.on('minimize', () => {
+    if (saindo) return;
+    win.hide();
+    mostrarMini();
+  });
   win.on('show', () => esconderMini());
   void win.loadURL(URL_TIMER);
   return win;
@@ -87,12 +98,17 @@ function criarPrincipal(): BrowserWindow {
 
 function cantoInferiorDireito() {
   const tela = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  return { x: tela.x + tela.width - TAMANHO_MINI.width - 16, y: tela.y + tela.height - TAMANHO_MINI.height - 16 };
+  return {
+    x: tela.x + tela.width - TAMANHO_MINI.width - MARGEM_MINI,
+    y: tela.y + tela.height - TAMANHO_MINI.height - MARGEM_MINI,
+  };
 }
 
 function mostrarMini() {
+  // Depois da primeira vez o mini fica carregado: mostrar e esconder é na hora.
   if (mini && !mini.isDestroyed()) {
-    mini.show();
+    mini.setBounds({ ...TAMANHO_MINI, ...cantoInferiorDireito() });
+    mini.showInactive();
     return;
   }
   mini = new BrowserWindow({
@@ -106,9 +122,13 @@ function mostrarMini() {
     alwaysOnTop: true,
     skipTaskbar: true,
     title: 'Timer Flag',
-    backgroundColor: '#0F172A',
+    show: false,
+    transparent: true,
+    hasShadow: false,
+    backgroundColor: '#00000000',
     webPreferences: preferencias,
   });
+  mini.once('ready-to-show', () => mini?.showInactive());
   mini.setAlwaysOnTop(true, 'screen-saver');
   mini.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   abrirForaSeExterno(mini);
@@ -119,7 +139,7 @@ function mostrarMini() {
 }
 
 function esconderMini() {
-  if (mini && !mini.isDestroyed()) mini.close();
+  if (mini && !mini.isDestroyed()) mini.hide();
 }
 
 function mostrarPrincipal() {
@@ -137,7 +157,7 @@ function montarBandeja() {
   const menu = () =>
     Menu.buildFromTemplate([
       { label: 'Abrir Timer Flag', click: () => mostrarPrincipal() },
-      { label: 'Mini timer', type: 'checkbox', checked: !!mini && !mini.isDestroyed(), click: (i) => (i.checked ? mostrarMini() : esconderMini()) },
+      { label: 'Mini timer', type: 'checkbox', checked: !!mini && !mini.isDestroyed() && mini.isVisible(), click: (i) => (i.checked ? mostrarMini() : esconderMini()) },
       {
         label: 'Abrir ao iniciar o computador',
         type: 'checkbox',
@@ -165,10 +185,10 @@ function montarBandeja() {
 
 type Motivo = 'bloqueio' | 'suspensao' | 'ocioso';
 
+// Só a janela completa pausa (ela existe sempre, mesmo escondida): avisar as
+// duas faria dois pedidos de pausa para o mesmo trecho.
 function avisar(motivo: Motivo, fimMs: number) {
-  for (const w of [principal, mini]) {
-    if (w && !w.isDestroyed()) w.webContents.send('sistema:pausar', { motivo, fimMs });
-  }
+  if (principal && !principal.isDestroyed()) principal.webContents.send('sistema:pausar', { motivo, fimMs });
 }
 
 function vigiarSistema() {

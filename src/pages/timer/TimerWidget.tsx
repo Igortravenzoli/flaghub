@@ -1,27 +1,32 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Pause, Play, Timer as TimerIcon } from 'lucide-react';
+import { Maximize2, Pause, Play, Square } from 'lucide-react';
 import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
 import { useMotorTimer } from '@/hooks/useTimerRelogio';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
 import { lerSelecao } from '@/lib/timerSelecao';
 import { relogio } from '@/lib/timerRelogio';
-import { ponteDesktop } from '@/lib/timerDesktop';
+import { pedirEncerrar, ponteDesktop } from '@/lib/timerDesktop';
+import { PilulaMini, BotaoMini, useFundoTransparente } from '@/components/timer/PilulaMini';
 import { cn } from '@/lib/utils';
 
 /**
- * /timer/widget — a janela flutuante do app desktop (Electron) carrega esta
- * rota; no navegador também funciona. Mesmo motor e mesmas regras de /timer:
- * iniciar usa a tarefa escolhida em /timer.
+ * /timer/widget: o mini timer do app desktop (Electron), uma pílula escura e
+ * translúcida sempre por cima. No navegador também funciona. Mesmo motor e
+ * mesmas regras de /timer: iniciar usa a tarefa escolhida em /timer.
+ *
+ * Encerrar pausa aqui e pede à janela completa o diálogo de lançamento (o
+ * pedido atravessa pelo localStorage, que as duas janelas compartilham).
  */
 export default function TimerWidget() {
+  useFundoTransparente();
   const motor = useMotorTimer({ tituloDaAba: true });
   const { rodando, segundos, acoes, carregando, somenteConsulta } = motor;
   const [selecionada, setSelecionada] = useState(() => lerSelecao());
 
   useEffect(() => {
     void registrarEventoTimer('abriu');
-    // a escolha é feita em /timer (outra aba/janela): acompanha
+    // a escolha é feita em /timer (outra janela): acompanha
     const aoMudar = (e: StorageEvent) => {
       if (e.key === null || e.key === 'timer-flag:tarefa-selecionada') setSelecionada(lerSelecao());
     };
@@ -36,43 +41,53 @@ export default function TimerWidget() {
       ? { id: selecionada.id, titulo: selecionada.title ?? `#${selecionada.id}` }
       : null;
 
+  const abrirCompleto = () => ponteDesktop()?.abrirCompleto();
+
+  const encerrar = () => {
+    if (!rodando) return;
+    const item = { id: rodando.work_item_id, titulo: rodando.titulo };
+    acoes.pausar.mutate(
+      { motivo: 'manual' },
+      {
+        onSuccess: () => {
+          pedirEncerrar(item);
+          abrirCompleto();
+        },
+      },
+    );
+  };
+
   return (
-    <div className="flex min-h-screen items-center bg-[hsl(var(--sidebar-background))] p-2 text-[hsl(var(--sidebar-foreground))]">
-      <div
-        className={cn(
-          'flex w-full items-center gap-3 rounded-xl border px-3 py-2',
-          rodando ? 'border-flag-gold/60' : 'border-[hsl(var(--sidebar-border))]',
-        )}
-      >
-        <div className="rounded-lg bg-flag-gold p-1.5">
-          <TimerIcon className="h-4 w-4 text-flag-navy" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <span
-            className={cn(
-              'block font-mono text-lg font-semibold leading-tight tabular-nums',
-              rodando ? 'text-sidebar-foreground' : 'text-sidebar-foreground/50',
-            )}
-          >
-            {relogio(segundos)}
-          </span>
-          <span className="block truncate text-xs text-sidebar-foreground/70" title={alvo ? `#${alvo.id} ${alvo.titulo}` : undefined}>
-            {alvo ? `#${alvo.id} ${alvo.titulo}` : 'Escolha uma tarefa no Timer'}
-          </span>
-        </div>
+    <>
+      <PilulaMini ativo={!!rodando}>
+        <span
+          className={cn('h-2 w-2 shrink-0 rounded-full', rodando ? 'bg-emerald-400' : 'bg-white/30')}
+          aria-hidden
+        />
+        <span
+          className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/85"
+          title={alvo ? `#${alvo.id} ${alvo.titulo}` : undefined}
+        >
+          {carregando ? 'Timer Flag' : alvo ? alvo.titulo : 'Escolha uma tarefa'}
+        </span>
+        <span className={cn('font-mono text-[13px] font-semibold tabular-nums', rodando ? 'text-white' : 'text-white/45')}>
+          {relogio(segundos)}
+        </span>
+
         {rodando ? (
-          <button
-            type="button"
-            onClick={() => acoes.pausar.mutate({ motivo: 'manual' })}
-            disabled={ocupado}
-            className="rounded-lg bg-white/10 p-2 hover:bg-white/20 disabled:opacity-50"
-            title="Pausar"
-          >
-            <Pause className="h-4 w-4" />
-          </button>
+          <>
+            <BotaoMini titulo="Pausar" onClick={() => acoes.pausar.mutate({ motivo: 'manual' })} disabled={ocupado}>
+              <Pause className="h-3.5 w-3.5" />
+            </BotaoMini>
+            {ponteDesktop() && (
+              <BotaoMini titulo="Encerrar e lançar" onClick={encerrar} disabled={ocupado}>
+                <Square className="h-3.5 w-3.5" />
+              </BotaoMini>
+            )}
+          </>
         ) : somenteConsulta ? null : (
-          <button
-            type="button"
+          <BotaoMini
+            titulo="Iniciar"
             onClick={() =>
               selecionada &&
               acoes.iniciar.mutate({
@@ -83,23 +98,26 @@ export default function TimerWidget() {
               })
             }
             disabled={!selecionada || ocupado || carregando}
-            className="rounded-lg bg-flag-gold p-2 text-flag-navy hover:bg-flag-gold/90 disabled:opacity-50"
-            title="Iniciar"
           >
-            <Play className="h-4 w-4" />
-          </button>
+            <Play className="h-3.5 w-3.5" />
+          </BotaoMini>
         )}
+
         {ponteDesktop() ? (
-          <button type="button" onClick={() => ponteDesktop()?.abrirCompleto()} className="text-xs text-flag-gold hover:underline">
-            Abrir
-          </button>
+          <BotaoMini titulo="Abrir o Timer" onClick={abrirCompleto}>
+            <Maximize2 className="h-3.5 w-3.5" />
+          </BotaoMini>
         ) : (
-          <Link to="/timer" className="text-xs text-flag-gold hover:underline">
-            Abrir
+          <Link
+            to="/timer"
+            title="Abrir o Timer"
+            className="rounded-md p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
           </Link>
         )}
-      </div>
+      </PilulaMini>
       <DialogoPresenca motor={motor} />
-    </div>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,10 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Loader2, ShieldAlert, ChevronDown } from 'lucide-react';
+import { Loader2, ShieldAlert, ChevronDown, Timer as TimerIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { HubFusionAnimation } from '@/components/auth/HubFusionAnimation';
-import { ehRotaTimer, guardarDestino } from '@/lib/timerAcesso';
+import { ehRotaTimer, guardarDestino, versaoDesktop } from '@/lib/timerAcesso';
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 60;
@@ -39,6 +39,22 @@ export default function Login() {
     !rawFrom.includes(':')
       ? rawFrom
       : '/home';
+
+  // Login do Timer (rota /timer ou o app desktop): só o SSO Microsoft e sem
+  // nenhuma marca do hub. Quem usa o Timer não deve saber que o hub existe, e o
+  // acesso local (e-mail e senha) não vale para o Timer (decisão do Igor,
+  // 16/11/2026). Esconder aqui é UX: quem barra é o servidor.
+  const paraTimer =
+    ehRotaTimer(from) || (typeof navigator !== 'undefined' && versaoDesktop(navigator.userAgent) !== null);
+
+  useEffect(() => {
+    if (!paraTimer) return;
+    const antes = document.title;
+    document.title = 'Timer Flag';
+    return () => {
+      document.title = antes;
+    };
+  }, [paraTimer]);
 
   const isLockedOut = useCallback(() => {
     if (!lockoutUntil) return false;
@@ -194,11 +210,18 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2 pb-2">
-          <HubFusionAnimation />
+          {paraTimer ? (
+            <div className="flex items-center justify-center gap-2 py-2">
+              <div className="rounded-lg bg-flag-gold p-1.5">
+                <TimerIcon className="h-5 w-5 text-flag-navy" />
+              </div>
+              <span className="text-xl font-bold tracking-tight text-foreground">Timer Flag</span>
+            </div>
+          ) : (
+            <HubFusionAnimation />
+          )}
           <CardDescription>
-            {ehRotaTimer(from)
-              ? 'Timer Flag: entre com a sua conta Microsoft da Flag'
-              : 'Central de KPIs e Dashboards Setoriais'}
+            {paraTimer ? 'Entre com a sua conta Microsoft da Flag' : 'Central de KPIs e Dashboards Setoriais'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -221,7 +244,8 @@ export default function Login() {
             Entrar com Microsoft
           </Button>
 
-          {/* Local login — Collapsible */}
+          {/* Local login — Collapsible (nunca no Timer) */}
+          {!paraTimer && (
           <Collapsible open={localLoginOpen} onOpenChange={setLocalLoginOpen}>
             <div className="relative my-2">
               <div className="absolute inset-0 flex items-center">
@@ -282,6 +306,7 @@ export default function Login() {
               </form>
             </CollapsibleContent>
           </Collapsible>
+          )}
 
           <p className="text-xs text-muted-foreground text-center mt-4">
             Ao continuar, você concorda com os termos de uso e política de privacidade.

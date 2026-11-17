@@ -83,7 +83,7 @@ const queryClient = instalarPoliticaTelao(
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <ThemeProvider defaultTheme="light" storageKey="flag-ui-theme">
+    <ThemeProvider defaultTheme="system" storageKey="flag-ui-theme">
       <AuthProvider>
         <TooltipProvider>
           <Toaster />
@@ -103,7 +103,7 @@ const App = () => (
                 timer_access ativo; os dados de KPI seguem barrados pela RLS.
               */}
               <Route path="/timer" element={<TimerRoute><TimerHome /></TimerRoute>} />
-              <Route path="/timer/widget" element={<TimerRoute><TimerWidget /></TimerRoute>} />
+              <Route path="/timer/widget" element={<TimerRoute compacto><TimerWidget /></TimerRoute>} />
 
               <Route
                 element={

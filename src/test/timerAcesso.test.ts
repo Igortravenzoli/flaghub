@@ -6,12 +6,26 @@ import {
   detectarPlataforma,
   ehCelular,
   ehRotaTimer,
+  erroDeSessao,
   estadoAcesso,
   guardarDestino,
   sanitizarDestino,
   versaoDesktop,
 } from '@/lib/timerAcesso';
 import { DOWNLOADS_TIMER, ordenarDownloads, urlDownload } from '@/lib/timerDownloads';
+
+describe('erroDeSessao (consulta saiu sem a sessão do usuário)', () => {
+  it('reconhece anônimo barrado e JWT vencido', () => {
+    expect(erroDeSessao({ code: '42501', message: 'permission denied for table timer_access' })).toBe(true);
+    expect(erroDeSessao({ code: 'PGRST301', message: 'JWT expired' })).toBe(true);
+    expect(erroDeSessao({ code: null, message: 'JWT expired' })).toBe(true);
+  });
+  it('não confunde com outros erros', () => {
+    expect(erroDeSessao(null)).toBe(false);
+    expect(erroDeSessao({ code: '57014', message: 'canceling statement due to statement timeout' })).toBe(false);
+    expect(erroDeSessao({ code: '', message: 'TypeError: Failed to fetch' })).toBe(false);
+  });
+});
 
 function memoria() {
   const m = new Map<string, string>();
