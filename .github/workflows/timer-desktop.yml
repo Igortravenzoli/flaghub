@@ -33,8 +33,19 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - name: Gerar o .dmg universal
-        run: npx electron-builder --mac --universal -c.mac.identity=-
+      # Sem certificado Apple, o electron-builder não assina nada, e um app
+      # sem assinatura não abre no Mac com chip Apple ("está danificado").
+      # Então: monta o .app, assina ad-hoc com o codesign e só depois o .dmg.
+      - name: Montar o .app universal
+        run: npx electron-builder --mac dir --universal -c.mac.identity=null
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Assinar ad-hoc
+        run: |
+          codesign --force --deep --sign - "release/mac-universal/Timer Flag.app"
+          codesign --verify --deep --strict --verbose=2 "release/mac-universal/Timer Flag.app"
+      - name: Gerar o .dmg
+        run: npx electron-builder --mac dmg --universal -c.mac.identity=null --prepackaged "release/mac-universal/Timer Flag.app"
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
