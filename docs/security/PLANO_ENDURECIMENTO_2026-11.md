@@ -46,8 +46,12 @@ concedido à anon (o RLS segura, mas é uma camada só); default privileges dão
   base estava mais fechada que a tela supunha) — aí não se aplica.
 - **Volta:** `verificacao/sec1_views_volta.sql` (RESET da opção; o GRANT à anon fica comentado).
 
-### SEC2 — edges que apagam ou repassam (código + deploy de edge) · PRONTA, espera o ok para publicar
+### SEC2 — edges que apagam ou repassam (código + deploy de edge) · PUBLICADA em 17/11 00:22 (BRT), conferida
 Código no ramo (f4b4f7e, 856dd81, 15f5b64); deploy por `scripts/sec2-edges-prod.mjs` (pre | aplicar | conferir | volta).
+- **Publicada (ok do Igor):** survey-import v40, vdesk-tickets-os v57, webhook-test v40 (as três com a marca SEC2, sobem
+  sem erro: OPTIONS 200 com a origem do FlagHub); vdesk-proxy e vdesk-ticket-os removidas (404); anon 401 nas três; o
+  pacote da webhook-test tem a lista de hosts e o da vdesk-tickets-os não tem mais o endereço HTTP. Falta a rodada com
+  JWT (admin passa sem gravar; pendente 403).
 - `survey-import`: admin ou membro ativo da área Comercial (a régua da policy `survey_imports_insert_auth`),
   decidido antes de ler o corpo e de qualquer escrita; `purge` só admin. Só houve 1 importação até hoje, de um
   admin. O publicado (v39, 21/04) é o mesmo código do main (só tipos e formatação diferem): o deploy só acrescenta
