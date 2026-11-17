@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('timerFlagDesktop', {
     ipcRenderer.on('sistema:pausar', ouvinte);
     return () => ipcRenderer.removeListener('sistema:pausar', ouvinte);
   },
+  // Main → tela: a janela acabou de aparecer (a tela relê o estado; aqui a
+  // página fica sempre "visible", então o visibilitychange não serve).
+  onMostrada: (cb: () => void) => {
+    const ouvinte = () => cb();
+    ipcRenderer.on('janela:mostrada', ouvinte);
+    return () => ipcRenderer.removeListener('janela:mostrada', ouvinte);
+  },
   abrirCompleto: () => ipcRenderer.send('janela:abrir-completo'),
   abrirMini: () => ipcRenderer.send('janela:abrir-mini'),
 });

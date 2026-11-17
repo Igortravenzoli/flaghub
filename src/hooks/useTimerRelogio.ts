@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { detectarCliente, detectarPlataforma, ehCelular, versaoDesktop } from '@/lib/timerAcesso';
-import { lerPausaSistema, ponteDesktop, type MotivoSistema } from '@/lib/timerDesktop';
+import { avisarEstadoMudou, CHAVE_ESTADO_MUDOU, lerPausaSistema, ponteDesktop, type MotivoSistema } from '@/lib/timerDesktop';
 import { temDeteccaoAusencia } from '@/lib/timerPwa';
 import {
   desvioServidor,
@@ -87,6 +87,7 @@ export function useAcoesTimer() {
   const gravar = useCallback(
     (e: EstadoNoCliente, semana = true) => {
       qc.setQueryData(chave(user?.id, 1), e);
+      avisarEstadoMudou(); // o mini (ou outra aba) relê
       // a lista de 7 dias: recarrega só se estiver na tela (e nunca no sinal
       // de 5 em 5 min, que não muda trecho fechado)
       if (semana) void qc.invalidateQueries({ queryKey: chave(user?.id, 7), refetchType: 'active' });
@@ -154,6 +155,7 @@ export function useAcoesTimer() {
       else {
         qc.setQueryData(chave(user?.id, p.dias), e);
         void qc.invalidateQueries({ queryKey: chave(user?.id, 1) });
+        avisarEstadoMudou();
       }
     },
     onError: falhou,
@@ -166,6 +168,7 @@ export function useAcoesTimer() {
       else {
         qc.setQueryData(chave(user?.id, p.dias), e);
         void qc.invalidateQueries({ queryKey: chave(user?.id, 1) });
+        avisarEstadoMudou();
       }
     },
     onError: falhou,
@@ -175,6 +178,7 @@ export function useAcoesTimer() {
   // pelo refetch, porque quem muda é o banco.
   const depoisDeLancar = (r: RespostaLancamento) => {
     void qc.invalidateQueries({ queryKey: ['timer-estado', user?.id ?? 'anon'] });
+    avisarEstadoMudou();
     const ok = r.resultados.filter((x) => x.status === 'lancado');
     const ruins = r.resultados.filter((x) => x.status !== 'lancado');
     if (ok.length > 0) {
@@ -208,7 +212,10 @@ export function useAcoesTimer() {
       await qc.refetchQueries({ queryKey: chave(user?.id, 7) });
       return e;
     },
-    onSuccess: (e) => qc.setQueryData(chave(user?.id, 1), e),
+    onSuccess: (e) => {
+      qc.setQueryData(chave(user?.id, 1), e);
+      avisarEstadoMudou();
+    },
     onError: falhou,
   });
 
@@ -404,14 +411,30 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   }, [somenteConsulta]);
 
   // Voltou para a aba: o job do servidor pode ter cortado algo enquanto isso.
+  // Outra janela (o mini do app, outra aba) mudou o timer: relê na hora.
+  // No app desktop a página fica sempre "visible" (backgroundThrottling off),
+  // então quem avisa que a janela apareceu é a ponte (onMostrada).
   const { refetch } = estadoQ;
+  const qc = useQueryClient();
+  const { user } = useAuth();
   useEffect(() => {
     const aoVoltar = () => {
       if (document.visibilityState === 'visible') void refetch();
     };
+    const aoMudarOutraJanela = (e: StorageEvent) => {
+      if (e.key !== CHAVE_ESTADO_MUDOU) return;
+      void refetch();
+      void qc.invalidateQueries({ queryKey: chave(user?.id, 7), refetchType: 'active' });
+    };
     document.addEventListener('visibilitychange', aoVoltar);
-    return () => document.removeEventListener('visibilitychange', aoVoltar);
-  }, [refetch]);
+    window.addEventListener('storage', aoMudarOutraJanela);
+    const desligarMostrada = ponteDesktop()?.onMostrada?.(() => void refetch());
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltar);
+      window.removeEventListener('storage', aoMudarOutraJanela);
+      desligarMostrada?.();
+    };
+  }, [refetch, qc, user?.id]);
 
   const agoraServidor = agoraLocal + (estado?.desvioMs ?? 0);
   // Trecho atual (desde o último iniciar/lançar) e o ACUMULADO da tarefa hoje.

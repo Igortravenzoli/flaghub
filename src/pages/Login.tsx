@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Loader2, ShieldAlert, ChevronDown, Timer as TimerIcon } from 'lucide-react';
+import { Loader2, ShieldAlert, ChevronDown } from 'lucide-react';
+import { LoginTimer } from '@/components/timer/LoginTimer';
 import { toast } from 'sonner';
 import { HubFusionAnimation } from '@/components/auth/HubFusionAnimation';
 import { ehRotaTimer, guardarDestino, versaoDesktop } from '@/lib/timerAcesso';
@@ -206,23 +207,14 @@ export default function Login() {
     );
   }
 
+  if (paraTimer) return <LoginTimer carregando={isAzureLoading} onEntrar={() => void handleAzureLogin()} />;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2 pb-2">
-          {paraTimer ? (
-            <div className="flex items-center justify-center gap-2 py-2">
-              <div className="rounded-lg bg-flag-gold p-1.5">
-                <TimerIcon className="h-5 w-5 text-flag-navy" />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-foreground">Timer Flag</span>
-            </div>
-          ) : (
-            <HubFusionAnimation />
-          )}
-          <CardDescription>
-            {paraTimer ? 'Entre com a sua conta Microsoft da Flag' : 'Central de KPIs e Dashboards Setoriais'}
-          </CardDescription>
+          <HubFusionAnimation />
+          <CardDescription>Central de KPIs e Dashboards Setoriais</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* SSO Microsoft — Primary */}
@@ -244,8 +236,7 @@ export default function Login() {
             Entrar com Microsoft
           </Button>
 
-          {/* Local login — Collapsible (nunca no Timer) */}
-          {!paraTimer && (
+          {/* Local login — Collapsible (o Timer usa o LoginTimer, sem ele) */}
           <Collapsible open={localLoginOpen} onOpenChange={setLocalLoginOpen}>
             <div className="relative my-2">
               <div className="absolute inset-0 flex items-center">
@@ -306,7 +297,6 @@ export default function Login() {
               </form>
             </CollapsibleContent>
           </Collapsible>
-          )}
 
           <p className="text-xs text-muted-foreground text-center mt-4">
             Ao continuar, você concorda com os termos de uso e política de privacidade.
