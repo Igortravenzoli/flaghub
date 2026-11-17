@@ -91,6 +91,12 @@ Deno.serve(async (req) => {
     if (authErr || !user) {
       return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), { status: 401, headers: corsHeaders(req) });
     }
+    // SEC2 (17/11/2026): a tela é só de admin (/admin/email-config); a edge também.
+    // Sem isto, qualquer login fazia o servidor disparar POSTs para os hosts liberados.
+    const { data: isAdmin, error: adminErr } = await supabase.rpc('hub_is_admin');
+    if (adminErr || isAdmin !== true) {
+      return new Response(JSON.stringify({ success: false, error: 'Forbidden' }), { status: 403, headers: corsHeaders(req) });
+    }
 
     const { url, type, label } = await req.json();
     if (!url || !type) {
@@ -141,7 +147,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const res = await fetch(url, { method: 'POST', headers, body });
+    // redirect manual: o host liberado não pode redirecionar o POST para outro lugar
+    const res = await fetch(url, { method: 'POST', headers, body, redirect: 'manual' });
     const resText = await res.text();
 
     if (!res.ok) {
