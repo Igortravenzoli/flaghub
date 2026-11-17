@@ -83,7 +83,9 @@ export function montarDocumento(p: Preparado, titulo: string | null) {
     workItemId: p.work_item_id,
     workItemName: titulo ?? '',
     startTime: p.inicio,
-    date: p.dia,
+    // A extensão mostra a hora que vai DENTRO de `date` ("AAAA-MM-DD HH:MM",
+    // como ela mesma grava). Só o dia aparecia como 00:00 (17/11/2026).
+    date: `${p.dia} ${p.inicio}`,
     time: p.minutos,
     notes: p.notas ?? 'Timer Flag',
   }
