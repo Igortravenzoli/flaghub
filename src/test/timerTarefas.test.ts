@@ -16,7 +16,7 @@ import {
   wiqlMinhas,
 } from '../../supabase/functions/timer-devops/tarefas';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
-import { caminhoDe, gravarSelecao, lerSelecao } from '@/lib/timerSelecao';
+import { caminhoDe, gravarSelecao, lerSelecao, pbisDaSprint } from '@/lib/timerSelecao';
 
 describe('sprintOficial (edge) = getCurrentOfficialSprintCode (front)', () => {
   it('dá o mesmo código em todos os dias de 2025 a 2027', () => {
@@ -164,5 +164,34 @@ describe('seleção do Timer', () => {
     expect(lerSelecao(s)).toBeNull();
     gravarSelecao(null, s);
     expect(lerSelecao(s)).toBeNull();
+  });
+});
+
+describe('pbisDaSprint (anotação → Task)', () => {
+  const it_ = (id: number, tipo: string, iter: string | null, extra: Partial<{ state: string; parent_id: number }> = {}) => ({
+    id,
+    work_item_type: tipo,
+    iteration_path: iter,
+    state: extra.state ?? 'Committed',
+    parent_id: extra.parent_id ?? null,
+  });
+  const S = 'Proj\S23-2026';
+
+  it('pega o PBI atribuído e o pai da Task da sprint; ignora sprint vencida e fechado', () => {
+    const itens = [
+      it_(10, 'Product Backlog Item', S),
+      it_(20, 'Task', S, { parent_id: 30 }),
+      it_(40, 'Product Backlog Item', 'Proj\S4-2025'),
+      it_(50, 'Product Backlog Item', S, { state: 'Done' }),
+      it_(60, 'Bug', S),
+    ];
+    const ancestrais = [it_(30, 'Product Backlog Item', 'Proj\S22-2026')];
+    expect(pbisDaSprint(itens, ancestrais, 'S23-2026').map((p) => p.id)).toEqual([60, 10, 30]);
+  });
+
+  it('não oferece pai fechado nem pai que não é PBI/Bug', () => {
+    const itens = [it_(1, 'Task', S, { parent_id: 2 }), it_(3, 'Task', S, { parent_id: 4 })];
+    const ancestrais = [it_(2, 'Product Backlog Item', S, { state: 'Done' }), it_(4, 'Feature', S)];
+    expect(pbisDaSprint(itens, ancestrais, 'S23-2026')).toEqual([]);
   });
 });
