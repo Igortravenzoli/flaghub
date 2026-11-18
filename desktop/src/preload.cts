@@ -12,7 +12,7 @@ const versao = (/TimerFlag\/([\d.]+)/.exec(navigator.userAgent)?.[1]) ?? '';
 
 contextBridge.exposeInMainWorld('timerFlagDesktop', {
   versao,
-  // Main → tela: tela bloqueada, suspensão ou 30 min sem uso. Devolve o "desligar".
+  // Main → tela: tela bloqueada, suspensão ou 10 min sem uso. Devolve o "desligar".
   onPausar: (cb: (p: Pausa) => void) => {
     const ouvinte = (_e: Electron.IpcRendererEvent, p: Pausa) => cb(p);
     ipcRenderer.on('sistema:pausar', ouvinte);

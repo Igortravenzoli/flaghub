@@ -5,8 +5,8 @@
 // O que o app acrescenta é o que o navegador não sabe fazer:
 //   • janela própria e ícone na bandeja; fechar a janela esconde e abre o
 //     mini timer (sempre por cima), em vez de sair;
-//   • avisos do sistema para o timer pausar sozinho: tela bloqueada,
-//     suspensão e 30 min sem uso (powerMonitor);
+//   • avisos do sistema: tela bloqueada e suspensão pausam o timer; 10 min
+//     sem uso fazem a tela perguntar "Você está aí?" (powerMonitor);
 //   • abrir junto com o computador (opção na bandeja).
 //
 // O app se identifica no User-Agent com "TimerFlag/<versão>": o FlagHub usa
@@ -29,7 +29,9 @@ const URL_MINI = new URL('/timer/widget', URL_TIMER).toString();
 const ICONE = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(__dirname, '..', 'build', 'icon.png');
 const ICONE_BANDEJA = app.isPackaged ? path.join(process.resourcesPath, 'tray.png') : path.join(__dirname, '..', 'build', 'tray.png');
 
-const OCIOSO_S = 30 * 60; // 30 min sem uso = pausa
+// 10 min sem uso: a tela pergunta "Você está aí?" e espera o clique antes de
+// pausar (decisão do Igor, 18/11/2026). Até a 1.0.4 eram 30 min e pausa direta.
+const OCIOSO_S = 10 * 60;
 const VERIFICAR_OCIOSO_MS = 30_000;
 // A pílula do mini (/timer/widget) tem 40px de altura e 6px de folga em volta.
 const TAMANHO_MINI = { width: 320, height: 52 };
@@ -106,6 +108,7 @@ function criarPrincipal(): BrowserWindow {
     mostrarMini();
   });
   win.on('show', () => esconderMini());
+  win.on('focus', () => win.flashFrame(false));
   void win.loadURL(URL_TIMER);
   return win;
 }
@@ -178,7 +181,11 @@ function mostrarPrincipal() {
   if (!principal || principal.isDestroyed()) principal = criarPrincipal();
   if (principal.isMinimized()) principal.restore();
   principal.show();
+  principal.moveTop();
   principal.focus();
+  // O Windows pode negar o foco a quem não está na frente: aí a barra de
+  // tarefas pisca até a pessoa olhar (a tela pode estar perguntando algo).
+  if (!principal.isFocused()) principal.flashFrame(true);
   principal.webContents.send('janela:mostrada');
   esconderMini();
 }

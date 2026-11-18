@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   aLancarDoItem,
+  AUSENCIA_TOLERANCIA_MS,
+  ausenciaVencida,
+  novaAusencia,
+  OCIOSO_MS,
   desvioServidor,
   devePerguntarPresenca,
   duracaoSeg,
@@ -245,5 +249,29 @@ describe('capacidadeDia (barra de 7 h)', () => {
   it('valor negativo não quebra', async () => {
     const { capacidadeDia } = await import('@/lib/timerRelogio');
     expect(capacidadeDia(-5).pct).toBe(0);
+  });
+});
+
+describe('ausência: pergunta antes de pausar (18/11/2026)', () => {
+  it('10 min sem uso abre a pergunta com 5 min para responder', () => {
+    expect(OCIOSO_MS).toBe(10 * 60 * 1000);
+    expect(AUSENCIA_TOLERANCIA_MS).toBe(5 * 60 * 1000);
+    const agora = t('2026-11-18T14:15:00.000Z');
+    const a = novaAusencia(agora - OCIOSO_MS, agora);
+    expect(a.desdeMs).toBe(t('2026-11-18T14:05:00.000Z')); // conta só até aqui se pausar
+    expect(a.prazoMs).toBe(t('2026-11-18T14:20:00.000Z'));
+  });
+
+  it('só pausa depois do prazo', () => {
+    const agora = t('2026-11-18T14:15:00.000Z');
+    const a = novaAusencia(agora - OCIOSO_MS, agora);
+    expect(ausenciaVencida(a, t('2026-11-18T14:19:59.000Z'))).toBe(false);
+    expect(ausenciaVencida(a, t('2026-11-18T14:20:00.000Z'))).toBe(true);
+    expect(ausenciaVencida(null, agora)).toBe(false);
+  });
+
+  it('início da inatividade nunca fica no futuro', () => {
+    const agora = t('2026-11-18T14:15:00.000Z');
+    expect(novaAusencia(agora + 60_000, agora).desdeMs).toBe(agora);
   });
 });

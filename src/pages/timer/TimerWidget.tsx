@@ -134,7 +134,9 @@ export default function TimerWidget() {
           </Link>
         )}
       </PilulaMini>
-      <DialogoPresenca motor={motor} />
+      {/* No app desktop as perguntas abrem na janela completa (o motor a traz
+          para a frente): na pílula de 320×52 não dá para ler. */}
+      {!ponteDesktop() && <DialogoPresenca motor={motor} />}
     </>
   );
 }
