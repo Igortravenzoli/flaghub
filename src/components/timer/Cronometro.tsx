@@ -77,8 +77,13 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onReuniao,
       className={className}
       acoes={
         <>
-          <MiniTimer motor={motor} />
-          <ChaveParalelo ligado={paralelo} maximo={regras?.paralelo_max ?? 3} onMudar={onParalelo} />
+          {/* Rec reunião em miniatura, ao lado do mini timer (pedido do Igor, 18/11/2026).
+              Os três ícones um pouco mais justos para o título caber. */}
+          <span className="flex items-center [&>button]:h-7 [&>button]:w-7">
+            {onReuniao && !motor.somenteConsulta && <BotaoRec onClick={onReuniao} />}
+            <MiniTimer motor={motor} />
+            <ChaveParalelo ligado={paralelo} maximo={regras?.paralelo_max ?? 3} onMudar={onParalelo} />
+          </span>
           <Pilula tom={n > 0 ? 'sucesso' : 'neutro'}>{n === 0 ? 'parado' : n === 1 ? '1 ativo' : `${n} ativos`}</Pilula>
         </>
       }
@@ -90,19 +95,6 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onReuniao,
         <Contador rotulo="Lançado" valor={horas(lancado)} />
         <Contador rotulo="A lançar" valor={horas(aLancar)} />
       </div>
-
-      {onReuniao && !motor.somenteConsulta && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn('h-8 w-full gap-2 bg-card text-xs font-semibold', SOMBRA_XS)}
-          onClick={onReuniao}
-          title="Call sem PBI nem Task: vira uma Task e o timer começa agora"
-        >
-          <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden /> Rec reunião
-        </Button>
-      )}
 
       {n > 0 ? (
         <div className="space-y-2">
@@ -237,6 +229,22 @@ function CartaoRodando({
  * 17/11/2026): só o ícone, ligado por padrão; a explicação vem na dica. A hora
  * sobreposta conta inteira em cada tarefa; a capacidade do dia soma todas.
  */
+/** "Rec reunião" só com o ícone de gravar (bolinha vermelha), do tamanho do botão do mini timer. */
+function BotaoRec({ onClick }: { onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button type="button" size="icon" variant="ghost" aria-label="Rec reunião" onClick={onClick} className="h-8 w-8">
+          <span className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-red-500/70" aria-hidden>
+            <span className="h-2 w-2 rounded-full bg-red-500" />
+          </span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[16rem]">Rec reunião: a call sem PBI nem Task vira uma Task e o timer começa agora.</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ChaveParalelo({ ligado, maximo, onMudar }: { ligado: boolean; maximo: number; onMudar: (v: boolean) => void }) {
   const dica = ligado
     ? `Paralelo ligado: iniciar outra demanda mantém as que rodam (até ${maximo}). Cada uma conta a hora inteira.`

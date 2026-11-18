@@ -41,13 +41,18 @@ export default function TimerHome() {
   const [reuniaoAberta, setReuniaoAberta] = useState(false);
   // Features já carregadas na árvore (a mesma consulta, sem ir de novo ao DevOps)
   const minhas = useMinhasTarefasTimer();
-  const features = useMemo(() => {
+  const { features, tarefas, projetos } = useMemo(() => {
     const vistos = new Set<number>();
-    return [...(minhas.data?.ancestrais ?? []), ...(minhas.data?.itens ?? [])].filter((i) => {
-      if (i.work_item_type !== 'Feature' || vistos.has(i.id) || ['Done', 'Closed', 'Removed'].includes(i.state ?? '')) return false;
+    const todos = [...(minhas.data?.ancestrais ?? []), ...(minhas.data?.itens ?? [])].filter((i) => {
+      if (vistos.has(i.id) || ['Done', 'Closed', 'Removed'].includes(i.state ?? '')) return false;
       vistos.add(i.id);
       return true;
     });
+    return {
+      features: todos.filter((i) => i.work_item_type === 'Feature'),
+      tarefas: (minhas.data?.itens ?? []).filter((i) => i.work_item_type === 'Task' && !['Done', 'Closed', 'Removed'].includes(i.state ?? '')),
+      projetos: [...new Set(todos.map((i) => i.team_project).filter((p): p is string => !!p))].sort(),
+    };
   }, [minhas.data]);
   // Paralelo (TM9): ligado, iniciar outra demanda NÃO pausa as que rodam.
   const [paralelo, setParalelo] = useState(() => lerModoParalelo());
@@ -204,6 +209,8 @@ export default function TimerHome() {
         aberto={reuniaoAberta}
         onFechar={() => setReuniaoAberta(false)}
         features={features}
+        tarefas={tarefas}
+        projetos={projetos}
         onCriada={(item) =>
           iniciar({
             id: item.id,
@@ -211,7 +218,7 @@ export default function TimerHome() {
             work_item_type: item.work_item_type ?? 'Task',
             caminho: null,
             web_url: item.web_url,
-            projeto: item.team_project,
+            projeto: (item as { team_project?: string | null }).team_project ?? null,
           })
         }
       />

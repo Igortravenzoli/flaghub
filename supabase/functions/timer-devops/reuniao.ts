@@ -57,14 +57,14 @@ export function nomesDasTags(json: unknown): string[] {
 }
 
 export type PedidoReuniao =
-  | { ok: true; titulo: string; featureId: number | null; tags: string[] }
+  | { ok: true; titulo: string; featureId: number | null; projeto: string | null; tags: string[] }
   | { ok: false; motivo: string; mensagem: string }
 
 /**
- * Corpo da op `reuniao`: o tema vira "Reunião - <tema>"; a Feature é
- * opcional (sem ela, o guarda-chuva da sprint); o produto é obrigatório
- * (decisão de 18/11/2026: vem como uma das tags, conferida no app); a tag
- * Reunião vai sempre.
+ * Corpo da op `reuniao`: o tema vira "Reunião - <tema>"; vai na Feature
+ * (`featureId`) ou na raiz do projeto (`projeto`, sem pai) — decisão do Igor,
+ * 18/11/2026; o produto é obrigatório (vem como uma das tags, conferida no
+ * app); a tag Reunião vai sempre.
  */
 export function validarReuniao(corpo: Record<string, unknown>): PedidoReuniao {
   const tema = typeof corpo.tema === 'string' ? corpo.tema.replace(/\s+/g, ' ').trim().replace(/^reuni[aã]o\s*-\s*/i, '') : ''
@@ -75,12 +75,14 @@ export function validarReuniao(corpo: Record<string, unknown>): PedidoReuniao {
   if (f !== null && (!Number.isInteger(f) || f <= 0)) {
     return { ok: false, motivo: 'feature_invalida', mensagem: 'Feature inválida.' }
   }
+  // eslint-disable-next-line no-control-regex
+  const projeto = typeof corpo.projeto === 'string' ? corpo.projeto.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 100) : ''
+  if (f === null && !projeto) {
+    return { ok: false, motivo: 'sem_destino', mensagem: 'Escolha a Feature ou o projeto da reunião.' }
+  }
   const tags = sanitizarTags([TAG_REUNIAO, ...(Array.isArray(corpo.tags) ? corpo.tags : [])])
   if (tags.length < 2) {
     return { ok: false, motivo: 'sem_produto', mensagem: 'Escolha o produto da reunião.' }
   }
-  return { ok: true, titulo: `Reunião - ${tema}`, featureId: f, tags }
+  return { ok: true, titulo: `Reunião - ${tema}`, featureId: f, projeto: projeto || null, tags }
 }
-
-/** Título do PBI guarda-chuva da sprint: "[REUNIÕES] S23-2026". */
-export const tituloGuardaChuva = (sprint: string) => `[REUNIÕES] ${sprint}`
