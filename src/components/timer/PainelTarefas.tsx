@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import {
   AlvoPbi,
   ArvoreAtividades,
+  IconeTipo,
   Aviso,
   LinkDevops,
   RotuloSprint,
@@ -31,14 +32,6 @@ import {
 } from '@/hooks/useTimerTarefas';
 
 type Criando = { tipo: 'Task' | 'PBI'; pai: ItemDevops } | null;
-
-const ROTULO_TIPO: Record<string, string> = {
-  Epic: 'Epic',
-  Feature: 'Feature',
-  'Product Backlog Item': 'PBI',
-  Bug: 'Bug',
-  Task: 'Task',
-};
 
 /**
  * Painel "Tasks atribuídas" do Timer: a árvore do que está atribuído à pessoa
@@ -309,12 +302,12 @@ export function PainelTarefas({
                     <div key={p.id}>
                       <AlvoPbi item={p} alvo={alvo}>
                         <div className="flex min-w-0 items-center gap-2">
+                          <IconeTipo tipo={p.work_item_type} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm" title={p.title ?? ''}>
                               {p.title}
                             </span>
                             <span className="block truncate text-[11px] text-muted-foreground">
-                              {ROTULO_TIPO[p.work_item_type ?? ''] ?? p.work_item_type}{' '}
                               <span className="font-mono">#{p.id}</span>
                               {onde ? ` · ${onde}` : ''}
                             </span>
@@ -580,9 +573,7 @@ function LinhaRemota({
           ) : (
             <span className="w-3.5 shrink-0" />
           )}
-          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {ROTULO_TIPO[tipo] ?? tipo}
-          </span>
+          <IconeTipo tipo={tipo} />
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{item.id}</span>
           <span className="block min-w-0 flex-1 truncate text-sm" title={item.title ?? ''}>
             {item.title}

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
-import { ChevronRight, ExternalLink, Loader2, Plus } from 'lucide-react';
+import { Bug, ChevronRight, ClipboardList, Crown, ExternalLink, List, Loader2, Plus, Trophy } from 'lucide-react';
 import { ehArrastoDeAnotacao, recebeTask } from '@/lib/timerArrastar';
 import type { GrupoEpic, GrupoFeature, GrupoPbi, ItemDevops } from '@/lib/minhasAtividades';
 import { prazoSprint, textoPrazo, type NivelPrazo, type PrazoSprint } from '@/lib/prazoSprint';
@@ -96,7 +96,7 @@ function CabecalhoGrupo({
   const ponto = PONTO_URGENCIA[urgencia];
   const compacto = useContext(Compacto);
   if (compacto) {
-    // Coluna estreita (Timer): selo de uma letra no lugar da palavra, o título
+    // Coluna estreita (Timer): o ícone do tipo (o do DevOps) no lugar da palavra, o título
     // com a largura toda e as ações (+ PBI, link) só no hover ou no foco.
     return (
       <div className="group/cab flex min-w-0 items-center gap-1.5">
@@ -104,7 +104,7 @@ function CabecalhoGrupo({
           <ChevronRight
             className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${recolhido ? '' : 'rotate-90'}`}
           />
-          <SeloTipo tipo={tipo} />
+          <IconeTipo tipo={tipo} />
           <span
             className={`min-w-0 flex-1 truncate text-sm ${
               item ? (forte ? 'font-semibold' : 'font-medium') : 'italic text-muted-foreground'
@@ -322,7 +322,7 @@ function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: strin
       {pbi ? (
         <AlvoPbi item={pbi} alvo={acoes?.alvo} className={pbiSelecionado ? 'bg-flag-gold/15' : 'bg-muted/40'}>
           <div className="flex min-w-0 items-center gap-1.5">
-            <SeloTipo tipo={pbi.work_item_type === 'Bug' ? 'Bug' : 'PBI'} />
+            <IconeTipo tipo={pbi.work_item_type ?? 'Product Backlog Item'} />
             <span
               className={`min-w-0 flex-1 truncate text-sm ${contexto ? 'text-muted-foreground' : 'font-medium'}`}
               title={[pbi.title, pbi.state, contexto ? 'Não atribuído a você' : ''].filter(Boolean).join('\n')}
@@ -330,7 +330,7 @@ function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: strin
               {pbi.title}
             </span>
           </div>
-          <div className="mt-0.5 flex min-w-0 items-center gap-2 pl-[1.375rem] text-[11px] text-muted-foreground">
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-[1.375rem] text-[11px] text-muted-foreground">
             <span className="shrink-0 font-mono">#{pbi.id}</span>
             {pbi.state && <span className="min-w-0 truncate">{pbi.state}</span>}
             {grupo.prazo && <RotuloSprint prazo={grupo.prazo} tags={pbi.tags} />}
@@ -356,7 +356,7 @@ function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: strin
                 {t.title}
               </span>
             </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-2 pl-3 text-[11px] text-muted-foreground">
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-3 text-[11px] text-muted-foreground">
               <span className="shrink-0 font-mono">#{t.id}</span>
               {t.state && <span className="min-w-0 truncate">{t.state}</span>}
               {mostrarSprintDaTask(t, grupo, p) && <RotuloSprint prazo={p} tags={t.tags} />}
@@ -456,23 +456,29 @@ export function SinalAlvo({ item, alvo }: { item: ItemDevops; alvo?: AlvoAnotaca
 
 // ─── peças pequenas ───────────────────────────────────────────────────────────
 
-const SELO: Record<string, { letra: string; cor: string }> = {
-  Epic: { letra: 'E', cor: 'bg-violet-500/15 text-violet-600 dark:text-violet-300' },
-  Feature: { letra: 'F', cor: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
-  PBI: { letra: 'P', cor: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
-  Bug: { letra: 'B', cor: 'bg-red-500/15 text-red-700 dark:text-red-300' },
+/**
+ * Ícone do tipo, igual ao do Azure DevOps (pedido do Igor, 17/11/2026): coroa
+ * laranja = Epic, troféu roxo = Feature, lista azul = PBI, inseto vermelho =
+ * Bug, prancheta amarela = Task. As cores são as do DevOps; no tema escuro, um
+ * tom mais claro do mesmo matiz para ler bem no fundo.
+ */
+const ICONE_TIPO: Record<string, { Icone: typeof Crown; cor: string; nome: string }> = {
+  Epic: { Icone: Crown, cor: 'text-[#FF7B00]', nome: 'Epic' },
+  Feature: { Icone: Trophy, cor: 'text-[#773B93] dark:text-[#B57FD1]', nome: 'Feature' },
+  'Product Backlog Item': { Icone: List, cor: 'text-[#009CCC] dark:text-[#3DBDE8]', nome: 'Product Backlog Item' },
+  Bug: { Icone: Bug, cor: 'text-[#CC293D] dark:text-[#F0566A]', nome: 'Bug' },
+  Task: { Icone: ClipboardList, cor: 'text-[#C9A400] dark:text-[#F2CB1D]', nome: 'Task' },
 };
+const APELIDO: Record<string, string> = { PBI: 'Product Backlog Item' };
 
-/** Selo de uma letra (E, F, P, B) no lugar da palavra do tipo, na coluna estreita. */
-function SeloTipo({ tipo }: { tipo: string }) {
-  const s = SELO[tipo] ?? { letra: tipo.slice(0, 1).toUpperCase(), cor: 'bg-muted text-muted-foreground' };
+/** Ícone do tipo do work item (o mesmo do Azure DevOps), na coluna estreita. */
+export function IconeTipo({ tipo, className = 'h-3.5 w-3.5' }: { tipo: string | null | undefined; className?: string }) {
+  const t = ICONE_TIPO[APELIDO[tipo ?? ''] ?? tipo ?? ''];
+  if (!t) return <span className={`shrink-0 ${className}`} aria-hidden />;
+  const { Icone, cor, nome } = t;
   return (
-    <span
-      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px] font-bold ${s.cor}`}
-      title={tipo}
-      aria-label={tipo}
-    >
-      {s.letra}
+    <span className="flex shrink-0 items-center" title={nome}>
+      <Icone className={`${className} ${cor}`} aria-label={nome} strokeWidth={2.25} />
     </span>
   );
 }
