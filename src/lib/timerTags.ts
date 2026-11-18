@@ -8,8 +8,6 @@ import { KNOWN_MARKERS, KNOWN_PRODUCTS } from '@/lib/products';
  */
 export type TipoTag = 'produto' | 'cliente' | 'categoria' | 'marcador' | 'kpi';
 
-/** Categorias oferecidas no Timer (ISO SG-PR-009 / SG-PR-004). */
-export const CATEGORIAS = ['Evento', 'Risco'] as const;
 const CATEGORIAS_SET = new Set(['EVENTO', 'RISCO', 'REUNIÃO', 'REUNIAO']);
 
 /** Mesmos marcadores que a edge recusa: mudam KPI de sprint, são do gestor. */
@@ -69,16 +67,22 @@ export function buscarTags(lista: string[], texto: string, max = 6): string[] {
   return [...comeca, ...contem].slice(0, max);
 }
 
-/** A lista do DevOps separada para a tela (KPI fica de fora). */
-export function agruparTags(lista: string[]): { produtos: string[]; outras: string[] } {
+/**
+ * A lista do DevOps separada nas três listas da tela (pedido do Igor,
+ * 18/11/2026): produto, cliente e categoria (os marcadores que não mudam KPI:
+ * Evento, Risco, IA, BI…). Os marcadores de KPI ficam de fora.
+ */
+export function agruparTags(lista: string[]): { produtos: string[]; clientes: string[]; categorias: string[] } {
   const produtos: string[] = [];
-  const outras: string[] = [];
+  const clientes: string[] = [];
+  const categorias: string[] = [];
   for (const t of lista) {
     const k = tipoDaTag(t);
     if (k === 'produto') produtos.push(t);
-    else if (k === 'cliente' || k === 'marcador') outras.push(t);
+    else if (k === 'cliente') clientes.push(t);
+    else if (k === 'marcador' || k === 'categoria') categorias.push(t);
   }
-  return { produtos, outras };
+  return { produtos, clientes, categorias };
 }
 
 export const temProduto = (tags: string[]) => tags.some((t) => tipoDaTag(t) === 'produto');

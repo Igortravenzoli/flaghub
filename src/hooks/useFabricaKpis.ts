@@ -42,11 +42,10 @@ export const KPI_DEFAULT_EXCLUDED_COLLABORATORS = new Set<string>();
 const INFRA_PREFIX = '[INFRA]';
 
 /**
- * Reuniões do Timer (18/11/2026): o PBI guarda-chuva "[REUNIÕES] S{n}-{ano}"
- * (um por sprint, então não cabe na lista fixa por id) e as Tasks
- * "Reunião - <tema>", que podem estar numa Feature. Não são entrega de squad.
+ * Reuniões do Timer (18/11/2026): as Tasks "Reunião - <tema>", numa Feature
+ * ou na raiz do projeto. Não são entrega de squad.
  */
-const REUNIAO_PREFIXOS = ['[REUNIÕES]', 'Reunião - '];
+const REUNIAO_PREFIXOS = ['Reunião - '];
 const ehReuniaoDoTimer = (title?: string | null) => !!title && REUNIAO_PREFIXOS.some((p) => title.startsWith(p));
 
 /**

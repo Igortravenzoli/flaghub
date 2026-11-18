@@ -4,7 +4,6 @@ import {
   nomesDasTags,
   sanitizarTags,
   tagsDoDevops,
-  tituloGuardaChuva,
   validarReuniao,
 } from '../../supabase/functions/timer-devops/reuniao';
 import { agruparTags, buscarTags, grafiaExistente, herdaveis, temProduto, tipoDaTag } from '@/lib/timerTags';
@@ -38,24 +37,22 @@ describe('edge: tags na criação', () => {
 describe('edge: Rec reunião', () => {
   it('título com prefixo, tag Reunião sempre, produto obrigatório', () => {
     const r = validarReuniao({ tema: '  Segurança do SuiteFlexx ', featureId: 600, tags: ['SUITEFLEXX'] });
-    expect(r).toEqual({ ok: true, titulo: 'Reunião - Segurança do SuiteFlexx', featureId: 600, tags: ['Reunião', 'SUITEFLEXX'] });
+    expect(r).toEqual({ ok: true, titulo: 'Reunião - Segurança do SuiteFlexx', featureId: 600, projeto: null, tags: ['Reunião', 'SUITEFLEXX'] });
   });
 
-  it('não duplica o prefixo e aceita sem Feature', () => {
-    const r = validarReuniao({ tema: 'Reunião - Kickoff', featureId: null, tags: ['FLEXXGO'] });
+  it('na raiz do projeto, sem duplicar o prefixo', () => {
+    const r = validarReuniao({ tema: 'Reunião - Kickoff', featureId: null, projeto: ' Flag.Planejamento ', tags: ['FLEXXGO'] });
     expect(r.ok && r.titulo).toBe('Reunião - Kickoff');
     expect(r.ok && r.featureId).toBeNull();
+    expect(r.ok && r.projeto).toBe('Flag.Planejamento');
   });
 
-  it('recusa tema curto, Feature inválida e sem produto', () => {
-    expect(validarReuniao({ tema: 'ab', tags: ['X'] }).ok).toBe(false);
+  it('recusa tema curto, Feature inválida, sem destino e sem produto', () => {
+    expect(validarReuniao({ tema: 'ab', projeto: 'P', tags: ['X'] }).ok).toBe(false);
     expect(validarReuniao({ tema: 'Kickoff', featureId: -3, tags: ['X'] }).ok).toBe(false);
-    expect(validarReuniao({ tema: 'Kickoff', tags: [] })).toMatchObject({ ok: false, motivo: 'sem_produto' });
-    expect(validarReuniao({ tema: 'Kickoff', tags: ['PRIORIZACAO'] })).toMatchObject({ ok: false, motivo: 'sem_produto' });
-  });
-
-  it('guarda-chuva por sprint', () => {
-    expect(tituloGuardaChuva('S23-2026')).toBe('[REUNIÕES] S23-2026');
+    expect(validarReuniao({ tema: 'Kickoff', tags: ['X'] })).toMatchObject({ ok: false, motivo: 'sem_destino' });
+    expect(validarReuniao({ tema: 'Kickoff', projeto: 'P', tags: [] })).toMatchObject({ ok: false, motivo: 'sem_produto' });
+    expect(validarReuniao({ tema: 'Kickoff', projeto: 'P', tags: ['PRIORIZACAO'] })).toMatchObject({ ok: false, motivo: 'sem_produto' });
   });
 });
 
@@ -83,7 +80,11 @@ describe('app: tags', () => {
   });
 
   it('separa a lista do DevOps e confere produto', () => {
-    expect(agruparTags(['SUITEFLEXX', 'HEINEKEN', 'PRIORIZACAO', 'Evento', 'IA'])).toEqual({ produtos: ['SUITEFLEXX'], outras: ['HEINEKEN', 'IA'] });
+    expect(agruparTags(['SUITEFLEXX', 'HEINEKEN', 'PRIORIZACAO', 'Evento', 'IA'])).toEqual({
+      produtos: ['SUITEFLEXX'],
+      clientes: ['HEINEKEN'],
+      categorias: ['Evento', 'IA'],
+    });
     expect(temProduto(['Reunião', 'HEINEKEN'])).toBe(false);
     expect(temProduto(['Reunião', 'FLEXXGO'])).toBe(true);
   });

@@ -17,8 +17,8 @@
 //   • tags    (18/11/2026): as tags de um projeto (API Tags do DevOps), uma
 //     chamada por projeto a cada 24 h por instância; o app guarda 24 h.
 //   • reuniao (18/11/2026): "Rec reunião" — Task "Reunião - <tema>" na Feature
-//     escolhida ou, sem Feature (ou se o DevOps recusar o vínculo), no PBI
-//     guarda-chuva "[REUNIÕES] S{n}-{ano}" da sprint, criado na 1ª reunião.
+//     escolhida ou na raiz do projeto (sem pai), na sprint atual. Se o DevOps
+//     recusar a Task direto na Feature, ela vai para a raiz do mesmo projeto.
 //   • lancar  (fase 4): soma os trechos fechados (item × dia) no BANCO
 //     (timer_lancamento_preparar: só a própria hora, últimos 7 dias, teto de
 //     12 h contando o que já está no TimeLog) e grava UM documento na
@@ -65,7 +65,6 @@ import {
   idsDaWiql,
   idsDosFilhos,
   interpretarBusca,
-  literalWiql,
   ORG,
   PAI_PERMITIDO,
   paraItem,
@@ -87,14 +86,12 @@ import {
   type Preparado,
 } from './lancamento.ts'
 import { CacheCurto } from './cache.ts'
-import { nomesDasTags, sanitizarTags, tagsDoDevops, tituloGuardaChuva, validarReuniao } from './reuniao.ts'
+import { nomesDasTags, sanitizarTags, tagsDoDevops, validarReuniao } from './reuniao.ts'
 
 const REDESCOBRIR_GUID_MS = 10 * 60 * 1000
 const TETO_MINHAS = 200
 const TETO_BUSCA = 30
 const TETO_CRIACOES_POR_HORA = 20
-/** Projeto do PBI guarda-chuva de reuniões (o mesmo da 2700). */
-const PROJETO_REUNIOES = Deno.env.get('TIMER_PROJETO_REUNIOES') || 'Flag.Planejamento'
 
 type Json = Record<string, unknown>
 
@@ -531,41 +528,6 @@ const vinculoPai = (id: number): Json => ({
   value: { rel: 'System.LinkTypes.Hierarchy-Reverse', url: `https://dev.azure.com/${ORG}/_apis/wit/workItems/${id}` },
 })
 
-/** O PBI "[REUNIÕES] S{n}-{ano}" da sprint; cria na 1ª reunião da sprint. */
-async function guardaChuvaDaSprint(pat: string): Promise<ItemTarefa> {
-  const atual = await iteracaoAtual(PROJETO_REUNIOES, pat)
-  const titulo = tituloGuardaChuva(atual.codigo)
-  const r = idsDaWiql(
-    await wiql(
-      `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = ${literalWiql(PROJETO_REUNIOES)} ` +
-        `AND [System.WorkItemType] = 'Product Backlog Item' AND [System.Title] = ${literalWiql(titulo)} ` +
-        `AND [System.State] <> 'Removed' ORDER BY [System.Id]`,
-      5,
-      pat,
-    ),
-    5,
-  )
-  if (r.ids.length > 0) {
-    const [achado] = await lerItens([r.ids[0]], pat)
-    if (achado) return achado
-  }
-  if (!atual.caminho) throw new ErroDevops(422, `A sprint ${atual.codigo} não existe em ${PROJETO_REUNIOES}.`)
-  const resp = await criarNoAzure(PROJETO_REUNIOES, 'Product Backlog Item', [
-    { op: 'add', path: '/fields/System.Title', value: titulo },
-    { op: 'add', path: '/fields/System.IterationPath', value: atual.caminho },
-    { op: 'add', path: '/fields/System.Tags', value: 'Reunião' },
-    {
-      op: 'add',
-      path: '/fields/System.Description',
-      value: descricaoHtml('Guarda-chuva das reuniões da sprint, criado pelo Timer Flag. Cada Task é uma reunião ("Reunião - <tema>").'),
-    },
-  ])
-  if (!resp.ok) throw new ErroDevops(resp.status, (await resp.text()).slice(0, 300))
-  const criado = paraItem(await resp.json())
-  if (!criado) throw new ErroDevops(502, 'guarda-chuva sem id')
-  return criado
-}
-
 async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
   if (!acesso.devops_guid) {
     return responder(req, 409, {
@@ -603,6 +565,8 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
   let item: ItemTarefa | null = null
   let pai: ItemTarefa | null = null
   let recusouFeature = false
+  let projeto = v.projeto
+  let area: string | null = null
 
   // 1. Na Feature escolhida, se o DevOps aceitar o vínculo Task → Feature.
   if (v.featureId) {
@@ -610,14 +574,16 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     if (!feature || feature.work_item_type !== 'Feature' || ESTADOS_FECHADOS.includes(feature.state ?? '') || !feature.team_project) {
       return responder(req, 422, { ok: false, motivo: 'feature_invalida', mensagem: `O #${v.featureId} não é uma Feature aberta.` })
     }
+    projeto = feature.team_project
+    area = feature.area_path
     const atual = await iteracaoAtual(feature.team_project, pat)
     const iteracao = atual.caminho ?? feature.iteration_path ?? feature.team_project
-    const resp = await criarNoAzure(feature.team_project, 'Task', [...camposDaTask(iteracao, feature.area_path), vinculoPai(feature.id)])
+    const resp = await criarNoAzure(feature.team_project, 'Task', [...camposDaTask(iteracao, area), vinculoPai(feature.id)])
     if (resp.ok) {
       item = paraItem(await resp.json())
       pai = feature
     } else if (resp.status === 400) {
-      // vínculo recusado pelas regras do processo: cai no guarda-chuva
+      // vínculo recusado pelas regras do processo: cai na raiz do mesmo projeto
       recusouFeature = true
       console.warn(`[timer-devops] Task em Feature recusada: ${(await resp.text()).slice(0, 300)}`)
     } else {
@@ -625,17 +591,13 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     }
   }
 
-  // 2. Sem Feature (ou recusada): o guarda-chuva da sprint.
+  // 2. Na raiz do projeto (sem pai), na sprint atual.
   if (!item) {
-    const guarda = await guardaChuvaDaSprint(pat)
-    const iteracao = guarda.iteration_path ?? PROJETO_REUNIOES
-    const resp = await criarNoAzure(guarda.team_project ?? PROJETO_REUNIOES, 'Task', [
-      ...camposDaTask(iteracao, guarda.area_path),
-      vinculoPai(guarda.id),
-    ])
+    if (!projeto) return responder(req, 400, { ok: false, motivo: 'sem_destino', mensagem: 'Escolha o projeto da reunião.' })
+    const atual = await iteracaoAtual(projeto, pat)
+    const resp = await criarNoAzure(projeto, 'Task', camposDaTask(atual.caminho ?? projeto, area))
     if (!resp.ok) throw new ErroDevops(resp.status, (await resp.text()).slice(0, 300))
     item = paraItem(await resp.json())
-    pai = guarda
   }
 
   const { error } = await sb.from('timer_eventos').insert({
@@ -643,7 +605,7 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     evento: 'criou_work_item',
     origem: 'servidor',
     work_item_id: item?.id ?? null,
-    detalhe: { tipo: 'Task', reuniao: true, pai: pai?.id ?? null, feature: v.featureId, recusouFeature, tags: v.tags.length },
+    detalhe: { tipo: 'Task', reuniao: true, pai: pai?.id ?? null, feature: v.featureId, projeto, recusouFeature, tags: v.tags.length },
   })
   if (error) console.warn('[timer-devops] trilha da reunião falhou:', error.message)
 

@@ -188,7 +188,9 @@ export function useAcrescentarTags() {
 
 export interface NovaReuniao {
   tema: string;
+  /** na Feature; sem ela, na raiz do `projeto` */
   featureId: number | null;
+  projeto: string | null;
   tags: string[];
 }
 
@@ -196,11 +198,11 @@ export interface ReuniaoCriada {
   ok: true;
   item: ItemTimer;
   pai: { id: number; title: string | null; work_item_type: string | null } | null;
-  /** o DevOps recusou a Task direto na Feature: foi para o guarda-chuva */
+  /** o DevOps recusou a Task direto na Feature: ficou na raiz do projeto */
   recusouFeature: boolean;
 }
 
-/** Cria a Task "Reunião - <tema>" (na Feature ou no guarda-chuva da sprint). */
+/** Cria a Task "Reunião - <tema>" (na Feature ou na raiz do projeto). */
 export function useReuniaoTimer() {
   const qc = useQueryClient();
   return useMutation({
