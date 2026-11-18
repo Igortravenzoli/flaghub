@@ -7,6 +7,8 @@ import { ColunaAnotacoes } from '@/components/timer/ColunaAnotacoes';
 import { EmEspera } from '@/components/timer/EmEspera';
 import { DialogoEncerrar, type AlvoLancamento } from '@/components/timer/DialogoEncerrar';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
+import { DialogoReuniao } from '@/components/timer/DialogoReuniao';
+import { useMinhasTarefasTimer } from '@/hooks/useTimerTarefas';
 import { Coluna } from '@/components/timer/visual';
 import { TimerLayout } from '@/components/timer/TimerLayout';
 import { useMotorTimer, useTimerEstado } from '@/hooks/useTimerRelogio';
@@ -36,6 +38,17 @@ export default function TimerHome() {
   // anotação sendo arrastada até um PBI (a árvore realça os alvos)
   const [arrastada, setArrastada] = useState<Anotacao | null>(null);
   const [alvo, setAlvo] = useState<AlvoLancamento | null>(null);
+  const [reuniaoAberta, setReuniaoAberta] = useState(false);
+  // Features já carregadas na árvore (a mesma consulta, sem ir de novo ao DevOps)
+  const minhas = useMinhasTarefasTimer();
+  const features = useMemo(() => {
+    const vistos = new Set<number>();
+    return [...(minhas.data?.ancestrais ?? []), ...(minhas.data?.itens ?? [])].filter((i) => {
+      if (i.work_item_type !== 'Feature' || vistos.has(i.id) || ['Done', 'Closed', 'Removed'].includes(i.state ?? '')) return false;
+      vistos.add(i.id);
+      return true;
+    });
+  }, [minhas.data]);
   // Paralelo (TM9): ligado, iniciar outra demanda NÃO pausa as que rodam.
   const [paralelo, setParalelo] = useState(() => lerModoParalelo());
   const mudarParalelo = (v: boolean) => {
@@ -179,6 +192,7 @@ export default function TimerHome() {
           podeLancar={podeLancar}
           paralelo={paralelo}
           onParalelo={mudarParalelo}
+          onReuniao={() => setReuniaoAberta(true)}
           onLancar={lancarRodando}
           onEncerrar={encerrarRodando}
           className={`order-first md:order-none ${COLUNA}`}
@@ -186,6 +200,21 @@ export default function TimerHome() {
       </div>
 
       <DialogoPresenca motor={motor} />
+      <DialogoReuniao
+        aberto={reuniaoAberta}
+        onFechar={() => setReuniaoAberta(false)}
+        features={features}
+        onCriada={(item) =>
+          iniciar({
+            id: item.id,
+            title: item.title,
+            work_item_type: item.work_item_type ?? 'Task',
+            caminho: null,
+            web_url: item.web_url,
+            projeto: item.team_project,
+          })
+        }
+      />
       <DialogoEncerrar alvo={alvo} grupos={gruposDoAlvo} motor={motor} podeLancar={podeLancar} onFechar={() => setAlvo(null)} />
     </TimerLayout>
   );

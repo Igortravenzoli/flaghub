@@ -1,0 +1,84 @@
+import { KNOWN_MARKERS, KNOWN_PRODUCTS } from '@/lib/products';
+
+/**
+ * Tags na criação de Task/PBI e na reunião do Timer (pedido do Igor,
+ * 18/11/2026). A lista vem do DevOps (op `tags` da edge); a separação entre
+ * produto e cliente usa a regra que o FlagHub já tem (products.ts), porque o
+ * DevOps não diz o que cada tag é.
+ */
+export type TipoTag = 'produto' | 'cliente' | 'categoria' | 'marcador' | 'kpi';
+
+/** Categorias oferecidas no Timer (ISO SG-PR-009 / SG-PR-004). */
+export const CATEGORIAS = ['Evento', 'Risco'] as const;
+const CATEGORIAS_SET = new Set(['EVENTO', 'RISCO', 'REUNIÃO', 'REUNIAO']);
+
+/** Mesmos marcadores que a edge recusa: mudam KPI de sprint, são do gestor. */
+const RE_KPI = [
+  /^prioriza[cç][aã]o$/i,
+  /^avi[aã]o\b/i,
+  /^transbord(o|ad[oa])$/i,
+  /^retorno\s*(de\s*)?qa$/i,
+  /^bug$/i,
+  /^escopopago$/i,
+  /^criticidade$/i,
+];
+
+export function tipoDaTag(tag: string): TipoTag {
+  const t = tag.trim();
+  const up = t.toUpperCase();
+  if (RE_KPI.some((re) => re.test(t))) return 'kpi';
+  if (CATEGORIAS_SET.has(up)) return 'categoria';
+  if (KNOWN_PRODUCTS.has(up)) return 'produto';
+  if (KNOWN_MARKERS.has(up)) return 'marcador';
+  return 'cliente';
+}
+
+export const separarTags = (tags: string | null | undefined): string[] =>
+  (tags ?? '')
+    .split(';')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+/** Do item pai, a Task herda só produto e cliente (nunca marcador nem KPI). */
+export function herdaveis(tagsDoPai: string | null | undefined): string[] {
+  return separarTags(tagsDoPai).filter((t) => {
+    const k = tipoDaTag(t);
+    return k === 'produto' || k === 'cliente';
+  });
+}
+
+const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+/** A grafia que já existe no DevOps ("heineken" → "HEINEKEN"), ou null. */
+export function grafiaExistente(texto: string, existentes: string[]): string | null {
+  const alvo = semAcento(texto.trim());
+  return existentes.find((e) => semAcento(e) === alvo) ?? null;
+}
+
+/** Busca sem acento e sem caixa; quem começa com o texto vem primeiro. */
+export function buscarTags(lista: string[], texto: string, max = 6): string[] {
+  const alvo = semAcento(texto.trim());
+  if (!alvo) return [];
+  const comeca: string[] = [];
+  const contem: string[] = [];
+  for (const t of lista) {
+    const n = semAcento(t);
+    if (n.startsWith(alvo)) comeca.push(t);
+    else if (n.includes(alvo)) contem.push(t);
+  }
+  return [...comeca, ...contem].slice(0, max);
+}
+
+/** A lista do DevOps separada para a tela (KPI fica de fora). */
+export function agruparTags(lista: string[]): { produtos: string[]; outras: string[] } {
+  const produtos: string[] = [];
+  const outras: string[] = [];
+  for (const t of lista) {
+    const k = tipoDaTag(t);
+    if (k === 'produto') produtos.push(t);
+    else if (k === 'cliente' || k === 'marcador') outras.push(t);
+  }
+  return { produtos, outras };
+}
+
+export const temProduto = (tags: string[]) => tags.some((t) => tipoDaTag(t) === 'produto');

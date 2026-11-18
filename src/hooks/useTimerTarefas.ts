@@ -101,6 +101,8 @@ export interface NovoItem {
   titulo: string;
   paiId: number;
   descricao?: string;
+  /** produto, cliente, categoria (a edge tira os marcadores de KPI) */
+  tags?: string[];
 }
 
 export function useCriarItemTimer() {
@@ -110,6 +112,101 @@ export function useCriarItemTimer() {
     onSuccess: (_r, novo) => {
       void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'minhas'] });
       void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'filhos'], predicate: (q) => q.queryKey[3] === novo.paiId });
+    },
+  });
+}
+
+// ─── tags do DevOps ─────────────────────────────────────────────────────────
+
+const DIA_MS = 24 * 60 * 60 * 1000;
+const chaveTags = (projeto: string) => `timer-flag:tags:${projeto}`;
+
+function lerTagsGuardadas(projeto: string): string[] | null {
+  try {
+    const bruto = localStorage.getItem(chaveTags(projeto));
+    if (!bruto) return null;
+    const v = JSON.parse(bruto) as { em?: number; tags?: unknown };
+    if (typeof v.em !== 'number' || Date.now() - v.em > DIA_MS || !Array.isArray(v.tags)) return null;
+    return v.tags.filter((t): t is string => typeof t === 'string');
+  } catch {
+    return null;
+  }
+}
+
+function guardarTags(projeto: string, tags: string[]) {
+  try {
+    localStorage.setItem(chaveTags(projeto), JSON.stringify({ em: Date.now(), tags }));
+  } catch {
+    // storage cheio ou bloqueado: vale só nesta sessão
+  }
+}
+
+/**
+ * Tags de um projeto do DevOps. Uma ida à edge por projeto a cada 24 h por
+ * navegador (e a edge guarda 24 h por instância): abrir o formulário não
+ * chama o DevOps.
+ */
+export function useTagsTimer(projeto: string | null | undefined) {
+  const { user } = useAuth();
+  const p = projeto?.trim() || null;
+  return useQuery({
+    queryKey: ['timer-tarefas', 'tags', p],
+    enabled: !!user?.id && !!p,
+    staleTime: DIA_MS,
+    gcTime: DIA_MS,
+    retry: false,
+    queryFn: async () => {
+      const guardadas = lerTagsGuardadas(p!);
+      if (guardadas) return guardadas;
+      const r = await chamar<{ ok: true; tags: string[] }>({ op: 'tags', projeto: p });
+      const tags = Array.isArray(r.tags) ? r.tags : [];
+      guardarTags(p!, tags);
+      return tags;
+    },
+  });
+}
+
+/** Tag nova criada no Timer entra na lista na hora (sem esperar as 24 h). */
+export function useAcrescentarTags() {
+  const qc = useQueryClient();
+  return useCallback(
+    (projeto: string | null | undefined, novas: string[]) => {
+      const p = projeto?.trim();
+      if (!p || novas.length === 0) return;
+      const atuais = qc.getQueryData<string[]>(['timer-tarefas', 'tags', p]) ?? lerTagsGuardadas(p) ?? [];
+      const faltam = novas.filter((n) => !atuais.some((a) => a.toUpperCase() === n.toUpperCase()));
+      if (faltam.length === 0) return;
+      const lista = [...atuais, ...faltam].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      qc.setQueryData(['timer-tarefas', 'tags', p], lista);
+      guardarTags(p, lista);
+    },
+    [qc],
+  );
+}
+
+// ─── Rec reunião ────────────────────────────────────────────────────────────
+
+export interface NovaReuniao {
+  tema: string;
+  featureId: number | null;
+  tags: string[];
+}
+
+export interface ReuniaoCriada {
+  ok: true;
+  item: ItemTimer;
+  pai: { id: number; title: string | null; work_item_type: string | null } | null;
+  /** o DevOps recusou a Task direto na Feature: foi para o guarda-chuva */
+  recusouFeature: boolean;
+}
+
+/** Cria a Task "Reunião - <tema>" (na Feature ou no guarda-chuva da sprint). */
+export function useReuniaoTimer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (r: NovaReuniao) => chamar<ReuniaoCriada>({ op: 'reuniao', ...r }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'minhas'] });
     },
   });
 }

@@ -26,6 +26,8 @@ interface Props {
   /** TM9: ligado, iniciar outra demanda não pausa as que rodam */
   paralelo: boolean;
   onParalelo: (v: boolean) => void;
+  /** "Rec reunião": a call sem PBI/Task vira Task e o timer começa */
+  onReuniao?: () => void;
   /** Lançar: corta o trecho agora e lança o que falta, sem encerrar */
   onLancar: (item: { id: number; titulo: string }) => void;
   /** Encerrar: pausa, lança o que falta e encerra a demanda */
@@ -46,7 +48,7 @@ function Contador({ rotulo, valor, destaque = false }: { rotulo: string; valor: 
  * Em andamento: contadores do dia, os timers rodando (um cartão por tarefa;
  * com o Paralelo ligado podem ser vários) e os lançamentos recolhidos.
  */
-export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onLancar, onEncerrar, className }: Props) {
+export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onReuniao, onLancar, onEncerrar, className }: Props) {
   const { estado, rodandoTodos, segundosDe, totalHoje, acoes } = motor;
   const regras = estado?.regras;
   const ocupado = acoes.iniciar.isPending || acoes.pausar.isPending || acoes.partir.isPending;
@@ -88,6 +90,19 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onLancar, 
         <Contador rotulo="Lançado" valor={horas(lancado)} />
         <Contador rotulo="A lançar" valor={horas(aLancar)} />
       </div>
+
+      {onReuniao && !motor.somenteConsulta && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn('h-8 w-full gap-2 bg-card text-xs font-semibold', SOMBRA_XS)}
+          onClick={onReuniao}
+          title="Call sem PBI nem Task: vira uma Task e o timer começa agora"
+        >
+          <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden /> Rec reunião
+        </Button>
+      )}
 
       {n > 0 ? (
         <div className="space-y-2">

@@ -42,6 +42,14 @@ export const KPI_DEFAULT_EXCLUDED_COLLABORATORS = new Set<string>();
 const INFRA_PREFIX = '[INFRA]';
 
 /**
+ * Reuniões do Timer (18/11/2026): o PBI guarda-chuva "[REUNIÕES] S{n}-{ano}"
+ * (um por sprint, então não cabe na lista fixa por id) e as Tasks
+ * "Reunião - <tema>", que podem estar numa Feature. Não são entrega de squad.
+ */
+const REUNIAO_PREFIXOS = ['[REUNIÕES]', 'Reunião - '];
+const ehReuniaoDoTimer = (title?: string | null) => !!title && REUNIAO_PREFIXOS.some((p) => title.startsWith(p));
+
+/**
  * Epics/PBIs guarda-chuva que NÃO são trabalho da Fábrica: o item e todos os
  * filhos somem da listagem e dos KPIs do setor.
  *   2700  — INFRA (consumido pela Infraestrutura via vw_infraestrutura_kpis)
@@ -649,6 +657,7 @@ export function useFabricaKpis(
   const allItems = query.data || [];
   const nonInfraItems = allItems.filter((i) => {
     if (isEpicForaDaFabrica(i.id, i.parent_id)) return false;
+    if (ehReuniaoDoTimer(i.title)) return false;
     return !i.title?.startsWith(INFRA_PREFIX);
   });
 
@@ -684,7 +693,7 @@ export function useFabricaKpis(
   const itemsPorCodigo = filtroCodigo ? nonInfraItems.filter((i) => casaCodigo(i.iteration_path)) : [];
 
   const naoInfra = (wi: WorkItemMeta): boolean =>
-    !isEpicForaDaFabrica(wi.id, wi.parent_id) && !wi.title?.startsWith(INFRA_PREFIX);
+    !isEpicForaDaFabrica(wi.id, wi.parent_id) && !wi.title?.startsWith(INFRA_PREFIX) && !ehReuniaoDoTimer(wi.title);
 
   // ── Work items ──
   // Perfil do telão só com o código da sprint em mãos; sem ele, a carga de mesa.
