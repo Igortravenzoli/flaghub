@@ -9,12 +9,15 @@ import { avisarEstadoMudou, CHAVE_ESTADO_MUDOU, lerPausaSistema, ponteDesktop, t
 import { temDeteccaoAusencia } from '@/lib/timerPwa';
 import {
   aLancarDoItem,
+  ausenciaVencida,
   desvioServidor,
   devePerguntarPresenca,
   houveSuspensao,
   lerEstado,
   lerRodandoTodos,
   mensagemErroTimer,
+  novaAusencia,
+  OCIOSO_MS,
   presencaPerguntarEm,
   presencaPrazo,
   referenciaPresenca,
@@ -22,6 +25,7 @@ import {
   segundosRodando,
   sinalDevido,
   totalHojeSeg,
+  type Ausencia,
   type EstadoTimer,
   type TrechoRodando,
 } from '@/lib/timerRelogio';
@@ -286,13 +290,11 @@ async function chamarEdge(corpo: Record<string, unknown>): Promise<RespostaLanca
   return { ok: !!r?.ok, resultados: Array.isArray(r?.resultados) ? r.resultados : [] };
 }
 
-/** 30 min sem uso do computador = pausa (o tempo ocioso não conta). */
-const OCIOSO_MS = 30 * 60 * 1000;
 
 const AVISO_SISTEMA: Record<MotivoSistema, string> = {
   bloqueio: 'Tela bloqueada: o timer foi pausado.',
   suspensao: 'Computador suspenso: o timer foi pausado no momento em que ele dormiu.',
-  ocioso: '30 min sem uso do computador: o timer foi pausado e o tempo parado não contou.',
+  ocioso: 'Sem uso do computador e sem resposta: o timer foi pausado e o tempo parado não contou.',
 };
 
 interface IdleDetectorLike extends EventTarget {
@@ -321,6 +323,10 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   const ultimoTique = useRef(Date.now());
   const ultimaTentativaSinal = useRef(0);
   const prazoTratado = useRef<string | null>(null);
+  // "Você está aí?" depois de OCIOSO_MS sem uso (só a janela que recebe o aviso do sistema)
+  const [ausencia, setAusencia] = useState<Ausencia | null>(null);
+  const ausenciaRef = useRef(ausencia);
+  ausenciaRef.current = ausencia;
 
   // refs com o valor mais recente, para o setInterval não ler estado velho
   const estadoRef = useRef(estado);
@@ -366,6 +372,19 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
       ultimoTique.current = agora;
       setAgoraLocal(agora);
 
+      // 1b. "Você está aí?" sem resposta no prazo: pausa no início da inatividade
+      const aus = ausenciaRef.current;
+      if (aus && ausenciaVencida(aus, agora)) {
+        setAusencia(null);
+        if (!a.pausar.isPending) {
+          a.pausar.mutate(
+            { motivo: 'ocioso', fim: new Date(aus.desdeMs + e.desvioMs).toISOString() },
+            { onSuccess: () => toast.info(AVISO_SISTEMA.ocioso) },
+          );
+        }
+        return;
+      }
+
       const agoraServ = agora + e.desvioMs;
 
       // 2. prazo da presença vencido: o servidor já não conta; fecha agora
@@ -401,6 +420,12 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
       const e = estadoRef.current;
       const a = acoesRef.current;
       if (!e?.rodandoTodos.length || a.pausar.isPending) return;
+      // Ociosidade não pausa na hora: pergunta e espera o clique (decisão do
+      // Igor, 18/11/2026). Tela bloqueada e suspensão seguem pausando direto.
+      if (motivo === 'ocioso') {
+        if (!ausenciaRef.current) setAusencia(novaAusencia(fimMs, Date.now()));
+        return;
+      }
       a.pausar.mutate(
         { motivo, fim: new Date(fimMs + e.desvioMs).toISOString() },
         { onSuccess: () => toast.info(AVISO_SISTEMA[motivo]) },
@@ -485,6 +510,35 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     !somenteConsulta && !!estado && devePerguntarPresenca(referencia, estado.regras, agoraServidor);
   const prazoPresencaMs = referencia && estado ? presencaPrazo(referencia, estado.regras) : null;
 
+  // Parou o timer por outro caminho: a pergunta de ausência perde o sentido.
+  if (ausencia && rodandoTodos.length === 0 && estado) setAusencia(null);
+  const perguntarAusencia = !somenteConsulta && !!ausencia && rodandoTodos.length > 0;
+  const confirmarAusencia = useCallback(() => {
+    setAusencia(null);
+    acoes.sinal.mutate(true); // "estou aqui" também renova a presença
+  }, [acoes.sinal]);
+  const pararPorAusencia = useCallback(() => {
+    const aus = ausenciaRef.current;
+    setAusencia(null);
+    if (!aus) return;
+    acoes.pausar.mutate({
+      motivo: 'ocioso',
+      fim: new Date(aus.desdeMs + (estadoRef.current?.desvioMs ?? 0)).toISOString(),
+    });
+  }, [acoes.pausar]);
+
+  // Pergunta aberta (presença ou ausência) com a janela minimizada: o app
+  // desktop traz a janela completa para a frente — no mini não dá para ler.
+  const perguntando = perguntarPresenca || perguntarAusencia;
+  const chavePergunta = perguntarAusencia
+    ? `aus:${ausencia?.desdeMs}`
+    : perguntarPresenca
+      ? `pres:${referencia?.id}:${referencia?.ultima_presenca_em}`
+      : null;
+  useEffect(() => {
+    if (chavePergunta) ponteDesktop()?.abrirCompleto();
+  }, [chavePergunta]);
+
   // Título da aba: o tempo correndo, ou o pedido de confirmação.
   const tituloDaAba = opcoes.tituloDaAba ?? false;
   useEffect(() => {
@@ -497,12 +551,14 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   useEffect(() => {
     if (!tituloDaAba) return;
     if (!rodando) document.title = 'Timer Flag';
-    else if (perguntarPresenca) document.title = '⚠ Confirme a presença · Timer Flag';
-    else {
+    else if (perguntando) {
+      // pisca na barra de tarefas/aba enquanto espera a resposta
+      document.title = Math.floor(agoraLocal / 1000) % 2 === 0 ? '⚠ Você está aí? · Timer Flag' : '● Responda · Timer Flag';
+    } else {
       const mais = rodandoTodos.length > 1 ? ` +${rodandoTodos.length - 1}` : '';
       document.title = `▶ ${relogio(segundos)} · #${rodando.work_item_id}${mais} · Timer Flag`;
     }
-  }, [tituloDaAba, rodando, rodandoTodos.length, perguntarPresenca, segundos]);
+  }, [tituloDaAba, rodando, rodandoTodos.length, perguntando, segundos, agoraLocal]);
 
   const totalHoje = useMemo(() => (estado ? totalHojeSeg(estado, agoraServidor) : 0), [estado, agoraServidor]);
 
@@ -526,6 +582,10 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     agoraServidor,
     perguntarPresenca,
     prazoPresencaMs,
+    /** "Você está aí?" depois de 10 min sem uso do computador */
+    ausencia: perguntarAusencia ? ausencia : null,
+    confirmarAusencia,
+    pararPorAusencia,
     somenteConsulta,
     acoes,
   };

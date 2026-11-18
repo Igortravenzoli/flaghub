@@ -12,22 +12,54 @@ import type { MotorTimer } from '@/hooks/useTimerRelogio';
 import { horaCurta, presencaPerguntarEm, relogio } from '@/lib/timerRelogio';
 
 /**
- * "Ainda está nesta tarefa?" — aparece a cada presenca_seg com o timer
- * rodando. Não fecha por fora (Esc/clique fora): ou confirma, ou pausa. Sem
- * resposta até o prazo, o motor pausa no momento da pergunta (e o servidor
- * faria o mesmo sozinho).
+ * As duas perguntas que seguram o timer, na janela completa (com a janela
+ * minimizada, o app desktop a traz para a frente — no mini não dá para ler):
+ *
+ * - "Você está aí?": 10 min sem uso do computador. Espera 5 min pelo clique;
+ *   sem resposta, pausa e conta só até o início da inatividade (decisão do
+ *   Igor, 18/11/2026).
+ * - "Ainda está nesta tarefa?": a cada presenca_seg com o timer rodando. Sem
+ *   resposta até o prazo, pausa no momento da pergunta (o servidor faria o
+ *   mesmo sozinho).
+ *
+ * Não fecha por fora (Esc/clique fora): ou confirma, ou pausa.
  */
 export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
-  const { rodandoTodos, referencia, estado, perguntarPresenca, prazoPresencaMs, agoraServidor, acoes } = motor;
+  const { rodandoTodos, referencia, estado, perguntarPresenca, prazoPresencaMs, agoraServidor, acoes, ausencia } = motor;
   if (!referencia || !estado) return null;
 
-  const restante = prazoPresencaMs != null ? Math.max(0, Math.floor((prazoPresencaMs - agoraServidor) / 1000)) : 0;
-  const perguntouEm = presencaPerguntarEm(referencia, estado.regras);
   const varios = rodandoTodos.length > 1;
   const ocupado = acoes.sinal.isPending || acoes.pausar.isPending;
 
+  // A ausência vem primeiro: ela é a mais urgente (o prazo é curto).
+  const porAusencia = !!ausencia;
+  const perguntouEm = presencaPerguntarEm(referencia, estado.regras);
+  const agoraLocal = agoraServidor - estado.desvioMs;
+  const restante = porAusencia
+    ? Math.max(0, Math.floor((ausencia.prazoMs - agoraLocal) / 1000))
+    : prazoPresencaMs != null
+      ? Math.max(0, Math.floor((prazoPresencaMs - agoraServidor) / 1000))
+      : 0;
+  const contaAte = porAusencia
+    ? new Date(ausencia.desdeMs + estado.desvioMs).toISOString()
+    : new Date(perguntouEm).toISOString();
+  const aberto = porAusencia || perguntarPresenca;
+
+  const tarefas = (
+    <>
+      {rodandoTodos.map((r, i) => (
+        <span key={r.id}>
+          {i > 0 && (i === rodandoTodos.length - 1 ? ' e ' : ', ')}
+          <span className="font-medium text-foreground">
+            #{r.work_item_id} {r.titulo}
+          </span>
+        </span>
+      ))}
+    </>
+  );
+
   return (
-    <Dialog open={perguntarPresenca} onOpenChange={() => undefined}>
+    <Dialog open={aberto} onOpenChange={() => undefined}>
       <DialogContent
         className="sm:max-w-md [&>button]:hidden"
         onEscapeKeyDown={(e) => e.preventDefault()}
@@ -36,26 +68,28 @@ export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <UserCheck className="h-5 w-5 text-flag-gold" /> {varios ? 'Ainda está nestas tarefas?' : 'Ainda está nesta tarefa?'}
+            <UserCheck className="h-5 w-5 text-flag-gold" />
+            {porAusencia ? 'Você está aí?' : varios ? 'Ainda está nestas tarefas?' : 'Ainda está nesta tarefa?'}
           </DialogTitle>
           <DialogDescription>
-            {varios ? 'Os timers estão rodando em' : 'O timer está rodando em'}{' '}
-            {rodandoTodos.map((r, i) => (
-              <span key={r.id}>
-                {i > 0 && (i === rodandoTodos.length - 1 ? ' e ' : ', ')}
-                <span className="font-medium text-foreground">
-                  #{r.work_item_id} {r.titulo}
-                </span>
-              </span>
-            ))}
-            .
+            {porAusencia ? (
+              <>
+                O computador está sem uso desde {horaCurta(contaAte)}. {varios ? 'Os timers seguem' : 'O timer segue'}{' '}
+                rodando em {tarefas}.
+              </>
+            ) : (
+              <>
+                {varios ? 'Os timers estão rodando em' : 'O timer está rodando em'} {tarefas}.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-lg border bg-muted/40 p-3 text-center">
           <p className="text-xs text-muted-foreground">Tempo para responder</p>
           <p className="font-mono text-2xl font-semibold tabular-nums">{relogio(restante).slice(3)}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Sem resposta, {varios ? 'todos pausam e contam' : 'o timer pausa e conta'} só até {horaCurta(new Date(perguntouEm).toISOString())}, a hora da pergunta.
+            Sem resposta, {varios ? 'todos pausam e contam' : 'o timer pausa e conta'} só até {horaCurta(contaAte)}
+            {porAusencia ? ', quando o computador parou de ser usado.' : ', a hora da pergunta.'}
           </p>
         </div>
         <DialogFooter className="gap-2 sm:gap-0">
@@ -63,7 +97,9 @@ export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
             variant="outline"
             disabled={ocupado}
             onClick={() =>
-              acoes.pausar.mutate({ motivo: 'sem_confirmacao', fim: new Date(perguntouEm).toISOString() })
+              porAusencia
+                ? motor.pararPorAusencia()
+                : acoes.pausar.mutate({ motivo: 'sem_confirmacao', fim: new Date(perguntouEm).toISOString() })
             }
           >
             Não, parei
@@ -71,7 +107,7 @@ export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
           <Button
             disabled={ocupado}
             className="bg-flag-gold text-flag-navy hover:bg-flag-gold/90"
-            onClick={() => acoes.sinal.mutate(true)}
+            onClick={() => (porAusencia ? motor.confirmarAusencia() : acoes.sinal.mutate(true))}
           >
             Sim, continuo
           </Button>

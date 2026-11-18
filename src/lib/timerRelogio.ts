@@ -385,3 +385,29 @@ export function capacidadeDia(seg: number): Capacidade {
   const luz = Math.round(40 + 8 * Math.sin(Math.PI * frac)); // um pouco mais claro no amarelo
   return { pct, cor: `hsl(${hue} 72% ${luz}%)`, acima };
 }
+
+// ---------------------------------------------------------------------------
+// Ausência (sem uso do computador): pergunta antes de pausar
+// ---------------------------------------------------------------------------
+
+/**
+ * Decisão do Igor (18/11/2026): 10 min sem mouse/teclado NÃO pausa na hora.
+ * Abre "Você está aí?" (a janela vem para a frente) e espera
+ * AUSENCIA_TOLERANCIA_MS pelo clique; sem clique, pausa e conta só até o
+ * início da inatividade.
+ */
+export const OCIOSO_MS = 10 * 60 * 1000;
+export const AUSENCIA_TOLERANCIA_MS = 5 * 60 * 1000;
+
+export interface Ausencia {
+  /** quando o computador parou de ser usado (relógio da máquina) */
+  desdeMs: number;
+  /** até quando dá para responder (relógio da máquina) */
+  prazoMs: number;
+}
+
+export function novaAusencia(desdeMs: number, agoraMs: number): Ausencia {
+  return { desdeMs: Math.min(desdeMs, agoraMs), prazoMs: agoraMs + AUSENCIA_TOLERANCIA_MS };
+}
+
+export const ausenciaVencida = (a: Ausencia | null, agoraMs: number) => !!a && agoraMs >= a.prazoMs;
