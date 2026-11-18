@@ -18,6 +18,8 @@ import {
   type AlvoAnotacao,
 } from '@/components/atividades/ArvoreAtividades';
 import { lerArrasto, type AnotacaoArrastada } from '@/lib/timerArrastar';
+import { herdaveis } from '@/lib/timerTags';
+import { SeletorTags } from '@/components/timer/SeletorTags';
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
 import { hojeISO, prazoSprint } from '@/lib/prazoSprint';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
@@ -26,6 +28,7 @@ import {
   ErroTimer,
   useBuscaTimer,
   useCriarItemTimer,
+  useAcrescentarTags,
   useFilhosTimer,
   useMinhasTarefasTimer,
   type ItemTimer,
@@ -143,11 +146,15 @@ export function PainelTarefas({
     }
     setCriandoEm(pai.id);
     try {
-      const r = await criarTask.mutateAsync({ tipo: 'Task', titulo, paiId: pai.id });
+      // um clique continua um clique: as tags (produto/cliente) vêm do PBI
+      const tags = herdaveis(pai.tags);
+      const r = await criarTask.mutateAsync({ tipo: 'Task', titulo, paiId: pai.id, tags });
       const novo = r.item ?? null;
       const url = novo?.web_url;
       toast.success(`Task #${novo?.id ?? ''} criada em #${pai.id} e atribuída a você.`, {
-        description: 'Descrição, prints e anexos: complete direto no Azure DevOps.',
+        description: tags.length
+          ? `Tags do PBI: ${tags.join(' · ')}. Para mudar, abra no DevOps.`
+          : 'Descrição, prints e anexos: complete direto no Azure DevOps.',
         duration: 10_000,
         ...(url ? { action: { label: 'Abrir no DevOps', onClick: () => window.open(url, '_blank', 'noopener') } } : {}),
       });
@@ -461,13 +468,19 @@ function FormNovoItem({
   onCriado: (item: ItemTimer | null) => void;
 }) {
   const criar = useCriarItemTimer();
+  const acrescentarTags = useAcrescentarTags();
   const [titulo, setTitulo] = useState(tituloInicial);
+  // produto e cliente do pai já vêm marcados (pedido do Igor, 18/11/2026)
+  const herdadas = useMemo(() => herdaveis(pai.tags), [pai.tags]);
+  const [tags, setTags] = useState<string[]>(herdadas);
+  const projeto = (pai as Partial<ItemTimer>).team_project ?? null;
   const valido = titulo.trim().length >= 3 && titulo.trim().length <= 255;
 
   const enviar = async () => {
     if (!valido || criar.isPending) return;
     try {
-      const r = await criar.mutateAsync({ tipo, titulo: titulo.trim(), paiId: pai.id });
+      const r = await criar.mutateAsync({ tipo, titulo: titulo.trim(), paiId: pai.id, tags });
+      acrescentarTags(projeto, tags);
       const url = r.item?.web_url;
       toast.success(`${tipo} #${r.item?.id ?? ''} criada e atribuída a você.`, {
         description: 'Descrição, prints e anexos: complete direto no Azure DevOps.',
@@ -517,8 +530,11 @@ function FormNovoItem({
         placeholder={tipo === 'Task' ? 'Título da Task' : 'Título do PBI'}
         aria-label={tipo === 'Task' ? 'Título da Task' : 'Título do PBI'}
       />
+      <SeletorTags projeto={projeto} valor={tags} onChange={setTags} herdadas={herdadas} />
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] tabular-nums text-muted-foreground">{titulo.trim().length}/255</span>
+        <span className="text-[11px] tabular-nums text-muted-foreground">
+          {titulo.trim().length}/255 · {tags.length} {tags.length === 1 ? 'tag' : 'tags'}
+        </span>
         <div className="flex gap-1.5">
           <Button type="button" size="sm" variant="ghost" className="h-8" onClick={onCancelar}>
             Cancelar

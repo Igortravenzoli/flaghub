@@ -19,6 +19,8 @@ export const KNOWN_MARKERS = new Set([
   'BUG', 'PRIORIZACAO', 'RETORNO QA', 'MELHORIA', 'TRANSBORDO', 'AVIAO',
   'ESCOPOPAGO', 'CRITICIDADE', 'STAGING', 'ROADMAP2026', 'IA', 'BI', 'CTI',
   'FLAG', 'FLG', 'HNK', 'BEES', 'ASPIN', 'ESTOQUECHEK',
+  // ISO (SG-PR-009/004) e as reuniões do Timer (18/11/2026): não são cliente
+  'EVENTO', 'RISCO', 'REUNIÃO', 'REUNIAO',
 ]);
 
 export type TagKind = 'produto' | 'marcador' | 'cliente';

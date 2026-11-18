@@ -11,7 +11,14 @@
 //   • buscar  (fase 2): por título (3+ letras) ou #id, Epic a Task.
 //   • filhos  (fase 2): um nível da hierarquia, para descer na árvore.
 //   • criar   (fase 2): só Task (sob PBI/Bug) e PBI (sob Feature), atribuído à
-//     própria pessoa; PBI sempre na sprint atual do calendário oficial.
+//     própria pessoa; PBI sempre na sprint atual do calendário oficial. Com
+//     `tags` (18/11/2026): produto, cliente e categoria, sem os marcadores
+//     que mudam KPI de sprint.
+//   • tags    (18/11/2026): as tags de um projeto (API Tags do DevOps), uma
+//     chamada por projeto a cada 24 h por instância; o app guarda 24 h.
+//   • reuniao (18/11/2026): "Rec reunião" — Task "Reunião - <tema>" na Feature
+//     escolhida ou, sem Feature (ou se o DevOps recusar o vínculo), no PBI
+//     guarda-chuva "[REUNIÕES] S{n}-{ano}" da sprint, criado na 1ª reunião.
 //   • lancar  (fase 4): soma os trechos fechados (item × dia) no BANCO
 //     (timer_lancamento_preparar: só a própria hora, últimos 7 dias, teto de
 //     12 h contando o que já está no TimeLog) e grava UM documento na
@@ -58,6 +65,7 @@ import {
   idsDaWiql,
   idsDosFilhos,
   interpretarBusca,
+  literalWiql,
   ORG,
   PAI_PERMITIDO,
   paraItem,
@@ -79,11 +87,14 @@ import {
   type Preparado,
 } from './lancamento.ts'
 import { CacheCurto } from './cache.ts'
+import { nomesDasTags, sanitizarTags, tagsDoDevops, tituloGuardaChuva, validarReuniao } from './reuniao.ts'
 
 const REDESCOBRIR_GUID_MS = 10 * 60 * 1000
 const TETO_MINHAS = 200
 const TETO_BUSCA = 30
 const TETO_CRIACOES_POR_HORA = 20
+/** Projeto do PBI guarda-chuva de reuniões (o mesmo da 2700). */
+const PROJETO_REUNIOES = Deno.env.get('TIMER_PROJETO_REUNIOES') || 'Flag.Planejamento'
 
 type Json = Record<string, unknown>
 
@@ -448,6 +459,8 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
   ]
   if (pai.area_path) ops.push({ op: 'add', path: '/fields/System.AreaPath', value: pai.area_path })
   if (v.descricao) ops.push({ op: 'add', path: '/fields/System.Description', value: descricaoHtml(v.descricao) })
+  const tags = sanitizarTags(corpo.tags)
+  if (tags.length > 0) ops.push({ op: 'add', path: '/fields/System.Tags', value: tagsDoDevops(tags) })
 
   // Escrita: SEM repetir 5xx (devopsFetch só repete 429 em POST). Repetir às
   // cegas criaria item duplicado no quadro.
@@ -468,13 +481,179 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
     evento: 'criou_work_item',
     origem: 'servidor',
     work_item_id: item?.id ?? null,
-    detalhe: { tipo: v.tipo, pai: pai.id, projeto: pai.team_project },
+    detalhe: { tipo: v.tipo, pai: pai.id, projeto: pai.team_project, tags: tags.length },
   })
   if (error) console.warn('[timer-devops] trilha de criação falhou:', error.message)
 
   // item novo atribuído à pessoa: "minhas tarefas" precisa reler do Azure
   cacheMinhas.apagar(userId)
+  if (tags.length > 0) cacheTags.apagar(pai.team_project) // tag nova aparece na hora
   return responder(req, 200, { ok: true, item })
+}
+
+// ─── tags do projeto ────────────────────────────────────────────────────────
+
+/** Tags por projeto, 24 h por instância: a lista muda pouco e é igual para todos. */
+const cacheTags = new CacheCurto<string[]>(24 * 60 * 60 * 1000, 50)
+
+async function tagsDoProjeto(req: Request, corpo: Json, pat: string): Promise<Response> {
+  const projeto = typeof corpo.projeto === 'string' ? corpo.projeto.trim().slice(0, 100) : ''
+  if (!projeto) return responder(req, 400, { ok: false, motivo: 'projeto_invalido' })
+  const guardado = cacheTags.ler(projeto)
+  if (guardado) return responder(req, 200, { ok: true, projeto, tags: guardado.valor, doCache: true })
+  const json = await lerAzure(
+    `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/tags?api-version=7.1`,
+    pat,
+  )
+  const tags = nomesDasTags(json)
+  cacheTags.gravar(projeto, tags)
+  return responder(req, 200, { ok: true, projeto, tags })
+}
+
+// ─── Rec reunião ────────────────────────────────────────────────────────────
+
+async function criarNoAzure(projeto: string, tipo: string, ops: Json[]): Promise<Response> {
+  // Escrita: SEM repetir 5xx (ver criar).
+  return await devopsFetch(
+    `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/workitems/$${encodeURIComponent(tipo)}?api-version=7.1`,
+    {
+      method: 'POST',
+      headers: { ...devopsAuthHeaders(patDoTimer() ?? ''), 'Content-Type': 'application/json-patch+json' },
+      body: JSON.stringify(ops),
+    },
+    { client: 'timer-criar' },
+  )
+}
+
+const vinculoPai = (id: number): Json => ({
+  op: 'add',
+  path: '/relations/-',
+  value: { rel: 'System.LinkTypes.Hierarchy-Reverse', url: `https://dev.azure.com/${ORG}/_apis/wit/workItems/${id}` },
+})
+
+/** O PBI "[REUNIÕES] S{n}-{ano}" da sprint; cria na 1ª reunião da sprint. */
+async function guardaChuvaDaSprint(pat: string): Promise<ItemTarefa> {
+  const atual = await iteracaoAtual(PROJETO_REUNIOES, pat)
+  const titulo = tituloGuardaChuva(atual.codigo)
+  const r = idsDaWiql(
+    await wiql(
+      `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = ${literalWiql(PROJETO_REUNIOES)} ` +
+        `AND [System.WorkItemType] = 'Product Backlog Item' AND [System.Title] = ${literalWiql(titulo)} ` +
+        `AND [System.State] <> 'Removed' ORDER BY [System.Id]`,
+      5,
+      pat,
+    ),
+    5,
+  )
+  if (r.ids.length > 0) {
+    const [achado] = await lerItens([r.ids[0]], pat)
+    if (achado) return achado
+  }
+  if (!atual.caminho) throw new ErroDevops(422, `A sprint ${atual.codigo} não existe em ${PROJETO_REUNIOES}.`)
+  const resp = await criarNoAzure(PROJETO_REUNIOES, 'Product Backlog Item', [
+    { op: 'add', path: '/fields/System.Title', value: titulo },
+    { op: 'add', path: '/fields/System.IterationPath', value: atual.caminho },
+    { op: 'add', path: '/fields/System.Tags', value: 'Reunião' },
+    {
+      op: 'add',
+      path: '/fields/System.Description',
+      value: descricaoHtml('Guarda-chuva das reuniões da sprint, criado pelo Timer Flag. Cada Task é uma reunião ("Reunião - <tema>").'),
+    },
+  ])
+  if (!resp.ok) throw new ErroDevops(resp.status, (await resp.text()).slice(0, 300))
+  const criado = paraItem(await resp.json())
+  if (!criado) throw new ErroDevops(502, 'guarda-chuva sem id')
+  return criado
+}
+
+async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
+  if (!acesso.devops_guid) {
+    return responder(req, 409, {
+      ok: false,
+      motivo: 'sem_identidade_devops',
+      mensagem: 'Sua conta não foi encontrada no Azure DevOps; não dá para atribuir a reunião a você.',
+    })
+  }
+  const v = validarReuniao(corpo)
+  if (!v.ok) return responder(req, 400, { ok: false, motivo: v.motivo, mensagem: v.mensagem })
+
+  const sb = admin()
+  const umaHora = new Date(Date.now() - 3_600_000).toISOString()
+  const { count } = await sb
+    .from('timer_eventos')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('evento', 'criou_work_item')
+    .gte('criado_em', umaHora)
+  if ((count ?? 0) >= TETO_CRIACOES_POR_HORA) {
+    return responder(req, 429, { ok: false, motivo: 'limite_de_criacao', mensagem: 'Limite de 20 itens criados por hora.' })
+  }
+
+  const camposDaTask = (iteracao: string, area: string | null): Json[] => {
+    const ops: Json[] = [
+      { op: 'add', path: '/fields/System.Title', value: v.titulo },
+      { op: 'add', path: '/fields/System.IterationPath', value: iteracao },
+      { op: 'add', path: '/fields/System.AssignedTo', value: acesso.devops_email ?? acesso.email },
+      { op: 'add', path: '/fields/System.Tags', value: tagsDoDevops(v.tags) },
+    ]
+    if (area) ops.push({ op: 'add', path: '/fields/System.AreaPath', value: area })
+    return ops
+  }
+
+  let item: ItemTarefa | null = null
+  let pai: ItemTarefa | null = null
+  let recusouFeature = false
+
+  // 1. Na Feature escolhida, se o DevOps aceitar o vínculo Task → Feature.
+  if (v.featureId) {
+    const [feature] = await lerItens([v.featureId], pat)
+    if (!feature || feature.work_item_type !== 'Feature' || ESTADOS_FECHADOS.includes(feature.state ?? '') || !feature.team_project) {
+      return responder(req, 422, { ok: false, motivo: 'feature_invalida', mensagem: `O #${v.featureId} não é uma Feature aberta.` })
+    }
+    const atual = await iteracaoAtual(feature.team_project, pat)
+    const iteracao = atual.caminho ?? feature.iteration_path ?? feature.team_project
+    const resp = await criarNoAzure(feature.team_project, 'Task', [...camposDaTask(iteracao, feature.area_path), vinculoPai(feature.id)])
+    if (resp.ok) {
+      item = paraItem(await resp.json())
+      pai = feature
+    } else if (resp.status === 400) {
+      // vínculo recusado pelas regras do processo: cai no guarda-chuva
+      recusouFeature = true
+      console.warn(`[timer-devops] Task em Feature recusada: ${(await resp.text()).slice(0, 300)}`)
+    } else {
+      throw new ErroDevops(resp.status, (await resp.text()).slice(0, 300))
+    }
+  }
+
+  // 2. Sem Feature (ou recusada): o guarda-chuva da sprint.
+  if (!item) {
+    const guarda = await guardaChuvaDaSprint(pat)
+    const iteracao = guarda.iteration_path ?? PROJETO_REUNIOES
+    const resp = await criarNoAzure(guarda.team_project ?? PROJETO_REUNIOES, 'Task', [
+      ...camposDaTask(iteracao, guarda.area_path),
+      vinculoPai(guarda.id),
+    ])
+    if (!resp.ok) throw new ErroDevops(resp.status, (await resp.text()).slice(0, 300))
+    item = paraItem(await resp.json())
+    pai = guarda
+  }
+
+  const { error } = await sb.from('timer_eventos').insert({
+    user_id: userId,
+    evento: 'criou_work_item',
+    origem: 'servidor',
+    work_item_id: item?.id ?? null,
+    detalhe: { tipo: 'Task', reuniao: true, pai: pai?.id ?? null, feature: v.featureId, recusouFeature, tags: v.tags.length },
+  })
+  if (error) console.warn('[timer-devops] trilha da reunião falhou:', error.message)
+
+  cacheMinhas.apagar(userId)
+  return responder(req, 200, {
+    ok: true,
+    item,
+    pai: pai ? { id: pai.id, title: pai.title, work_item_type: pai.work_item_type } : null,
+    recusouFeature,
+  })
 }
 
 // ─── lançamento (fase 4) ─────────────────────────────────────────────────────
@@ -693,7 +872,8 @@ serve(async (req) => {
   if (corpo.op === 'ativar') return await ativar(req, quem.user, quem.token)
 
   const op = corpo.op
-  if (op !== 'minhas' && op !== 'buscar' && op !== 'filhos' && op !== 'criar' && op !== 'lancar' && op !== 'relancar') {
+  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'reuniao']
+  if (typeof op !== 'string' || !OPS.includes(op)) {
     return responder(req, 400, { ok: false, motivo: 'op_desconhecida' })
   }
 
@@ -709,6 +889,8 @@ serve(async (req) => {
     if (op === 'filhos') return await filhos(req, corpo, pat)
     if (op === 'lancar') return await lancar(req, quem.user.id, corpo, pat)
     if (op === 'relancar') return await relancar(req, quem.user.id, corpo, pat)
+    if (op === 'tags') return await tagsDoProjeto(req, corpo, pat)
+    if (op === 'reuniao') return await reuniao(req, quem.user.id, acesso, corpo, pat)
     return await criar(req, quem.user.id, acesso, corpo, pat)
   } catch (e) {
     return erroDevops(req, e)
