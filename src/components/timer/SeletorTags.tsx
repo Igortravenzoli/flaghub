@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Check, ChevronDown, Loader2, Plus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { useTagsTimer } from '@/hooks/useTimerTarefas';
+import { ErroTimer, useTagsTimer } from '@/hooks/useTimerTarefas';
 import { agruparTags, buscarTags, grafiaExistente, tipoDaTag, type TipoTag } from '@/lib/timerTags';
 
 const TOM: Record<TipoTag, string> = {
@@ -39,6 +39,12 @@ export function SeletorTags({
   const tem = (t: string) => valor.some((v) => v.toUpperCase() === t.toUpperCase());
   const alternar = (t: string) => onChange(tem(t) ? valor.filter((v) => v.toUpperCase() !== t.toUpperCase()) : [...valor, t]);
   const semProduto = produtoObrigatorio && !valor.some((t) => tipoDaTag(t) === 'produto');
+  // sem a lista, cada lista diz o porquê (e o código, para achar a causa)
+  const erro = lista.error
+    ? `Não foi possível ler as tags do DevOps${lista.error instanceof ErroTimer ? ` (${lista.error.motivo})` : ''}.`
+    : !projeto
+      ? 'Sem projeto para ler as tags.'
+      : null;
 
   return (
     <div className="space-y-2">
@@ -68,7 +74,7 @@ export function SeletorTags({
         alerta={semProduto}
         itens={produtos}
         carregando={lista.isLoading}
-        vazio="Nenhuma tag de produto neste projeto."
+        vazio={erro ?? 'Nenhuma tag de produto neste projeto.'}
         placeholder="Pesquisar produto"
         escolhido={tem}
         onEscolher={alternar}
@@ -78,7 +84,7 @@ export function SeletorTags({
         rotulo="Cliente"
         itens={clientes}
         carregando={lista.isLoading}
-        vazio="Nenhuma tag de cliente neste projeto."
+        vazio={erro ?? 'Nenhuma tag de cliente neste projeto.'}
         placeholder="Pesquisar cliente"
         escolhido={tem}
         onEscolher={alternar}
@@ -89,7 +95,7 @@ export function SeletorTags({
         rotulo="Categoria"
         itens={categorias}
         carregando={lista.isLoading}
-        vazio="Nenhuma tag de categoria neste projeto."
+        vazio={erro ?? 'Nenhuma tag de categoria neste projeto.'}
         placeholder="Pesquisar categoria"
         escolhido={tem}
         onEscolher={alternar}

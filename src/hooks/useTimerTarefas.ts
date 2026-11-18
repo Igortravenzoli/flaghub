@@ -184,7 +184,7 @@ export function useAcrescentarTags() {
   );
 }
 
-// ─── Rec reunião ────────────────────────────────────────────────────────────
+// ─── Timer em Reunião ───────────────────────────────────────────────────────
 
 export interface NovaReuniao {
   tema: string;
