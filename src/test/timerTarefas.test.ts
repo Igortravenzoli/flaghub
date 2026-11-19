@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   acharIteracao,
+  atribuidoA,
   caminhoDoNo,
   descricaoHtml,
   ehRaiz,
+  estadoConcluido,
   hojeSaoPaulo,
   idsDaWiql,
   idsDosFilhos,
@@ -207,5 +209,24 @@ describe('pbisDaSprint (anotação → Task)', () => {
     const itens = [it_(1, 'Task', S, { parent_id: 2 }), it_(3, 'Task', S, { parent_id: 4 })];
     const ancestrais = [it_(2, 'Product Backlog Item', S, { state: 'Done' }), it_(4, 'Feature', S)];
     expect(pbisDaSprint(itens, ancestrais, 'S23-2026')).toEqual([]);
+  });
+});
+
+describe('concluir (encerrar demanda leva a Task a Done)', () => {
+  it('pega o estado da categoria Completed do processo; sem ela, Done', () => {
+    const scrum = { value: [{ name: 'To Do', category: 'Proposed' }, { name: 'In Progress', category: 'InProgress' }, { name: 'Done', category: 'Completed' }, { name: 'Removed', category: 'Removed' }] };
+    const agile = { value: [{ name: 'New', category: 'Proposed' }, { name: 'Active', category: 'InProgress' }, { name: 'Closed', category: 'Completed' }] };
+    expect(estadoConcluido(scrum)).toBe('Done');
+    expect(estadoConcluido(agile)).toBe('Closed');
+    expect(estadoConcluido(null)).toBe('Done');
+    expect(estadoConcluido({ value: [{ name: 'Active', category: 'InProgress' }] })).toBe('Done');
+  });
+  it('só reconhece a Task atribuída à própria pessoa (GUID ou e-mail, sem caixa)', () => {
+    const pessoa = { devops_guid: 'AB12-cd', devops_email: 'Igor.Cardoso@flag.com.br', email: 'igor.cardoso@flag.com.br' };
+    expect(atribuidoA({ id: 'ab12-CD', uniqueName: 'outro@flag.com.br' }, pessoa)).toBe(true);
+    expect(atribuidoA({ uniqueName: 'igor.cardoso@FLAG.com.br' }, pessoa)).toBe(true);
+    expect(atribuidoA({ id: 'zz', uniqueName: 'cecilia@flag.com.br' }, pessoa)).toBe(false);
+    expect(atribuidoA(null, pessoa)).toBe(false);
+    expect(atribuidoA('igor.cardoso@flag.com.br', pessoa)).toBe(false);
   });
 });

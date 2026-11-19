@@ -35,7 +35,8 @@ import {
   type ItemTimer,
 } from '@/hooks/useTimerTarefas';
 
-type Criando = { tipo: 'Task' | 'PBI'; pai: ItemDevops } | null;
+/** `iniciar: false` = veio de arrastar uma anotação: cria sem iniciar o timer */
+type Criando = { tipo: 'Task' | 'PBI'; pai: ItemDevops; iniciar?: boolean } | null;
 
 /**
  * Painel "Tasks atribuídas" do Timer: a árvore do que está atribuído à pessoa
@@ -137,19 +138,21 @@ export function PainelTarefas({
       return n;
     });
 
-  // Anotação → Task num clique (ou ao soltar): o título é o texto da anotação.
-  const criarDaAnotacao = async (pai: ItemDevops, a: AnotacaoArrastada) => {
+  // Anotação → Task num clique (▶) ou ao soltar: o título é o texto da
+  // anotação. O ▶ cria e já inicia o timer (decisão de 16/11); arrastar só
+  // MOVE a anotação para dentro do PBI, sem iniciar (decisão do Igor, 19/11).
+  const criarDaAnotacao = async (pai: ItemDevops, a: AnotacaoArrastada, iniciar: boolean) => {
     const titulo = a.texto.trim();
     if (criarTask.isPending) return;
     if (titulo.length < 3) {
-      setCriando({ tipo: 'Task', pai }); // curto demais: abre o formulário para completar
+      setCriando({ tipo: 'Task', pai, iniciar }); // curto demais: abre o formulário para completar
       return;
     }
     // Cliente e Produto são obrigatórios (decisão do Igor, 18/11/2026): o um
     // clique herda os dois do CAMPO do PBI; faltando algum, abre o formulário.
     const { cliente, produto } = pai as Partial<ItemTimer>;
     if (!cliente || !produto) {
-      setCriando({ tipo: 'Task', pai });
+      setCriando({ tipo: 'Task', pai, iniciar });
       toast.info(`O #${pai.id} não tem cliente e produto preenchidos: complete na Task.`);
       return;
     }
@@ -158,19 +161,19 @@ export function PainelTarefas({
       const r = await criarTask.mutateAsync({ tipo: 'Task', titulo, paiId: pai.id, cliente, produto, herdado: true });
       const novo = r.item ?? null;
       const url = novo?.web_url;
-      toast.success(`Task #${novo?.id ?? ''} criada em #${pai.id} e atribuída a você.`, {
+      toast.success(`Task #${novo?.id ?? ''} criada em #${pai.id} e atribuída a você${iniciar ? '' : ' (timer parado)'}.`, {
         description: `Cliente ${cliente} · produto ${produto} (do PBI). Para mudar, abra no DevOps.`,
         duration: 10_000,
         ...(url ? { action: { label: 'Abrir no DevOps', onClick: () => window.open(url, '_blank', 'noopener') } } : {}),
       });
       if (novo) {
         onItemCriado?.(novo, a.id);
-        if (TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
+        if (iniciar && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
       }
     } catch (e) {
       // o que veio do PBI não coube na lista da Task: completa no formulário
       if (e instanceof ErroTimer && ['sem_cliente', 'sem_produto'].includes(e.motivo)) {
-        setCriando({ tipo: 'Task', pai });
+        setCriando({ tipo: 'Task', pai, iniciar });
         toast.info(`${e.message} Complete na Task.`);
       } else {
         toast.error(e instanceof ErroTimer ? e.message : 'Não foi possível criar a Task.');
@@ -185,11 +188,11 @@ export function PainelTarefas({
     arrastando: !!anotacaoArrastada,
     ocupado: criandoEm,
     onEscolher: (pai) => {
-      if (anotacao) void criarDaAnotacao(pai, anotacao);
+      if (anotacao) void criarDaAnotacao(pai, anotacao, true);
     },
     onSoltar: (pai, dt) => {
       const a = lerArrasto(dt) ?? anotacaoArrastada;
-      if (a) void criarDaAnotacao(pai, a);
+      if (a) void criarDaAnotacao(pai, a, false);
     },
   };
 
@@ -212,7 +215,7 @@ export function PainelTarefas({
         onCriado={(novo) => {
           setCriando(null);
           if (novo) onItemCriado?.(novo, tipo === 'Task' ? anotacao?.id : undefined);
-          if (novo && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
+          if (novo && criando?.iniciar !== false && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
         }}
       />
     ) : null;
