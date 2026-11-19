@@ -292,7 +292,7 @@ export function DialogoReuniao({
                     : undefined
             }
           >
-            {criar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Gravar reunião'}
+            {criar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cronometrar'}
           </Button>
         </DialogFooter>
       </DialogContent>
