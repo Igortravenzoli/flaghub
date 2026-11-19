@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ClipboardList, List, Loader2, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -17,6 +17,7 @@ import {
   useAcrescentarTags,
   useCamposTimer,
   useCriarItemTimer,
+  useBuscaTimer,
   useReuniaoTimer,
   type ItemTimer,
 } from '@/hooks/useTimerTarefas';
@@ -108,10 +109,31 @@ export function DialogoReuniao({
     () => (destino === 'feature' ? features : destino === 'pbi' ? pbis : tarefas),
     [destino, features, pbis, tarefas],
   );
+  // Busca no DevOps inteiro (3 letras ou #id), não só na sua árvore: o PBI
+  // que não é seu também aparece (pedido do Igor, 19/11/2026). Mesma op
+  // `buscar` do "Filtrar ou buscar no DevOps", com espera de 400 ms.
+  const [buscaAtrasada, setBuscaAtrasada] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => setBuscaAtrasada(busca), 400);
+    return () => window.clearTimeout(t);
+  }, [busca]);
+  const remota = useBuscaTimer(buscaAtrasada);
+  const termo = buscaAtrasada.trim();
+  const buscaRemota = /^#?\d+$/.test(termo) || termo.replace(/^#/, '').length >= 3;
+
   const achados = useMemo(() => {
+    const tipos = destino === 'feature' ? ['Feature'] : destino === 'pbi' ? ['Product Backlog Item', 'Bug'] : ['Task'];
+    const aberto = (i: ItemDevops) => !['Done', 'Closed', 'Removed'].includes(i.state ?? '');
     const alvo = semAcento(busca.trim().replace(/^#/, ''));
-    return candidatos.filter((f) => !alvo || semAcento(`${f.id} ${f.title ?? ''}`).includes(alvo)).slice(0, 6);
-  }, [candidatos, busca]);
+    const locais = candidatos.filter((f) => !alvo || semAcento(`${f.id} ${f.title ?? ''}`).includes(alvo));
+    const doDevops = buscaRemota
+      ? [...(remota.data?.itens ?? []), ...(remota.data?.ancestrais ?? [])].filter(
+          (i) => tipos.includes(i.work_item_type ?? '') && aberto(i),
+        )
+      : [];
+    const vistos = new Set<number>();
+    return [...locais, ...doDevops].filter((i) => (vistos.has(i.id) ? false : (vistos.add(i.id), true))).slice(0, 30);
+  }, [candidatos, busca, buscaRemota, remota.data, destino]);
 
   const criaItem = destino !== 'task';
   const temaOk = !criaItem || (tema.trim().length >= 3 && tema.trim().length <= 230);
@@ -242,10 +264,10 @@ export function DialogoReuniao({
                 aria-label={d.busca}
                 className="h-8 text-xs"
               />
-              {candidatos.length === 0 ? (
+              {achados.length === 0 && !busca.trim() ? (
                 <p className="text-[11px] text-muted-foreground">{d.nenhum}</p>
               ) : (
-                <div className="overflow-hidden rounded-md border border-border">
+                <div className="max-h-48 overflow-y-auto rounded-md border border-border">
                   {achados.map((f) => (
                     <button
                       key={f.id}
@@ -262,9 +284,17 @@ export function DialogoReuniao({
                       <span className="shrink-0 font-mono text-[10px] text-muted-foreground">#{f.id}</span>
                     </button>
                   ))}
-                  {achados.length === 0 && <p className="px-2 py-1.5 text-[11px] text-muted-foreground">Nada encontrado.</p>}
+                  {achados.length === 0 && (
+                    <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                      {remota.isFetching ? 'Buscando no DevOps…' : 'Nada encontrado.'}
+                    </p>
+                  )}
                 </div>
               )}
+              <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                {remota.isFetching && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
+                {buscaRemota ? 'Inclui o que achou no DevOps inteiro.' : 'Não achou? Digite 3 letras ou o #id para buscar no DevOps inteiro.'}
+              </p>
               <p className="text-[11px] text-muted-foreground">{AJUDA[destino]}</p>
             </div>
           </div>
