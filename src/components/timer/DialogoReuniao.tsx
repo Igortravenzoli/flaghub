@@ -12,10 +12,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { ErroTimer, useAcrescentarTags, useReuniaoTimer, type ItemTimer } from '@/hooks/useTimerTarefas';
+import { ErroTimer, useAcrescentarTags, useCamposTimer, useReuniaoTimer, type ItemTimer } from '@/hooks/useTimerTarefas';
 import type { ItemDevops } from '@/lib/minhasAtividades';
-import { temProduto } from '@/lib/timerTags';
 import { SeletorTags } from '@/components/timer/SeletorTags';
+import { classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
 
 type Destino = 'feature' | 'task' | 'raiz';
 
@@ -62,7 +62,7 @@ export function DialogoReuniao({
   const [feature, setFeature] = useState<ItemDevops | null>(null);
   const [task, setTask] = useState<ItemDevops | null>(null);
   const [projetoRaiz, setProjetoRaiz] = useState<string | null>(null);
-  const [tags, setTags] = useState<string[]>([]);
+  const [cls, setCls] = useState<Classificacao>(() => classificacaoVazia());
 
   const projetoPadrao = projetos.includes('Flag.Planejamento') ? 'Flag.Planejamento' : (projetos[0] ?? null);
   const projeto =
@@ -72,7 +72,10 @@ export function DialogoReuniao({
         ? projetoRaiz ?? projetoPadrao
         : null;
 
-  const candidatos = destino === 'feature' ? features : destino === 'task' ? tarefas : [];
+  const candidatos = useMemo(
+    () => (destino === 'feature' ? features : destino === 'task' ? tarefas : []),
+    [destino, features, tarefas],
+  );
   const achados = useMemo(() => {
     const alvo = semAcento(busca.trim().replace(/^#/, ''));
     return candidatos.filter((f) => !alvo || semAcento(`${f.id} ${f.title ?? ''}`).includes(alvo)).slice(0, 6);
@@ -81,7 +84,9 @@ export function DialogoReuniao({
   const criaItem = destino !== 'task';
   const temaOk = !criaItem || tema.trim().length >= 3;
   const ondeOk = destino === 'feature' ? !!feature : destino === 'task' ? !!task : !!projeto;
-  const produtoOk = !criaItem || temProduto(tags);
+  const campos = useCamposTimer(projeto, 'Task');
+  // Cliente e Produto obrigatórios quando o projeto tem os campos (18/11/2026)
+  const produtoOk = !criaItem || classificacaoCompleta(cls, campos.data);
   const pronto = temaOk && ondeOk && produtoOk && !criar.isPending;
 
   const limpar = () => {
@@ -90,7 +95,7 @@ export function DialogoReuniao({
     setFeature(null);
     setTask(null);
     setProjetoRaiz(null);
-    setTags([]);
+    setCls(classificacaoVazia());
     setDestino('feature');
   };
   const mudarDestino = (d: Destino) => {
@@ -113,9 +118,11 @@ export function DialogoReuniao({
         tema: tema.trim(),
         featureId: destino === 'feature' ? feature?.id ?? null : null,
         projeto,
-        tags,
+        tags: cls.tags,
+        cliente: cls.cliente,
+        produto: cls.produto,
       });
-      acrescentarTags(projeto, tags);
+      acrescentarTags(projeto, cls.tags);
       const onde = r.pai ? `#${r.pai.id} ${r.pai.title ?? ''}` : `na raiz de ${projeto}`;
       toast.success(`Reunião #${r.item.id} criada ${r.pai ? `em ${onde}` : onde}. O timer começou.`, {
         description: r.recusouFeature
@@ -264,7 +271,7 @@ export function DialogoReuniao({
                   />
                 </div>
               </div>
-              <SeletorTags projeto={projeto} valor={tags} onChange={setTags} produtoObrigatorio />
+              <SeletorTags projeto={projeto} tipo="Task" valor={cls} onChange={setCls} />
             </>
           )}
         </form>
@@ -288,7 +295,7 @@ export function DialogoReuniao({
                 : !temaOk
                   ? 'Escreva o tema'
                   : !produtoOk
-                    ? 'Escolha o produto'
+                    ? 'Escolha o cliente e o produto'
                     : undefined
             }
           >

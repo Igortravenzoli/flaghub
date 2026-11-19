@@ -14,6 +14,10 @@
 //     própria pessoa; PBI sempre na sprint atual do calendário oficial. Com
 //     `tags` (18/11/2026): produto, cliente e categoria, sem os marcadores
 //     que mudam KPI de sprint.
+//   • campos  (18/11/2026): valores permitidos de Cliente (Custom.PRODUTOSS) e
+//     Produto (Custom.CLIENTESS) — os nomes são TROCADOS no DevOps — por
+//     projeto e tipo; 24 h por instância. Na criação, cliente/produto vão
+//     nesses campos, conferidos na lista (fora dela o DevOps recusa).
 //   • tags    (18/11/2026): as tags de um projeto (API Tags do DevOps), uma
 //     chamada por projeto a cada 24 h por instância; o app guarda 24 h.
 //   • reuniao (18/11/2026): "Rec reunião" — Task "Reunião - <tema>" na Feature
@@ -57,6 +61,8 @@ import {
 } from './sso.ts'
 import {
   acharIteracao,
+  CAMPO_CLIENTE,
+  CAMPO_PRODUTO,
   CAMPOS_ITEM,
   descricaoHtml,
   ehRaiz,
@@ -86,7 +92,15 @@ import {
   type Preparado,
 } from './lancamento.ts'
 import { CacheCurto } from './cache.ts'
-import { nomesDasTags, sanitizarTags, tagsDoDevops, validarReuniao } from './reuniao.ts'
+import {
+  nomesDasTags,
+  opsDeClassificacao,
+  sanitizarTags,
+  textoDeCampo,
+  validarReuniao,
+  valoresPermitidos,
+  type Permitidos,
+} from './reuniao.ts'
 
 const REDESCOBRIR_GUID_MS = 10 * 60 * 1000
 const TETO_MINHAS = 200
@@ -457,7 +471,15 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
   if (pai.area_path) ops.push({ op: 'add', path: '/fields/System.AreaPath', value: pai.area_path })
   if (v.descricao) ops.push({ op: 'add', path: '/fields/System.Description', value: descricaoHtml(v.descricao) })
   const tags = sanitizarTags(corpo.tags)
-  if (tags.length > 0) ops.push({ op: 'add', path: '/fields/System.Tags', value: tagsDoDevops(tags) })
+  const permitidos = await permitidosDe(pai.team_project, v.tipo, pat)
+  const cls = opsDeClassificacao(
+    { cliente: textoDeCampo(corpo.cliente), produto: textoDeCampo(corpo.produto), tags },
+    permitidos,
+    true, // cliente e produto obrigatórios (quando o tipo tem o campo)
+    corpo.herdado === true, // um clique: o que veio do pai e não cabe na lista é descartado
+  )
+  if (!cls.ok) return responder(req, 422, { ok: false, motivo: cls.motivo, mensagem: cls.mensagem })
+  ops.push(...cls.ops)
 
   // Escrita: SEM repetir 5xx (devopsFetch só repete 429 em POST). Repetir às
   // cegas criaria item duplicado no quadro.
@@ -478,7 +500,7 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
     evento: 'criou_work_item',
     origem: 'servidor',
     work_item_id: item?.id ?? null,
-    detalhe: { tipo: v.tipo, pai: pai.id, projeto: pai.team_project, tags: tags.length },
+    detalhe: { tipo: v.tipo, pai: pai.id, projeto: pai.team_project, tags: tags.length, cliente: !!cls.cliente, produto: !!cls.produto },
   })
   if (error) console.warn('[timer-devops] trilha de criação falhou:', error.message)
 
@@ -519,6 +541,49 @@ async function tagsDoProjeto(req: Request, corpo: Json, pat: string): Promise<Re
   }
   cacheTags.gravar(projeto, tags)
   return responder(req, 200, { ok: true, projeto, tags })
+}
+
+// ─── Cliente e Produto (picklists) ──────────────────────────────────────────
+
+/** Valores permitidos por projeto + tipo, 24 h por instância. */
+const cachePermitidos = new CacheCurto<Permitidos>(24 * 60 * 60 * 1000, 50)
+
+/** allowedValues de um campo; o tipo sem o campo (404/400) = lista vazia (não grava). */
+async function valoresDoCampo(projeto: string, tipo: string, campo: string, pat: string): Promise<string[]> {
+  try {
+    // sem $expand=allowedValues a API responde 200 e omite a lista
+    const json = await lerAzure(
+      `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/workitemtypes/${encodeURIComponent(tipo)}` +
+        `/fields/${encodeURIComponent(campo)}?%24expand=allowedValues&api-version=7.1`,
+      pat,
+    )
+    return valoresPermitidos(json)
+  } catch (e) {
+    if (e instanceof ErroDevops && (e.status === 404 || e.status === 400)) return []
+    throw e
+  }
+}
+
+async function permitidosDe(projeto: string, tipo: string, pat: string): Promise<Permitidos> {
+  const chave = `${projeto}|${tipo}`
+  const guardado = cachePermitidos.ler(chave)
+  if (guardado) return guardado.valor
+  const [clientes, produtos] = await Promise.all([
+    valoresDoCampo(projeto, tipo, CAMPO_CLIENTE, pat),
+    valoresDoCampo(projeto, tipo, CAMPO_PRODUTO, pat),
+  ])
+  const p = { clientes, produtos }
+  console.log(`[timer-devops] campos de ${chave}: ${clientes.length} clientes, ${produtos.length} produtos`)
+  if (clientes.length + produtos.length > 0) cachePermitidos.gravar(chave, p)
+  return p
+}
+
+async function camposDoProjeto(req: Request, corpo: Json, pat: string): Promise<Response> {
+  const projeto = typeof corpo.projeto === 'string' ? corpo.projeto.trim().slice(0, 100) : ''
+  if (!projeto) return responder(req, 400, { ok: false, motivo: 'projeto_invalido' })
+  const tipo = corpo.tipo === 'Product Backlog Item' || corpo.tipo === 'PBI' ? 'Product Backlog Item' : 'Task'
+  const p = await permitidosDe(projeto, tipo, pat)
+  return responder(req, 200, { ok: true, projeto, tipo, ...p })
 }
 
 // ─── Rec reunião ────────────────────────────────────────────────────────────
@@ -565,15 +630,20 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     return responder(req, 429, { ok: false, motivo: 'limite_de_criacao', mensagem: 'Limite de 20 itens criados por hora.' })
   }
 
-  const camposDaTask = (iteracao: string, area: string | null): Json[] => {
+  const camposDaTask = (iteracao: string, area: string | null, classificacao: Json[]): Json[] => {
     const ops: Json[] = [
       { op: 'add', path: '/fields/System.Title', value: v.titulo },
       { op: 'add', path: '/fields/System.IterationPath', value: iteracao },
       { op: 'add', path: '/fields/System.AssignedTo', value: acesso.devops_email ?? acesso.email },
-      { op: 'add', path: '/fields/System.Tags', value: tagsDoDevops(v.tags) },
+      ...classificacao,
     ]
     if (area) ops.push({ op: 'add', path: '/fields/System.AreaPath', value: area })
     return ops
+  }
+  /** cliente/produto conferidos na lista do projeto de destino; obrigatórios se houver o campo */
+  const classificar = async (proj: string) => {
+    const permitidos = await permitidosDe(proj, 'Task', pat)
+    return opsDeClassificacao({ cliente: v.cliente, produto: v.produto, tags: v.tags }, permitidos, true)
   }
 
   let item: ItemTarefa | null = null
@@ -590,9 +660,11 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     }
     projeto = feature.team_project
     area = feature.area_path
+    const cls = await classificar(feature.team_project)
+    if (!cls.ok) return responder(req, 422, { ok: false, motivo: cls.motivo, mensagem: cls.mensagem })
     const atual = await iteracaoAtual(feature.team_project, pat)
     const iteracao = atual.caminho ?? feature.iteration_path ?? feature.team_project
-    const resp = await criarNoAzure(feature.team_project, 'Task', [...camposDaTask(iteracao, area), vinculoPai(feature.id)])
+    const resp = await criarNoAzure(feature.team_project, 'Task', [...camposDaTask(iteracao, area, cls.ops), vinculoPai(feature.id)])
     if (resp.ok) {
       item = paraItem(await resp.json())
       pai = feature
@@ -608,8 +680,10 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
   // 2. Na raiz do projeto (sem pai), na sprint atual.
   if (!item) {
     if (!projeto) return responder(req, 400, { ok: false, motivo: 'sem_destino', mensagem: 'Escolha o projeto da reunião.' })
+    const cls = await classificar(projeto)
+    if (!cls.ok) return responder(req, 422, { ok: false, motivo: cls.motivo, mensagem: cls.mensagem })
     const atual = await iteracaoAtual(projeto, pat)
-    const resp = await criarNoAzure(projeto, 'Task', camposDaTask(atual.caminho ?? projeto, area))
+    const resp = await criarNoAzure(projeto, 'Task', camposDaTask(atual.caminho ?? projeto, area, cls.ops))
     if (!resp.ok) throw new ErroDevops(resp.status, (await resp.text()).slice(0, 300))
     item = paraItem(await resp.json())
   }
@@ -848,7 +922,7 @@ serve(async (req) => {
   if (corpo.op === 'ativar') return await ativar(req, quem.user, quem.token)
 
   const op = corpo.op
-  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'reuniao']
+  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'campos', 'reuniao']
   if (typeof op !== 'string' || !OPS.includes(op)) {
     return responder(req, 400, { ok: false, motivo: 'op_desconhecida' })
   }
@@ -866,6 +940,7 @@ serve(async (req) => {
     if (op === 'lancar') return await lancar(req, quem.user.id, corpo, pat)
     if (op === 'relancar') return await relancar(req, quem.user.id, corpo, pat)
     if (op === 'tags') return await tagsDoProjeto(req, corpo, pat)
+    if (op === 'campos') return await camposDoProjeto(req, corpo, pat)
     if (op === 'reuniao') return await reuniao(req, quem.user.id, acesso, corpo, pat)
     return await criar(req, quem.user.id, acesso, corpo, pat)
   } catch (e) {

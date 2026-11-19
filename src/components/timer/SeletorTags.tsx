@@ -2,110 +2,107 @@ import { useMemo, useState } from 'react';
 import { Check, ChevronDown, Loader2, Plus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { ErroTimer, useTagsConhecidas, useTagsTimer } from '@/hooks/useTimerTarefas';
-import { agruparTags, buscarTags, grafiaExistente, tipoDaTag, type TipoTag } from '@/lib/timerTags';
-
-const TOM: Record<TipoTag, string> = {
-  produto: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
-  cliente: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-  marcador: 'bg-muted text-foreground',
-  categoria: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-  kpi: 'bg-muted text-muted-foreground',
-};
+import { ErroTimer, useCamposTimer, useTagsConhecidas, useTagsTimer } from '@/hooks/useTimerTarefas';
+import { buscarTags, categoriasDasTags, grafiaExistente, tipoDaTag, type Classificacao } from '@/lib/timerTags';
 
 /**
- * Tags de uma Task/PBI/reunião (pedido do Igor, 18/11/2026): produto, cliente
- * e categoria, lidos do DevOps (useTagsTimer, cache de 24 h). As herdadas do
- * item pai já vêm em `valor`. Produto e cliente são listas com busca que já
- * mostram o que existe; marcadores que mudam KPI de sprint não aparecem (a
- * edge também os recusa). Tag nova de cliente só com um clique de confirmação.
+ * Produto, Cliente e Categoria de uma Task/PBI/reunião, como no DevOps da Flag
+ * (mapeamento da Mode.IA, 18/11/2026):
+ *   • Produto e Cliente são CAMPOS de lista fechada (Custom.CLIENTESS e
+ *     Custom.PRODUTOSS — os nomes são trocados no DevOps), uma escolha cada,
+ *     obrigatórios quando o tipo tem o campo; a lista vem dos valores
+ *     permitidos (useCamposTimer). Do item pai, herda só o que está no campo.
+ *   • Categoria são as tags (System.Tags), várias, sem os marcadores de KPI;
+ *     tag nova com um clique de confirmação.
  */
 export function SeletorTags({
   projeto,
+  tipo = 'Task',
   valor,
   onChange,
-  herdadas = [],
-  produtoObrigatorio = false,
 }: {
   projeto: string | null | undefined;
-  valor: string[];
-  onChange: (tags: string[]) => void;
-  /** vieram do item pai (só para o selo "do pai") */
-  herdadas?: string[];
-  produtoObrigatorio?: boolean;
+  tipo?: 'Task' | 'Product Backlog Item';
+  valor: Classificacao;
+  onChange: (c: Classificacao) => void;
 }) {
-  const lista = useTagsTimer(projeto);
+  const campos = useCamposTimer(projeto, tipo);
+  const tagsQ = useTagsTimer(projeto);
   const conhecidas = useTagsConhecidas();
-  // a lista do DevOps + as tags dos itens já na tela (sem chamada a mais)
-  const todas = useMemo(() => {
+  const categorias = useMemo(() => {
     const m = new Map<string, string>();
-    for (const t of [...(lista.data ?? []), ...conhecidas]) if (!m.has(t.toUpperCase())) m.set(t.toUpperCase(), t);
-    return [...m.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [lista.data, conhecidas]);
-  const { produtos, clientes, categorias } = useMemo(() => agruparTags(todas), [todas]);
-  const tem = (t: string) => valor.some((v) => v.toUpperCase() === t.toUpperCase());
-  const alternar = (t: string) => onChange(tem(t) ? valor.filter((v) => v.toUpperCase() !== t.toUpperCase()) : [...valor, t]);
-  const semProduto = produtoObrigatorio && !valor.some((t) => tipoDaTag(t) === 'produto');
-  // sem a lista, cada lista diz o porquê (e o código, para achar a causa)
-  const erro = lista.error
-    ? `Não foi possível ler as tags do DevOps${lista.error instanceof ErroTimer ? ` (${lista.error.motivo})` : ''}.`
-    : !projeto
-      ? 'Sem projeto para ler as tags.'
-      : null;
+    for (const t of [...(tagsQ.data ?? []), ...conhecidas]) if (!m.has(t.toUpperCase())) m.set(t.toUpperCase(), t);
+    return categoriasDasTags([...m.values()]).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [tagsQ.data, conhecidas]);
+
+  const clientes = campos.data?.clientes ?? [];
+  const produtos = campos.data?.produtos ?? [];
+  const erroDe = (e: unknown) =>
+    e ? `Não foi possível ler do DevOps${e instanceof ErroTimer ? ` (${e.motivo})` : ''}.` : null;
+  const erroCampos = !projeto ? 'Sem projeto para ler a lista.' : erroDe(campos.error);
+
+  const temTag = (t: string) => valor.tags.some((v) => v.toUpperCase() === t.toUpperCase());
+  const alternarTag = (t: string) =>
+    onChange({ ...valor, tags: temTag(t) ? valor.tags.filter((v) => v.toUpperCase() !== t.toUpperCase()) : [...valor.tags, t] });
+  const igual = (a: string | null, b: string) => !!a && a.toLowerCase() === b.toLowerCase();
+
+  const faltaProduto = produtos.length > 0 && !produtos.some((p) => igual(valor.produto, p));
+  const faltaCliente = clientes.length > 0 && !clientes.some((c) => igual(valor.cliente, c));
 
   return (
     <div className="space-y-2">
-      {valor.length > 0 && (
-        <div className="flex flex-wrap gap-1" aria-label="Tags escolhidas">
-          {valor.map((t) => {
-            const herdada = herdadas.some((h) => h.toUpperCase() === t.toUpperCase());
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => alternar(t)}
-                title={`Tirar ${t}`}
-                className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', TOM[tipoDaTag(t)])}
-              >
-                {t}
-                {herdada && <span className="font-normal opacity-70">· do pai</span>}
-                <X className="h-3 w-3 opacity-70" />
-              </button>
-            );
-          })}
+      <ListaComBusca
+        rotulo={produtos.length > 0 ? 'Produto (obrigatório)' : 'Produto'}
+        selecionado={valor.produto}
+        alerta={!campos.isLoading && faltaProduto}
+        itens={produtos}
+        carregando={campos.isLoading}
+        vazio={erroCampos ?? `Este tipo não tem o campo Produto em ${projeto}.`}
+        placeholder="Pesquisar produto"
+        escolhido={(t) => igual(valor.produto, t)}
+        onEscolher={(t) => onChange({ ...valor, produto: igual(valor.produto, t) ? null : t })}
+        fecharAoEscolher
+      />
+
+      <ListaComBusca
+        rotulo={clientes.length > 0 ? 'Cliente (obrigatório)' : 'Cliente'}
+        selecionado={valor.cliente}
+        alerta={!campos.isLoading && faltaCliente}
+        itens={clientes}
+        carregando={campos.isLoading}
+        vazio={erroCampos ?? `Este tipo não tem o campo Cliente em ${projeto}.`}
+        placeholder="Pesquisar cliente"
+        escolhido={(t) => igual(valor.cliente, t)}
+        onEscolher={(t) => onChange({ ...valor, cliente: igual(valor.cliente, t) ? null : t })}
+        fecharAoEscolher
+      />
+
+      {valor.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1" aria-label="Categorias escolhidas">
+          {valor.tags.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => alternarTag(t)}
+              title={`Tirar ${t}`}
+              className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
+            >
+              {t}
+              <X className="h-3 w-3 opacity-70" />
+            </button>
+          ))}
         </div>
       )}
-
       <ListaComBusca
-        rotulo={`Produto${produtoObrigatorio ? ' (obrigatório)' : ''}`}
-        alerta={semProduto}
-        itens={produtos}
-        carregando={lista.isLoading}
-        vazio={erro ?? `Nenhuma tag de produto em ${projeto}.`}
-        placeholder="Pesquisar produto"
-        escolhido={tem}
-        onEscolher={alternar}
-      />
-
-      <ListaComBusca
-        rotulo="Cliente"
-        itens={clientes}
-        carregando={lista.isLoading}
-        vazio={erro ?? `Nenhuma tag de cliente em ${projeto}.`}
-        placeholder="Pesquisar cliente"
-        escolhido={tem}
-        onEscolher={alternar}
-        permitirNova={todas}
-      />
-
-      <ListaComBusca
-        rotulo="Categoria"
+        rotulo="Categoria (tags)"
         itens={categorias}
-        carregando={lista.isLoading}
-        vazio={erro ?? `Nenhuma tag de categoria em ${projeto}.`}
+        carregando={tagsQ.isLoading}
+        vazio={!projeto ? 'Sem projeto para ler as tags.' : erroDe(tagsQ.error) ?? `Nenhuma tag em ${projeto}.`}
         placeholder="Pesquisar categoria"
-        escolhido={tem}
-        onEscolher={alternar}
+        escolhido={temTag}
+        onEscolher={alternarTag}
+        permitirNova={categorias}
+        quantos={valor.tags.length}
       />
     </div>
   );
@@ -118,6 +115,7 @@ export function SeletorTags({
  */
 function ListaComBusca({
   rotulo,
+  selecionado,
   alerta = false,
   itens,
   carregando,
@@ -126,8 +124,12 @@ function ListaComBusca({
   escolhido,
   onEscolher,
   permitirNova,
+  quantos,
+  fecharAoEscolher = false,
 }: {
   rotulo: string;
+  /** escolha única: o valor aparece no cabeçalho */
+  selecionado?: string | null;
   alerta?: boolean;
   itens: string[];
   carregando: boolean;
@@ -135,8 +137,11 @@ function ListaComBusca({
   placeholder: string;
   escolhido: (t: string) => boolean;
   onEscolher: (t: string) => void;
-  /** todas as tags existentes: habilita "criar a tag nova" quando nada casa */
+  /** habilita "criar a tag nova" quando nada casa */
   permitirNova?: string[];
+  /** escolha múltipla: quantos escolhidos (no cabeçalho) */
+  quantos?: number;
+  fecharAoEscolher?: boolean;
 }) {
   const [aberta, setAberta] = useState(false);
   const [busca, setBusca] = useState('');
@@ -145,11 +150,11 @@ function ListaComBusca({
   const existente = permitirNova && digitado ? grafiaExistente(digitado, permitirNova) : null;
   const podeCriar =
     !!permitirNova && digitado.length >= 2 && !existente && !digitado.includes(';') && tipoDaTag(digitado) !== 'kpi';
-  const quantos = itens.filter(escolhido).length;
 
   const escolher = (t: string) => {
     onEscolher(t);
     setBusca('');
+    if (fecharAoEscolher) setAberta(false);
   };
 
   return (
@@ -159,15 +164,15 @@ function ListaComBusca({
         onClick={() => setAberta((a) => !a)}
         aria-expanded={aberta}
         className={cn(
-          'flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-xs',
+          'flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-xs hover:bg-muted/50',
           alerta ? 'border-[hsl(var(--warning)/0.6)]' : 'border-border',
-          'hover:bg-muted/50',
         )}
       >
-        <span className={cn(alerta ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground')}>{rotulo}</span>
-        <span className="flex items-center gap-1.5 text-muted-foreground">
-          {quantos > 0 && <span className="tabular-nums">{quantos} escolhido{quantos > 1 ? 's' : ''}</span>}
-          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', aberta && 'rotate-180')} />
+        <span className={cn('shrink-0', alerta ? 'text-[hsl(var(--warning))]' : 'text-muted-foreground')}>{rotulo}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          {selecionado && <span className="min-w-0 truncate font-semibold text-foreground">{selecionado}</span>}
+          {!!quantos && <span className="tabular-nums text-muted-foreground">{quantos} escolhida{quantos > 1 ? 's' : ''}</span>}
+          <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform', aberta && 'rotate-180')} />
         </span>
       </button>
       {aberta && (
@@ -194,7 +199,7 @@ function ListaComBusca({
           <div className="max-h-40 overflow-y-auto text-xs">
             {carregando ? (
               <p className="flex items-center gap-1 px-2 py-1.5 text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" /> Lendo as tags do DevOps…
+                <Loader2 className="h-3 w-3 animate-spin" /> Lendo do DevOps…
               </p>
             ) : (
               <>
