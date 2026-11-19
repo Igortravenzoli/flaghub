@@ -271,7 +271,14 @@ export function DialogoReuniao({
                   />
                 </div>
               </div>
-              <SeletorTags projeto={projeto} tipo="Task" valor={cls} onChange={setCls} />
+              {/* Cliente e Produto dependem do projeto de destino: sem ele, não há lista */}
+              {projeto ? (
+                <SeletorTags projeto={projeto} tipo="Task" valor={cls} onChange={setCls} />
+              ) : (
+                <p className="rounded-md border border-dashed border-border px-2 py-2 text-[11px] text-muted-foreground">
+                  Escolha a Feature acima para carregar Cliente, Produto e Categoria.
+                </p>
+              )}
             </>
           )}
         </form>
