@@ -9,19 +9,21 @@ import type { TrechoFechado } from '@/lib/timerRelogio';
  * 16 a 19/11, TODOS os cortes do navegador foram assim, fechados pelo job.
  *
  * O aviso explica e oferece as saídas: o app web (PWA), o app desktop ou
- * configurar o navegador para não congelar o site. As instruções só mudam de
- * navegador quando o caminho muda de fato: Chrome e Brave usam a mesma
- * "Economia de memória" do Chromium e ficam juntos.
+ * configurar o navegador para não congelar o site. Um logo por navegador; o
+ * passo a passo só abre ao clicar (mock aprovado pelo Igor em 19/11/2026).
  */
 
-export type Navegador = 'chromium' | 'edge' | 'firefox' | 'outro';
+export type Navegador = 'chrome' | 'edge' | 'brave' | 'firefox' | 'outro';
 
-/** O navegador de quem está vendo (Brave se apresenta como Chrome no UA). */
-export function detectarNavegador(userAgent: string): Navegador {
+/**
+ * O navegador de quem está vendo. O Brave se apresenta como Chrome no UA;
+ * quem separa é o `navigator.brave`, passado em `ehBrave`.
+ */
+export function detectarNavegador(userAgent: string, ehBrave = false): Navegador {
   if (/Edg\//.test(userAgent)) return 'edge';
   if (/Firefox\//.test(userAgent)) return 'firefox';
   if (/OPR\/|SamsungBrowser/.test(userAgent)) return 'outro';
-  if (/Chrome\/|CriOS\//.test(userAgent)) return 'chromium';
+  if (/Chrome\/|CriOS\//.test(userAgent)) return ehBrave ? 'brave' : 'chrome';
   return 'outro';
 }
 
@@ -37,41 +39,33 @@ export interface InstrucaoNavegador {
   observacao?: string;
 }
 
+const PASSOS_MEMORIA = [
+  'Cole o endereço numa aba nova.',
+  'Em "Economia de memória", abra "Sempre manter estes sites ativos" e clique em "Adicionar".',
+  'Cole {site} e confirme.',
+];
+
 export const INSTRUCOES_NAVEGADOR: InstrucaoNavegador[] = [
-  {
-    id: 'chromium',
-    rotulo: 'Chrome · Brave',
-    endereco: 'chrome://settings/performance',
-    passos: [
-      'Cole o endereço acima numa aba nova (no Brave: Configurações › Sistema).',
-      'Em "Economia de memória", procure "Sempre manter estes sites ativos" e clique em "Adicionar".',
-      'Cole {site} e confirme em "Adicionar".',
-    ],
-    instalaAppWeb: true,
-  },
+  { id: 'chrome', rotulo: 'Chrome', endereco: 'chrome://settings/performance', passos: PASSOS_MEMORIA, instalaAppWeb: true },
   {
     id: 'edge',
     rotulo: 'Edge',
     endereco: 'edge://settings/system',
     passos: [
-      'Cole o endereço acima numa guia nova.',
-      'Em "Otimizar o desempenho", procure "Nunca colocar esses sites em suspensão" e clique em "Adicionar".',
-      'Cole {site} e confirme em "Adicionar".',
+      'Cole o endereço numa guia nova.',
+      'Em "Otimizar o desempenho", abra "Nunca colocar esses sites em suspensão" e clique em "Adicionar".',
+      'Cole {site} e confirme.',
     ],
     instalaAppWeb: true,
-    observacao: 'Os nomes podem variar um pouco conforme a versão do Edge.',
   },
+  { id: 'brave', rotulo: 'Brave', endereco: 'brave://settings/system', passos: PASSOS_MEMORIA, instalaAppWeb: true },
   {
     id: 'firefox',
     rotulo: 'Firefox',
     endereco: 'about:config',
-    passos: [
-      'Cole o endereço acima numa aba nova e aceite o aviso.',
-      'Procure `browser.tabs.unloadOnLowMemory` e deixe em `false` (clique duas vezes no valor).',
-    ],
+    passos: ['Cole o endereço numa aba nova e aceite o aviso.', 'Procure `browser.tabs.unloadOnLowMemory` e deixe em `false`.'],
     instalaAppWeb: false,
-    observacao:
-      'O Firefox não congela abas por tempo: só descarrega quando falta memória no computador. Ele também não instala o app web; use o app para o computador.',
+    observacao: 'O Firefox só descarrega abas quando falta memória, e não instala o app web.',
   },
 ];
 
@@ -88,6 +82,8 @@ export const CHAVE_NAO_EXIBIR = 'timer-flag:aviso-aba:nao-exibir';
 export const CHAVE_CORTE_VISTO = 'timer-flag:aviso-aba:corte-visto';
 /** já avisou nesta sessão do navegador, ao ver o timer rodando */
 export const CHAVE_SESSAO_VISTO = 'timer-flag:aviso-aba:sessao';
+/** a pessoa já abriu o aviso (apaga o ponto do sino) */
+export const CHAVE_LIDO = 'timer-flag:aviso-aba:lido';
 
 /** O corte por falta de sinal mais recente do dia, se houver. */
 export function ultimoCorteSemSinal(trechos: TrechoFechado[]): TrechoFechado | null {
