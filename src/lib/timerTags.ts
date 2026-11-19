@@ -1,5 +1,10 @@
 import { KNOWN_MARKERS, KNOWN_PRODUCTS } from '@/lib/products';
 
+interface CamposPermitidos {
+  clientes: string[];
+  produtos: string[];
+}
+
 /**
  * Tags na criação de Task/PBI e na reunião do Timer (pedido do Igor,
  * 18/11/2026). A lista vem do DevOps (op `tags` da edge); a separação entre
@@ -86,3 +91,37 @@ export function agruparTags(lista: string[]): { produtos: string[]; clientes: st
 }
 
 export const temProduto = (tags: string[]) => tags.some((t) => tipoDaTag(t) === 'produto');
+
+/**
+ * Categoria = as tags do projeto (System.Tags), sem os marcadores que mudam
+ * KPI. Cliente e Produto NÃO são tag: são campos de lista do DevOps
+ * (Custom.PRODUTOSS e Custom.CLIENTESS, com os nomes trocados).
+ */
+export const categoriasDasTags = (lista: string[]) => lista.filter((t) => tipoDaTag(t) !== 'kpi');
+
+/** Cliente, produto e categorias de um item novo. */
+export interface Classificacao {
+  /** campo Custom.PRODUTOSS no DevOps (os nomes são trocados lá) */
+  cliente: string | null;
+  /** campo Custom.CLIENTESS no DevOps */
+  produto: string | null;
+  /** categoria = System.Tags */
+  tags: string[];
+}
+
+export const classificacaoVazia = (herdado?: { cliente?: string | null; produto?: string | null }): Classificacao => ({
+  cliente: herdado?.cliente ?? null,
+  produto: herdado?.produto ?? null,
+  tags: [],
+});
+
+/**
+ * Cliente e Produto obrigatórios quando o tipo tem o campo (decisão do Igor,
+ * 18/11/2026). Sem a lista carregada, não dá para dizer que está completo.
+ */
+export function classificacaoCompleta(c: Classificacao, campos: CamposPermitidos | undefined): boolean {
+  if (!campos) return false;
+  const temNaLista = (v: string | null, lista: string[]) => !!v && lista.some((l) => l.toLowerCase() === v.toLowerCase());
+  return (campos.clientes.length === 0 || temNaLista(c.cliente, campos.clientes))
+    && (campos.produtos.length === 0 || temNaLista(c.produto, campos.produtos));
+}

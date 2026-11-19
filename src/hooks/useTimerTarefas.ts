@@ -15,6 +15,10 @@ import type { ItemDevops } from '@/lib/minhasAtividades';
 export interface ItemTimer extends ItemDevops {
   team_project: string | null;
   area_path: string | null;
+  /** campo Custom.PRODUTOSS (o DevOps troca os nomes: guarda o CLIENTE) */
+  cliente?: string | null;
+  /** campo Custom.CLIENTESS (o DevOps troca os nomes: guarda o PRODUTO) */
+  produto?: string | null;
 }
 
 export interface RespostaTarefas {
@@ -101,8 +105,13 @@ export interface NovoItem {
   titulo: string;
   paiId: number;
   descricao?: string;
-  /** produto, cliente, categoria (a edge tira os marcadores de KPI) */
+  /** categoria (System.Tags; a edge tira os marcadores de KPI) */
   tags?: string[];
+  /** campos de lista do DevOps, conferidos na lista pela edge */
+  cliente?: string | null;
+  produto?: string | null;
+  /** veio do pai num clique: o que não couber na lista é descartado */
+  herdado?: boolean;
 }
 
 export function useCriarItemTimer() {
@@ -199,6 +208,8 @@ export interface NovaReuniao {
   featureId: number | null;
   projeto: string | null;
   tags: string[];
+  cliente: string | null;
+  produto: string | null;
 }
 
 export interface ReuniaoCriada {
@@ -236,4 +247,53 @@ export function useTagsConhecidas(): string[] {
     }
   }
   return [...vistos.values()];
+}
+
+// ─── Cliente e Produto: campos de lista do DevOps ───────────────────────────
+
+export interface CamposPermitidos {
+  clientes: string[];
+  produtos: string[];
+}
+
+const chaveCampos = (projeto: string, tipo: string) => `timer-flag:campos:${projeto}|${tipo}`;
+
+/**
+ * Os valores permitidos de Cliente e Produto (picklists do DevOps) para um
+ * projeto e tipo. Uma ida à edge a cada 24 h por navegador; lista vazia não
+ * fica guardada.
+ */
+export function useCamposTimer(projeto: string | null | undefined, tipo: 'Task' | 'Product Backlog Item' = 'Task') {
+  const { user } = useAuth();
+  const p = projeto?.trim() || null;
+  return useQuery({
+    queryKey: ['timer-tarefas', 'campos', p, tipo],
+    enabled: !!user?.id && !!p,
+    staleTime: DIA_MS,
+    gcTime: DIA_MS,
+    retry: false,
+    queryFn: async (): Promise<CamposPermitidos> => {
+      try {
+        const bruto = localStorage.getItem(chaveCampos(p!, tipo));
+        if (bruto) {
+          const v = JSON.parse(bruto) as { em?: number } & Partial<CamposPermitidos>;
+          if (typeof v.em === 'number' && Date.now() - v.em < DIA_MS && Array.isArray(v.clientes) && Array.isArray(v.produtos)) {
+            return { clientes: v.clientes, produtos: v.produtos };
+          }
+        }
+      } catch {
+        /* sem storage */
+      }
+      const r = await chamar<{ ok: true } & CamposPermitidos>({ op: 'campos', projeto: p, tipo });
+      const c = { clientes: Array.isArray(r.clientes) ? r.clientes : [], produtos: Array.isArray(r.produtos) ? r.produtos : [] };
+      if (c.clientes.length + c.produtos.length > 0) {
+        try {
+          localStorage.setItem(chaveCampos(p!, tipo), JSON.stringify({ em: Date.now(), ...c }));
+        } catch {
+          /* storage cheio ou bloqueado */
+        }
+      }
+      return c;
+    },
+  });
 }

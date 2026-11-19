@@ -15,7 +15,20 @@ export interface ItemTarefa {
   tags: string | null
   team_project: string | null
   area_path: string | null
+  /** Custom.PRODUTOSS (o nome é trocado no DevOps: guarda o CLIENTE) */
+  cliente: string | null
+  /** Custom.CLIENTESS (o nome é trocado no DevOps: guarda o PRODUTO) */
+  produto: string | null
 }
+
+/**
+ * Cliente e Produto são campos de lista fechada (picklist) do DevOps da Flag,
+ * com os nomes TROCADOS (mapeamento da Mode.IA, docs/devops-field-analysis.md):
+ * "Clientes" na tela = Custom.PRODUTOSS; "Produtos" na tela = Custom.CLIENTESS.
+ * Não "corrigir" a troca sem reconferir na API.
+ */
+export const CAMPO_CLIENTE = 'Custom.PRODUTOSS'
+export const CAMPO_PRODUTO = 'Custom.CLIENTESS'
 
 export const CAMPOS_ITEM = [
   'System.Id',
@@ -27,6 +40,8 @@ export const CAMPOS_ITEM = [
   'System.AreaPath',
   'System.TeamProject',
   'System.Tags',
+  'Custom.PRODUTOSS',
+  'Custom.CLIENTESS',
 ]
 
 export const TIPOS_ATRIBUIVEIS = ['Product Backlog Item', 'Bug', 'Task']
@@ -53,6 +68,8 @@ export function paraItem(wi: unknown): ItemTarefa | null {
     tags: s('System.Tags'),
     team_project: projeto,
     area_path: s('System.AreaPath'),
+    cliente: s('Custom.PRODUTOSS')?.trim() || null,
+    produto: s('Custom.CLIENTESS')?.trim() || null,
   }
 }
 

@@ -2,11 +2,26 @@ import { describe, expect, it } from 'vitest';
 import {
   ehMarcadorKpi,
   nomesDasTags,
+  opsDeClassificacao,
+  reconciliar,
   sanitizarTags,
   tagsDoDevops,
+  textoDeCampo,
   validarReuniao,
+  valoresPermitidos,
 } from '../../supabase/functions/timer-devops/reuniao';
-import { agruparTags, buscarTags, grafiaExistente, herdaveis, temProduto, tipoDaTag } from '@/lib/timerTags';
+import { CAMPO_CLIENTE, CAMPO_PRODUTO, CAMPOS_ITEM, paraItem } from '../../supabase/functions/timer-devops/tarefas';
+import {
+  agruparTags,
+  buscarTags,
+  categoriasDasTags,
+  classificacaoCompleta,
+  classificacaoVazia,
+  grafiaExistente,
+  herdaveis,
+  temProduto,
+  tipoDaTag,
+} from '@/lib/timerTags';
 import { classifyTag } from '@/lib/products';
 
 describe('edge: tags na criação', () => {
@@ -35,9 +50,17 @@ describe('edge: tags na criação', () => {
 });
 
 describe('edge: Timer em Reunião', () => {
-  it('título com prefixo, tag Reunião sempre, produto obrigatório', () => {
-    const r = validarReuniao({ tema: '  Segurança do SuiteFlexx ', featureId: 600, tags: ['SUITEFLEXX'] });
-    expect(r).toEqual({ ok: true, titulo: 'Reunião - Segurança do SuiteFlexx', featureId: 600, projeto: null, tags: ['Reunião', 'SUITEFLEXX'] });
+  it('título com prefixo, tag Reunião sempre, cliente e produto do pedido', () => {
+    const r = validarReuniao({ tema: '  Segurança do SuiteFlexx ', featureId: 600, tags: ['Evento'], cliente: ' Suporte Flag ', produto: 'Suite Flexx' });
+    expect(r).toEqual({
+      ok: true,
+      titulo: 'Reunião - Segurança do SuiteFlexx',
+      featureId: 600,
+      projeto: null,
+      tags: ['Reunião', 'Evento'],
+      cliente: 'Suporte Flag',
+      produto: 'Suite Flexx',
+    });
   });
 
   it('na raiz do projeto, sem duplicar o prefixo', () => {
@@ -47,12 +70,77 @@ describe('edge: Timer em Reunião', () => {
     expect(r.ok && r.projeto).toBe('Flag.Planejamento');
   });
 
-  it('recusa tema curto, Feature inválida, sem destino e sem produto', () => {
+  it('recusa tema curto, Feature inválida e sem destino', () => {
     expect(validarReuniao({ tema: 'ab', projeto: 'P', tags: ['X'] }).ok).toBe(false);
     expect(validarReuniao({ tema: 'Kickoff', featureId: -3, tags: ['X'] }).ok).toBe(false);
     expect(validarReuniao({ tema: 'Kickoff', tags: ['X'] })).toMatchObject({ ok: false, motivo: 'sem_destino' });
-    expect(validarReuniao({ tema: 'Kickoff', projeto: 'P', tags: [] })).toMatchObject({ ok: false, motivo: 'sem_produto' });
-    expect(validarReuniao({ tema: 'Kickoff', projeto: 'P', tags: ['PRIORIZACAO'] })).toMatchObject({ ok: false, motivo: 'sem_produto' });
+  });
+});
+
+describe('edge: Cliente e Produto são campos de lista (nomes trocados no DevOps)', () => {
+  const permitidos = { clientes: ['5 S Distribuidora', 'Aguas Minerais', 'Suporte Flag'], produtos: ['Flexx', 'Flexx Gps', 'Suite Flexx'] };
+
+  it('o mapeamento da Mode.IA: PRODUTOSS = cliente, CLIENTESS = produto', () => {
+    expect(CAMPO_CLIENTE).toBe('Custom.PRODUTOSS');
+    expect(CAMPO_PRODUTO).toBe('Custom.CLIENTESS');
+    expect(CAMPOS_ITEM).toEqual(expect.arrayContaining(['Custom.PRODUTOSS', 'Custom.CLIENTESS']));
+    const item = paraItem({ id: 7, fields: { 'System.TeamProject': 'P', 'Custom.PRODUTOSS': 'Aguas Minerais', 'Custom.CLIENTESS': ' Flexx ' } });
+    expect(item?.cliente).toBe('Aguas Minerais');
+    expect(item?.produto).toBe('Flexx');
+  });
+
+  it('lê os valores permitidos (sem $expand a lista some)', () => {
+    expect(valoresPermitidos({ allowedValues: ['Flexx', ' Suite Flexx ', 'Flexx', ''] })).toEqual(['Flexx', 'Suite Flexx']);
+    expect(valoresPermitidos({ referenceName: 'Custom.CLIENTESS' })).toEqual([]);
+  });
+
+  it('reconcilia sem caixa e recusa fora da lista', () => {
+    expect(reconciliar('aguas minerais', permitidos.clientes)).toBe('Aguas Minerais');
+    expect(reconciliar('INFRA', permitidos.clientes)).toBeNull();
+    expect(textoDeCampo('  Suite\nFlexx ')).toBe('Suite Flexx');
+  });
+
+  it('grava cliente em PRODUTOSS, produto em CLIENTESS e as tags', () => {
+    const r = opsDeClassificacao({ cliente: 'suporte flag', produto: 'suite flexx', tags: ['Evento'] }, permitidos);
+    expect(r).toEqual({
+      ok: true,
+      cliente: 'Suporte Flag',
+      produto: 'Suite Flexx',
+      ops: [
+        { op: 'add', path: '/fields/Custom.PRODUTOSS', value: 'Suporte Flag' },
+        { op: 'add', path: '/fields/Custom.CLIENTESS', value: 'Suite Flexx' },
+        { op: 'add', path: '/fields/System.Tags', value: 'Evento' },
+      ],
+    });
+  });
+
+  it('cliente e produto obrigatórios quando o tipo tem o campo', () => {
+    expect(opsDeClassificacao({ cliente: null, produto: 'Flexx', tags: [] }, permitidos)).toMatchObject({ ok: false, motivo: 'sem_cliente' });
+    expect(opsDeClassificacao({ cliente: 'Suporte Flag', produto: null, tags: [] }, permitidos)).toMatchObject({ ok: false, motivo: 'sem_produto' });
+    expect(opsDeClassificacao({ cliente: 'INFRA', produto: 'Flexx', tags: [] }, permitidos)).toMatchObject({ ok: false, motivo: 'cliente_fora_da_lista' });
+    // tipo sem os campos: nada a exigir nem a gravar
+    expect(opsDeClassificacao({ cliente: null, produto: null, tags: [] }, { clientes: [], produtos: [] })).toEqual({ ok: true, ops: [], cliente: null, produto: null });
+  });
+
+  it('um clique (herdado): fora da lista é descartado, mas ainda exige os dois', () => {
+    expect(opsDeClassificacao({ cliente: 'INFRA', produto: 'Flexx', tags: [] }, permitidos, true, true)).toMatchObject({ ok: false, motivo: 'sem_cliente' });
+    expect(opsDeClassificacao({ cliente: 'Suporte Flag', produto: 'Flexx', tags: [] }, permitidos, true, true)).toMatchObject({ ok: true });
+  });
+});
+
+describe('app: classificação', () => {
+  const campos = { clientes: ['Aguas Minerais'], produtos: ['Flexx'] };
+  it('herda só o que está no campo do pai e exige os dois', () => {
+    const c = classificacaoVazia({ cliente: 'Aguas Minerais', produto: null });
+    expect(c).toEqual({ cliente: 'Aguas Minerais', produto: null, tags: [] });
+    expect(classificacaoCompleta(c, campos)).toBe(false);
+    expect(classificacaoCompleta({ ...c, produto: 'flexx' }, campos)).toBe(true);
+    expect(classificacaoCompleta({ ...c, produto: 'Flexx' }, undefined)).toBe(false);
+    expect(classificacaoCompleta(classificacaoVazia(), { clientes: [], produtos: [] })).toBe(true);
+  });
+
+  it('categoria = tags sem os marcadores de KPI', () => {
+    expect(categoriasDasTags(['Evento', 'PRIORIZACAO', 'IA', 'HEINEKEN', 'TRANSBORDO'])).toEqual(['Evento', 'IA', 'HEINEKEN']);
   });
 });
 

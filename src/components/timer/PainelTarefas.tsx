@@ -18,8 +18,8 @@ import {
   type AlvoAnotacao,
 } from '@/components/atividades/ArvoreAtividades';
 import { lerArrasto, type AnotacaoArrastada } from '@/lib/timerArrastar';
-import { herdaveis } from '@/lib/timerTags';
 import { SeletorTags } from '@/components/timer/SeletorTags';
+import { classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
 import { hojeISO, prazoSprint } from '@/lib/prazoSprint';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
@@ -29,6 +29,7 @@ import {
   useBuscaTimer,
   useCriarItemTimer,
   useAcrescentarTags,
+  useCamposTimer,
   useFilhosTimer,
   useMinhasTarefasTimer,
   type ItemTimer,
@@ -144,17 +145,21 @@ export function PainelTarefas({
       setCriando({ tipo: 'Task', pai }); // curto demais: abre o formulário para completar
       return;
     }
+    // Cliente e Produto são obrigatórios (decisão do Igor, 18/11/2026): o um
+    // clique herda os dois do CAMPO do PBI; faltando algum, abre o formulário.
+    const { cliente, produto } = pai as Partial<ItemTimer>;
+    if (!cliente || !produto) {
+      setCriando({ tipo: 'Task', pai });
+      toast.info(`O #${pai.id} não tem cliente e produto preenchidos: complete na Task.`);
+      return;
+    }
     setCriandoEm(pai.id);
     try {
-      // um clique continua um clique: as tags (produto/cliente) vêm do PBI
-      const tags = herdaveis(pai.tags);
-      const r = await criarTask.mutateAsync({ tipo: 'Task', titulo, paiId: pai.id, tags });
+      const r = await criarTask.mutateAsync({ tipo: 'Task', titulo, paiId: pai.id, cliente, produto, herdado: true });
       const novo = r.item ?? null;
       const url = novo?.web_url;
       toast.success(`Task #${novo?.id ?? ''} criada em #${pai.id} e atribuída a você.`, {
-        description: tags.length
-          ? `Tags do PBI: ${tags.join(' · ')}. Para mudar, abra no DevOps.`
-          : 'Descrição, prints e anexos: complete direto no Azure DevOps.',
+        description: `Cliente ${cliente} · produto ${produto} (do PBI). Para mudar, abra no DevOps.`,
         duration: 10_000,
         ...(url ? { action: { label: 'Abrir no DevOps', onClick: () => window.open(url, '_blank', 'noopener') } } : {}),
       });
@@ -163,7 +168,13 @@ export function PainelTarefas({
         if (TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
       }
     } catch (e) {
-      toast.error(e instanceof ErroTimer ? e.message : 'Não foi possível criar a Task.');
+      // o que veio do PBI não coube na lista da Task: completa no formulário
+      if (e instanceof ErroTimer && ['sem_cliente', 'sem_produto'].includes(e.motivo)) {
+        setCriando({ tipo: 'Task', pai });
+        toast.info(`${e.message} Complete na Task.`);
+      } else {
+        toast.error(e instanceof ErroTimer ? e.message : 'Não foi possível criar a Task.');
+      }
     } finally {
       setCriandoEm(null);
     }
@@ -470,17 +481,26 @@ function FormNovoItem({
   const criar = useCriarItemTimer();
   const acrescentarTags = useAcrescentarTags();
   const [titulo, setTitulo] = useState(tituloInicial);
-  // produto e cliente do pai já vêm marcados (pedido do Igor, 18/11/2026)
-  const herdadas = useMemo(() => herdaveis(pai.tags), [pai.tags]);
-  const [tags, setTags] = useState<string[]>(herdadas);
+  // cliente e produto do CAMPO do pai já vêm escolhidos (nunca deduzidos de tag)
+  const [cls, setCls] = useState<Classificacao>(() => classificacaoVazia(pai as Partial<ItemTimer>));
   const projeto = (pai as Partial<ItemTimer>).team_project ?? null;
-  const valido = titulo.trim().length >= 3 && titulo.trim().length <= 255;
+  const tipoDevops = tipo === 'Task' ? 'Task' : 'Product Backlog Item';
+  const campos = useCamposTimer(projeto, tipoDevops);
+  const completa = classificacaoCompleta(cls, campos.data);
+  const valido = titulo.trim().length >= 3 && titulo.trim().length <= 255 && completa;
 
   const enviar = async () => {
     if (!valido || criar.isPending) return;
     try {
-      const r = await criar.mutateAsync({ tipo, titulo: titulo.trim(), paiId: pai.id, tags });
-      acrescentarTags(projeto, tags);
+      const r = await criar.mutateAsync({
+        tipo,
+        titulo: titulo.trim(),
+        paiId: pai.id,
+        tags: cls.tags,
+        cliente: cls.cliente,
+        produto: cls.produto,
+      });
+      acrescentarTags(projeto, cls.tags);
       const url = r.item?.web_url;
       toast.success(`${tipo} #${r.item?.id ?? ''} criada e atribuída a você.`, {
         description: 'Descrição, prints e anexos: complete direto no Azure DevOps.',
@@ -530,10 +550,10 @@ function FormNovoItem({
         placeholder={tipo === 'Task' ? 'Título da Task' : 'Título do PBI'}
         aria-label={tipo === 'Task' ? 'Título da Task' : 'Título do PBI'}
       />
-      <SeletorTags projeto={projeto} valor={tags} onChange={setTags} herdadas={herdadas} />
+      <SeletorTags projeto={projeto} tipo={tipoDevops} valor={cls} onChange={setCls} />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] tabular-nums text-muted-foreground">
-          {titulo.trim().length}/255 · {tags.length} {tags.length === 1 ? 'tag' : 'tags'}
+          {titulo.trim().length}/255{!completa && campos.data ? ' · falta cliente ou produto' : ''}
         </span>
         <div className="flex gap-1.5">
           <Button type="button" size="sm" variant="ghost" className="h-8" onClick={onCancelar}>
