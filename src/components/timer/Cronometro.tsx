@@ -26,7 +26,7 @@ interface Props {
   /** TM9: ligado, iniciar outra demanda não pausa as que rodam */
   paralelo: boolean;
   onParalelo: (v: boolean) => void;
-  /** "Rec reunião": a call sem PBI/Task vira Task e o timer começa */
+  /** "Timer em Reunião": a call sem PBI/Task vira Task e o timer começa */
   onReuniao?: () => void;
   /** Lançar: corta o trecho agora e lança o que falta, sem encerrar */
   onLancar: (item: { id: number; titulo: string }) => void;
@@ -77,7 +77,7 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onReuniao,
       className={className}
       acoes={
         <>
-          {/* Rec reunião em miniatura, ao lado do mini timer (pedido do Igor, 18/11/2026).
+          {/* Timer em Reunião em miniatura, ao lado do mini timer (pedido do Igor, 18/11/2026).
               Os três ícones um pouco mais justos para o título caber. */}
           <span className="flex items-center [&>button]:h-7 [&>button]:w-7">
             {onReuniao && !motor.somenteConsulta && <BotaoRec onClick={onReuniao} />}
@@ -229,18 +229,20 @@ function CartaoRodando({
  * 17/11/2026): só o ícone, ligado por padrão; a explicação vem na dica. A hora
  * sobreposta conta inteira em cada tarefa; a capacidade do dia soma todas.
  */
-/** "Rec reunião" só com o ícone de gravar (bolinha vermelha), do tamanho do botão do mini timer. */
+/** "Timer em Reunião" só com o ícone de gravar (bolinha vermelha), do tamanho do botão do mini timer. */
 function BotaoRec({ onClick }: { onClick: () => void }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button type="button" size="icon" variant="ghost" aria-label="Rec reunião" onClick={onClick} className="h-8 w-8">
+        <Button type="button" size="icon" variant="ghost" aria-label="Timer em Reunião" onClick={onClick} className="h-8 w-8">
           <span className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-red-500/70" aria-hidden>
             <span className="h-2 w-2 rounded-full bg-red-500" />
           </span>
         </Button>
       </TooltipTrigger>
-      <TooltipContent className="max-w-[16rem]">Rec reunião: a call sem PBI nem Task vira uma Task e o timer começa agora.</TooltipContent>
+      <TooltipContent className="max-w-[16rem]">
+        <span className="font-semibold">Timer em Reunião:</span> a call sem PBI nem Task vira hora lançável e o timer começa agora.
+      </TooltipContent>
     </Tooltip>
   );
 }

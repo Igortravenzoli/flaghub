@@ -34,7 +34,7 @@ describe('edge: tags na criação', () => {
   });
 });
 
-describe('edge: Rec reunião', () => {
+describe('edge: Timer em Reunião', () => {
   it('título com prefixo, tag Reunião sempre, produto obrigatório', () => {
     const r = validarReuniao({ tema: '  Segurança do SuiteFlexx ', featureId: 600, tags: ['SUITEFLEXX'] });
     expect(r).toEqual({ ok: true, titulo: 'Reunião - Segurança do SuiteFlexx', featureId: 600, projeto: null, tags: ['Reunião', 'SUITEFLEXX'] });

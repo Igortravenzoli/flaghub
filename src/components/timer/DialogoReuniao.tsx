@@ -28,7 +28,7 @@ const DESTINOS: { v: Destino; rotulo: string }[] = [
 const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /**
- * "Rec reunião" (pedido do Igor, 18/11/2026): a call que "simplesmente
+ * "Timer em Reunião" (pedido do Igor, 18/11/2026): a call que "simplesmente
  * ocorre", sem PBI. Três destinos:
  *   • Numa Feature — cria "Reunião - <tema>" na Feature (se o DevOps recusar
  *     o vínculo, vai para a raiz do mesmo projeto);
@@ -145,7 +145,7 @@ export function DialogoReuniao({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden /> Rec reunião
+            <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden /> Timer em Reunião
           </DialogTitle>
           <DialogDescription>A call vira hora lançável e o timer começa agora.</DialogDescription>
         </DialogHeader>

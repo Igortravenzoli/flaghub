@@ -498,10 +498,18 @@ async function tagsDoProjeto(req: Request, corpo: Json, pat: string): Promise<Re
   if (!projeto) return responder(req, 400, { ok: false, motivo: 'projeto_invalido' })
   const guardado = cacheTags.ler(projeto)
   if (guardado) return responder(req, 200, { ok: true, projeto, tags: guardado.valor, doCache: true })
-  const json = await lerAzure(
-    `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/tags?api-version=7.1`,
-    pat,
-  )
+  // A API Tags é "preview" em parte das versões: a 7.1 cheia pode responder
+  // 400 pedindo o sufixo. Tenta a 7.1 e, no 400, a 7.1-preview.1.
+  const url = (versao: string) =>
+    `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/tags?api-version=${versao}`
+  let json: unknown
+  try {
+    json = await lerAzure(url('7.1'), pat)
+  } catch (e) {
+    if (!(e instanceof ErroDevops) || e.status !== 400) throw e
+    console.warn(`[timer-devops] tags 7.1 recusada (${e.detalhe.slice(0, 160)}); tentando 7.1-preview.1`)
+    json = await lerAzure(url('7.1-preview.1'), pat)
+  }
   const tags = nomesDasTags(json)
   cacheTags.gravar(projeto, tags)
   return responder(req, 200, { ok: true, projeto, tags })
