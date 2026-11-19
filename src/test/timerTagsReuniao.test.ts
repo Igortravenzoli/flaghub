@@ -5,6 +5,7 @@ import {
   opsDeClassificacao,
   reconciliar,
   sanitizarTags,
+  soTagsExistentes,
   tagsDoDevops,
   textoDeCampo,
   validarReuniao,
@@ -13,6 +14,7 @@ import {
 import { CAMPO_CLIENTE, CAMPO_PRODUTO, CAMPOS_ITEM, paraItem } from '../../supabase/functions/timer-devops/tarefas';
 import {
   agruparTags,
+  avisoTagsDescartadas,
   buscarTags,
   categoriasDasTags,
   classificacaoCompleta,
@@ -182,5 +184,21 @@ describe('FlagHub: Evento, Risco e Reunião não viram cliente', () => {
   it('são marcadores na classificação da Fábrica', () => {
     for (const t of ['Evento', 'Risco', 'Reunião', 'REUNIAO']) expect(classifyTag(t)).toBe('marcador');
     expect(classifyTag('HEINEKEN')).toBe('cliente');
+  });
+});
+
+describe('tags: só as que já existem (o token do Timer não cria tag, 403 em 19/11)', () => {
+  it('mantém as existentes com a grafia de lá e descarta as novas', () => {
+    expect(soTagsExistentes(['evento', 'Reunião', 'IA', 'NovaTag'], ['Evento', 'IA', 'BI'])).toEqual({
+      mantidas: ['Evento', 'IA'],
+      descartadas: ['Reunião', 'NovaTag'],
+    });
+    expect(soTagsExistentes(['X'], [])).toEqual({ mantidas: [], descartadas: ['X'] });
+  });
+
+  it('o aviso cita as descartadas, menos a Reunião', () => {
+    expect(avisoTagsDescartadas(['Reunião', 'NovaTag'])).toBe(' Tags que não existem no DevOps e ficaram de fora: NovaTag.');
+    expect(avisoTagsDescartadas(['Reunião'])).toBe('');
+    expect(avisoTagsDescartadas(undefined)).toBe('');
   });
 });

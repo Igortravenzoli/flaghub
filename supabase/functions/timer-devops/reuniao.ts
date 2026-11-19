@@ -176,3 +176,21 @@ export function opsDeClassificacao(
   return { ok: true, ops, cliente, produto }
 }
 
+
+/**
+ * Só as tags que JÁ EXISTEM no projeto (com a grafia de lá). A identidade do
+ * token do Timer não tem "Criar definição de tag" (403 no namespace Tagging,
+ * 19/11/2026): uma tag nova derrubava a criação inteira. As outras são
+ * descartadas e o app avisa quais foram.
+ */
+export function soTagsExistentes(tags: string[], existentes: string[]): { mantidas: string[]; descartadas: string[] } {
+  const porNome = new Map(existentes.map((e) => [e.trim().toUpperCase(), e.trim()]))
+  const mantidas: string[] = []
+  const descartadas: string[] = []
+  for (const t of tags) {
+    const achada = porNome.get(t.trim().toUpperCase())
+    if (achada) mantidas.push(achada)
+    else descartadas.push(t)
+  }
+  return { mantidas, descartadas }
+}

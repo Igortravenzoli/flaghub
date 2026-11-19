@@ -117,7 +117,7 @@ export interface NovoItem {
 export function useCriarItemTimer() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (novo: NovoItem) => chamar<{ ok: true; item: ItemTimer }>({ op: 'criar', ...novo }),
+    mutationFn: (novo: NovoItem) => chamar<{ ok: true; item: ItemTimer; tagsDescartadas?: string[] }>({ op: 'criar', ...novo }),
     onSuccess: (_r, novo) => {
       void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'minhas'] });
       void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'filhos'], predicate: (q) => q.queryKey[3] === novo.paiId });
@@ -218,6 +218,8 @@ export interface ReuniaoCriada {
   pai: { id: number; title: string | null; work_item_type: string | null } | null;
   /** o DevOps recusou a Task direto na Feature: ficou na raiz do projeto */
   recusouFeature: boolean;
+  /** tags que não existem no projeto e ficaram de fora (o Timer não cria tag) */
+  tagsDescartadas?: string[];
 }
 
 /** Cria a Task "Reunião - <tema>" (na Feature ou na raiz do projeto). */
