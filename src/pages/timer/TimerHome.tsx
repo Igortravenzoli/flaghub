@@ -41,7 +41,7 @@ export default function TimerHome() {
   const [reuniaoAberta, setReuniaoAberta] = useState(false);
   // Features já carregadas na árvore (a mesma consulta, sem ir de novo ao DevOps)
   const minhas = useMinhasTarefasTimer();
-  const { features, tarefas, projetos } = useMemo(() => {
+  const { features, pbis, tarefas } = useMemo(() => {
     const vistos = new Set<number>();
     const todos = [...(minhas.data?.ancestrais ?? []), ...(minhas.data?.itens ?? [])].filter((i) => {
       if (vistos.has(i.id) || ['Done', 'Closed', 'Removed'].includes(i.state ?? '')) return false;
@@ -51,7 +51,7 @@ export default function TimerHome() {
     return {
       features: todos.filter((i) => i.work_item_type === 'Feature'),
       tarefas: (minhas.data?.itens ?? []).filter((i) => i.work_item_type === 'Task' && !['Done', 'Closed', 'Removed'].includes(i.state ?? '')),
-      projetos: [...new Set(todos.map((i) => i.team_project).filter((p): p is string => !!p))].sort(),
+      pbis: todos.filter((i) => i.work_item_type === 'Product Backlog Item' || i.work_item_type === 'Bug'),
     };
   }, [minhas.data]);
   // Paralelo (TM9): ligado, iniciar outra demanda NÃO pausa as que rodam.
@@ -209,8 +209,8 @@ export default function TimerHome() {
         aberto={reuniaoAberta}
         onFechar={() => setReuniaoAberta(false)}
         features={features}
+        pbis={pbis}
         tarefas={tarefas}
-        projetos={projetos}
         onCriada={(item) =>
           iniciar({
             id: item.id,
