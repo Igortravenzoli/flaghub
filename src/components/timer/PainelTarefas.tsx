@@ -19,7 +19,7 @@ import {
 } from '@/components/atividades/ArvoreAtividades';
 import { lerArrasto, type AnotacaoArrastada } from '@/lib/timerArrastar';
 import { SeletorTags } from '@/components/timer/SeletorTags';
-import { classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
+import { avisoTagsDescartadas, classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
 import { hojeISO, prazoSprint } from '@/lib/prazoSprint';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
@@ -503,7 +503,7 @@ function FormNovoItem({
       acrescentarTags(projeto, cls.tags);
       const url = r.item?.web_url;
       toast.success(`${tipo} #${r.item?.id ?? ''} criada e atribuída a você.`, {
-        description: 'Descrição, prints e anexos: complete direto no Azure DevOps.',
+        description: `Descrição, prints e anexos: complete direto no Azure DevOps.${avisoTagsDescartadas(r.tagsDescartadas)}`,
         duration: 10_000,
         ...(url ? { action: { label: 'Abrir no DevOps', onClick: () => window.open(url, '_blank', 'noopener') } } : {}),
       });

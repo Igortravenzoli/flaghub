@@ -96,6 +96,7 @@ import {
   nomesDasTags,
   opsDeClassificacao,
   sanitizarTags,
+  soTagsExistentes,
   textoDeCampo,
   validarReuniao,
   valoresPermitidos,
@@ -470,7 +471,11 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
   ]
   if (pai.area_path) ops.push({ op: 'add', path: '/fields/System.AreaPath', value: pai.area_path })
   if (v.descricao) ops.push({ op: 'add', path: '/fields/System.Description', value: descricaoHtml(v.descricao) })
-  const tags = sanitizarTags(corpo.tags)
+  // só tags que já existem: criar tag nova dá 403 para o token do Timer
+  const { mantidas: tags, descartadas: tagsDescartadas } = soTagsExistentes(
+    sanitizarTags(corpo.tags),
+    await tagsExistentesDe(pai.team_project, pat),
+  )
   const permitidos = await permitidosDe(pai.team_project, v.tipo, pat)
   const cls = opsDeClassificacao(
     { cliente: textoDeCampo(corpo.cliente), produto: textoDeCampo(corpo.produto), tags },
@@ -506,8 +511,7 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
 
   // item novo atribuído à pessoa: "minhas tarefas" precisa reler do Azure
   cacheMinhas.apagar(userId)
-  if (tags.length > 0) cacheTags.apagar(pai.team_project) // tag nova aparece na hora
-  return responder(req, 200, { ok: true, item })
+  return responder(req, 200, { ok: true, item, tagsDescartadas })
 }
 
 // ─── tags do projeto ────────────────────────────────────────────────────────
@@ -520,6 +524,23 @@ async function tagsDoProjeto(req: Request, corpo: Json, pat: string): Promise<Re
   if (!projeto) return responder(req, 400, { ok: false, motivo: 'projeto_invalido' })
   const guardado = cacheTags.ler(projeto)
   if (guardado) return responder(req, 200, { ok: true, projeto, tags: guardado.valor, doCache: true })
+  const tags = await lerTagsDoAzure(projeto, pat)
+  return responder(req, 200, { ok: true, projeto, tags })
+}
+
+/** As tags do projeto (cache de 24 h); sem conseguir ler, lista vazia (nenhuma tag é gravada). */
+async function tagsExistentesDe(projeto: string, pat: string): Promise<string[]> {
+  const guardado = cacheTags.ler(projeto)
+  if (guardado) return guardado.valor
+  try {
+    return await lerTagsDoAzure(projeto, pat)
+  } catch (e) {
+    console.warn(`[timer-devops] não deu para ler as tags de ${projeto}: ${e}`)
+    return []
+  }
+}
+
+async function lerTagsDoAzure(projeto: string, pat: string): Promise<string[]> {
   // A API Tags é "preview" em parte das versões: a 7.1 cheia pode responder
   // 400 pedindo o sufixo. Tenta a 7.1 e, no 400, a 7.1-preview.1.
   const url = (versao: string) =>
@@ -537,10 +558,10 @@ async function tagsDoProjeto(req: Request, corpo: Json, pat: string): Promise<Re
   console.log(`[timer-devops] tags de ${projeto}: ${tags.length}`)
   if (tags.length === 0) {
     console.warn(`[timer-devops] tags vazias em ${projeto}; resposta: ${JSON.stringify(json).slice(0, 300)}`)
-    return responder(req, 200, { ok: true, projeto, tags }) // lista vazia não fica guardada
+    return tags // lista vazia não fica guardada
   }
   cacheTags.gravar(projeto, tags)
-  return responder(req, 200, { ok: true, projeto, tags })
+  return tags
 }
 
 // ─── Cliente e Produto (picklists) ──────────────────────────────────────────
@@ -641,9 +662,13 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     return ops
   }
   /** cliente/produto conferidos na lista do projeto de destino; obrigatórios se houver o campo */
+  let tagsDescartadas: string[] = []
   const classificar = async (proj: string) => {
     const permitidos = await permitidosDe(proj, 'Task', pat)
-    return opsDeClassificacao({ cliente: v.cliente, produto: v.produto, tags: v.tags }, permitidos, true)
+    // só tags que já existem (a "Reunião" inclusive): criar tag nova dá 403
+    const filtro = soTagsExistentes(v.tags, await tagsExistentesDe(proj, pat))
+    tagsDescartadas = filtro.descartadas
+    return opsDeClassificacao({ cliente: v.cliente, produto: v.produto, tags: filtro.mantidas }, permitidos, true)
   }
 
   let item: ItemTarefa | null = null
@@ -703,6 +728,7 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     item,
     pai: pai ? { id: pai.id, title: pai.title, work_item_type: pai.work_item_type } : null,
     recusouFeature,
+    tagsDescartadas,
   })
 }
 

@@ -22,7 +22,7 @@ import {
 } from '@/hooks/useTimerTarefas';
 import type { ItemDevops } from '@/lib/minhasAtividades';
 import { SeletorTags } from '@/components/timer/SeletorTags';
-import { classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
+import { avisoTagsDescartadas, classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
 
 type Destino = 'feature' | 'pbi' | 'task';
 
@@ -162,7 +162,11 @@ export function DialogoReuniao({
         });
         acrescentarTags(projeto, cls.tags);
         if (!r.item) throw new ErroTimer('sem_item', 'O DevOps não devolveu a Task criada.');
-        fechar(r.item, `Reunião #${r.item.id} criada em #${escolhido.id}. O timer começou.`, 'Ao terminar, pause ou lance como qualquer timer.');
+        fechar(
+          r.item,
+          `Reunião #${r.item.id} criada em #${escolhido.id}. O timer começou.`,
+          `Ao terminar, pause ou lance como qualquer timer.${avisoTagsDescartadas(r.tagsDescartadas)}`,
+        );
         return;
       }
       const r = await reuniao.mutateAsync({
@@ -177,9 +181,9 @@ export function DialogoReuniao({
       fechar(
         r.item,
         r.pai ? `Reunião #${r.item.id} criada em #${r.pai.id}. O timer começou.` : `Reunião #${r.item.id} criada em ${projeto}. O timer começou.`,
-        r.recusouFeature
+        (r.recusouFeature
           ? 'O DevOps não aceitou a Task direto na Feature: ela ficou na raiz do projeto.'
-          : 'Ao terminar, pause ou lance como qualquer timer.',
+          : 'Ao terminar, pause ou lance como qualquer timer.') + avisoTagsDescartadas(r.tagsDescartadas),
       );
     } catch (e) {
       toast.error(e instanceof ErroTimer ? e.message : 'Não foi possível gravar a reunião.');

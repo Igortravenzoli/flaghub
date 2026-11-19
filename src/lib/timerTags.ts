@@ -125,3 +125,13 @@ export function classificacaoCompleta(c: Classificacao, campos: CamposPermitidos
   return (campos.clientes.length === 0 || temNaLista(c.cliente, campos.clientes))
     && (campos.produtos.length === 0 || temNaLista(c.produto, campos.produtos));
 }
+
+/**
+ * Aviso das tags que a edge deixou de fora por não existirem no projeto (o
+ * token do Timer não pode criar tag no DevOps, 19/11/2026). A "Reunião" fica
+ * de fora do aviso: o título "Reunião - …" já identifica a reunião.
+ */
+export function avisoTagsDescartadas(lista: string[] | undefined): string {
+  const fora = (lista ?? []).filter((t) => t.trim().toUpperCase() !== 'REUNIÃO');
+  return fora.length ? ` Tags que não existem no DevOps e ficaram de fora: ${fora.join(', ')}.` : '';
+}

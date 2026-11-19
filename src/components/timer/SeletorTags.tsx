@@ -101,7 +101,6 @@ export function SeletorTags({
         placeholder="Pesquisar categoria"
         escolhido={temTag}
         onEscolher={alternarTag}
-        permitirNova={categorias}
         quantos={valor.tags.length}
       />
     </div>
