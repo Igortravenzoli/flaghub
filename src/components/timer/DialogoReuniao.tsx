@@ -193,7 +193,7 @@ export function DialogoReuniao({
         if (!v) onFechar();
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto overflow-x-hidden sm:max-w-md [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden /> Timer em Reunião
@@ -203,7 +203,7 @@ export function DialogoReuniao({
 
         <form
           id="form-reuniao"
-          className="space-y-3"
+          className="min-w-0 space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
             void gravar();
@@ -254,7 +254,7 @@ export function DialogoReuniao({
                       )}
                     >
                       <d.Icone className={cn('h-3.5 w-3.5 shrink-0', d.cor)} />
-                      <span className="min-w-0 flex-1 truncate">{f.title}</span>
+                      <span className="min-w-0 flex-1 truncate" title={f.title ?? ""}>{f.title}</span>
                       <span className="shrink-0 font-mono text-[10px] text-muted-foreground">#{f.id}</span>
                     </button>
                   ))}
