@@ -235,3 +235,30 @@ export function acharIteracao(raiz: NoIteracao | null | undefined, codigo: strin
 export function ehRaiz(iteracao: string | null | undefined): boolean {
   return !iteracao || !iteracao.includes('\\')
 }
+
+// ─── concluir (19/11/2026) ──────────────────────────────────────────────────
+// "Encerrar demanda" leva a Task para o estado de conclusão do processo do
+// projeto (Done no Scrum, Closed no Agile). Só Task, só atribuída à própria
+// pessoa: PBI e Bug fecham por quem cuida do backlog.
+
+/** O estado da categoria Completed do tipo (API workitemtypes/{tipo}/states); sem ela, Done. */
+export function estadoConcluido(estados: unknown): string {
+  const lista = (estados as { value?: { name?: unknown; category?: unknown }[] } | null)?.value ?? []
+  const achado = lista.find((e) => e?.category === 'Completed' && typeof e.name === 'string')
+  return (achado?.name as string | undefined) ?? 'Done'
+}
+
+/**
+ * A Task está atribuída a esta pessoa? Compara o GUID do DevOps e, sem ele, o
+ * e-mail (uniqueName), sem diferenciar maiúsculas.
+ */
+export function atribuidoA(
+  atribuido: unknown,
+  pessoa: { devops_guid: string | null; devops_email: string | null; email: string },
+): boolean {
+  const a = atribuido as { id?: unknown; uniqueName?: unknown } | null
+  if (!a || typeof a !== 'object') return false
+  if (pessoa.devops_guid && typeof a.id === 'string' && a.id.toLowerCase() === pessoa.devops_guid.toLowerCase()) return true
+  const nome = typeof a.uniqueName === 'string' ? a.uniqueName.toLowerCase() : ''
+  return !!nome && [pessoa.devops_email, pessoa.email].some((e) => !!e && e.toLowerCase() === nome)
+}

@@ -29,9 +29,12 @@
 //     TechsBCN com id = id do lançamento. O item é conferido no Azure antes.
 //   • relancar (fase 4): lançamento com erro — procura o documento pelo id
 //     ANTES de regravar; nunca repete POST às cegas.
+//   • concluir (19/11/2026): "Encerrar demanda" leva a Task ao estado de
+//     conclusão do processo (Done/Closed). Só Task, só atribuída à própria
+//     pessoa, só o campo System.State.
 //
-// Não há update de work item nem consulta livre: o Timer não vira um proxy do
-// PAT. Toda op além de `ativar` exige timer_access ativo.
+// O único update de work item é o `concluir`, e não há consulta livre: o Timer
+// não vira um proxy do PAT. Toda op além de `ativar` exige timer_access ativo.
 //
 // Regras que não podem afrouxar:
 //   • Quem é a pessoa vem SEMPRE do JWT (getUser). Nada de e-mail, GUID ou
@@ -61,12 +64,14 @@ import {
 } from './sso.ts'
 import {
   acharIteracao,
+  atribuidoA,
   CAMPO_CLIENTE,
   CAMPO_PRODUTO,
   CAMPOS_ITEM,
   descricaoHtml,
   ehRaiz,
   ESTADOS_FECHADOS,
+  estadoConcluido,
   hojeSaoPaulo,
   idsDaWiql,
   idsDosFilhos,
@@ -607,6 +612,71 @@ async function camposDoProjeto(req: Request, corpo: Json, pat: string): Promise<
   return responder(req, 200, { ok: true, projeto, tipo, ...p })
 }
 
+// ─── concluir ───────────────────────────────────────────────────────────────
+
+async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
+  const id = Number(corpo.id)
+  if (!Number.isInteger(id) || id <= 0) return responder(req, 400, { ok: false, motivo: 'item_invalido' })
+
+  const wi = (await lerAzure(
+    `https://dev.azure.com/${ORG}/_apis/wit/workitems/${id}?fields=System.State,System.WorkItemType,System.AssignedTo,System.TeamProject&api-version=7.1`,
+    pat,
+  )) as { fields?: Record<string, unknown> }
+  const f = wi.fields ?? {}
+  const tipo = typeof f['System.WorkItemType'] === 'string' ? (f['System.WorkItemType'] as string) : ''
+  const estado = typeof f['System.State'] === 'string' ? (f['System.State'] as string) : ''
+  const projeto = typeof f['System.TeamProject'] === 'string' ? (f['System.TeamProject'] as string) : ''
+
+  // PBI e Bug não fecham por aqui; o encerrar segue normal no Timer
+  if (tipo !== 'Task') return responder(req, 200, { ok: true, mudou: false, motivo: 'nao_task' })
+  if (ESTADOS_FECHADOS.includes(estado)) return responder(req, 200, { ok: true, mudou: false, motivo: 'ja_fechado', estado })
+  if (!atribuidoA(f['System.AssignedTo'], acesso)) {
+    return responder(req, 403, {
+      ok: false,
+      motivo: 'nao_atribuido',
+      mensagem: `A Task #${id} não está atribuída a você: feche no DevOps.`,
+    })
+  }
+
+  const destino = estadoConcluido(
+    await lerAzure(
+      `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/workitemtypes/Task/states?api-version=7.1`,
+      pat,
+    ),
+  )
+  // Escrita: SEM repetir 5xx (como no criar).
+  const resp = await devopsFetch(
+    `https://dev.azure.com/${ORG}/_apis/wit/workitems/${id}?api-version=7.1`,
+    {
+      method: 'PATCH',
+      headers: { ...devopsAuthHeaders(pat), 'Content-Type': 'application/json-patch+json' },
+      body: JSON.stringify([{ op: 'add', path: '/fields/System.State', value: destino }]),
+    },
+    { client: 'timer-concluir' },
+  )
+  if (!resp.ok) {
+    const texto = (await resp.text()).slice(0, 300)
+    console.warn(`[timer-devops] concluir #${id} recusado (${resp.status}): ${texto}`)
+    return responder(req, 422, {
+      ok: false,
+      motivo: 'devops_recusou',
+      mensagem: `O DevOps não aceitou mudar a Task #${id} para ${destino}.`,
+    })
+  }
+
+  const { error } = await admin().from('timer_eventos').insert({
+    user_id: userId,
+    evento: 'concluiu_work_item',
+    origem: 'servidor',
+    work_item_id: id,
+    detalhe: { de: estado, para: destino, projeto },
+  })
+  if (error) console.warn('[timer-devops] trilha do concluir falhou:', error.message)
+
+  cacheMinhas.apagar(userId)
+  return responder(req, 200, { ok: true, mudou: true, estado: destino })
+}
+
 // ─── Rec reunião ────────────────────────────────────────────────────────────
 
 async function criarNoAzure(projeto: string, tipo: string, ops: Json[]): Promise<Response> {
@@ -948,7 +1018,7 @@ serve(async (req) => {
   if (corpo.op === 'ativar') return await ativar(req, quem.user, quem.token)
 
   const op = corpo.op
-  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'campos', 'reuniao']
+  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'campos', 'reuniao', 'concluir']
   if (typeof op !== 'string' || !OPS.includes(op)) {
     return responder(req, 400, { ok: false, motivo: 'op_desconhecida' })
   }
@@ -968,6 +1038,7 @@ serve(async (req) => {
     if (op === 'tags') return await tagsDoProjeto(req, corpo, pat)
     if (op === 'campos') return await camposDoProjeto(req, corpo, pat)
     if (op === 'reuniao') return await reuniao(req, quem.user.id, acesso, corpo, pat)
+    if (op === 'concluir') return await concluir(req, quem.user.id, acesso, corpo, pat)
     return await criar(req, quem.user.id, acesso, corpo, pat)
   } catch (e) {
     return erroDevops(req, e)

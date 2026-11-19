@@ -247,9 +247,20 @@ export function useAcoesTimer() {
   });
 
   // TM8: encerra a demanda (sai do Em espera); se estiver rodando, pausa antes.
+  // Depois, a Task vai para Done no DevOps (19/11/2026). Falha no DevOps não
+  // desfaz o encerrar: avisa e deixa o link para fechar à mão.
   const encerrarDemanda = useMutation({
-    mutationFn: (workItemId: number) => rpc('timer_demanda_encerrar', { p_work_item_id: workItemId }),
-    onSuccess: (e) => gravar(e),
+    mutationFn: async (workItemId: number) => {
+      const e = await rpc('timer_demanda_encerrar', { p_work_item_id: workItemId });
+      const devops = await concluirNoDevops(workItemId);
+      return { e, devops, workItemId };
+    },
+    onSuccess: ({ e, devops, workItemId }) => {
+      gravar(e);
+      void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'minhas'] });
+      if (devops.mudou) toast.success(`Task #${workItemId} marcada como ${devops.estado ?? 'Done'} no DevOps.`);
+      else if (!devops.ok) toast.warning(devops.mensagem ?? `Demanda encerrada, mas a Task #${workItemId} segue aberta no DevOps.`);
+    },
     onError: falhou,
   });
 
@@ -269,6 +280,29 @@ export interface ResultadoLancamento {
 export interface RespostaLancamento {
   ok: boolean;
   resultados: ResultadoLancamento[];
+}
+
+export interface RespostaConcluir {
+  ok: boolean;
+  mudou?: boolean;
+  estado?: string;
+  motivo?: string;
+  mensagem?: string;
+}
+
+/** Leva a Task para Done no DevOps (edge `concluir`). Nunca lança erro. */
+async function concluirNoDevops(id: number): Promise<RespostaConcluir> {
+  const { data, error } = await supabase.functions.invoke('timer-devops', { body: { op: 'concluir', id } });
+  if (!error) return (data as RespostaConcluir) ?? { ok: false };
+  const ctx = (error as { context?: Response }).context;
+  if (ctx && typeof ctx.json === 'function') {
+    try {
+      return { ok: false, ...((await ctx.json()) as RespostaConcluir) };
+    } catch {
+      /* mensagem genérica */
+    }
+  }
+  return { ok: false };
 }
 
 async function chamarEdge(corpo: Record<string, unknown>): Promise<RespostaLancamento> {
