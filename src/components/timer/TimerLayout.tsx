@@ -53,9 +53,9 @@ export function TimerLayout({ children }: { children: ReactNode }) {
             {nome && (
               <span className="hidden max-w-[220px] truncate text-xs text-sidebar-foreground/70 sm:inline">{nome}</span>
             )}
-            <AvisoAbaCongelada className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <BaixarApp className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <ThemeToggle />
+            <AvisoAbaCongelada className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <Button
               variant="ghost"
               size="sm"

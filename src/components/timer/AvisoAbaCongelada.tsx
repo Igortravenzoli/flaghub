@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, AppWindow, Copy, Download, Snowflake } from 'lucide-react';
+import { Bell, ChevronRight, Copy, Globe, Monitor, Snowflake } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useTimerEstado } from '@/hooks/useTimerRelogio';
 import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
@@ -12,9 +19,9 @@ import { IconeNavegador } from '@/components/timer/IconesNavegador';
 import { detectarCliente, detectarPlataforma, ehCelular } from '@/lib/timerAcesso';
 import { DOWNLOADS_TIMER, ordenarDownloads, urlDownload } from '@/lib/timerDownloads';
 import { aoMudarInstalacao, instalarPwa, podeInstalar, rodandoInstalado } from '@/lib/timerPwa';
-import { horaCurta } from '@/lib/timerRelogio';
 import {
   CHAVE_CORTE_VISTO,
+  CHAVE_LIDO,
   CHAVE_NAO_EXIBIR,
   CHAVE_SESSAO_VISTO,
   detectarNavegador,
@@ -23,7 +30,6 @@ import {
   motivoParaAbrir,
   ultimoCorteSemSinal,
   type InstrucaoNavegador,
-  type MotivoAviso,
 } from '@/lib/timerAbaCongelada';
 
 // O storage pode faltar (janela anônima, site bloqueado): o aviso segue sem ele.
@@ -54,25 +60,65 @@ async function copiar(texto: string) {
   }
 }
 
-function Copiavel({ texto }: { texto: string }) {
+function BotaoCopiar({ texto, className }: { texto: string; className?: string }) {
   return (
-    <div className="flex items-center gap-1 rounded-md border bg-muted/50 py-0.5 pl-2.5 pr-0.5">
-      <code className="flex-1 select-all truncate font-mono text-xs">{texto}</code>
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => void copiar(texto)} aria-label={`Copiar ${texto}`}>
-        <Copy className="h-3.5 w-3.5" />
-      </Button>
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn('h-7 w-7 shrink-0', className)}
+      onClick={() => void copiar(texto)}
+      aria-label={`Copiar ${texto}`}
+    >
+      <Copy className="h-3.5 w-3.5" />
+    </Button>
+  );
+}
+
+const ehBrave = () => typeof navigator !== 'undefined' && 'brave' in navigator;
+
+const OPCAO =
+  'flex h-auto flex-col items-center gap-1.5 rounded-xl border bg-transparent px-2 py-4 text-sm font-normal hover:border-flag-gold hover:bg-flag-gold/10 [&_svg]:size-6';
+
+/** O passo a passo do navegador escolhido: o endereço para copiar e os passos. */
+function PassoAPasso({ instrucao, site }: { instrucao: InstrucaoNavegador; site: string }) {
+  return (
+    <div className="space-y-2.5 rounded-xl border p-3">
+      <div className="flex items-center gap-1 rounded-md border bg-muted/40 py-0.5 pl-2.5 pr-0.5">
+        <code className="flex-1 select-all truncate font-mono text-xs">{instrucao.endereco}</code>
+        <BotaoCopiar texto={instrucao.endereco} />
+      </div>
+      <ol className="list-decimal space-y-1 pl-5 text-sm leading-relaxed">
+        {instrucao.passos.map((p) => (
+          <li key={p}>
+            {p
+              .replace('{site}', `\`${site}\``)
+              .split('`')
+              .map((parte, i) =>
+                i % 2 === 0 ? (
+                  parte
+                ) : (
+                  <span key={i} className="inline-flex items-center">
+                    <code className="rounded bg-muted px-1 font-mono text-xs">{parte}</code>
+                    {parte === site && <BotaoCopiar texto={site} className="h-6 w-6" />}
+                  </span>
+                ),
+              )}
+          </li>
+        ))}
+      </ol>
+      {instrucao.observacao && <p className="text-xs text-muted-foreground">{instrucao.observacao}</p>}
     </div>
   );
 }
 
-const CARD = 'flex h-full flex-col items-start gap-1.5 rounded-xl border bg-card p-3 text-left';
-
 /**
- * "O navegador pode pausar o seu timer": explica o congelamento da aba e
- * oferece as saídas (app web, app desktop ou configurar o navegador). Abre
- * sozinho numa aba comum (ver motivoParaAbrir) até a pessoa marcar "Não
- * exibir novamente"; o botão no topo reabre quando quiser. Some no app
- * desktop e no app web instalado, que não congelam como aba.
+ * "O navegador pode pausar o seu timer" (mock aprovado pelo Igor em
+ * 19/11/2026): instalar (app web ou app para PC) ou configurar o navegador,
+ * com o passo a passo aberto só ao clicar no logo. Abre sozinho numa aba
+ * comum (ver motivoParaAbrir) até a pessoa marcar "Não exibir novamente".
+ * Fica guardado no sino de notificações, à esquerda do Sair (pedido do Igor):
+ * o ponto no sino some depois que a pessoa abre o aviso. Some no app
+ * desktop, no app web instalado e no celular.
  */
 export function AvisoAbaCongelada({ className }: { className?: string }) {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -85,11 +131,20 @@ export function AvisoAbaCongelada({ className }: { className?: string }) {
   const estado = estadoQ.data ?? null;
 
   const [aberto, setAberto] = useState(false);
-  const [motivo, setMotivo] = useState<MotivoAviso | null>(null);
+  const [sino, setSino] = useState(false);
+  const [lido, setLido] = useState(() => ler(local, CHAVE_LIDO) === '1');
   const [naoExibir, setNaoExibir] = useState(() => ler(local, CHAVE_NAO_EXIBIR) === '1');
-  const [navegador, setNavegador] = useState<InstrucaoNavegador['id']>(() => instrucaoDe(detectarNavegador(ua)).id);
+  const [escolhido, setEscolhido] = useState<InstrucaoNavegador['id'] | null>(null);
   const [instalavel, setInstalavel] = useState(podeInstalar());
   useEffect(() => aoMudarInstalacao(() => setInstalavel(podeInstalar())), []);
+
+  const abrir = (v: boolean) => {
+    setAberto(v);
+    if (!v) return;
+    setEscolhido(null);
+    setLido(true);
+    gravar(local, CHAVE_LIDO, '1');
+  };
 
   const corte = useMemo(() => (estado ? ultimoCorteSemSinal(estado.trechos) : null), [estado]);
   const rodando = (estado?.rodandoTodos.length ?? 0) > 0;
@@ -108,8 +163,7 @@ export function AvisoAbaCongelada({ className }: { className?: string }) {
     // marca na hora: não reabre na próxima resposta do servidor
     if (corte) gravar(local, CHAVE_CORTE_VISTO, corte.id);
     gravar(sessao, CHAVE_SESSAO_VISTO, '1');
-    setMotivo(m);
-    setAberto(true);
+    abrir(true);
   }, [estado, aberto, abaComum, naoExibir, corte, rodando]);
 
   if (!abaComum) return null;
@@ -122,156 +176,145 @@ export function AvisoAbaCongelada({ className }: { className?: string }) {
     import.meta.env.VITE_TIMER_DOWNLOAD_URL as string | undefined,
   );
   const site = typeof window !== 'undefined' ? window.location.host : 'flaghub.flag.com.br';
-  const atual = instrucaoDe(detectarNavegador(ua)).id;
-  const instrucao = instrucaoDe(navegador);
-  const appWebPossivel = instrucaoDe(detectarNavegador(ua)).instalaAppWeb;
+  const meu = detectarNavegador(ua, ehBrave());
+  const appWebPossivel = meu !== 'outro' && instrucaoDe(meu).instalaAppWeb;
 
   const mudarNaoExibir = (v: boolean) => {
     setNaoExibir(v);
     gravar(local, CHAVE_NAO_EXIBIR, v ? '1' : null);
   };
-  const instalar = async () => {
+  const instalarWeb = async () => {
+    if (!appWebPossivel) {
+      toast.info('O app web instala pelo Chrome, Edge ou Brave.');
+      return;
+    }
+    if (!instalavel) {
+      toast.info('No menu ⋮ do navegador, escolha "Instalar Timer Flag".');
+      return;
+    }
     if (await instalarPwa()) {
       toast.success('Timer Flag instalado. Ele abre na própria janela.');
       setAberto(false);
     }
   };
-  const abrirManual = (v: boolean) => {
-    setAberto(v);
-    if (v) setMotivo(null);
-  };
+  const instrucao = escolhido ? instrucaoDe(escolhido) : null;
 
   return (
-    <Dialog open={aberto} onOpenChange={abrirManual}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className={cn('gap-2', className)} title="O navegador pode pausar o timer">
-          <Snowflake className="h-4 w-4" />
-          <span className="hidden lg:inline">Evitar pausas</span>
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Snowflake className="h-5 w-5 text-sky-500" />O navegador pode pausar o seu timer
-          </DialogTitle>
-          <DialogDescription>
-            Para poupar memória e energia, o navegador congela abas que ficam em segundo plano. A aba congelada para de
-            avisar o servidor e, 15 minutos depois, o timer é pausado no último aviso, mesmo que você esteja trabalhando em
-            outro programa.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Popover open={sino} onOpenChange={setSino}>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="sm" className={cn('relative', className)} aria-label="Notificações">
+            <Bell className="h-4 w-4" />
+            {!lido && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-flag-gold" aria-hidden />}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80 p-1.5">
+          <p className="px-2 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground">Notificações</p>
+          <button
+            type="button"
+            onClick={() => {
+              setSino(false);
+              abrir(true);
+            }}
+            className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
+          >
+            <Snowflake className="h-5 w-5 shrink-0 text-sky-500" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">Como evitar pausas</span>
+              <span className="block text-xs text-muted-foreground">O navegador pode pausar o timer da aba.</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </button>
+        </PopoverContent>
+      </Popover>
+      <Dialog open={aberto} onOpenChange={abrir}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Snowflake className="h-5 w-5 text-sky-500" />O navegador pode pausar o seu timer
+            </DialogTitle>
+            <DialogDescription>
+              Abas em segundo plano são congeladas para poupar memória. Para o timer não parar sozinho, use o app ou
+              ajuste o navegador.
+            </DialogDescription>
+          </DialogHeader>
 
-        {motivo === 'corte' && corte && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <p>
-              O timer de <strong>#{corte.work_item_id}</strong> parou às <strong>{horaCurta(corte.encerrado_em)}</strong>:
-              esta aba ficou sem avisar o servidor.
-            </p>
-          </div>
-        )}
-
-        <div className="space-y-5">
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Use o Timer fora da aba (recomendado)</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className={CARD}>
-                <div className="flex items-center gap-2">
-                  <AppWindow className="h-4 w-4 text-foreground/80" />
-                  <p className="font-semibold">App web</p>
+            <h3 className="text-sm font-semibold">Instalar</h3>
+            <div className="grid grid-cols-2 gap-2.5">
+              <Button variant="ghost" className={OPCAO} onClick={() => void instalarWeb()}>
+                <Globe className="h-6 w-6" />
+                App web
+                <span className="text-[11px] text-muted-foreground">pelo navegador</span>
+              </Button>
+              {urlApp ? (
+                <Button asChild variant="ghost" className={OPCAO}>
+                  <a
+                    href={urlApp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      void registrarEventoTimer('baixou_instalador', {
+                        plataforma: download.plataforma,
+                        origem: 'aviso_aba',
+                      })
+                    }
+                  >
+                    <Monitor className="h-6 w-6" />
+                    App para PC
+                    <span className="text-[11px] text-muted-foreground">{download.rotulo}</span>
+                  </a>
+                </Button>
+              ) : (
+                <div
+                  className={cn(OPCAO, 'cursor-not-allowed opacity-60 hover:border-border hover:bg-transparent')}
+                  aria-disabled
+                >
+                  <Monitor className="h-6 w-6" />
+                  App para PC
+                  <span className="text-[11px] text-muted-foreground">em breve</span>
                 </div>
-                <p className="text-xs text-muted-foreground">Instala pelo próprio navegador, em janela própria. Sem instalador.</p>
-                {!appWebPossivel ? (
-                  <p className="text-xs text-muted-foreground">Não disponível neste navegador: use Chrome, Edge ou Brave.</p>
-                ) : instalavel ? (
-                  <Button size="sm" className="mt-auto" onClick={() => void instalar()}>
-                    Instalar app web
-                  </Button>
-                ) : (
-                  <p className="mt-auto text-xs">
-                    No menu <strong>⋮</strong> do navegador: <strong>Instalar Timer Flag</strong>.
-                  </p>
-                )}
-              </div>
-              <div className={CARD}>
-                <div className="flex items-center gap-2">
-                  <Download className="h-4 w-4 text-foreground/80" />
-                  <p className="font-semibold">App para o computador</p>
-                </div>
-                <p className="text-xs text-muted-foreground">Não congela, pausa sozinho ao bloquear a tela e tem o mini timer.</p>
-                {urlApp ? (
-                  <Button asChild size="sm" variant="outline" className="mt-auto">
-                    <a
-                      href={urlApp}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => void registrarEventoTimer('baixou_instalador', { plataforma: download.plataforma, origem: 'aviso_aba' })}
-                    >
-                      Baixar para {download.rotulo}
-                    </a>
-                  </Button>
-                ) : (
-                  <Badge variant="outline" className="mt-auto">
-                    Em breve
-                  </Badge>
-                )}
-              </div>
+              )}
             </div>
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold">Ou configure o navegador para não congelar o Timer</h3>
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Navegador">
+            <h3 className="text-sm font-semibold">Ou configure o navegador</h3>
+            <div className="grid grid-cols-4 gap-1.5">
               {INSTRUCOES_NAVEGADOR.map((i) => (
                 <Button
                   key={i.id}
-                  role="tab"
-                  aria-selected={navegador === i.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setNavegador(i.id)}
-                  className={cn('h-9 gap-2', navegador === i.id && 'border-flag-gold bg-flag-gold/10 hover:bg-flag-gold/15')}
+                  variant="ghost"
+                  aria-expanded={escolhido === i.id}
+                  onClick={() => setEscolhido((e) => (e === i.id ? null : i.id))}
+                  className={cn(
+                    'flex h-auto flex-col items-center gap-1 border border-transparent px-1 py-2.5 text-xs font-normal text-muted-foreground [&_svg]:size-7',
+                    escolhido === i.id && 'border-border bg-muted text-foreground',
+                  )}
                 >
-                  <IconeNavegador id={i.id} className="h-4 w-4" />
-                  {i.rotulo}
-                  {atual === i.id && <span className="text-[10px] font-normal text-muted-foreground">· o seu</span>}
+                  <IconeNavegador id={i.id} className="h-7 w-7" />
+                  <span className="leading-tight">{i.rotulo}</span>
+                  {/* a linha existe em todos, para os quatro ficarem da mesma altura */}
+                  <span className="h-3 text-[10px] leading-3 text-flag-gold">{meu === i.id ? 'o seu' : ''}</span>
                 </Button>
               ))}
             </div>
-            <div className="space-y-2 rounded-xl border p-3" role="tabpanel">
-              <Copiavel texto={instrucao.endereco} />
-              <ol className="list-decimal space-y-1.5 pl-5 text-sm">
-                {instrucao.passos.map((p) => (
-                  <li key={p}>
-                    {p
-                      .replace('{site}', `\`${site}\``)
-                      .split('`')
-                      .map((parte, i) =>
-                        i % 2 === 1 ? (
-                          <code key={i} className="rounded bg-muted px-1 font-mono text-xs">
-                            {parte}
-                          </code>
-                        ) : (
-                          parte
-                        ),
-                      )}
-                  </li>
-                ))}
-              </ol>
-              {instrucao.passos.some((p) => p.includes('{site}')) && <Copiavel texto={site} />}
-              {instrucao.observacao && <p className="text-xs text-muted-foreground">{instrucao.observacao}</p>}
-            </div>
+            {instrucao ? (
+              <PassoAPasso instrucao={instrucao} site={site} />
+            ) : (
+              <p className="text-xs text-muted-foreground">Toque no seu navegador para ver o passo a passo.</p>
+            )}
           </section>
-        </div>
 
-        <DialogFooter className="flex-row items-center justify-between gap-3 sm:justify-between">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox checked={naoExibir} onCheckedChange={(v) => mudarNaoExibir(v === true)} />
-            Não exibir novamente
-          </label>
-          <Button onClick={() => setAberto(false)}>Entendi</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter className="flex-row items-center justify-between gap-3 border-t pt-4 sm:justify-between">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox checked={naoExibir} onCheckedChange={(v) => mudarNaoExibir(v === true)} />
+              Não exibir novamente
+            </label>
+            <Button onClick={() => setAberto(false)}>Entendi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

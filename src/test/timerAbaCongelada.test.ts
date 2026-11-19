@@ -12,15 +12,21 @@ const UA = {
 };
 
 describe('detectarNavegador', () => {
-  it('separa Edge, Firefox e Chromium (Brave entra como Chrome)', () => {
-    expect(detectarNavegador(UA.chrome)).toBe('chromium');
+  it('separa Chrome, Edge e Firefox pelo UA', () => {
+    expect(detectarNavegador(UA.chrome)).toBe('chrome');
     expect(detectarNavegador(UA.edge)).toBe('edge');
     expect(detectarNavegador(UA.firefox)).toBe('firefox');
     expect(detectarNavegador(UA.opera)).toBe('outro');
     expect(detectarNavegador(UA.safari)).toBe('outro');
   });
-  it('navegador desconhecido cai nas instruções do Chrome', () => {
-    expect(instrucaoDe('outro').id).toBe('chromium');
+  it('o Brave tem o UA do Chrome: quem separa é o navigator.brave', () => {
+    expect(detectarNavegador(UA.chrome, true)).toBe('brave');
+    expect(detectarNavegador(UA.edge, true)).toBe('edge');
+  });
+  it('cada navegador tem o seu endereço; navegador desconhecido cai no Chrome', () => {
+    expect(instrucaoDe('brave').endereco).toBe('brave://settings/system');
+    expect(instrucaoDe('edge').endereco).toBe('edge://settings/system');
+    expect(instrucaoDe('outro').id).toBe('chrome');
     expect(instrucaoDe('firefox').instalaAppWeb).toBe(false);
   });
 });

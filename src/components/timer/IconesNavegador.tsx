@@ -6,13 +6,9 @@ import type { InstrucaoNavegador } from '@/lib/timerAbaCongelada';
  */
 export function IconeNavegador({ id, className }: { id: InstrucaoNavegador['id']; className?: string }) {
   if (id === 'edge') return <IconeEdge className={className} />;
+  if (id === 'brave') return <IconeBrave className={className} />;
   if (id === 'firefox') return <IconeFirefox className={className} />;
-  return (
-    <span className="flex items-center -space-x-1.5">
-      <IconeChrome className={className} />
-      <IconeBrave className={className} />
-    </span>
-  );
+  return <IconeChrome className={className} />;
 }
 
 function IconeChrome({ className }: { className?: string }) {
