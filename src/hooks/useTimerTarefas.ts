@@ -119,14 +119,15 @@ export function useCriarItemTimer() {
 // ─── tags do DevOps ─────────────────────────────────────────────────────────
 
 const DIA_MS = 24 * 60 * 60 * 1000;
-const chaveTags = (projeto: string) => `timer-flag:tags:${projeto}`;
+// v2: a v1 podia ter guardado lista vazia por 24 h (18/11/2026)
+const chaveTags = (projeto: string) => `timer-flag:tags2:${projeto}`;
 
 function lerTagsGuardadas(projeto: string): string[] | null {
   try {
     const bruto = localStorage.getItem(chaveTags(projeto));
     if (!bruto) return null;
     const v = JSON.parse(bruto) as { em?: number; tags?: unknown };
-    if (typeof v.em !== 'number' || Date.now() - v.em > DIA_MS || !Array.isArray(v.tags)) return null;
+    if (typeof v.em !== 'number' || Date.now() - v.em > DIA_MS || !Array.isArray(v.tags) || v.tags.length === 0) return null;
     return v.tags.filter((t): t is string => typeof t === 'string');
   } catch {
     return null;
@@ -134,6 +135,7 @@ function lerTagsGuardadas(projeto: string): string[] | null {
 }
 
 function guardarTags(projeto: string, tags: string[]) {
+  if (tags.length === 0) return; // vazia não fica guardada: tenta de novo na próxima
   try {
     localStorage.setItem(chaveTags(projeto), JSON.stringify({ em: Date.now(), tags }));
   } catch {
@@ -156,6 +158,11 @@ export function useTagsTimer(projeto: string | null | undefined) {
     gcTime: DIA_MS,
     retry: false,
     queryFn: async () => {
+      try {
+        localStorage.removeItem(`timer-flag:tags:${p}`); // cache da v1
+      } catch {
+        /* sem storage */
+      }
       const guardadas = lerTagsGuardadas(p!);
       if (guardadas) return guardadas;
       const r = await chamar<{ ok: true; tags: string[] }>({ op: 'tags', projeto: p });
@@ -211,4 +218,22 @@ export function useReuniaoTimer() {
       void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'minhas'] });
     },
   });
+}
+
+/**
+ * Tags dos itens que já estão na tela (minhas tarefas, ancestrais e a busca):
+ * completam a lista do DevOps sem nenhuma chamada a mais.
+ */
+export function useTagsConhecidas(): string[] {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const minhas = qc.getQueryData<RespostaTarefas>(['timer-tarefas', 'minhas', user?.id ?? null]);
+  const vistos = new Map<string, string>();
+  for (const i of [...(minhas?.itens ?? []), ...(minhas?.ancestrais ?? [])]) {
+    for (const t of (i.tags ?? '').split(';')) {
+      const limpo = t.trim();
+      if (limpo && !vistos.has(limpo.toUpperCase())) vistos.set(limpo.toUpperCase(), limpo);
+    }
+  }
+  return [...vistos.values()];
 }

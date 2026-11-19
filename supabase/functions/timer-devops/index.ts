@@ -511,6 +511,12 @@ async function tagsDoProjeto(req: Request, corpo: Json, pat: string): Promise<Re
     json = await lerAzure(url('7.1-preview.1'), pat)
   }
   const tags = nomesDasTags(json)
+  // diagnóstico (18/11/2026: as listas vieram vazias com status 200)
+  console.log(`[timer-devops] tags de ${projeto}: ${tags.length}`)
+  if (tags.length === 0) {
+    console.warn(`[timer-devops] tags vazias em ${projeto}; resposta: ${JSON.stringify(json).slice(0, 300)}`)
+    return responder(req, 200, { ok: true, projeto, tags }) // lista vazia não fica guardada
+  }
   cacheTags.gravar(projeto, tags)
   return responder(req, 200, { ok: true, projeto, tags })
 }

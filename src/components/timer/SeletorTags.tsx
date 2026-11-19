@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Check, ChevronDown, Loader2, Plus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { ErroTimer, useTagsTimer } from '@/hooks/useTimerTarefas';
+import { ErroTimer, useTagsConhecidas, useTagsTimer } from '@/hooks/useTimerTarefas';
 import { agruparTags, buscarTags, grafiaExistente, tipoDaTag, type TipoTag } from '@/lib/timerTags';
 
 const TOM: Record<TipoTag, string> = {
@@ -35,7 +35,14 @@ export function SeletorTags({
   produtoObrigatorio?: boolean;
 }) {
   const lista = useTagsTimer(projeto);
-  const { produtos, clientes, categorias } = useMemo(() => agruparTags(lista.data ?? []), [lista.data]);
+  const conhecidas = useTagsConhecidas();
+  // a lista do DevOps + as tags dos itens já na tela (sem chamada a mais)
+  const todas = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of [...(lista.data ?? []), ...conhecidas]) if (!m.has(t.toUpperCase())) m.set(t.toUpperCase(), t);
+    return [...m.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [lista.data, conhecidas]);
+  const { produtos, clientes, categorias } = useMemo(() => agruparTags(todas), [todas]);
   const tem = (t: string) => valor.some((v) => v.toUpperCase() === t.toUpperCase());
   const alternar = (t: string) => onChange(tem(t) ? valor.filter((v) => v.toUpperCase() !== t.toUpperCase()) : [...valor, t]);
   const semProduto = produtoObrigatorio && !valor.some((t) => tipoDaTag(t) === 'produto');
@@ -74,7 +81,7 @@ export function SeletorTags({
         alerta={semProduto}
         itens={produtos}
         carregando={lista.isLoading}
-        vazio={erro ?? 'Nenhuma tag de produto neste projeto.'}
+        vazio={erro ?? `Nenhuma tag de produto em ${projeto}.`}
         placeholder="Pesquisar produto"
         escolhido={tem}
         onEscolher={alternar}
@@ -84,18 +91,18 @@ export function SeletorTags({
         rotulo="Cliente"
         itens={clientes}
         carregando={lista.isLoading}
-        vazio={erro ?? 'Nenhuma tag de cliente neste projeto.'}
+        vazio={erro ?? `Nenhuma tag de cliente em ${projeto}.`}
         placeholder="Pesquisar cliente"
         escolhido={tem}
         onEscolher={alternar}
-        permitirNova={lista.data ?? []}
+        permitirNova={todas}
       />
 
       <ListaComBusca
         rotulo="Categoria"
         itens={categorias}
         carregando={lista.isLoading}
-        vazio={erro ?? 'Nenhuma tag de categoria neste projeto.'}
+        vazio={erro ?? `Nenhuma tag de categoria em ${projeto}.`}
         placeholder="Pesquisar categoria"
         escolhido={tem}
         onEscolher={alternar}
