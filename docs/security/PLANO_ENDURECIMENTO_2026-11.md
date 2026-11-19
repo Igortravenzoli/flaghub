@@ -180,12 +180,38 @@ Plano original:
   `GRANT ... TO anon`. O CI do PR só roda Vercel hoje; o teste entra no Vitest local e no pré-merge.
 - Versionar a definição da `v_colaborador_ausencias` (hoje só existe em produção).
 
+### SEC10 — `profiles.network_id` só por admin (banco) · NÃO APLICADA, PR aberto (18/11)
+- **Origem:** auditoria de 17–18/11 com a skill `security-audit` da Cloudflare (run-1 só de fonte; run-2
+  em sandbox Docker local, Postgres 16 sem rede, com as migrations do repositório). Achado **alto**,
+  reproduzido por três agentes independentes: a política "Users can update own profile" não limita coluna,
+  `auth_network_id()` lê `profiles.network_id` e as políticas de `tickets` (e `get_tickets` /
+  `get_ticket_detail` / `get_dashboard_summary`) liberam por `network_id = auth_network_id()` sem
+  `hub_is_approved()`. Uma conta logada **sem membership** fazia `PATCH /rest/v1/profiles` com
+  `network_id = N` e passava a ler (com `raw_payload`/`vdesk_payload`), alterar e inserir tickets da rede N.
+  A pentest 3 já tinha apontado a política; a correção de abril protegeu só `mfa_exempt`.
+- **Como fica:** migration `20261118120000`: gatilho `protect_profile_network_id_trigger` (BEFORE INSERT OR
+  UPDATE em `profiles`) recusa com 42501 a sessão de usuário não admin (`hub_is_admin()`) que tente gravar
+  ou mudar `network_id`. A tela `/usuarios` (admin) e a `service_role` seguem gravando; nome e o resto do
+  perfil continuam editáveis pelo próprio usuário. Não mexe em dado.
+- **Prova:** `verificacao/sec10_network_id.sql` (ensaio = corpo da migration + PROVA; o RAISE desfaz).
+  Na sandbox: ataque barrado, `SEC10 OK (desfeito): A B C`, e com a volta o ataque volta a passar.
+  **Volta:** `verificacao/sec10_network_id_volta.sql`.
+- **Fica para decidir (não está nesta migration):** (1) perfis que já têm rede sem membership ativa
+  (`network_id = 1` dado a todos em `20260204140830`, ou membership revogada) mantêm acesso aos tickets —
+  a leitura D da verificação lista quem; (2) defesa em profundidade: exigir `hub_is_approved()` junto de
+  `auth_network_id()` nas políticas de tickets/networks/imports/settings e nos RPCs de tickets.
+- **Outros achados da mesma auditoria** (baixos, com migration de correção proposta e testada na sandbox):
+  `collab_map_admin_mut` deixa owner de qualquer área decidir em nome de quem a automação lança horas;
+  `get_recent_batches` devolve lotes e e-mail de importador de qualquer rede. Relatórios locais em
+  `Portal FlagHub\_seguranca\auditoria-skill-cloudflare-2026-11-17\run-2\`.
+
 ## Ordem sugerida e o que pede o Igor
 
 1. **SEC1** — ensaio agora (o DO desfaz tudo) → ok → aplicar → conferir com o mesmo arquivo.
 2. **SEC2** junto (edges, independe do banco).
 3. **SEC3** com o Igor no teclado (login SSO e do monitor logo depois).
-4. **SEC4**, **SEC5** (lotes), **SEC6**, **SEC7**, **SEC9**.
+4. **SEC4** (aplicada); **SEC10** antes da SEC5 (achado alto, gatilho pequeno, sem mudar dado), depois **SEC5** (lotes),
+   **SEC6**, **SEC7**, **SEC9**.
 5. Honeypot (etapa 3) depois da SEC4, para não registrar ruído do que já vai ser fechado.
 
 Lembrete: revogar o token temporário da Management API ao fim da revisão.
