@@ -15,8 +15,10 @@ import {
   sprintOficial,
   validarCriacao,
   wiqlBusca,
+  wiqlFilhos,
   wiqlMinhas,
 } from '../../supabase/functions/timer-devops/tarefas';
+import { ordenarPorAbertura, proximaOrdem, soAbertos } from '@/lib/ordemAbertura';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
 import { caminhoDe, gravarSelecao, lerSelecao, pbisDaSprint } from '@/lib/timerSelecao';
 
@@ -228,5 +230,32 @@ describe('concluir (encerrar demanda leva a Task a Done)', () => {
     expect(atribuidoA({ id: 'zz', uniqueName: 'cecilia@flag.com.br' }, pessoa)).toBe(false);
     expect(atribuidoA(null, pessoa)).toBe(false);
     expect(atribuidoA('igor.cardoso@flag.com.br', pessoa)).toBe(false);
+  });
+});
+
+describe('filhos abertos e ordem de abertura (19/11/2026)', () => {
+  it('a consulta de filhos deixa Done, Closed e Removed de fora', () => {
+    const q = wiqlFilhos(2700);
+    expect(q).toContain("[Target].[System.State] NOT IN ('Done', 'Closed', 'Removed')");
+    expect(q).toContain('[Source].[System.Id] = 2700');
+  });
+  it('soAbertos tira os fechados; ordenarPorAbertura usa o id (o DevOps numera na criação)', () => {
+    const itens = [
+      { id: 10, state: 'Done' },
+      { id: 30, state: 'In Progress' },
+      { id: 20, state: 'To Do' },
+      { id: 40, state: 'Closed' },
+    ];
+    expect(soAbertos(itens).map((i) => i.id)).toEqual([30, 20]);
+    expect(ordenarPorAbertura(soAbertos(itens), 'recentes').map((i) => i.id)).toEqual([30, 20]);
+    expect(ordenarPorAbertura(soAbertos(itens), 'antigas').map((i) => i.id)).toEqual([20, 30]);
+    expect(ordenarPorAbertura(itens, 'padrao')).toBe(itens);
+  });
+  it('o ícone dá a volta com e sem a ordem padrão', () => {
+    expect(proximaOrdem('padrao', true)).toBe('recentes');
+    expect(proximaOrdem('recentes', true)).toBe('antigas');
+    expect(proximaOrdem('antigas', true)).toBe('padrao');
+    expect(proximaOrdem('recentes', false)).toBe('antigas');
+    expect(proximaOrdem('antigas', false)).toBe('recentes');
   });
 });

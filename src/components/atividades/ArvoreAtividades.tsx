@@ -3,6 +3,8 @@ import { Bug, ChevronRight, ClipboardList, Crown, ExternalLink, List, Loader2, P
 import { ehArrastoDeAnotacao, recebeTask } from '@/lib/timerArrastar';
 import type { GrupoEpic, GrupoFeature, GrupoPbi, ItemDevops } from '@/lib/minhasAtividades';
 import { prazoSprint, textoPrazo, type NivelPrazo, type PrazoSprint } from '@/lib/prazoSprint';
+import { ordenarPorAbertura, type OrdemTasks } from '@/lib/ordemAbertura';
+import { BotaoOrdemAbertura } from '@/components/atividades/BotaoOrdemAbertura';
 
 /**
  * A árvore Epic > Feature > PBI > Task de "Minhas atividades", extraída para o
@@ -22,6 +24,8 @@ export interface AcoesArvore {
   selecionado?: number | null;
   /** PBI/Bug como alvo de uma anotação (Timer): clicar ou soltar cria a Task. */
   alvo?: AlvoAnotacao;
+  /** ícone no PBI que ordena as Tasks pela abertura (Timer, 19/11/2026) */
+  ordenarTasks?: boolean;
 }
 
 export interface AlvoAnotacao {
@@ -233,10 +237,12 @@ function SecaoFeature({
 
 function BlocoPbi({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes?: AcoesArvore }) {
   const compacto = useContext(Compacto);
+  const [ordem, setOrdem] = useState<OrdemTasks>('padrao');
   if (compacto) return <BlocoPbiCompacto grupo={grupo} hoje={hoje} acoes={acoes} />;
   const { pbi } = grupo;
   const contexto = pbi != null && !grupo.pbiAtribuido;
   const pbiSelecionado = pbi != null && acoes?.selecionado === pbi.id;
+  const tasks = ordenarPorAbertura(grupo.tasks, ordem);
   const quebra = compacto ? 'flex-wrap' : '';
   const titulo = compacto ? 'min-w-[9rem]' : 'min-w-0';
   return (
@@ -256,6 +262,7 @@ function BlocoPbi({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes
             </span>
             <Estado state={pbi.state} />
             {grupo.prazo && <RotuloSprint prazo={grupo.prazo} tags={pbi.tags} />}
+            {acoes?.ordenarTasks && grupo.tasks.length > 1 && <BotaoOrdemAbertura ordem={ordem} onMudar={setOrdem} />}
             {acoes?.pbi?.(pbi)}
             <LinkDevops item={pbi} />
           </>
@@ -264,7 +271,7 @@ function BlocoPbi({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: string; acoes
         )}
       </div>
       {pbi && acoes?.depoisDoPbi?.(pbi)}
-      {grupo.tasks.map((t) => {
+      {tasks.map((t) => {
         const p = prazoSprint(t, hoje);
         // a sprint da Task só aparece quando foge da do PBI ou pede atenção
         const mostrarSprint =
@@ -317,6 +324,8 @@ function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: strin
   const { pbi } = grupo;
   const contexto = pbi != null && !grupo.pbiAtribuido;
   const pbiSelecionado = pbi != null && acoes?.selecionado === pbi.id;
+  const [ordem, setOrdem] = useState<OrdemTasks>('padrao');
+  const tasks = ordenarPorAbertura(grupo.tasks, ordem);
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card">
       {pbi ? (
@@ -336,6 +345,7 @@ function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: strin
             {grupo.prazo && <RotuloSprint prazo={grupo.prazo} tags={pbi.tags} />}
             <span className="ml-auto flex shrink-0 items-center gap-0.5">
               <SinalAlvo item={pbi} alvo={acoes?.alvo} />
+              {acoes?.ordenarTasks && grupo.tasks.length > 1 && <BotaoOrdemAbertura ordem={ordem} onMudar={setOrdem} />}
               {!acoes?.alvo?.escolhendo && !acoes?.alvo?.arrastando && acoes?.pbi?.(pbi)}
               <LinkDevops item={pbi} />
             </span>
@@ -345,7 +355,7 @@ function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: strin
         <div className="bg-muted/40 px-2.5 py-1.5 text-sm italic text-muted-foreground">Tasks sem PBI</div>
       )}
       {pbi && acoes?.depoisDoPbi?.(pbi)}
-      {grupo.tasks.map((t) => {
+      {tasks.map((t) => {
         const p = prazoSprint(t, hoje);
         const selecionada = acoes?.selecionado === t.id;
         return (

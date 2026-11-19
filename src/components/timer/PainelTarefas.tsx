@@ -18,6 +18,8 @@ import {
   type AlvoAnotacao,
 } from '@/components/atividades/ArvoreAtividades';
 import { lerArrasto, type AnotacaoArrastada } from '@/lib/timerArrastar';
+import { ordenarPorAbertura, soAbertos, type OrdemTasks } from '@/lib/ordemAbertura';
+import { BotaoOrdemAbertura } from '@/components/atividades/BotaoOrdemAbertura';
 import { SeletorTags } from '@/components/timer/SeletorTags';
 import { avisoTagsDescartadas, classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
@@ -373,6 +375,7 @@ export function PainelTarefas({
               feature: acoesItem,
               depoisDoPbi: (p) => formPara(p, 'Task'),
               depoisDaFeature: (f) => formPara(f, 'PBI'),
+              ordenarTasks: true,
             }}
           />
         )}
@@ -595,6 +598,8 @@ function LinhaRemota({
   formPara: (item: ItemDevops, tipo: 'Task' | 'PBI') => React.ReactNode;
 }) {
   const [aberto, setAberto] = useState(false);
+  // filhos pela abertura: o mais novo em cima (a Task recém-criada aparece)
+  const [ordem, setOrdem] = useState<OrdemTasks>('recentes');
   const tipo = item.work_item_type ?? '';
   const desce = tipo !== 'Task' && nivel < 3;
   const caminho = nivel === 0 ? caminhoDe(item, conhecidos) : null;
@@ -623,6 +628,7 @@ function LinhaRemota({
             {[item.state, caminho].filter(Boolean).join(' · ')}
           </span>
           <RotuloSprint prazo={prazo} tags={item.tags} />
+          {desce && aberto && <BotaoOrdemAbertura ordem={ordem} onMudar={setOrdem} comPadrao={false} />}
           <SinalAlvo item={item} alvo={alvo} />
           {!alvo?.escolhendo && !alvo?.arrastando && (
             <AcoesItem
@@ -639,6 +645,7 @@ function LinhaRemota({
       {aberto && (
         <Filhos
           id={item.id}
+          ordem={ordem}
           conhecidos={conhecidos}
           nivel={nivel + 1}
           selecionadaId={selecionadaId}
@@ -655,6 +662,7 @@ function LinhaRemota({
 
 function Filhos(props: {
   id: number;
+  ordem: OrdemTasks;
   conhecidos: Map<number, ItemDevops>;
   nivel: number;
   selecionadaId: number | null;
@@ -664,14 +672,16 @@ function Filhos(props: {
   formPara: (item: ItemDevops, tipo: 'Task' | 'PBI') => React.ReactNode;
   alvo?: AlvoAnotacao;
 }) {
-  const { id, ...linha } = props;
+  const { id, ordem, ...linha } = props;
   const { data, isLoading, error } = useFilhosTimer(id);
+  // só To Do e In Progress: Done, Closed e Removed não listam (pedido do Igor, 19/11/2026)
+  const abertos = useMemo(() => ordenarPorAbertura(soAbertos(data?.itens ?? []), ordem), [data, ordem]);
   if (isLoading) return <p className="ml-6 py-1 text-xs text-muted-foreground">Carregando…</p>;
   if (error) return <p className="ml-6 py-1 text-xs text-destructive">{(error as Error).message}</p>;
-  if (!data?.itens.length) return <p className="ml-6 py-1 text-xs text-muted-foreground">Sem filhos abertos.</p>;
+  if (!abertos.length) return <p className="ml-6 py-1 text-xs text-muted-foreground">Sem filhos abertos.</p>;
   return (
     <div className="space-y-0.5">
-      {data.itens.map((f) => (
+      {abertos.map((f) => (
         <LinhaRemota key={f.id} {...linha} item={f} />
       ))}
     </div>

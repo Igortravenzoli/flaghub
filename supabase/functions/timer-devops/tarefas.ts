@@ -114,12 +114,18 @@ export function wiqlBusca(texto: string): string {
   )
 }
 
+/**
+ * Os filhos ABERTOS de um item (19/11/2026): Done, Closed e Removed ficam de
+ * fora. Antes vinha tudo menos Removed, e num PBI com centenas de Tasks
+ * fechadas (o 2700 passa de mil) as abertas nem cabiam nos 200 da consulta.
+ */
 export function wiqlFilhos(id: number): string {
+  const fechados = ESTADOS_FECHADOS.map(literalWiql).join(', ')
   return (
     `SELECT [System.Id] FROM WorkItemLinks ` +
     `WHERE [Source].[System.Id] = ${Math.trunc(id)} ` +
     `AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' ` +
-    `AND [Target].[System.State] <> 'Removed' ` +
+    `AND [Target].[System.State] NOT IN (${fechados}) ` +
     `MODE (MustContain)`
   )
 }
