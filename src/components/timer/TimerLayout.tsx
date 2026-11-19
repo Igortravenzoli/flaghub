@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { BaixarApp } from '@/components/timer/BaixarApp';
+import { AvisoAbaCongelada } from '@/components/timer/AvisoAbaCongelada';
 import { versaoDesktop } from '@/lib/timerAcesso';
 
 /**
@@ -52,6 +53,7 @@ export function TimerLayout({ children }: { children: ReactNode }) {
             {nome && (
               <span className="hidden max-w-[220px] truncate text-xs text-sidebar-foreground/70 sm:inline">{nome}</span>
             )}
+            <AvisoAbaCongelada className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <BaixarApp className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <ThemeToggle />
             <Button
