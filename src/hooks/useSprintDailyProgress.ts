@@ -36,7 +36,10 @@ export interface SprintDailyProgressRow {
   work_item_count: number;
   category_breakdown: {
     geral: SnapshotScopeBreakdown;
+    /** Formato anterior: escopo = título do Épico raiz. */
     fabricas: Record<string, SnapshotScopeBreakdown>;
+    /** Organograma (desde 23/11/2026): escopo = código da fábrica pela pessoa. Ver `@/lib/fabricaFoto`. */
+    fabricas_org?: Record<string, SnapshotScopeBreakdown>;
   } | null;
 }
 

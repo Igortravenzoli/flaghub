@@ -6,13 +6,15 @@ import { ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useSprintSnapshots, type SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { useWorkItemsByIds } from '@/hooks/useWorkItemsByIds';
-import { cleanFabricaName } from '@/lib/fabricaNames';
+import { type BreakdownFoto, fabricasDaFoto, type FormatoFoto, formatoDaFoto } from '@/lib/fabricaFoto';
 import { META_ENTREGA_PCT, TETO_BUG_PCT } from '@/lib/fabricaMetas';
 import { concluidoDoEscopo, idsDaSerie, type SerieSprint } from '@/lib/fabricaTvSeries';
 
 type DesempenhoTrendChartProps = {
-  /** Fábrica (rótulo normalizado, ex.: "K8") para escopar; null/ausente = geral. */
+  /** Fábrica (código do organograma, ex.: "IR", ou squad antiga, ex.: "K8") para escopar; null/ausente = geral. */
   fabrica?: string | null;
+  /** Formato em que a fábrica é lida (o da janela do card pai). Ausente = o de cada foto. */
+  formato?: FormatoFoto;
   /** Quantas sprints mais recentes exibir. */
   maxSprints?: number;
   /** Altura do gráfico; use "100%" para preencher o card (o pai precisa ter altura). */
@@ -55,15 +57,20 @@ function pct(part: number, total: number): number {
   return Math.round((part / total) * 1000) / 10;
 }
 
-/** Escopo geral ou de uma fábrica dentro da fotografia da sprint. */
+/**
+ * Escopo geral ou de uma fábrica dentro da fotografia da sprint, no formato
+ * pedido (organograma lê `fabricas_org`, anterior lê `fabricas`). O formato não
+ * sai do nome: APP e STAGING existem nos dois. Sem formato, cada foto é lida no
+ * dela. Sprint sem a fábrica naquele formato não vira ponto (nunca zero).
+ */
 function scopeFor(
-  breakdown: { geral: SnapshotScopeBreakdown; fabricas: Record<string, SnapshotScopeBreakdown> } | null,
+  breakdown: (BreakdownFoto & { geral: SnapshotScopeBreakdown }) | null,
   fabrica?: string | null,
+  formato?: FormatoFoto,
 ): SnapshotScopeBreakdown | null {
   if (!breakdown) return null;
   if (!fabrica) return breakdown.geral;
-  const entry = Object.entries(breakdown.fabricas).find(([raw]) => cleanFabricaName(raw) === fabrica);
-  return entry?.[1] ?? null;
+  return fabricasDaFoto(breakdown, formato ?? formatoDaFoto(breakdown))[fabrica] ?? null;
 }
 
 type Ponto = {
@@ -170,6 +177,7 @@ function ListaItens({ ids, limite, onVerTodos }: { ids: number[]; limite?: numbe
  */
 export function DesempenhoTrendChart({
   fabrica,
+  formato,
   maxSprints = 8,
   height = 220,
   showValues = true,
@@ -202,7 +210,7 @@ export function DesempenhoTrendChart({
     return Object.values(snapshots)
       .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
       .map((s) => {
-        const scope = scopeFor(s.category_breakdown, fabrica);
+        const scope = scopeFor(s.category_breakdown, fabrica, formato);
         if (!scope) return null;
         return {
           sprint: s.sprint_code.split('-')[0],
@@ -223,7 +231,7 @@ export function DesempenhoTrendChart({
       .filter((r): r is Ponto => r !== null)
       .sort((a, b) => a.num - b.num)
       .slice(-maxSprints);
-  }, [snapshots, fabrica, anoVigente, maxSprints]);
+  }, [snapshots, fabrica, formato, anoVigente, maxSprints]);
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground py-10 text-center">Carregando evolução…</p>;

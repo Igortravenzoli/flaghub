@@ -8,13 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useSprintDailyProgress, type SprintDailyProgressRow } from '@/hooks/useSprintDailyProgress';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
-import { cleanFabricaName } from '@/lib/fabricaNames';
-import { SQUADS } from '@/lib/fabricaRoster';
+import { fabricasDaFoto, formatoDaFoto, ordemFabricaFoto, rotuloFabricaFoto } from '@/lib/fabricaFoto';
 
 type DailyProgressCardProps = {
   /** Código da sprint a exibir; se ausente, usa a sprint oficial vigente (a série é forward-only da sprint aberta). */
   sprintCode?: string | null;
-  /** Filtra a série por uma fábrica (rótulo já normalizado, ex.: "K8"). null = geral. */
+  /** Filtra a série por uma fábrica (código do organograma, ex.: "IR", ou squad antiga, ex.: "K8"). null = geral. */
   fabricaFilter?: string | null;
   /** Altura do gráfico (px). Menor no modo TV. */
   chartHeight?: number;
@@ -52,31 +51,35 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
 
   const dailyRows = useMemo(() => dedupeByDay(rows), [rows]);
 
-  // Squads reais presentes na série — para o seletor de escopo.
-  // Filtra "Sem fábrica"/"DESIGN"/"FLG", que não são squads.
+  /**
+   * O formato do dia MAIS RECENTE manda (organograma ou por Épico): os dias de
+   * antes da troca não têm `fabricas_org`, e K8 não é a mesma fábrica que GPS/GO.
+   */
+  const formato = formatoDaFoto(dailyRows[dailyRows.length - 1]?.category_breakdown);
+
+  // Fábricas presentes na série, no formato do último dia — para o seletor de escopo.
   const fabricas = useMemo(() => {
     const set = new Set<string>();
     for (const r of dailyRows) {
-      for (const raw of Object.keys(r.category_breakdown?.fabricas ?? {})) {
-        const name = cleanFabricaName(raw);
-        if (SQUADS.includes(name)) set.add(name);
-      }
+      for (const nome of Object.keys(fabricasDaFoto(r.category_breakdown, formato))) set.add(nome);
     }
-    return SQUADS.filter((s) => set.has(s));
-  }, [dailyRows]);
+    return [...set].sort((a, b) => ordemFabricaFoto(a) - ordemFabricaFoto(b));
+  }, [dailyRows, formato]);
 
   const chartData = useMemo(() => {
     return dailyRows.map((r) => {
       if (activeScope) {
-        // Escopo por fábrica — casa a chave crua do breakdown com o rótulo normalizado.
-        const entry = Object.entries(r.category_breakdown?.fabricas ?? {})
-          .find(([raw]) => cleanFabricaName(raw) === activeScope);
-        const scoped = entry?.[1];
+        // Dia em outro formato não tem esta fábrica: fica VAZIO, nunca zero — zero
+        // leria como "a fábrica não entregou nada" num dia que só não foi medido assim.
+        const doDia = formatoDaFoto(r.category_breakdown) === formato
+          ? fabricasDaFoto(r.category_breakdown, formato)
+          : null;
+        const scoped = doDia?.[activeScope];
         return {
           label: dayLabel(r.captured_date),
-          Entregue: scoped?.entregue.total ?? 0,
-          Done: scoped?.done.total ?? 0,
-          Escopo: scoped?.total ?? 0,
+          Entregue: doDia ? (scoped?.entregue.total ?? 0) : null,
+          Done: doDia ? (scoped?.done.total ?? 0) : null,
+          Escopo: doDia ? (scoped?.total ?? 0) : null,
         };
       }
       return {
@@ -86,7 +89,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
         Escopo: r.total_demands ?? 0,
       };
     });
-  }, [dailyRows, activeScope]);
+  }, [dailyRows, activeScope, formato]);
 
   const last = chartData[chartData.length - 1];
 
@@ -116,7 +119,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
                   size="sm" className="h-7 text-xs"
                   onClick={() => setScope(scope === f ? null : f)}
                 >
-                  {f}
+                  {rotuloFabricaFoto(f)}
                 </Button>
               ))}
             </div>
@@ -134,7 +137,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
           <>
             {last && (
               <div className="flex gap-4 mb-3 text-xs">
-                <span className="text-muted-foreground">Hoje{activeScope ? ` · ${activeScope}` : ''}:</span>
+                <span className="text-muted-foreground">Hoje{activeScope ? ` · ${rotuloFabricaFoto(activeScope)}` : ''}:</span>
                 <span className="font-semibold text-sky-600">{last.Entregue} entregue</span>
                 <span className="font-semibold text-emerald-600">{last.Done} done</span>
                 <span className="text-muted-foreground">de {last.Escopo} no escopo</span>
@@ -158,6 +161,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">
               Série capturada diariamente (cron 00:05 BRT) da sprint aberta. Entregue = itens em teste/deploy; Done = finalizados.
+              {activeScope && formato === 'organograma' && ' O item é da fábrica que mais lançou hora nele (sem hora: área/Épico do item; sem destino: o responsável), então pode mudar de fábrica ao longo da sprint.'}
             </p>
           </>
         )}
