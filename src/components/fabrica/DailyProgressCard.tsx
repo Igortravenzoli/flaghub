@@ -8,12 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useSprintDailyProgress, type SprintDailyProgressRow } from '@/hooks/useSprintDailyProgress';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
-import { fabricasDaFoto, formatoDaFoto, ordemFabricaFoto, rotuloFabricaFoto } from '@/lib/fabricaFoto';
+import { fabricasDaFoto, ordemFabricaFoto, rotuloFabricaFoto, temOrganograma } from '@/lib/fabricaFoto';
 
 type DailyProgressCardProps = {
   /** Código da sprint a exibir; se ausente, usa a sprint oficial vigente (a série é forward-only da sprint aberta). */
   sprintCode?: string | null;
-  /** Filtra a série por uma fábrica (código do organograma, ex.: "IR", ou squad antiga, ex.: "K8"). null = geral. */
+  /** Filtra a série por uma fábrica (código do organograma, ex.: "IR"). null = geral. */
   fabricaFilter?: string | null;
   /** Altura do gráfico (px). Menor no modo TV. */
   chartHeight?: number;
@@ -51,29 +51,22 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
 
   const dailyRows = useMemo(() => dedupeByDay(rows), [rows]);
 
-  /**
-   * O formato do dia MAIS RECENTE manda (organograma ou por Épico): os dias de
-   * antes da troca não têm `fabricas_org`, e K8 não é a mesma fábrica que GPS/GO.
-   */
-  const formato = formatoDaFoto(dailyRows[dailyRows.length - 1]?.category_breakdown);
-
-  // Fábricas presentes na série, no formato do último dia — para o seletor de escopo.
+  // Fábricas do organograma presentes na série — para o seletor de escopo.
   const fabricas = useMemo(() => {
     const set = new Set<string>();
     for (const r of dailyRows) {
-      for (const nome of Object.keys(fabricasDaFoto(r.category_breakdown, formato))) set.add(nome);
+      for (const nome of Object.keys(fabricasDaFoto(r.category_breakdown))) set.add(nome);
     }
     return [...set].sort((a, b) => ordemFabricaFoto(a) - ordemFabricaFoto(b));
-  }, [dailyRows, formato]);
+  }, [dailyRows]);
 
   const chartData = useMemo(() => {
     return dailyRows.map((r) => {
       if (activeScope) {
-        // Dia em outro formato não tem esta fábrica: fica VAZIO, nunca zero — zero
-        // leria como "a fábrica não entregou nada" num dia que só não foi medido assim.
-        const doDia = formatoDaFoto(r.category_breakdown) === formato
-          ? fabricasDaFoto(r.category_breakdown, formato)
-          : null;
+        // Dia capturado antes do organograma (sem `fabricas_org`) fica VAZIO, nunca
+        // zero — zero leria como "a fábrica não entregou nada" num dia que só não
+        // foi medido assim.
+        const doDia = temOrganograma(r.category_breakdown) ? fabricasDaFoto(r.category_breakdown) : null;
         const scoped = doDia?.[activeScope];
         return {
           label: dayLabel(r.captured_date),
@@ -89,7 +82,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
         Escopo: r.total_demands ?? 0,
       };
     });
-  }, [dailyRows, activeScope, formato]);
+  }, [dailyRows, activeScope]);
 
   const last = chartData[chartData.length - 1];
 
@@ -161,7 +154,7 @@ export function DailyProgressCard({ sprintCode, fabricaFilter, chartHeight = 260
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">
               Série capturada diariamente (cron 00:05 BRT) da sprint aberta. Entregue = itens em teste/deploy; Done = finalizados.
-              {activeScope && formato === 'organograma' && ' O item é da fábrica que mais lançou hora nele (sem hora: área/Épico do item; sem destino: o responsável), então pode mudar de fábrica ao longo da sprint.'}
+              {activeScope && ' O item é da fábrica que mais lançou hora nele (sem hora: área/Épico do item; sem destino: o responsável), então pode mudar de fábrica ao longo da sprint.'}
             </p>
           </>
         )}

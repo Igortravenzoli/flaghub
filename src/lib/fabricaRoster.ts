@@ -11,18 +11,6 @@ import { CODIGOS_FABRICA, ehFabricaDeEntrega, FABRICAS, fabricaOrg } from '@/lib
 import { cleanFabricaName } from '@/lib/fabricaNames';
 
 /**
- * Squads POR ÉPICO — o recorte dos KPIs de sprint (ranking, matriz de sprint,
- * qualidade por fábrica, progresso diário).
- *
- * A fábrica de um ITEM sai do título do Épico no DevOps, e as fotos de sprint
- * guardam esse título. Em 11/2026 o organograma mudou, mas os Épicos seguem os
- * do formato anterior; enquanto o DevOps não for reorganizado, é esta lista que
- * os indicadores de entrega enxergam. Não confundir com a fábrica de casa de
- * uma PESSOA, que já segue o organograma novo (`GRUPOS_HORAS`).
- */
-export const SQUADS: string[] = ['K8', 'FLEXX', 'STAGING', 'APP'];
-
-/**
  * Códigos que entram SÓ na contagem de horas (decisão de 12/08/2026): as áreas
  * de apoio e a Infra. Cadastrar alguém aqui faz as horas aparecerem com nome e
  * capacidade próprios, sem mover nenhum KPI de sprint.
@@ -80,8 +68,8 @@ export type CasaAlocada = { squad: string; pct: number; peso: number };
  * só fica com peso 1 mesmo a 50% — o percentual reduz a CAPACIDADE dela, não
  * some com a outra metade das horas apontadas.
  *
- * O rateio é por percentual, não por Épico: o DevOps ainda não tem Épico para
- * as fábricas novas, então não há como dizer em qual das duas a hora caiu.
+ * Esse peso é o rateio de quando o destino da hora não diz qual das casas é:
+ * ver `repartirHoraPorPessoa`.
  */
 export function buildAlocacaoMap(rows: RosterEntry[]): Map<string, CasaAlocada[]> {
   const bruto = new Map<string, { squad: string; pct: number }[]>();
@@ -154,6 +142,13 @@ export function segmentoArea(areaPath: string | null | undefined): string | null
   return partes.length >= 2 ? partes[partes.length - 1] : null;
 }
 
+/**
+ * Épicos de squad do organograma ANTERIOR ([K8], [FLEXX]). Não são mais fábrica
+ * (F4, 23/11/2026), mas ainda há gente lançando neles: a hora segue com a
+ * fábrica da pessoa e ganha a marca "formato anterior", para orientação.
+ */
+export const EPICOS_FORMATO_ANTERIOR: readonly string[] = ['K8', 'FLEXX'];
+
 const fabricasDaArea = (seg: string) => FABRICAS.filter((f) => f.devops?.area === seg).map((f) => f.codigo);
 const fabricasDoEpico = (ep: string) => FABRICAS.filter((f) => f.devops?.epicos?.includes(ep)).map((f) => f.codigo);
 
@@ -166,7 +161,7 @@ export function destinoIdDoItem(areaPath: string | null | undefined, epicoTitulo
   const seg = segmentoArea(areaPath);
   if (seg && fabricasDaArea(seg).length > 0) return `area:${seg}`;
   const ep = epicoTitulo ? cleanFabricaName(epicoTitulo) : null;
-  if (ep && fabricasDoEpico(ep).length > 0) return `epico:${ep}`;
+  if (ep && (fabricasDoEpico(ep).length > 0 || EPICOS_FORMATO_ANTERIOR.includes(ep))) return `epico:${ep}`;
   if (seg) return `area:${seg}`;
   if (ep) return `outro:${ep}`;
   return DESTINO_NENHUM;
@@ -184,8 +179,7 @@ export function lerDestino(id: string): DestinoHora {
   if (tipo === 'area' && nome) {
     d = { id, codigos: fabricasDaArea(nome), rotulo: `área ${nome}`, anterior: false };
   } else if (tipo === 'epico' && nome) {
-    const codigos = fabricasDoEpico(nome);
-    d = { id, codigos, rotulo: `Épico ${nome}`, anterior: codigos.length > 0 && codigos.every((c) => fabricaOrg(c)?.grupo === 'ANTERIOR') };
+    d = { id, codigos: fabricasDoEpico(nome), rotulo: `Épico ${nome}`, anterior: EPICOS_FORMATO_ANTERIOR.includes(nome) };
   } else if (tipo === 'outro' && nome) {
     d = { id, codigos: [], rotulo: `Épico ${nome}`, anterior: false };
   } else {
@@ -216,8 +210,8 @@ export const ROTULO_MARCA: Record<MarcaHora, string> = {
 
 export function marcaDaHora(casa: string, destino: DestinoHora): MarcaHora {
   if (destino.codigos.includes(casa)) return 'casa';
-  if (destino.codigos.length === 0) return 'sem_destino';
   if (destino.anterior) return 'anterior';
+  if (destino.codigos.length === 0) return 'sem_destino';
   return ehArea(casa) ? 'atendimento' : 'cruzado';
 }
 

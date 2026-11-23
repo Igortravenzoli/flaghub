@@ -6,16 +6,14 @@ import { ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useSprintSnapshots, type SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { useWorkItemsByIds } from '@/hooks/useWorkItemsByIds';
-import { type BreakdownFoto, escoposPorGrupo, fabricasDaFoto, type FormatoFoto, formatoDaFoto } from '@/lib/fabricaFoto';
+import { type BreakdownFoto, escoposPorGrupo, fabricasDaFoto } from '@/lib/fabricaFoto';
 import type { GrupoId } from '@/lib/fabricaOrganograma';
 import { META_ENTREGA_PCT, TETO_BUG_PCT } from '@/lib/fabricaMetas';
 import { concluidoDoEscopo, idsDaSerie, type SerieSprint } from '@/lib/fabricaTvSeries';
 
 type DesempenhoTrendChartProps = {
-  /** Fábrica (código do organograma, ex.: "IR", ou squad antiga, ex.: "K8") para escopar; null/ausente = geral. */
+  /** Fábrica (código do organograma, ex.: "IR") para escopar; null/ausente = geral. */
   fabrica?: string | null;
-  /** Formato em que a fábrica é lida (o da janela do card pai). Ausente = o de cada foto. */
-  formato?: FormatoFoto;
   /** Grupo do organograma (soma das fábricas dele). Tem precedência sobre `fabrica`. */
   grupo?: GrupoId | null;
   /** Quantas sprints mais recentes exibir. */
@@ -61,22 +59,20 @@ function pct(part: number, total: number): number {
 }
 
 /**
- * Escopo geral ou de uma fábrica dentro da fotografia da sprint, no formato
- * pedido (organograma lê `fabricas_org`, anterior lê `fabricas`). O formato não
- * sai do nome: APP e STAGING existem nos dois. Sem formato, cada foto é lida no
- * dela. Sprint sem a fábrica naquele formato não vira ponto (nunca zero).
+ * Escopo geral, de uma fábrica ou de um grupo dentro da fotografia da sprint.
+ * Fábrica e grupo vêm do organograma (`fabricas_org`); sprint sem a fábrica
+ * (ou anterior ao organograma) não vira ponto — nunca zero.
  */
 function scopeFor(
   breakdown: (BreakdownFoto & { geral: SnapshotScopeBreakdown }) | null,
   fabrica?: string | null,
-  formato?: FormatoFoto,
   grupo?: GrupoId | null,
 ): SnapshotScopeBreakdown | null {
   if (!breakdown) return null;
-  // Grupo só existe no organograma: soma das fábricas dele naquela foto.
-  if (grupo) return escoposPorGrupo(fabricasDaFoto(breakdown, 'organograma'))[grupo] ?? null;
+  // Grupo: soma das fábricas dele naquela foto.
+  if (grupo) return escoposPorGrupo(fabricasDaFoto(breakdown))[grupo] ?? null;
   if (!fabrica) return breakdown.geral;
-  return fabricasDaFoto(breakdown, formato ?? formatoDaFoto(breakdown))[fabrica] ?? null;
+  return fabricasDaFoto(breakdown)[fabrica] ?? null;
 }
 
 type Ponto = {
@@ -183,7 +179,6 @@ function ListaItens({ ids, limite, onVerTodos }: { ids: number[]; limite?: numbe
  */
 export function DesempenhoTrendChart({
   fabrica,
-  formato,
   maxSprints = 8,
   height = 220,
   showValues = true,
@@ -217,7 +212,7 @@ export function DesempenhoTrendChart({
     return Object.values(snapshots)
       .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
       .map((s) => {
-        const scope = scopeFor(s.category_breakdown, fabrica, formato, grupo);
+        const scope = scopeFor(s.category_breakdown, fabrica, grupo);
         if (!scope) return null;
         return {
           sprint: s.sprint_code.split('-')[0],
@@ -238,7 +233,7 @@ export function DesempenhoTrendChart({
       .filter((r): r is Ponto => r !== null)
       .sort((a, b) => a.num - b.num)
       .slice(-maxSprints);
-  }, [snapshots, fabrica, formato, grupo, anoVigente, maxSprints]);
+  }, [snapshots, fabrica, grupo, anoVigente, maxSprints]);
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground py-10 text-center">Carregando evolução…</p>;

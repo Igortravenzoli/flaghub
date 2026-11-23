@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { SnapshotScopeBreakdown, SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 import {
-  agregaLivePorFabrica, categoriaDoItem, concluidoDoEscopo, idsDaSerie,
-  matrizFabricaSprint, serieEntregaGeral,
+  categoriaDoItem, concluidoDoEscopo, idsDaSerie, serieEntregaGeral,
 } from '@/lib/fabricaTvSeries';
 import { calcRitmoSprint, META_ENTREGA_PCT } from '@/lib/fabricaMetas';
-
-const SQUADS = ['K8', 'FLEXX'];
 
 function escopo(p: {
   total: number; done: number; entregue: number; bug?: number; retorno?: number;
@@ -86,82 +83,6 @@ describe('concluído = done + entregue', () => {
     };
     expect(serieEntregaGeral(snapshots, { ano: ANO, maxSprints: 3 }).map((p) => p.sprint))
       .toEqual(['S12', 'S13', 'S14']);
-  });
-});
-
-describe('matrizFabricaSprint', () => {
-  const snapshots = {
-    'S13-2026': snap('S13-2026', escopo({ total: 20, done: 16, entregue: 2 }), {
-      '[K8] - Squad': escopo({ total: 10, done: 8, entregue: 1 }),
-      'FLEXX Squad': escopo({ total: 10, done: 8, entregue: 1 }),
-      'Sem fábrica': escopo({ total: 4, done: 0, entregue: 0 }),
-    }),
-    'S14-2026': snap('S14-2026', escopo({ total: 20, done: 14, entregue: 4 }), {
-      '[K8] - Squad': escopo({ total: 10, done: 9, entregue: 0, bug: 3 }),
-      'FLEXX Squad': escopo({ total: 10, done: 5, entregue: 4, retorno: 2 }),
-    }),
-  };
-
-  it('normaliza o rótulo da fábrica e ignora quem está fora do roster', () => {
-    const m = matrizFabricaSprint(snapshots, { ano: ANO, maxSprints: 2, squads: SQUADS });
-    expect(m.linhas.map((l) => l.fabrica).sort()).toEqual(['FLEXX', 'K8']);
-    expect(m.sprints).toEqual(['S13', 'S14']);
-  });
-
-  it('ordena pelas entregas da sprint mais recente', () => {
-    const m = matrizFabricaSprint(snapshots, { ano: ANO, maxSprints: 2, squads: SQUADS });
-    // S14: K8 = 9 encerrados, FLEXX = 9 -> empate; K8 vem antes por estabilidade do sort
-    expect(m.linhas[0].celulas['S14']?.pct).toBe(90);
-    expect(m.linhas.find((l) => l.fabrica === 'FLEXX')?.celulas['S14']?.concluido).toBe(9);
-  });
-
-  it('acrescenta a coluna ao vivo e reordena por ela', () => {
-    const m = matrizFabricaSprint(snapshots, {
-      ano: ANO, maxSprints: 2, squads: SQUADS,
-      live: { sprint: 'S15', porFabrica: { K8: { total: 10, concluido: 3, bug: 1, retorno: 0 }, FLEXX: { total: 10, concluido: 7, bug: 0, retorno: 1 } } },
-    });
-    expect(m.sprints).toEqual(['S13', 'S14', 'S15']);
-    expect(m.linhas[0].fabrica).toBe('FLEXX'); // 7 > 3 na sprint em curso
-    expect(m.linhas[0].celulas['S15']?.pct).toBe(70);
-    expect(m.linhas[0].retornoPct).toBe(10);
-  });
-
-  it('marca célula vazia quando a fábrica não teve escopo na sprint', () => {
-    const m = matrizFabricaSprint(snapshots, {
-      ano: ANO, maxSprints: 2, squads: SQUADS,
-      live: { sprint: 'S15', porFabrica: { K8: { total: 10, concluido: 3, bug: 0, retorno: 0 } } },
-    });
-    expect(m.linhas.find((l) => l.fabrica === 'FLEXX')?.celulas['S15']).toBeNull();
-  });
-});
-
-describe('agregaLivePorFabrica', () => {
-  const isConcluido = (s: string | null | undefined) => ['done', 'em teste'].includes((s ?? '').toLowerCase());
-  const fabricaByItemId = { 1: '[K8] - Squad', 2: '[K8] - Squad', 3: 'FLEXX Squad', 4: 'DESIGN', 5: '[K8] - Squad' };
-
-  it('agrupa pelo Épico raiz normalizado e conta done + entregue', () => {
-    const out = agregaLivePorFabrica(
-      [
-        { id: 1, state: 'Done', work_item_type: 'Product Backlog Item' },
-        { id: 2, state: 'Em Teste', work_item_type: 'Bug' },
-        { id: 3, state: 'Em desenvolvimento', work_item_type: 'Product Backlog Item' },
-        { id: 5, state: 'A Fazer', work_item_type: 'Product Backlog Item' },
-      ],
-      fabricaByItemId, SQUADS, isConcluido,
-    );
-    expect(out.K8).toEqual({ total: 3, concluido: 2, bug: 1, retorno: 0 });
-    expect(out.FLEXX).toEqual({ total: 1, concluido: 0, bug: 0, retorno: 0 });
-  });
-
-  it('descarta Épico fora do roster (DESIGN/FLG/Sem fábrica) e item sem Épico', () => {
-    const out = agregaLivePorFabrica(
-      [
-        { id: 4, state: 'Done', work_item_type: 'Product Backlog Item' },
-        { id: 99, state: 'Done', work_item_type: 'Product Backlog Item' },
-      ],
-      fabricaByItemId, SQUADS, isConcluido,
-    );
-    expect(out).toEqual({});
   });
 });
 

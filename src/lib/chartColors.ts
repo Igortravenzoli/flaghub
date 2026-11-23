@@ -59,17 +59,9 @@ export function getChartColor(index: number): string {
 /**
  * Cor fixa por fábrica — identidade consistente entre os gráficos de Fábrica.
  *
- * As quatro squads por Épico mantêm a cor de sempre (ranking, qualidade e
- * progresso diário ainda leem o Épico). As fábricas do organograma herdam um
- * tom da cor do grupo, de `FABRICAS` — STAGING e APP coincidem de propósito.
+ * Cada fábrica do organograma herda um tom da cor do grupo, de `FABRICAS`.
  */
-export const FABRICA_COLORS: Record<string, string> = {
-  ...Object.fromEntries(FABRICAS.map((f) => [f.codigo, f.cor])),
-  K8: 'hsl(43,74%,49%)',
-  FLEXX: 'hsl(265,52%,58%)',
-  STAGING: 'hsl(205,55%,47%)',
-  APP: 'hsl(160,55%,42%)',
-};
+export const FABRICA_COLORS: Record<string, string> = Object.fromEntries(FABRICAS.map((f) => [f.codigo, f.cor]));
 
 export function fabricaColor(name: string, idx = 0): string {
   return FABRICA_COLORS[name] ?? getChartColor(idx);

@@ -1203,23 +1203,9 @@ export function useFabricaKpis(
     return null;
   }
 
-  // Fábrica (squad) de cada work item — resolvida pelo Epic raiz, mesma regra do timelog.
-  // Cobre todos os itens não-infra (todas as sprints) para alimentar visão e histograma por fábrica.
-  const fabricaByItemId: Record<number, string> = (() => {
-    const out: Record<number, string> = {};
-    if (wiMap.size === 0) return out;
-    for (const item of nonInfraItems) {
-      if (item.id == null) continue;
-      const epic = findEpic(item.id);
-      if (epic) out[item.id] = epic.title;
-    }
-    for (const wi of nonInfraWorkItems) {
-      if (out[wi.id] !== undefined || !isFabricaManagerItem(wi.work_item_type)) continue;
-      const epic = findEpic(wi.id);
-      if (epic) out[wi.id] = epic.title;
-    }
-    return out;
-  })();
+  // A fábrica de cada ITEM não sai mais daqui (Épico raiz): desde a F4
+  // (23/11/2026) a aba Gerencial pede ao banco a régua do organograma
+  // (`useFabricaOrgDosItens`), a mesma da foto selada.
 
   // Hours by collaborator
   const horasPorColaborador: TimelogAggregation[] = (() => {
@@ -1858,8 +1844,6 @@ export function useFabricaKpis(
     /** Raw scoped VDESK log entries (with id) — for post-to-DevOps queue UI */
     scopedVdeskLogs,
     tagsByWorkItemId,
-    /** Fábrica (Epic raiz) por work item id — para visões gerenciais por fábrica */
-    fabricaByItemId,
     /** Escopo completo do timelog: PBIs/Bugs gerenciais + todas as suas tasks */
     timelogScopeIds: [...timelogScopeIds],
     /** Task id → PBI/Bug pai no escopo gerencial (consolidação de horas) */

@@ -1,48 +1,42 @@
 /**
  * Fábricas de uma FOTO de sprint (selada ou da série diária) — fonte única dos
- * cards de entrega (ranking, qualidade, evolução diária, linha por fábrica).
+ * cards de entrega (ranking, qualidade, evolução diária, linha por fábrica,
+ * aba Gerencial e relatório).
  *
- * Desde 23/11/2026 a foto traz duas chaves:
- * - `fabricas`: o formato ANTERIOR, pelo título do Épico raiz ([K8], [FLEXX]…).
- *   Foto é imutável, então as sprints antigas só têm esta.
- * - `fabricas_org`: o organograma, pela PESSOA (regra de 22/11/2026): o item é
- *   da fábrica de entrega que mais lançou hora nele; sem hora, da área/Épico do
- *   item; sem destino, da casa do responsável (ver a migration
- *   20261123120000_fabrica_org_na_foto.sql).
+ * A fábrica do item é a do organograma, pela PESSOA (regra de 22/11/2026): a
+ * fábrica de entrega que mais lançou hora nele; sem hora, a da área/Épico do
+ * item; sem destino, a casa do responsável (migration
+ * 20261123120000_fabrica_org_na_foto.sql). Ela mora em `fabricas_org`.
  *
- * Os dois formatos não se misturam numa conta: K8 de uma sprint e GPS/GO da
- * seguinte não são a mesma fábrica. A janela segue o formato da sprint mais
- * recente e declara quantas ficaram de fora (`recortePorFormato`).
+ * Desde a F4 (23/11/2026) os cards leem SÓ essa chave. A chave antiga
+ * `fabricas` (título do Épico raiz: [K8], [FLEXX]…) continua gravada em toda
+ * foto — é o histórico por Épico, e fica disponível se a régua mudar —, mas não
+ * entra mais em conta nenhuma: K8 e FLEXX não são fábricas do organograma.
+ * Foto sem `fabricas_org` (até a S13, sem ids para reconstruir) fica FORA da
+ * conta e é declarada no rodapé (`recorteOrganograma`), nunca some em silêncio.
  */
 import type { SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
-import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { SQUADS } from '@/lib/fabricaRoster';
 import {
   CODIGOS_FABRICA, FABRICAS, fabricaOrg, GRUPOS, type GrupoFabrica, type GrupoId, rotuloFabricaLongo,
 } from '@/lib/fabricaOrganograma';
 
-export type FormatoFoto = 'organograma' | 'anterior';
-
 /** O que os cards leem do `category_breakdown` de uma foto. */
 export type BreakdownFoto = {
-  fabricas?: Record<string, SnapshotScopeBreakdown> | null;
   fabricas_org?: Record<string, SnapshotScopeBreakdown> | null;
 } | null | undefined;
 
-/** Fábricas que podem receber item no organograma: de entrega e do formato atual. */
-export const FABRICAS_DE_ENTREGA: string[] = FABRICAS
-  .filter((f) => f.entrega && f.grupo !== 'ANTERIOR')
-  .map((f) => f.codigo);
+/** Fábricas que podem receber item: as de entrega do organograma. */
+export const FABRICAS_DE_ENTREGA: string[] = FABRICAS.filter((f) => f.entrega).map((f) => f.codigo);
 
-/** Teto de fábricas numa coluna de gráfico, nos dois formatos. */
-export const MAX_FABRICAS_FOTO = Math.max(SQUADS.length, FABRICAS_DE_ENTREGA.length);
+/** Teto de fábricas numa coluna de gráfico. */
+export const MAX_FABRICAS_FOTO = FABRICAS_DE_ENTREGA.length;
 
 /** Grupos que têm fábrica de entrega (Sustentação, Evolução, Híbrida), na ordem do organograma. */
 export const GRUPOS_DE_ENTREGA: GrupoFabrica[] = GRUPOS.filter((g) =>
   FABRICAS.some((f) => f.grupo === g.id && FABRICAS_DE_ENTREGA.includes(f.codigo)));
 
-/** Grupo de uma fábrica de entrega; null para o resto (squad antiga, "Sem fábrica"). */
+/** Grupo de uma fábrica de entrega; null para o resto ("Sem fábrica", área de apoio). */
 export function grupoDeEntrega(codigo: string): GrupoFabrica | null {
   const f = fabricaOrg(codigo);
   if (!f || !FABRICAS_DE_ENTREGA.includes(codigo)) return null;
@@ -91,26 +85,20 @@ export function escoposPorGrupo(fabricas: Record<string, SnapshotScopeBreakdown>
   return out;
 }
 
-export function formatoDaFoto(cb: BreakdownFoto): FormatoFoto {
-  return cb?.fabricas_org ? 'organograma' : 'anterior';
+/** A foto tem a fábrica do organograma? (até a S13, não.) */
+export function temOrganograma(cb: BreakdownFoto): boolean {
+  return !!cb?.fabricas_org;
 }
 
 /**
- * Fábricas da foto no formato pedido (padrão: o da própria foto). Só fábrica de
- * verdade: "Sem fábrica", áreas de apoio e Épicos soltos ficam de fora — com
- * score 0 eles passariam NA FRENTE no pódio e virariam séries extras.
+ * Fábricas da foto no organograma. Só fábrica de entrega: "Sem fábrica" e áreas
+ * de apoio ficam de fora — com score 0 passariam NA FRENTE no pódio e virariam
+ * séries extras. Foto sem `fabricas_org` devolve vazio.
  */
-export function fabricasDaFoto(cb: BreakdownFoto, formato: FormatoFoto = formatoDaFoto(cb)): Record<string, SnapshotScopeBreakdown> {
+export function fabricasDaFoto(cb: BreakdownFoto): Record<string, SnapshotScopeBreakdown> {
   const out: Record<string, SnapshotScopeBreakdown> = {};
-  if (formato === 'organograma') {
-    for (const [codigo, scope] of Object.entries(cb?.fabricas_org ?? {})) {
-      if (FABRICAS_DE_ENTREGA.includes(codigo)) out[codigo] = scope;
-    }
-    return out;
-  }
-  for (const [raw, scope] of Object.entries(cb?.fabricas ?? {})) {
-    const nome = cleanFabricaName(raw);
-    if (SQUADS.includes(nome)) out[nome] = scope;
+  for (const [codigo, scope] of Object.entries(cb?.fabricas_org ?? {})) {
+    if (FABRICAS_DE_ENTREGA.includes(codigo)) out[codigo] = scope;
   }
   return out;
 }
@@ -130,34 +118,28 @@ export function corFabricaFoto(nome: string, idx = 0): string {
   return GRUPOS.find((g) => g.id === nome)?.cor ?? fabricaColor(nome, idx);
 }
 
-/** Ordem de leitura: a do organograma, depois a das squads antigas. */
+/** Ordem de leitura: a do organograma; o que não é fábrica vai para o fim. */
 export function ordemFabricaFoto(nome: string): number {
   const i = CODIGOS_FABRICA.indexOf(nome);
-  if (i >= 0) return i;
-  const j = SQUADS.indexOf(nome);
-  return j >= 0 ? 100 + j : 999;
+  return i >= 0 ? i : 999;
 }
 
 /**
- * Recorta uma janela de fotos (em ordem cronológica) para o formato da MAIS
- * RECENTE. `fora` = quantas fotos da janela ficaram de fora por estarem no
- * outro formato — os cards declaram isso no rodapé, nunca somem em silêncio.
+ * Recorta uma janela de fotos às que têm a fábrica do organograma. `fora` =
+ * quantas ficaram de fora (anteriores ao organograma) — os cards declaram isso
+ * no rodapé, nunca somem em silêncio.
  */
-export function recortePorFormato<T extends { category_breakdown?: BreakdownFoto }>(
+export function recorteOrganograma<T extends { category_breakdown?: BreakdownFoto }>(
   fotos: T[],
-): { fotos: T[]; formato: FormatoFoto; fora: number } {
-  if (fotos.length === 0) return { fotos, formato: 'anterior', fora: 0 };
-  const formato = formatoDaFoto(fotos[fotos.length - 1].category_breakdown);
-  const dentro = fotos.filter((f) => formatoDaFoto(f.category_breakdown) === formato);
-  return { fotos: dentro, formato, fora: fotos.length - dentro.length };
+): { fotos: T[]; fora: number } {
+  const dentro = fotos.filter((f) => temOrganograma(f.category_breakdown));
+  return { fotos: dentro, fora: fotos.length - dentro.length };
 }
 
 /** Frase do rodapé para o que ficou de fora da janela (vazio quando nada ficou). */
-export function avisoForaDoFormato(fora: number, formato: FormatoFoto): string {
+export function avisoForaDoOrganograma(fora: number): string {
   if (fora <= 0) return '';
-  const quem = fora === 1 ? '1 sprint' : `${fora} sprints`;
-  const ficou = fora === 1 ? 'ficou' : 'ficaram';
-  return formato === 'organograma'
-    ? `${quem} anterior${fora === 1 ? '' : 'es'} ao organograma (foto por Épico) ${ficou} fora da conta.`
-    : `${quem} já no organograma ${ficou} fora da conta.`;
+  return fora === 1
+    ? '1 sprint anterior ao organograma ficou fora da conta.'
+    : `${fora} sprints anteriores ao organograma ficaram fora da conta.`;
 }

@@ -17,7 +17,8 @@
 import type { HoraNegocioRow } from '@/hooks/useHorasNegocio';
 import { SEM_CLIENTE, SEM_PRODUTO } from '@/hooks/useHorasNegocio';
 import type { SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
-import { GRUPOS_HORAS, SQUADS, buildAlocacaoMap, casasDe, normName, type CasaAlocada } from '@/lib/fabricaRoster';
+import { GRUPOS_HORAS, buildAlocacaoMap, casasDe, normName, type CasaAlocada } from '@/lib/fabricaRoster';
+import { FABRICAS_DE_ENTREGA } from '@/lib/fabricaFoto';
 import { GRUPOS, fabricasDoGrupo, grupoDaFabrica, rotuloFabrica, rotuloFabricaLongo } from '@/lib/fabricaOrganograma';
 import { diaLocal, diasUteisAusentes, type Ausencia } from '@/lib/capacidade';
 import { businessDaysBetween } from '@/lib/sprintCalendar';
@@ -55,6 +56,8 @@ export interface SnapshotRelatorio {
   category_breakdown: {
     geral: SnapshotScopeBreakdown;
     fabricas: Record<string, SnapshotScopeBreakdown>;
+    /** Fábrica do item pela pessoa (F2, 23/11/2026); fotos até a S13 não têm. */
+    fabricas_org?: Record<string, SnapshotScopeBreakdown>;
   } | null;
 }
 
@@ -664,29 +667,33 @@ function paginaSprints(m: ModeloRelatorio, periodo: string): string {
   const corpo = indicadores.map(([rot, fn, cls]) =>
     `<tr class="${cls}"><td class="n">${rot}</td>${sp.map((s) => `<td>${fn(s)}</td>`).join('')}</tr>`).join('');
 
-  // A fábrica do item é o título do Épico raiz; as squads usam "[K8] - Squad".
-  const ehSquad = (titulo: string, squad: string) => titulo.trim().toUpperCase().startsWith(`[${squad}]`);
-  const celulas = (s: SnapshotRelatorio, filtro: (titulo: string) => boolean) => {
-    const es = Object.entries(s.category_breakdown!.fabricas).filter(([t]) => filtro(t)).map(([, e]) => e);
-    const soma = (f: (e: SnapshotScopeBreakdown) => number) => es.reduce((a, e) => a + f(e), 0);
-    const v = (x: number) => (x ? String(x) : '–');
-    return `<td class="s">${v(soma((e) => e.total))}</td><td>${v(soma((e) => e.cats.bug))}</td><td>${v(soma(avioes))}</td>`
-      + `<td>${v(soma((e) => e.cats.retorno_qa))}</td><td>${v(soma((e) => e.done.total + e.entregue.total))}</td>`;
+  // A fábrica do item é a do organograma, pela PESSOA (F2, 23/11/2026): a de
+  // entrega que mais lançou hora no item › área/Épico › responsável. Antes era o
+  // Épico raiz ([K8], [FLEXX]…), que não diz mais qual é a fábrica.
+  const celulas = (s: SnapshotRelatorio, chave: string) => {
+    const org = s.category_breakdown!.fabricas_org;
+    // Foto anterior ao organograma: não há como dizer a fábrica — traço, nunca zero.
+    if (!org) return '<td class="s">·</td><td>·</td><td>·</td><td>·</td><td>·</td>';
+    const e = org[chave];
+    const v = (x: number | undefined) => (x ? String(x) : '–');
+    return `<td class="s">${v(e?.total)}</td><td>${v(e?.cats.bug)}</td><td>${v(e && avioes(e))}</td>`
+      + `<td>${v(e?.cats.retorno_qa)}</td><td>${v(e && e.done.total + e.entregue.total)}</td>`;
   };
-  const porFabrica = SQUADS.map((q) =>
-    `<tr><td class="n">${q}</td>${sp.map((s) => celulas(s, (t) => ehSquad(t, q))).join('')}</tr>`).join('')
-    + `<tr><td class="n">Demais épicos e áreas</td>${sp.map((s) => celulas(s, (t) => !SQUADS.some((q) => ehSquad(t, q)))).join('')}</tr>`;
+  const linhasFabrica = [...FABRICAS_DE_ENTREGA, 'Sem fábrica'];
+  const porFabrica = linhasFabrica.map((c) =>
+    `<tr><td class="n">${esc(c === 'Sem fábrica' ? c : rotuloFabricaLongo(c))}</td>${sp.map((s) => celulas(s, c)).join('')}</tr>`).join('');
 
   return '<div class="pb"></div>'
     + topo('Sprints do período', `${periodo} · KPIs macro da Fábrica · foto selada no fim de cada sprint`, m)
     + `<div class="sps">${cartoesSprint}</div><h2>Indicadores por sprint</h2>`
     + `<table class="t kp"><thead><tr><th class="n">Indicador</th>${sp.map((s) => `<th>${esc(s.sprint_code)}<small>${intervalo(s)}</small></th>`).join('')}</tr></thead><tbody>${corpo}</tbody></table>`
-    + `<h2>Por squad <small>Épico do item no DevOps</small></h2><table class="t fb"><thead><tr><th rowspan="2" class="n">Squad</th>${sp.map((s) => `<th colspan="5" class="grp">${esc(s.sprint_code)}</th>`).join('')}</tr>`
+    + `<h2>Por fábrica <small>a fábrica de entrega que mais lançou hora no item</small></h2><table class="t fb"><thead><tr><th rowspan="2" class="n">Fábrica</th>${sp.map((s) => `<th colspan="5" class="grp">${esc(s.sprint_code)}</th>`).join('')}</tr>`
     + `<tr>${sp.map(() => '<th class="s">Itens</th><th>Bugs</th><th>Aviões</th><th>Ret. QA</th><th>Done + Entr.</th>').join('')}</tr></thead><tbody>${porFabrica}</tbody></table>`
     + `<div class="notas"><p>Fonte: fotos de fim de sprint do FlagHub, com os itens que estavam na sprint naquele momento. `
     + `Cada item entra em uma só categoria, definida pela tag (retorno de QA, avião, priorização) ou pelo tipo Bug. <b>Aviões</b> somam os da sprint e os transbordados. `
     + `<b>Transbordo</b>: itens na sprint com a tag de transbordo. <b>Entregue</b>: aguardando teste, em teste, aguardando deploy ou homologação. Lead time considera só PBIs. `
-    + `<b>Por squad</b>: a squad de um item é o Épico dele no DevOps, que ainda segue o organograma anterior; por isso esta tabela não repete as fábricas do resumo de horas. `
+    + `<b>Por fábrica</b>: o item é da fábrica de entrega que mais lançou hora nele; sem hora de fábrica, da área do time ou do Épico; sem isso, da fábrica do responsável. `
+    + `"·" = sprint anterior ao organograma (até a S13), sem como dizer a fábrica do item. `
     + `Entram as sprints que tocam o período; um mesmo item pode aparecer em mais de uma, então as colunas não se somam.</p></div>`;
 }
 

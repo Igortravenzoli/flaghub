@@ -3,7 +3,7 @@ import { Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSprintSnapshots } from '@/hooks/useSprintSnapshots';
 import {
-  avisoForaDoFormato, fabricasDaFoto, grupoDeEntrega, GRUPOS_DE_ENTREGA, recortePorFormato, rotuloFabricaFoto,
+  avisoForaDoOrganograma, fabricasDaFoto, grupoDeEntrega, GRUPOS_DE_ENTREGA, recorteOrganograma, rotuloFabricaFoto,
 } from '@/lib/fabricaFoto';
 import { type GrupoFabrica, rotuloFabrica } from '@/lib/fabricaOrganograma';
 import { concluidoDoEscopo } from '@/lib/fabricaTvSeries';
@@ -90,21 +90,21 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
    */
   const esticar = typeof chartHeight === 'string';
 
-  const { ranking, grupos, foraDoFormato, formato } = useMemo(() => {
+  const { ranking, grupos, foraDoFormato } = useMemo(() => {
     const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
     const janela = Object.values(snapshots)
       .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
       .sort((a, b) => sprintNum(a.sprint_code) - sprintNum(b.sprint_code))
       .slice(-maxSprints);
-    // A janela segue o formato da sprint mais recente (organograma ou por Épico).
-    const { fotos: rows, formato, fora } = recortePorFormato(janela);
+    // Só as fotos com a fábrica do organograma; as anteriores são declaradas no rodapé.
+    const { fotos: rows, fora } = recorteOrganograma(janela);
 
     const byFabrica = new Map<string, { cells: SprintCell[]; done: number; scope: number; bug: number; retorno: number }>();
     for (const s of rows) {
       const sprintLabel = s.sprint_code.split('-')[0];
       // Só fábricas de verdade (sem "Sem fábrica", áreas e Épicos soltos): com
       // score 0 elas passariam NA FRENTE das reais, invertendo o pódio.
-      for (const [name, scope] of Object.entries(fabricasDaFoto(s.category_breakdown, formato))) {
+      for (const [name, scope] of Object.entries(fabricasDaFoto(s.category_breakdown))) {
         const agg = byFabrica.get(name) ?? { cells: [], done: 0, scope: 0, bug: 0, retorno: 0 };
         // Concluído = done + entregue (regra do gerencial, 26/07/2026): o item
         // em teste/aguardando deploy já saiu da mão do dev. Os dois conjuntos
@@ -130,42 +130,38 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
       .map(([name, a]) => ({ name, ...scoreDe(a), cells: a.cells }))
       .sort((x, y2) => y2.score - x.score);
 
-    // F3: no organograma, o grupo é a SOMA das fábricas dele (Sustentação, Evolução, Híbrida).
-    const porGrupo: GrupoRank[] = formato === 'organograma'
-      ? GRUPOS_DE_ENTREGA
-        .map((grupo) => {
-          const fabs = lista.filter((f) => grupoDeEntrega(f.name)?.id === grupo.id);
-          const somas = fabs.reduce<Somas>((acc, f) => {
-            const a = byFabrica.get(f.name)!;
-            return { done: acc.done + a.done, scope: acc.scope + a.scope, bug: acc.bug + a.bug, retorno: acc.retorno + a.retorno };
-          }, { done: 0, scope: 0, bug: 0, retorno: 0 });
-          return { grupo, score: scoreDe(somas).score, fabricas: fabs, scope: somas.scope };
-        })
-        .filter((g) => g.scope > 0)
-        .sort((x, y2) => y2.score - x.score)
-        .map(({ grupo, score, fabricas }) => ({ grupo, score, fabricas }))
-      : [];
-    return { ranking: lista, grupos: porGrupo, foraDoFormato: avisoForaDoFormato(fora, formato), formato };
+    // F3: o grupo é a SOMA das fábricas dele (Sustentação, Evolução, Híbrida).
+    const porGrupo: GrupoRank[] = GRUPOS_DE_ENTREGA
+      .map((grupo) => {
+        const fabs = lista.filter((f) => grupoDeEntrega(f.name)?.id === grupo.id);
+        const somas = fabs.reduce<Somas>((acc, f) => {
+          const a = byFabrica.get(f.name)!;
+          return { done: acc.done + a.done, scope: acc.scope + a.scope, bug: acc.bug + a.bug, retorno: acc.retorno + a.retorno };
+        }, { done: 0, scope: 0, bug: 0, retorno: 0 });
+        return { grupo, score: scoreDe(somas).score, fabricas: fabs, scope: somas.scope };
+      })
+      .filter((g) => g.scope > 0)
+      .sort((x, y2) => y2.score - x.score)
+      .map(({ grupo, score, fabricas }) => ({ grupo, score, fabricas }));
+    return { ranking: lista, grupos: porGrupo, foraDoFormato: avisoForaDoOrganograma(fora) };
   }, [snapshots, anoVigente, maxSprints]);
 
   /**
-   * Telão (gráfico esticado): uma linha só, no máximo `columns` mini-gráficos —
-   * em duas linhas eles somem (harness 1320×742, 23/11/2026). No organograma a
-   * TV mostra um gráfico por GRUPO (3) com as fábricas dele em texto; no formato
-   * anterior, as fábricas. O que não couber é DECLARADO, nunca some calado.
+   * Telão (gráfico esticado): uma linha só, um gráfico por GRUPO com as
+   * fábricas dele em texto — em duas linhas os gráficos somem (harness
+   * 1320×742, 23/11/2026). O que não couber é DECLARADO, nunca some calado.
    */
-  const tvPorGrupo = esticar && formato === 'organograma';
+  const tvPorGrupo = esticar;
   const gruposVisiveis = tvPorGrupo ? grupos.slice(0, columns) : grupos;
-  const visiveis = esticar && !tvPorGrupo && ranking.length > columns ? ranking.slice(0, columns) : ranking;
-  const ocultas = tvPorGrupo ? grupos.length - gruposVisiveis.length : ranking.length - visiveis.length;
-  const ocultasRotulo = tvPorGrupo ? (ocultas === 1 ? 'grupo' : 'grupos') : (ocultas === 1 ? 'fábrica' : 'fábricas');
+  const ocultas = grupos.length - gruposVisiveis.length;
+  const ocultasRotulo = ocultas === 1 ? 'grupo' : 'grupos';
 
   /** Mini-card de uma fábrica (medalha = posição no ranking geral). */
   const cardFabrica = (f: FabricaRank, rotulo: string) => {
     const idx = ranking.indexOf(f);
     const color = fabricaColor(f.name, idx);
     return (
-      <div key={f.name} className={`border rounded-lg p-3 ${esticar ? 'min-h-0 flex flex-col' : ''}`}>
+      <div key={f.name} className="border rounded-lg p-3">
         <div className="flex items-center gap-2 mb-1">
           <span
             className="inline-grid place-items-center w-6 h-6 rounded-full text-white font-mono font-bold text-xs shrink-0"
@@ -178,13 +174,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
             score <span className="font-mono font-semibold text-foreground">{f.score}</span>
           </span>
         </div>
-        {esticar ? (
-          <div className="flex-1 min-h-0">
-            <DesempenhoTrendChart fabrica={f.name} formato={formato} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
-          </div>
-        ) : (
-          <DesempenhoTrendChart fabrica={f.name} formato={formato} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
-        )}
+        <DesempenhoTrendChart fabrica={f.name} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
       </div>
     );
   };
@@ -321,8 +311,8 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
               </div>
             ))}
           </div>
-        ) : formato === 'organograma' ? (
-          /* ── Mesa no organograma · grupo › fábrica ──────────────────────────
+        ) : (
+          /* ── Mesa · grupo › fábrica ─────────────────────────────────────────
              Cada grupo com o score da soma das fábricas, e as fábricas dele em
              mini-cards. A medalha da fábrica é a posição no ranking geral. */
           <div className="space-y-4">
@@ -342,15 +332,6 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
               </section>
             ))}
           </div>
-        ) : (
-          /* ── Painel · evolução por sprint de CADA fábrica ───────────────────
-             Mesmo gráfico de linhas do "Desempenho · evolução por sprint"
-             (Entrega/Bug/Retorno QA), escopado pela fábrica — pedido de
-             06/08/2026, substituindo as barras aninhadas. Hover na bolinha
-             lista os itens; clique abre a lista completa (drill-down herdado). */
-          <div className={`grid gap-3 ${esticar ? 'flex-1 min-h-0' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-            {visiveis.map((f) => cardFabrica(f, rotuloFabricaFoto(f.name)))}
-          </div>
         )}
         <p className="text-[11px] text-muted-foreground mt-2">
           {fill
@@ -362,9 +343,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
               /* Telão por grupo: uma linha. A régua das séries já está na legenda do
                  cabeçalho; cada palavra a mais aqui sai da altura dos gráficos. */
               ? `Grupo = soma das fábricas · embaixo, o score de cada fábrica · últimas ${maxSprints} sprints · score = desempenho − ½·bug − ½·retorno QA.`
-              : `Linhas por sprint de cada fábrica: Entrega (% encerrado do escopo, ↑ melhor), Bug e Retorno QA (% do escopo, ↓ melhor). Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints.${esticar
-                ? ' Fotos seladas · score = desempenho − ½·bug − ½·retorno QA.'
-                : ' Passe o mouse na bolinha para ver os itens; clique para a lista completa.'}`}
+              : `Linhas por sprint de cada fábrica: Entrega (% encerrado do escopo, ↑ melhor), Bug e Retorno QA (% do escopo, ↓ melhor). Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints. Passe o mouse na bolinha para ver os itens; clique para a lista completa.`}
           {ocultas > 0 && (
             <b className="text-foreground/80" data-testid="ranking-ocultas">
               {' '}+{ocultas} {ocultasRotulo} fora do telão — ranking completo na aba Executiva.

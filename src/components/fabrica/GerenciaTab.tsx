@@ -3,7 +3,8 @@ import type { FabricaItem } from '@/hooks/useFabricaKpis';
 import { isFabricaCountableState } from '@/hooks/useFabricaKpis';
 import type { SprintSnapshotRow, SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { getCurrentOfficialSprintCode, getOfficialSprintRange } from '@/lib/sprintCalendar';
-import { cleanFabricaName } from '@/lib/fabricaNames';
+import { rotuloFabricaFoto } from '@/lib/fabricaFoto';
+import { useFabricaOrgDosItens } from '@/hooks/useFabricaOrgDosItens';
 import { classificaDemanda, ehPriorizado, type CategoriaDemanda } from '@/lib/fabricaClassificacao';
 import { ehEstadoDone, ehEstadoEntregue } from '@/lib/fabricaEstados';
 import { horasHMdeDecimal } from '@/lib/formatHoras';
@@ -56,8 +57,6 @@ type GerenciaTabProps = {
   featureRows: FeaturePbiSummaryRow[];
   performance?: GerenciaPerformance;
   risks?: GerenciaRisks;
-  /** Fábrica (Epic raiz) por work item id — habilita a visão por fábrica */
-  fabricaByItemId?: Record<number, string>;
   /** Fotografias congeladas por sprint_code — sprints fechadas usam a fotografia */
   snapshots?: Record<string, SprintSnapshotRow>;
 };
@@ -179,14 +178,13 @@ function metricsFromSnapshotScope(s: SnapshotScopeBreakdown): GerenciaMetrics {
   };
 }
 
-/** Breakdown do snapshot com chaves de fábrica normalizadas */
+/**
+ * Fábricas da foto no organograma (`fabricas_org`, F2 de 23/11/2026), com o
+ * balde "Sem fábrica". Foto anterior ao organograma (até a S13) não tem a
+ * chave: volta vazio e a tela não recorta aquela sprint por fábrica.
+ */
 function normalizedFabricas(snap: SprintSnapshotRow | null | undefined): Record<string, SnapshotScopeBreakdown> {
-  const out: Record<string, SnapshotScopeBreakdown> = {};
-  if (!snap?.category_breakdown?.fabricas) return out;
-  for (const [name, scope] of Object.entries(snap.category_breakdown.fabricas)) {
-    out[cleanFabricaName(name)] = scope;
-  }
-  return out;
+  return { ...(snap?.category_breakdown?.fabricas_org ?? {}) };
 }
 
 type DrilldownKey =
@@ -343,7 +341,6 @@ export function GerenciaTab({
   featureRows,
   performance,
   risks,
-  fabricaByItemId,
   snapshots,
 }: GerenciaTabProps) {
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(new Set());
@@ -351,10 +348,29 @@ export function GerenciaTab({
   const [histogramMode, setHistogramMode] = useState<'absoluto' | 'percentual'>('absoluto');
   const [selectedFabrica, setSelectedFabrica] = useState<string | null>(null);
 
+  /**
+   * Fábrica AO VIVO de cada item pela régua do organograma — a mesma da foto
+   * selada (`fn_fabrica_org_dos_itens`), com as horas até hoje. Só dos itens
+   * que podem aparecer ao vivo: os do recorte e os de sprints ainda não fechadas.
+   * Antes vinha do Épico raiz ([K8], [FLEXX]…), que não diz mais qual é a fábrica.
+   */
+  const idsAoVivo = useMemo(() => {
+    const ids: number[] = [];
+    for (const i of items) if (i.id != null) ids.push(i.id);
+    for (const i of allItems) {
+      if (i.id == null || !isManagerLike(i)) continue;
+      const code = i.iteration_path ? normalizeSprintCode(i.iteration_path) : null;
+      if (code && !isSprintClosed(code)) ids.push(i.id);
+    }
+    return ids;
+  }, [items, allItems]);
+  const { data: fabricaOrgPorItem } = useFabricaOrgDosItens(idsAoVivo);
+  const fabricaByItemId = fabricaOrgPorItem;
+
   const fabricaOf = useCallback((item: FabricaItem): string | null => {
     if (!fabricaByItemId || item.id == null) return null;
-    const raw = fabricaByItemId[item.id];
-    return raw ? cleanFabricaName(raw) : null;
+    const f = fabricaByItemId[item.id];
+    return f && f !== 'Sem fábrica' ? f : null;
   }, [fabricaByItemId]);
 
   const toggleBlock = useCallback((key: string) => {
@@ -774,7 +790,7 @@ export function GerenciaTab({
     <div className="space-y-4">
       {renderSectionHeader(
         'kpi_cards',
-        `Visão ${selectedFabrica ? `Fábrica ${selectedFabrica}` : 'Geral'} — ${sprintLabel}`,
+        `Visão ${selectedFabrica ? `Fábrica ${rotuloFabricaFoto(selectedFabrica)}` : 'Geral'} — ${sprintLabel}`,
         <BarChart3 className="h-4 w-4" />,
       )}
       {!isCollapsed('kpi_cards') && (
@@ -822,7 +838,7 @@ export function GerenciaTab({
                   size="sm" className="h-7 text-xs"
                   onClick={() => { setSelectedFabrica(selectedFabrica === f ? null : f); setSelectedDrilldown(null); }}
                 >
-                  {f}
+                  {rotuloFabricaFoto(f)}
                 </Button>
               ))}
             </div>
@@ -1005,7 +1021,7 @@ export function GerenciaTab({
 
       {renderSectionHeader(
         'hist_comparacao',
-        `Comparação por Sprint ${tituloJanelaComparacao}${selectedFabrica ? ` — Fábrica ${selectedFabrica}` : ''}`,
+        `Comparação por Sprint ${tituloJanelaComparacao}${selectedFabrica ? ` — Fábrica ${rotuloFabricaFoto(selectedFabrica)}` : ''}`,
         <BarChart3 className="h-4 w-4" />,
       )}
       {!isCollapsed('hist_comparacao') && (
@@ -1142,7 +1158,7 @@ export function GerenciaTab({
       {/* Evolução diária (Entregue & Done) da sprint aberta — série de snapshots diários */}
       {renderSectionHeader(
         'evolucao_diaria',
-        `Evolução diária da sprint${selectedFabrica ? ` — Fábrica ${selectedFabrica}` : ''}`,
+        `Evolução diária da sprint${selectedFabrica ? ` — Fábrica ${rotuloFabricaFoto(selectedFabrica)}` : ''}`,
         <TrendingUp className="h-4 w-4" />,
       )}
       {!isCollapsed('evolucao_diaria') && (
@@ -1176,7 +1192,7 @@ export function GerenciaTab({
                       className={`cursor-pointer hover:bg-muted/30 ${selectedFabrica === row.fabrica ? 'bg-primary/5' : ''}`}
                       onClick={() => { setSelectedFabrica(selectedFabrica === row.fabrica ? null : row.fabrica); setSelectedDrilldown(null); }}
                     >
-                      <TableCell className="text-xs font-medium">{row.fabrica}</TableCell>
+                      <TableCell className="text-xs font-medium">{rotuloFabricaFoto(row.fabrica)}</TableCell>
                       <TableCell className="text-xs text-right text-amber-600 font-semibold">{row.retornoQa}</TableCell>
                       <TableCell className="text-xs text-right text-destructive font-semibold">{row.bug}</TableCell>
                       <TableCell className="text-xs text-right font-semibold">{row.bugQa}</TableCell>

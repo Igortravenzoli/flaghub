@@ -1,12 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
-  CODIGOS_FABRICA, FABRICAS, GRUPOS, ehFabricaDeEntrega, epicoDaFabrica, fabricasDoGrupo,
+  CODIGOS_FABRICA, FABRICAS, GRUPOS, ehFabricaDeEntrega, fabricasDoGrupo,
   grupoDaFabrica, rotuloFabrica, rotuloFabricaLongo,
 } from '@/lib/fabricaOrganograma';
 import {
-  AREAS, GRUPOS_HORAS, SQUADS, buildAlocacaoMap, buildHomeSquadMap, buildNaoContaSet, casasDe, ehArea, homeSquadOf,
+  AREAS, EPICOS_FORMATO_ANTERIOR, GRUPOS_HORAS, buildAlocacaoMap, buildHomeSquadMap, buildNaoContaSet, casasDe, ehArea, homeSquadOf,
   DESTINO_NENHUM, destinoIdDoItem, horasDiaNaCasa, lerDestino, marcaDaHora, repartirHoraPorPessoa, segmentoArea,
 } from '@/lib/fabricaRoster';
 import { fabricaColor } from '@/lib/chartColors';
@@ -56,14 +56,11 @@ describe('estrutura do organograma', () => {
     expect(ehFabricaDeEntrega('Sem squad')).toBe(false);
   });
 
-  it('uso cruzado só é mensurável onde a fábrica tem Épico de squad próprio', () => {
-    expect(epicoDaFabrica('STAGING')).toBe('STAGING');
-    expect(epicoDaFabrica('APP')).toBe('APP');
-    for (const c of ['GPS_GO', 'PROMO_SUITE', 'ERP_SUST', 'ERP_EVOL', 'IR', 'LAB', 'INFRA', 'QUALIDADE']) {
-      expect(epicoDaFabrica(c)).toBeNull();
+  it('K8 e FLEXX saíram do organograma (F4): o Épico deles só marca a hora como formato anterior', () => {
+    for (const c of EPICOS_FORMATO_ANTERIOR) {
+      expect(CODIGOS_FABRICA).not.toContain(c);
+      expect(FABRICAS.some((f) => f.devops?.epicos?.includes(c))).toBe(false);
     }
-    // Todo Épico apontado tem que ser uma squad que os KPIs de sprint conhecem.
-    for (const f of FABRICAS) if (f.epico) expect(SQUADS).toContain(f.epico);
   });
 
   it('cada fábrica tem cor própria, e STAGING e APP mantêm a de sempre', () => {
@@ -73,9 +70,11 @@ describe('estrutura do organograma', () => {
   });
 
   it('o CHECK da migration aceita exatamente os códigos do organograma', () => {
-    const sql = readFileSync(
-      resolve(__dirname, '../../supabase/migrations/20261112120000_fabrica_organograma_grupos.sql'), 'utf8',
-    );
+    // A migration MAIS RECENTE que redefine o CHECK é a que vale no banco.
+    const dir = resolve(__dirname, '../../supabase/migrations');
+    const ultima = readdirSync(dir).filter((n) => n.endsWith('.sql')).sort().reverse()
+      .find((n) => readFileSync(resolve(dir, n), 'utf8').includes('check (squad in ('));
+    const sql = readFileSync(resolve(dir, ultima!), 'utf8');
     const check = sql.slice(sql.indexOf('check (squad in ('));
     const noBanco = [...check.slice(0, check.indexOf('));')).matchAll(/'([A-Z0-9_]+)'/g)].map((m) => m[1]);
     expect([...noBanco].sort()).toEqual([...CODIGOS_FABRICA].sort());

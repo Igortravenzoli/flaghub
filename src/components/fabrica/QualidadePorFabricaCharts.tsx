@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useSprintSnapshots, type SnapshotScopeBreakdown, type SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 import {
-  avisoForaDoFormato, corFabricaFoto, escoposPorGrupo, fabricasDaFoto, MAX_FABRICAS_FOTO, recortePorFormato,
+  avisoForaDoOrganograma, corFabricaFoto, escoposPorGrupo, fabricasDaFoto, MAX_FABRICAS_FOTO, recorteOrganograma,
   rotuloFabricaFoto,
 } from '@/lib/fabricaFoto';
 import { quarterLabel } from '@/lib/sprintCalendar';
@@ -134,8 +134,7 @@ export function montaColunasQualidade(
     groupBy: GroupBy; maxSprints: number; anoVigente: number;
     /**
      * Uma barra por GRUPO do organograma (soma das fábricas dele) em vez de uma
-     * por fábrica — o telão (F3, 23/11/2026). Só vale na foto do organograma;
-     * no formato anterior não há grupo e as barras seguem por squad.
+     * por fábrica — o telão (F3, 23/11/2026).
      */
     porGrupo?: boolean;
   },
@@ -146,9 +145,9 @@ export function montaColunasQualidade(
     .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
     .sort((a, b) => sprintNum(a.sprint_code) - sprintNum(b.sprint_code));
   // No quarter, agrega o ANO INTEIRO (várias colunas Q); por sprint, últimas N.
-  // Depois, o formato da sprint mais recente: K8 e GPS/GO não somam na mesma barra.
-  const { fotos: rows, formato, fora } = recortePorFormato(groupBy === 'quarter' ? todas : todas.slice(-maxSprints));
-  const porGrupo = !!opts.porGrupo && formato === 'organograma';
+  // Só as fotos com a fábrica do organograma; as anteriores são declaradas no rodapé.
+  const { fotos: rows, fora } = recorteOrganograma(groupBy === 'quarter' ? todas : todas.slice(-maxSprints));
+  const porGrupo = !!opts.porGrupo;
 
   const colOrder: string[] = [];
   const raw = new Map<string, Map<string, RawSums>>();
@@ -164,7 +163,7 @@ export function montaColunasQualidade(
     const colMap = raw.get(colKey)!;
     // Só fábricas de verdade — "Sem fábrica", áreas e Épicos soltos viravam
     // séries extras e deixavam as barras ilegíveis.
-    const daFoto = fabricasDaFoto(s.category_breakdown, formato);
+    const daFoto = fabricasDaFoto(s.category_breakdown);
     const escopos: Record<string, SnapshotScopeBreakdown> = porGrupo
       ? escoposPorGrupo(daFoto) as Record<string, SnapshotScopeBreakdown>
       : daFoto;
@@ -200,7 +199,7 @@ export function montaColunasQualidade(
     .sort((x, y) => y.score - x.score)
     .map((x) => x.name);
 
-  return { columns, fabricasOrdenadas, detalhes, foraDoFormato: avisoForaDoFormato(fora, formato), porGrupo };
+  return { columns, fabricasOrdenadas, detalhes, foraDoFormato: avisoForaDoOrganograma(fora), porGrupo };
 }
 
 /**

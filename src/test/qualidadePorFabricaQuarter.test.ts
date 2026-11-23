@@ -36,7 +36,7 @@ function snap(code: string, fabricas: Record<string, SnapshotScopeBreakdown>): S
     sprint_code: code,
     snapshot_source: 'test',
     as_of_datetime: null,
-    category_breakdown: { geral: scope({ total: 0, done: 0, entregue: 0 }), fabricas },
+    category_breakdown: { geral: scope({ total: 0, done: 0, entregue: 0 }), fabricas_org: fabricas },
   };
 }
 
@@ -45,21 +45,21 @@ const OPTS_Q = { groupBy: 'quarter' as const, maxSprints: 6, anoVigente: 2026 };
 describe('montaColunasQualidade — régua de entregas (encerrados = done + entregue)', () => {
   it('conta done + entregue no numerador, não só done', () => {
     const snapshots = {
-      'S10-2026': snap('S10-2026', { '[K8] - Squad': scope({ total: 10, done: 1, entregue: 4 }) }),
+      'S10-2026': snap('S10-2026', { IR: scope({ total: 10, done: 1, entregue: 4 }) }),
     };
     const { columns } = montaColunasQualidade(snapshots, OPTS_Q);
     expect(columns).toHaveLength(1);
     expect(columns[0].label).toBe('Q2');
     // Com a régua antiga (só done) daria 10% — o "muito baixo" do gestor.
-    expect(columns[0].cells['K8'].entrega).toBe(50);
+    expect(columns[0].cells['IR'].entrega).toBe(50);
   });
 });
 
 describe('montaColunasQualidade — quarter pela data de TÉRMINO da sprint', () => {
   it('S12 (termina 19/06) cai no Q2; S13 (termina 03/07) cai no Q3', () => {
     const snapshots = {
-      'S12-2026': snap('S12-2026', { '[K8] - Squad': scope({ total: 10, done: 5, entregue: 0 }) }),
-      'S13-2026': snap('S13-2026', { '[K8] - Squad': scope({ total: 10, done: 5, entregue: 0 }) }),
+      'S12-2026': snap('S12-2026', { IR: scope({ total: 10, done: 5, entregue: 0 }) }),
+      'S13-2026': snap('S13-2026', { IR: scope({ total: 10, done: 5, entregue: 0 }) }),
     };
     const { columns } = montaColunasQualidade(snapshots, OPTS_Q);
     expect(columns.map((c) => c.label)).toEqual(['Q2', 'Q3']);
@@ -68,20 +68,20 @@ describe('montaColunasQualidade — quarter pela data de TÉRMINO da sprint', ()
 
 describe('montaColunasQualidade — quarter soma ANTES de dividir (não é média)', () => {
   const snapshots = {
-    'S13-2026': snap('S13-2026', { '[K8] - Squad': scope({ total: 10, done: 9, entregue: 0, bug: 2 }) }),
-    'S14-2026': snap('S14-2026', { '[K8] - Squad': scope({ total: 30, done: 3, entregue: 0, bug: 4 }) }),
+    'S13-2026': snap('S13-2026', { IR: scope({ total: 10, done: 9, entregue: 0, bug: 2 }) }),
+    'S14-2026': snap('S14-2026', { IR: scope({ total: 30, done: 3, entregue: 0, bug: 4 }) }),
   };
 
   it('pondera pelo escopo: (9+3) ÷ (10+30) = 30% — média simples daria 55%', () => {
     const { columns } = montaColunasQualidade(snapshots, OPTS_Q);
     const q3 = columns.find((c) => c.label === 'Q3')!;
-    expect(q3.cells['K8'].entrega).toBe(30);
-    expect(q3.cells['K8'].bug).toBe(15); // (2+4) ÷ 40
+    expect(q3.cells['IR'].entrega).toBe(30);
+    expect(q3.cells['IR'].bug).toBe(15); // (2+4) ÷ 40
   });
 
   it('detalhes traz a composição por sprint da barra (base do popup)', () => {
     const { detalhes } = montaColunasQualidade(snapshots, OPTS_Q);
-    expect(detalhes['Q3::K8']).toEqual([
+    expect(detalhes['Q3::IR']).toEqual([
       { sprint: 'S13', escopo: 10, encerrados: 9, bug: 2, retorno: 0 },
       { sprint: 'S14', escopo: 30, encerrados: 3, bug: 4, retorno: 0 },
     ]);
@@ -91,9 +91,9 @@ describe('montaColunasQualidade — quarter soma ANTES de dividir (não é médi
 describe('montaColunasQualidade — janelas e filtros', () => {
   it('por sprint respeita maxSprints (últimas N); por quarter agrega o ano inteiro', () => {
     const snapshots = {
-      'S10-2026': snap('S10-2026', { '[K8] - Squad': scope({ total: 10, done: 5, entregue: 0 }) }),
-      'S13-2026': snap('S13-2026', { '[K8] - Squad': scope({ total: 10, done: 5, entregue: 0 }) }),
-      'S14-2026': snap('S14-2026', { '[K8] - Squad': scope({ total: 10, done: 5, entregue: 0 }) }),
+      'S10-2026': snap('S10-2026', { IR: scope({ total: 10, done: 5, entregue: 0 }) }),
+      'S13-2026': snap('S13-2026', { IR: scope({ total: 10, done: 5, entregue: 0 }) }),
+      'S14-2026': snap('S14-2026', { IR: scope({ total: 10, done: 5, entregue: 0 }) }),
     };
     const porSprint = montaColunasQualidade(snapshots, { ...OPTS_Q, groupBy: 'sprint', maxSprints: 2 });
     expect(porSprint.columns.map((c) => c.label)).toEqual(['S13', 'S14']);
@@ -102,11 +102,12 @@ describe('montaColunasQualidade — janelas e filtros', () => {
     expect(porQuarter.columns.map((c) => c.label)).toEqual(['Q2', 'Q3']);
   });
 
-  it('ignora rótulos fora do roster de squads (Sem fábrica, DESIGN…)', () => {
+  it('ignora o que não é fábrica de entrega (Sem fábrica, área de apoio)', () => {
     const snapshots = {
       'S13-2026': snap('S13-2026', {
         'Sem fábrica': scope({ total: 50, done: 0, entregue: 0 }),
-        '[APP] - Squad': scope({ total: 10, done: 8, entregue: 1 }),
+        QUALIDADE: scope({ total: 5, done: 0, entregue: 0 }),
+        APP: scope({ total: 10, done: 8, entregue: 1 }),
       }),
     };
     const { columns, fabricasOrdenadas } = montaColunasQualidade(snapshots, OPTS_Q);
@@ -117,11 +118,11 @@ describe('montaColunasQualidade — janelas e filtros', () => {
 
   it('ignora sprints de outros anos', () => {
     const snapshots = {
-      'S13-2025': snap('S13-2025', { '[K8] - Squad': scope({ total: 10, done: 5, entregue: 0 }) }),
-      'S13-2026': snap('S13-2026', { '[K8] - Squad': scope({ total: 10, done: 5, entregue: 0 }) }),
+      'S13-2025': snap('S13-2025', { IR: scope({ total: 10, done: 5, entregue: 0 }) }),
+      'S13-2026': snap('S13-2026', { IR: scope({ total: 10, done: 5, entregue: 0 }) }),
     };
     const { columns } = montaColunasQualidade(snapshots, OPTS_Q);
     expect(columns.map((c) => c.label)).toEqual(['Q3']);
-    expect(columns[0].cells['K8'].entrega).toBe(50);
+    expect(columns[0].cells['IR'].entrega).toBe(50);
   });
 });
