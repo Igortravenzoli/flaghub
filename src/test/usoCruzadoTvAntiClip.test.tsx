@@ -46,7 +46,7 @@ import { UsoCruzadoCard } from '@/components/fabrica/UsoCruzadoCard';
 
 // Todo mundo apontou 10 h num Épico do formato anterior; o dividido, 20 h.
 const fabricaRows = [{
-  key: '[K8] - Squad',
+  key: 'epico:K8',
   collaborators: [
     ...CASAS.map((c) => ({ name: `dev ${c}`, minutes: 600 })),
     { name: 'dev dividido', minutes: 1200 },
@@ -140,17 +140,23 @@ describe('UsoCruzadoCard — visão de mesa (sem fill)', () => {
     expect(miolo(container)).toBeNull();
   });
 
-  it('o grupo é a SOMA das fábricas: capacidade pela alocação, hora pelo trabalho', () => {
+  it('o grupo é a SOMA das fábricas: capacidade pela alocação, hora pela pessoa', () => {
     const { container } = montar({});
     // Sustentação: 4 pessoas cheias (320 h) + meia jornada do dividido (40 h) = 360 h.
-    // As 20 h do dividido (APP + I & R) caíram no Épico K8, fora do Épico da APP:
-    // vão todas para I & R. Realizado da Sustentação = 4 × 10 h = 40 h.
-    expect(linhaDe(container, 'Sustentação')).toContain('40:00/360:00');
-    // Evolução: 4 pessoas cheias (Infra inclusa) + meia = 360 h; realizado 4 × 10 + 20 = 60 h.
-    expect(linhaDe(container, 'Evolução')).toContain('60:00/360:00');
+    // As 20 h do dividido (APP + I & R) caíram no Épico K8, que não é casa dele:
+    // a hora continua dele e divide pelo percentual, 10 h em cada casa (22/11/2026).
+    // Realizado da Sustentação = 4 × 10 h + 10 h = 50 h.
+    expect(linhaDe(container, 'Sustentação')).toContain('50:00/360:00');
+    // Evolução: 4 pessoas cheias (Infra inclusa) + meia = 360 h; realizado 4 × 10 + 10 = 50 h.
+    expect(linhaDe(container, 'Evolução')).toContain('50:00/360:00');
     expect(linhaDe(container, 'Híbrida')).toContain('10:00/80:00');
     // 9 fábricas + 3 áreas cheias + 1 dividido = 13 pessoas; nada some no rateio.
     expect(linhaDe(container, 'Áreas de apoio')).toContain('30:00/240:00');
+  });
+
+  it('confere à vista que nenhuma hora sumiu: 12 × 10 h + 20 h = 140 h', () => {
+    montar({});
+    expect(screen.getByTestId('horas-conferencia').textContent).toContain('140:00 de 140:00 lançadas');
   });
 
   it('abre do grupo para as fábricas, e "ERP" aparece uma vez em cada grupo', () => {
@@ -161,8 +167,8 @@ describe('UsoCruzadoCard — visão de mesa (sem fill)', () => {
 
     fireEvent.click(barras.getByText('Sustentação'));
     expect(barras.getByText('PROMO / SUITE')).toBeInTheDocument();
-    // APP: 1 pessoa cheia + meia jornada = 120 h; só as 10 h da pessoa cheia são de APP.
-    expect(linhaDe(container, 'APP')).toContain('10:00/120:00');
+    // APP: 1 pessoa cheia + meia jornada = 120 h; 10 h da pessoa cheia + 10 h do dividido.
+    expect(linhaDe(container, 'APP')).toContain('20:00/120:00');
     expect(barras.queryByText('I & R')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Abrir todas as fábricas'));
@@ -171,12 +177,36 @@ describe('UsoCruzadoCard — visão de mesa (sem fill)', () => {
     expect(screen.getByText('Recolher grupos')).toBeInTheDocument();
   });
 
-  it('não pinta de uso cruzado a fábrica que não tem Épico próprio no DevOps', () => {
+  it('Épico do formato anterior é "a orientar", não cruzado: ninguém tem casa no K8', () => {
     const { container } = montar({});
+    // Toda hora foi para o Épico K8, que não é casa de ninguém do organograma.
+    expect(container.querySelectorAll('tbody td[data-marca="cruzado"]')).toHaveLength(0);
+    // As 12 casas têm hora: todas marcadas como formato anterior na matriz.
+    expect(container.querySelectorAll('tbody td[data-marca="anterior"]')).toHaveLength(12);
+    expect(screen.getByText('lançado em →', { exact: false })).toBeInTheDocument();
+  });
+});
+
+describe('UsoCruzadoCard — regra de 22/11/2026: a hora é da pessoa, o lugar vira marca', () => {
+  // Uma pessoa do IR: 6 h na área do time, 4 h na área ERP e 2 h soltas na raiz.
+  const linhas = [
+    { key: 'area:IR', collaborators: [{ name: 'dev IR', minutes: 360 }] },
+    { key: 'area:ERP', collaborators: [{ name: 'dev IR', minutes: 240 }] },
+    { key: 'nenhum', collaborators: [{ name: 'dev IR', minutes: 120 }] },
+  ];
+
+  it('tudo conta no IR; a matriz marca o cruzado e o sem área', () => {
+    const { container } = render(
+      <TooltipProvider>
+        <UsoCruzadoCard fabricaRows={linhas} {...periodo} />
+      </TooltipProvider>,
+    );
     fireEvent.click(screen.getByText('Abrir todas as fábricas'));
-    // Toda hora foi para o Épico K8. Só STAGING e APP têm Épico de squad para
-    // comparar, então só as linhas delas na matriz ficam em âmbar.
-    const cruzadas = [...container.querySelectorAll('tbody td.text-amber-700')].map((td) => td.closest('tr')!.querySelector('th')!.textContent);
-    expect(cruzadas).toEqual(['APP', 'STAGING']);
+    expect(linhaDe(container, 'I & R')).toContain('12:00/');
+    const marca = (m: string) => [...container.querySelectorAll(`tbody td[data-marca="${m}"]`)].map((td) => td.textContent);
+    expect(marca('casa')).toEqual(['6:00']);
+    expect(marca('cruzado')).toEqual(['4:00']);
+    expect(marca('sem_destino')).toEqual(['2:00']);
+    expect(screen.getByTestId('horas-conferencia').textContent).toContain('12:00 de 12:00 lançadas');
   });
 });

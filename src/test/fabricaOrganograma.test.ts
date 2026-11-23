@@ -7,7 +7,7 @@ import {
 } from '@/lib/fabricaOrganograma';
 import {
   AREAS, GRUPOS_HORAS, SQUADS, buildAlocacaoMap, buildHomeSquadMap, buildNaoContaSet, casasDe, ehArea, homeSquadOf,
-  horasDiaNaCasa, repartirHora,
+  DESTINO_NENHUM, destinoIdDoItem, horasDiaNaCasa, lerDestino, marcaDaHora, repartirHoraPorPessoa, segmentoArea,
 } from '@/lib/fabricaRoster';
 import { fabricaColor } from '@/lib/chartColors';
 
@@ -133,29 +133,68 @@ describe('jornada e atribuição de quem divide o tempo', () => {
   const casas = (linhas: Array<[string, number]>) =>
     casasDe(buildAlocacaoMap(linhas.map(([squad, pct]) => ({ colaborador: 'X', squad, alocacao_pct: pct }))), 'X');
 
-  it('fábrica + Infra: hora de Épico de squad vai para a fábrica, hora de Infra vai para a Infra', () => {
+  const d = (areaPath: string | null, epico: string | null) => lerDestino(destinoIdDoItem(areaPath, epico));
+  const soPeso = (r: ReturnType<typeof repartirHoraPorPessoa>) => r.map(({ squad, peso }) => ({ squad, peso }));
+
+  it('fábrica + Infra: hora no Épico [INFRA] vai para a Infra, hora na área LAB para o LAB, o resto 50/50', () => {
     const lab = casas([['LAB', 50], ['INFRA', 50]]);
-    expect(repartirHora(lab, { epico: 'K8', fora: false })).toEqual([{ squad: 'LAB', peso: 1 }]);
-    expect(repartirHora(lab, { epico: null, fora: false })).toEqual([{ squad: 'LAB', peso: 1 }]);
-    expect(repartirHora(lab, { epico: null, fora: true })).toEqual([{ squad: 'INFRA', peso: 1 }]);
+    expect(soPeso(repartirHoraPorPessoa(lab, d('Flag.Planejamento', '[INFRA] - Squad')))).toEqual([{ squad: 'INFRA', peso: 1 }]);
+    expect(soPeso(repartirHoraPorPessoa(lab, d('Flag.Planejamento\\LAB', null)))).toEqual([{ squad: 'LAB', peso: 1 }]);
+    expect(soPeso(repartirHoraPorPessoa(lab, d('Flag.Planejamento', null)))).toEqual([
+      { squad: 'LAB', peso: 0.5 }, { squad: 'INFRA', peso: 0.5 },
+    ]);
   });
 
-  it('o Épico da fábrica decide; fora dele a hora vai para a fábrica sem Épico próprio', () => {
-    const stagingPromo = casas([['STAGING', 50], ['PROMO_SUITE', 50]]);
-    expect(repartirHora(stagingPromo, { epico: 'STAGING', fora: false })).toEqual([{ squad: 'STAGING', peso: 1 }]);
-    expect(repartirHora(stagingPromo, { epico: 'K8', fora: false })).toEqual([{ squad: 'PROMO_SUITE', peso: 1 }]);
-  });
-
-  it('quando nada decide, entra o rateio pelo percentual', () => {
+  it('a área ERP é das duas fábricas ERP: quem está nas duas divide pelo percentual', () => {
     const doisErp = casas([['ERP_SUST', 50], ['ERP_EVOL', 50]]);
-    expect(repartirHora(doisErp, { epico: 'FLEXX', fora: false })).toEqual([
+    expect(soPeso(repartirHoraPorPessoa(doisErp, d('Flag.Planejamento\\ERP', null)))).toEqual([
       { squad: 'ERP_SUST', peso: 0.5 }, { squad: 'ERP_EVOL', peso: 0.5 },
     ]);
   });
 
-  it('membro só de fábrica não recebe hora de fora; membro só de área recebe tudo', () => {
-    expect(repartirHora(casas([['IR', 100]]), { epico: null, fora: true })).toEqual([]);
-    expect(repartirHora(casas([['QUALIDADE', 100]]), { epico: 'APP', fora: false })).toEqual([{ squad: 'QUALIDADE', peso: 1 }]);
-    expect(repartirHora([], { epico: 'APP', fora: false })).toEqual([]);
+  it('NUNCA perde hora: membro de fábrica que lança fora do lugar fica com a hora, marcada', () => {
+    // Caso real de 22/11/2026: o IR lança na área do time, sem Épico — antes dava 0 h.
+    const ir = casas([['IR', 100]]);
+    expect(repartirHoraPorPessoa(ir, d('Flag.Planejamento\\IR', null))).toEqual([{ squad: 'IR', peso: 1, marca: 'casa' }]);
+    // Pessoa do IR lançando na área ERP: hora do IR, marcada como cruzada.
+    expect(repartirHoraPorPessoa(ir, d('Flag.Planejamento\\ERP', null))).toEqual([{ squad: 'IR', peso: 1, marca: 'cruzado' }]);
+    // Item solto na raiz, sem Épico (bug de produção): hora da pessoa, marcada.
+    expect(repartirHoraPorPessoa(ir, d('Flag.Planejamento', null))).toEqual([{ squad: 'IR', peso: 1, marca: 'sem_destino' }]);
+    // Épico do formato anterior: hora da pessoa, marcada como formato anterior.
+    expect(repartirHoraPorPessoa(casas([['ERP_SUST', 100]]), d('Flag.Planejamento', '[FLEXX] - Squad')))
+      .toEqual([{ squad: 'ERP_SUST', peso: 1, marca: 'anterior' }]);
+    // Fora do roster não há casa: quem chama põe em "Sem squad".
+    expect(repartirHoraPorPessoa([], d('Flag.Planejamento\\IR', null))).toEqual([]);
+  });
+
+  it('área de apoio no item de uma fábrica é atendimento, não cruzado', () => {
+    expect(marcaDaHora('QUALIDADE', d('Flag.Planejamento\\IR', null))).toBe('atendimento');
+    expect(marcaDaHora('INFRA', d('Flag.Planejamento', '[STAGING] - Squad'))).toBe('atendimento');
+    expect(marcaDaHora('GPS_GO', d('Flag.Planejamento', '[STAGING] - Squad'))).toBe('cruzado');
+  });
+
+  it('destino: área de time conhecida › Épico conhecido › área desconhecida › outro Épico › nada', () => {
+    expect(segmentoArea('Flag.Planejamento')).toBeNull();
+    expect(segmentoArea('Flag.Planejamento\\IR')).toBe('IR');
+    // O item da área IR ganha da área, mesmo pendurado num Épico do formato anterior.
+    expect(destinoIdDoItem('Flag.Planejamento\\IR', '[K8] - Squad')).toBe('area:IR');
+    expect(destinoIdDoItem('Flag.Planejamento', '[STAGING] - Squad')).toBe('epico:STAGING');
+    expect(destinoIdDoItem('Flag.Planejamento', '[IA] - SQUADLAB')).toBe('epico:IA');
+    expect(lerDestino('epico:IA').codigos).toEqual(['LAB']);
+    expect(destinoIdDoItem('Flag.Planejamento\\Novo', null)).toBe('area:Novo');
+    expect(destinoIdDoItem('Flag.Planejamento', 'Dash Dinâmico')).toBe('outro:Dash Dinâmico');
+    expect(destinoIdDoItem(null, null)).toBe(DESTINO_NENHUM);
+    expect(lerDestino('epico:K8').anterior).toBe(true);
+    expect(lerDestino('area:ERP').codigos).toEqual(['ERP_SUST', 'ERP_EVOL']);
+    // Id desconhecido não quebra nem some: vira destino sem fábrica.
+    expect(lerDestino('???').codigos).toEqual([]);
+  });
+
+  it('os pesos de qualquer pessoa somam 1 em qualquer destino', () => {
+    const exemplos = [casas([['APP', 50], ['IR', 50]]), casas([['IR', 70], ['LAB', 30]]), casas([['QUALIDADE', 100]])];
+    const destinos = ['area:IR', 'area:ERP', 'epico:APP', 'epico:K8', 'outro:X', DESTINO_NENHUM].map(lerDestino);
+    for (const cs of exemplos) for (const dest of destinos) {
+      expect(repartirHoraPorPessoa(cs, dest).reduce((s, p) => s + p.peso, 0)).toBeCloseTo(1);
+    }
   });
 });

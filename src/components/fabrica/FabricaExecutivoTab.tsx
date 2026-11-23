@@ -17,11 +17,10 @@ interface FabKpisLite {
   isLoading: boolean;
   /** Itens da régua do gestor — mesma base do "Itens no escopo". */
   kpiItems?: Array<{ work_item_type?: string | null; tags?: string | null }>;
-  horasPorFabricaFull?: Array<{ key: string; collaborators: { name: string; minutes: number }[] }>;
+  /** Toda hora do período por destino de lançamento (`fab.horasPorDestino`). */
+  horasPorDestino?: Array<{ key: string; collaborators: { name: string; minutes: number }[]; taskIds?: number[] }>;
   /** Task id → PBI/Bug pai; habilita o nível de PBI no drill por colaborador. */
   managerIdByTaskId?: Record<number, number>;
-  /** Apontamento fora dos épicos de squad — alimenta o balde "Sem squad". */
-  horasForaDasFabricas?: Array<{ key: string; collaborators: { name: string; minutes: number }[] }>;
 }
 
 interface FabricaExecutivoTabProps {
@@ -135,7 +134,7 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
       <DailyProgressCard sprintCode={selectedSprintCode} />
 
       {/* Capacidade × Realizado por Squad (uso cruzado) */}
-      <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} dateFrom={dateFrom} dateTo={dateTo} pbiByTaskId={fab.managerIdByTaskId} foraDasFabricas={fab.horasForaDasFabricas ?? []} onAnalisarColaborador={onAnalisarColaborador} />
+      <UsoCruzadoCard fabricaRows={fab.horasPorDestino ?? []} dateFrom={dateFrom} dateTo={dateTo} pbiByTaskId={fab.managerIdByTaskId} onAnalisarColaborador={onAnalisarColaborador} />
     </div>
   );
 }

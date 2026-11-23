@@ -53,6 +53,8 @@ export function criarFakePostgrest(
     const builder: Record<string, unknown> = {
       select: (s = '*') => { select = s; return builder; },
       eq: (c: string, v: unknown) => { linhas = linhas.filter((l) => l[c] === v); return builder; },
+      // Como no Postgres: `<>` não devolve NULL.
+      neq: (c: string, v: unknown) => { linhas = linhas.filter((l) => l[c] != null && l[c] !== v); return builder; },
       in: (c: string, vs: unknown[]) => { linhas = linhas.filter((l) => vs.includes(l[c])); return builder; },
       gte: (c: string, v: string) => { linhas = linhas.filter((l) => l[c] != null && String(l[c]) >= v); return builder; },
       lte: (c: string, v: string) => { linhas = linhas.filter((l) => l[c] != null && String(l[c]) <= v); return builder; },

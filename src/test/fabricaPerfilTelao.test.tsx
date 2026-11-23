@@ -10,7 +10,7 @@ import { criarFakePostgrest, type FakePostgrest, type Linha } from './fakePostgr
  * tabela `devops_work_items` inteira. Este teste roda o hook DE VERDADE sobre um
  * PostgREST falso que aplica filtros e PROJEÇÃO, nos dois perfis, e exige que o
  * que a FabricaTvView mostra saia idêntico: os contadores, `kpiItems` (nos
- * campos que a TV lê) e `horasPorFabricaFull` (Uso cruzado).
+ * campos que a TV lê) e `horasPorDestino` (Capacidade × Realizado).
  */
 const h = vi.hoisted(() => ({ fake: null as unknown as FakePostgrest }));
 vi.mock('@/integrations/supabase/client', () => ({
@@ -93,6 +93,8 @@ const WORK_ITEMS: Linha[] = [
   wi(1005, { work_item_type: 'Task', parent_id: null, assigned_to_display: 'Bruno Dev', state: 'Done', iteration_path: S20 }),
   wi(1006, { work_item_type: 'Task', parent_id: 9999, assigned_to_display: 'Bruno Dev', state: 'Done', iteration_path: S20 }),
   wi(1007, { work_item_type: 'Task', parent_id: 104, assigned_to_display: 'Ana Dev', state: 'Done', iteration_path: S20 }),
+  // Forma nova (22/11/2026): task na área do time, sem Épico acima.
+  wi(1008, { work_item_type: 'Task', parent_id: null, assigned_to_display: 'Ana Dev', state: 'Done', iteration_path: S20, area_path: `${P}\\IR` }),
   // S21: só uma Task (cenário de virada de sprint)
   wi(1100, { work_item_type: 'Task', parent_id: 100, assigned_to_display: 'Ana Dev', state: 'New', iteration_path: S21 }),
   // histórico sem apontamento no período — o grosso da tabela no PROD
@@ -137,6 +139,7 @@ const TIMELOGS = [
   { work_item_id: 100, total_minutes: 20, user_name: 'Ana Dev', max_log_date: '2026-10-04' },
   { work_item_id: 201, total_minutes: 25, user_name: 'bruno dev', max_log_date: '2026-10-04' },
   { work_item_id: 77777, total_minutes: 7, user_name: 'Ana Dev', max_log_date: '2026-10-04' },
+  { work_item_id: 1008, total_minutes: 90, user_name: 'Ana Dev', max_log_date: '2026-10-04' },
 ];
 
 function novaBase(): FakePostgrest {
@@ -191,9 +194,11 @@ function vistaDaTv(r: Resultado) {
     kpiItems: r.kpiItems
       .map((i) => ({ id: i.id, state: i.state, work_item_type: i.work_item_type, tags: i.tags ?? null }))
       .sort((a, b) => (a.id ?? 0) - (b.id ?? 0)),
-    horasPorFabricaFull: r.horasPorFabricaFull,
+    horasPorDestino: r.horasPorDestino,
   };
 }
+
+const minutosDe = (r: Resultado) => r.horasPorDestino.reduce((s, x) => s + x.minutes, 0);
 
 async function rodar(codigo: string, telao: boolean) {
   h.fake = novaBase();
@@ -216,8 +221,15 @@ describe('useFabricaKpis — perfil do telão (EG-8)', () => {
     const tv = await rodar('S20-2026', true);
 
     expect(vistaDaTv(mesa.r).total).toBeGreaterThan(0);
-    expect(vistaDaTv(mesa.r).horasPorFabricaFull.length).toBeGreaterThan(0);
+    expect(vistaDaTv(mesa.r).horasPorDestino.length).toBeGreaterThan(0);
     expect(vistaDaTv(tv.r)).toEqual(vistaDaTv(mesa.r));
+    // Nenhuma hora some (22/11/2026): toda hora com item entra em algum destino.
+    const comItem = TIMELOGS.reduce((s, t) => s + t.total_minutes, 0);
+    expect(minutosDe(mesa.r)).toBe(comItem);
+    expect(minutosDe(tv.r)).toBe(comItem);
+    // A task da área IR vira o destino da área do time, nos dois perfis.
+    expect(mesa.r.horasPorDestino.find((x) => x.key === 'area:IR')?.minutes).toBe(90);
+    expect(tv.r.horasPorDestino.find((x) => x.key === 'area:IR')?.minutes).toBe(90);
 
     expect(baixouTabelaInteira(mesa.consultas)).toBe(true);
     expect(baixouTabelaInteira(tv.consultas)).toBe(false);
@@ -227,9 +239,11 @@ describe('useFabricaKpis — perfil do telão (EG-8)', () => {
     // a view veio enxuta (sem web_url/parent_title)
     const view = tv.consultas.find((c) => c.tabela === 'vw_fabrica_kpis')!;
     expect(view.select).not.toMatch(/web_url|parent_title|parent_type|priority|effort/);
-    // work items no telão: só a sprint enxuta e a hierarquia, uma fração da base
+    // work items no telão: só a sprint enxuta, a hierarquia e a área dos itens com hora — uma fração da base
     const wiTv = tv.consultas.filter((c) => c.tabela === 'devops_work_items');
-    expect(new Set(wiTv.map((c) => c.select))).toEqual(new Set([WI_COLUNAS_TELAO, WI_COLUNAS_HIERARQUIA]));
+    expect(new Set(wiTv.map((c) => c.select))).toEqual(new Set([WI_COLUNAS_TELAO, WI_COLUNAS_HIERARQUIA, 'id, area_path']));
+    // A área só volta para quem não está na raiz do projeto.
+    expect(wiTv.filter((c) => c.select === 'id, area_path').reduce((s, c) => s + c.linhas, 0)).toBe(1);
     expect(wiTv.reduce((s, c) => s + c.linhas, 0)).toBeLessThan(WORK_ITEMS.length / 5);
   });
 

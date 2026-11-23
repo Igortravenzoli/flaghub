@@ -7,7 +7,8 @@
  *
  * A estrutura (grupo › fábrica) vem de `@/lib/fabricaOrganograma`.
  */
-import { CODIGOS_FABRICA, ehFabricaDeEntrega, epicoDaFabrica, fabricaOrg } from '@/lib/fabricaOrganograma';
+import { CODIGOS_FABRICA, ehFabricaDeEntrega, FABRICAS, fabricaOrg } from '@/lib/fabricaOrganograma';
+import { cleanFabricaName } from '@/lib/fabricaNames';
 
 /**
  * Squads POR ÉPICO — o recorte dos KPIs de sprint (ranking, matriz de sprint,
@@ -121,38 +122,134 @@ export function horasDiaNaCasa(row: { capacidade_h_dia?: number | null; alocacao
   return (Number(row.capacidade_h_dia) || 0) * alocacaoPct(row) / 100;
 }
 
-/** De onde veio uma hora: Épico de squad do item (nome limpo) ou fora de qualquer Épico de squad. */
-export type OrigemHora = { epico: string | null; fora: boolean };
+// ─────────────────────────────────────────────────────────────────────────────
+// Destino da hora: onde ela foi LANÇADA no DevOps (área do time ou Épico raiz).
+//
+// Regra de 22/11/2026 (Igor): a hora é da fábrica da PESSOA, que é o que o
+// organograma e o relatório do TimeLog dizem. Lançar no Épico/área de outra
+// fábrica é questão de orientação — a hora não sai da pessoa, ganha uma MARCA
+// dizendo onde foi lançada. Antes, hora sem Épico de squad era descartada de
+// quem é de fábrica de entrega: em 22/11 o IR tinha 93 h lançadas e 0,3 h na tela.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Destino de lançamento sem área de time nem Épico. */
+export const DESTINO_NENHUM = 'nenhum';
+
+/** Onde uma hora foi lançada, já traduzido para as fábricas que moram lá. */
+export type DestinoHora = {
+  /** `area:IR`, `epico:STAGING`, `outro:<Épico>` ou `nenhum` — chave das linhas de horas. */
+  id: string;
+  /** Fábricas cuja casa no DevOps é esse destino (vazio = de ninguém). */
+  codigos: string[];
+  /** Texto curto para chip e coluna: "área IR", "Épico STAGING", "sem área/Épico". */
+  rotulo: string;
+  /** Destino só de squads do formato anterior (K8, FLEXX). */
+  anterior: boolean;
+};
+
+/** Último segmento do Area Path (`Flag.Planejamento\IR` → 'IR'); null na raiz do projeto. */
+export function segmentoArea(areaPath: string | null | undefined): string | null {
+  if (!areaPath) return null;
+  const partes = areaPath.split('\\').map((p) => p.trim()).filter(Boolean);
+  return partes.length >= 2 ? partes[partes.length - 1] : null;
+}
+
+const fabricasDaArea = (seg: string) => FABRICAS.filter((f) => f.devops?.area === seg).map((f) => f.codigo);
+const fabricasDoEpico = (ep: string) => FABRICAS.filter((f) => f.devops?.epicos?.includes(ep)).map((f) => f.codigo);
 
 /**
- * Para qual casa da pessoa vai uma hora apontada. Quem decide é o TRABALHO;
- * o percentual só entra quando o trabalho não diz.
- *
- * - Hora fora dos Épicos de squad (Infra 2700, item sem Épico): é trabalho de
- *   área, então vai para as casas que são área (Infra, Qualidade…). Quem não
- *   tem casa de área não recebe — como sempre foi para membro de fábrica.
- * - Hora em Épico de squad: se uma das fábricas da pessoa É dona daquele
- *   Épico (STAGING, APP), vai inteira para ela. Senão, vai para as fábricas
- *   que ainda não têm Épico próprio — trabalho fora do Épico da STAGING não é
- *   da STAGING. Só quando nada disso decide é que entra o rateio pelo %.
- * - Quem só tem área recebe a hora de Épico de squad na área, como antes.
- *
- * Exemplo: 50% LAB + 50% Infra → hora do Épico 2700 vai toda para Infra e
- * hora de Épico de squad vai toda para LAB. Rateio 50/50 seria inventar.
+ * Id do destino de um item: área de time conhecida › Épico conhecido › área
+ * desconhecida › outro Épico › nenhum. A área vem antes porque é assim que os
+ * times novos lançam (o item da área IR não tem Épico).
  */
-export function repartirHora(casas: CasaAlocada[], origem: OrigemHora): Array<{ squad: string; peso: number }> {
-  const renorm = (cs: CasaAlocada[]) => {
-    const soma = cs.reduce((s, c) => s + c.pct, 0);
-    return soma > 0 ? cs.map((c) => ({ squad: c.squad, peso: c.pct / soma })) : [];
-  };
-  const areas = casas.filter((c) => ehArea(c.squad));
-  const fabricas = casas.filter((c) => !ehArea(c.squad));
-  if (origem.fora) return renorm(areas);
-  if (fabricas.length === 0) return renorm(areas);
-  const dona = origem.epico ? fabricas.find((c) => epicoDaFabrica(c.squad) === origem.epico) : undefined;
-  if (dona) return [{ squad: dona.squad, peso: 1 }];
-  const semEpico = fabricas.filter((c) => !epicoDaFabrica(c.squad));
-  return renorm(semEpico.length > 0 ? semEpico : fabricas);
+export function destinoIdDoItem(areaPath: string | null | undefined, epicoTitulo: string | null | undefined): string {
+  const seg = segmentoArea(areaPath);
+  if (seg && fabricasDaArea(seg).length > 0) return `area:${seg}`;
+  const ep = epicoTitulo ? cleanFabricaName(epicoTitulo) : null;
+  if (ep && fabricasDoEpico(ep).length > 0) return `epico:${ep}`;
+  if (seg) return `area:${seg}`;
+  if (ep) return `outro:${ep}`;
+  return DESTINO_NENHUM;
+}
+
+const cacheDestino = new Map<string, DestinoHora>();
+
+/** Lê um id de destino. Id desconhecido vira destino sem fábrica (nunca some). */
+export function lerDestino(id: string): DestinoHora {
+  const cache = cacheDestino.get(id);
+  if (cache) return cache;
+  const [tipo, ...resto] = id.split(':');
+  const nome = resto.join(':');
+  let d: DestinoHora;
+  if (tipo === 'area' && nome) {
+    d = { id, codigos: fabricasDaArea(nome), rotulo: `área ${nome}`, anterior: false };
+  } else if (tipo === 'epico' && nome) {
+    const codigos = fabricasDoEpico(nome);
+    d = { id, codigos, rotulo: `Épico ${nome}`, anterior: codigos.length > 0 && codigos.every((c) => fabricaOrg(c)?.grupo === 'ANTERIOR') };
+  } else if (tipo === 'outro' && nome) {
+    d = { id, codigos: [], rotulo: `Épico ${nome}`, anterior: false };
+  } else {
+    d = { id, codigos: [], rotulo: 'sem área/Épico', anterior: false };
+  }
+  cacheDestino.set(id, d);
+  return d;
+}
+
+/**
+ * Marca da hora na casa que a recebeu:
+ * - `casa`: lançada na área/Épico da própria fábrica;
+ * - `cruzado`: lançada na área/Épico de OUTRA fábrica;
+ * - `atendimento`: área de apoio (Qualidade, Infra…) trabalhando no item de uma
+ *   fábrica — é o trabalho dela, não lançamento errado;
+ * - `anterior`: Épico de squad do formato anterior (K8, FLEXX);
+ * - `sem_destino`: item sem área de time nem Épico de fábrica.
+ */
+export type MarcaHora = 'casa' | 'cruzado' | 'atendimento' | 'anterior' | 'sem_destino';
+
+export const ROTULO_MARCA: Record<MarcaHora, string> = {
+  casa: 'na casa',
+  cruzado: 'cruzado',
+  atendimento: 'atendimento',
+  anterior: 'formato anterior',
+  sem_destino: 'sem área/Épico',
+};
+
+export function marcaDaHora(casa: string, destino: DestinoHora): MarcaHora {
+  if (destino.codigos.includes(casa)) return 'casa';
+  if (destino.codigos.length === 0) return 'sem_destino';
+  if (destino.anterior) return 'anterior';
+  return ehArea(casa) ? 'atendimento' : 'cruzado';
+}
+
+/**
+ * Para qual casa da pessoa vai uma hora (os pesos somam 1 — nada se perde):
+ * - o destino é uma das casas dela → vai inteira para essa casa (ou rateada
+ *   entre as casas que moram lá, como os dois ERP na área ERP);
+ * - senão → rateio pelo % de alocação entre todas as casas dela.
+ * Pessoa sem casa devolve vazio: quem chama põe a hora em "Sem squad".
+ *
+ * Exemplo: 50% LAB + 50% Infra → hora do Épico [INFRA] vai toda para Infra,
+ * hora da área LAB toda para LAB, hora sem área/Épico 50/50.
+ */
+export function repartirHoraPorPessoa(
+  casas: CasaAlocada[],
+  destino: DestinoHora,
+): Array<{ squad: string; peso: number; marca: MarcaHora }> {
+  const daqui = casas.filter((c) => destino.codigos.includes(c.squad));
+  const alvo = daqui.length > 0 ? daqui : casas;
+  const soma = alvo.reduce((s, c) => s + c.pct, 0);
+  if (soma <= 0) return [];
+  return alvo.map((c) => ({ squad: c.squad, peso: c.pct / soma, marca: marcaDaHora(c.squad, destino) }));
+}
+
+/** Ordem de exibição dos destinos: casas do organograma, depois o resto. */
+export function ordemDestino(id: string): number {
+  const d = lerDestino(id);
+  if (d.codigos.length > 0) {
+    const i = Math.min(...d.codigos.map((c) => GRUPOS_HORAS.indexOf(c)).filter((x) => x >= 0));
+    return Number.isFinite(i) ? i : 900;
+  }
+  return id === DESTINO_NENHUM ? 999 : 950;
 }
 
 /**

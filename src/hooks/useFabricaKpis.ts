@@ -7,6 +7,7 @@ import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { normalizeProduct, extractProducts } from '@/lib/products';
 import { ehEstadoEntregue } from '@/lib/fabricaEstados';
 import { ehFabricaDeEntrega } from '@/lib/fabricaOrganograma';
+import { destinoIdDoItem } from '@/lib/fabricaRoster';
 
 const normalizeFabricaState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 
@@ -212,9 +213,9 @@ interface UseFabricaKpisOptions {
    *   • hierarquia (task → PBI → … → Epic) só dos itens com apontamento no
    *     período, para as horas por fábrica da página 2;
    *   • sem os apontamentos por DIA e sem o VDESK: o telão não mostra jornada
-   *     nem horas consolidadas (só `horasPorFabricaFull`, que é DevOps).
+   *     nem horas consolidadas (só `horasPorDestino`, que é DevOps).
    * O que o telão mostra (`total`, `done`, `inProgress`, `entregue`, `toDo`,
-   * `kpiItems`, `horasPorFabricaFull`) sai idêntico ao perfil de mesa — há teste.
+   * `kpiItems`, `horasPorDestino`) sai idêntico ao perfil de mesa — há teste.
    * Os demais campos devolvidos NÃO têm essa garantia neste perfil.
    */
   telao?: boolean;
@@ -251,6 +252,9 @@ export const WI_COLUNAS_TELAO =
 
 /** Colunas da hierarquia (subida até o Epic) no perfil do telão. */
 export const WI_COLUNAS_HIERARQUIA = 'id, parent_id, work_item_type, title';
+
+/** Area Path da raiz do projeto: não diz de qual time é o item. */
+export const AREA_RAIZ_PROJETO = 'Flag.Planejamento';
 
 /** Linha de `devops_work_items` como o hook a usa (colunas ausentes = null). */
 export interface WorkItemMeta {
@@ -630,7 +634,7 @@ export function useFabricaKpis(
         tempo_segundos: number;
       }>;
     },
-    // Telão: `horasPorFabricaFull` é só DevOps; nada do VDESK aparece no modo TV.
+    // Telão: `horasPorDestino` é só DevOps; nada do VDESK aparece no modo TV.
     enabled: includeTimeLogs && !telao,
     staleTime: 5 * 60 * 1000,
   });
@@ -749,7 +753,7 @@ export function useFabricaKpis(
 
   /**
    * Hierarquia do telão: a subida até o Epic (`findEpic`) dos itens com
-   * apontamento no período — é o que `horasPorFabricaFull` (Uso cruzado, página
+   * apontamento no período — é o que `horasPorDestino` (Uso cruzado, página
    * 2) precisa. Os nós são os mesmos da tabela inteira, então o Epic achado é o
    * mesmo; só não se baixa o resto.
    */
@@ -775,6 +779,45 @@ export function useFabricaKpis(
       return linhas.map(completarWorkItem);
     },
     enabled: includeWorkItemMeta && perfilTelaoAtivo && idsApontados.length > 0,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+
+  /**
+   * Area Path dos itens com hora no período — o destino da hora (ver
+   * `destinoIdDoItem`). Os times ERP, IR, LAB e Produto lançam na área do time,
+   * sem Épico (conferido no DevOps em 22/11/2026); sem a área, essas horas não
+   * tinham fábrica nenhuma.
+   *
+   * Egress: só os ids apontados e só os que NÃO estão na raiz do projeto (a
+   * raiz não diz nada). A coluna saiu da carga de mesa em 11/10/2026 e continua
+   * fora dela.
+   */
+  const idsComHora: number[] = (() => {
+    const set = new Set<number>();
+    for (const tl of (timeLogsQuery.data || []) as Array<{ work_item_id: number | null }>) {
+      if (tl.work_item_id != null) set.add(tl.work_item_id);
+    }
+    return [...set].sort((a, b) => a - b);
+  })();
+  const areaPorItemQuery = useQuery({
+    queryKey: ['fabrica', 'wi-area', idsComHora.join(',')],
+    queryFn: async () => {
+      const out: Record<number, string> = {};
+      for (let i = 0; i < idsComHora.length; i += 300) {
+        const { data, error } = await supabase
+          .from('devops_work_items')
+          .select('id, area_path')
+          .in('id', idsComHora.slice(i, i + 300))
+          .neq('area_path', AREA_RAIZ_PROJETO);
+        if (error) throw error;
+        for (const r of (data || []) as Array<{ id: number; area_path: string | null }>) {
+          if (r.area_path) out[r.id] = r.area_path;
+        }
+      }
+      return out;
+    },
+    enabled: includeTimeLogs && includeWorkItemMeta && idsComHora.length > 0,
     staleTime: 5 * 60 * 1000,
     placeholderData: keepPreviousData,
   });
@@ -1270,7 +1313,7 @@ export function useFabricaKpis(
   const collabNameMap = collabMapQuery.data || new Map<string, string>();
   const aggregateFabrica = (
     logs: typeof scopedTimeLogs,
-    keyOf: (epic: { title: string; id: number } | null) => string | null,
+    keyOf: (epic: { title: string; id: number } | null, workItemId: number) => string | null,
   ): TimelogFabricaScope[] => {
     const minutesByKey = new Map<string, number>();
     const taskIdsByKey = new Map<string, Set<number>>();
@@ -1279,7 +1322,7 @@ export function useFabricaKpis(
     for (const tl of logs) {
       if (!tl.work_item_id) continue;
       const epic = findEpic(tl.work_item_id);
-      const key = keyOf(epic);
+      const key = keyOf(epic, tl.work_item_id);
       if (key == null) continue;
       const mins = tl.time_minutes || 0;
       minutesByKey.set(key, (minutesByKey.get(key) || 0) + mins);
@@ -1325,27 +1368,26 @@ export function useFabricaKpis(
     ? aggregateFabrica(scopedTimeLogs, (epic) => epic?.title || 'Sem Epic')
     : [];
 
-  // Visão "alocação completa" — todo apontamento do período, só épicos de squad
-  // (descarta Infra e itens sem Épico, que não pertencem a nenhuma fábrica).
-  const horasPorFabricaFull: TimelogFabricaScope[] = hasTimeLogsFull
-    ? aggregateFabrica(completeTimeLogs, (epic) =>
-        epic && !/infra/i.test(epic.title) ? epic.title : null)
-    : [];
-  const totalHoursLoggedFull = horasPorFabricaFull.reduce((sum, r) => sum + r.minutes, 0) / 60;
-
   /**
-   * O complemento de `horasPorFabricaFull`: apontamento sem Épico ou sob épico
-   * de Infra. NÃO entra na conta das squads (inflaria a utilização de quem está
-   * no roster) — serve para o balde "Sem squad" ter o que mostrar.
+   * Visão "alocação completa" — TODO apontamento do período, agrupado pelo
+   * DESTINO do item (área do time › Épico raiz › nada; ver `destinoIdDoItem`).
    *
-   * Sem isto, filtrar o Igor Cardoso deixava "Capacidade × Realizado" dizendo
-   * "sem apontamentos" com 108 h lançadas: as tasks dele penduram no 2700, cujo
-   * épico raiz (9990) nem existe na base sincronizada (reportado em 11/08/2026).
+   * Nada é descartado aqui (regra de 22/11/2026: primeiro, não perder hora).
+   * Quem decide a fábrica é a PESSOA (`repartirHoraPorPessoa`, no card); o
+   * destino só marca onde a hora foi lançada. Antes eram duas listas — só
+   * Épico de squad numa, "Outras" na outra — e a segunda era descartada para
+   * quem é de fábrica de entrega: o IR, que lança na área do time sem Épico,
+   * aparecia com 0,3 h de 93 h lançadas.
    */
-  const horasForaDasFabricas: TimelogFabricaScope[] = hasTimeLogsFull
-    ? aggregateFabrica(completeTimeLogs, (epic) =>
-        (!epic || /infra/i.test(epic.title)) ? 'Outras' : null)
+  const areaPorItem = areaPorItemQuery.data || {};
+  const horasPorDestino: TimelogFabricaScope[] = hasTimeLogsFull
+    ? aggregateFabrica(completeTimeLogs, (epic, workItemId) => {
+        // `findEpic` devolve o topo da cadeia quando não há Epic; aqui só vale Epic de verdade.
+        const ehEpic = epic != null && wiMap.get(epic.id)?.work_item_type === 'Epic';
+        return destinoIdDoItem(areaPorItem[workItemId], ehEpic ? epic.title : null);
+      })
     : [];
+  const totalHoursLoggedFull = horasPorDestino.reduce((sum, r) => sum + r.minutes, 0) / 60;
 
   // ── VDESK aggregations (automatic, more reliable source) ──
   const vdeskLogs = vdeskLogsQuery.data || [];
@@ -1790,9 +1832,11 @@ export function useFabricaKpis(
     horasPorProduto,
     horasPorFabrica,
     horasPorFabricaScope,
-    horasPorFabricaFull,
-    /** Apontamento sem Épico ou de Infra — alimenta o balde "Sem squad" */
-    horasForaDasFabricas,
+    /**
+     * TODA hora do período por destino (área do time / Épico / nada), com
+     * colaboradores. Base do Capacidade × Realizado: a fábrica sai da pessoa.
+     */
+    horasPorDestino,
     collaboratorTaskIdsDevops,
     collaboratorTaskIdsVdesk,
     // Consolidado VDESK+DevOps sem dupla contagem (max por work item/colaborador)

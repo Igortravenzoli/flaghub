@@ -58,7 +58,8 @@ type FabKpisTv = {
   isLoading: boolean;
   /** Itens da régua do gestor (sem Tasks duplicadas) — base dos cards Priorizado/Não Priorizado. */
   kpiItems?: ItemLive[];
-  horasPorFabricaFull?: Array<{ key: string; collaborators: { name: string; minutes: number }[] }>;
+  /** Toda hora do período por destino de lançamento — a mesma lista da aba Executiva. */
+  horasPorDestino?: Array<{ key: string; collaborators: { name: string; minutes: number }[]; taskIds?: number[] }>;
 };
 
 type FabricaTvViewProps = {
@@ -335,7 +336,7 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
               <DailyProgressCard sprintCode={sprintCode} fill />
             </div>
             <div className="col-span-5 h-full min-h-0">
-              <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull ?? []} dateFrom={dateFrom} dateTo={dateTo} compact fill />
+              <UsoCruzadoCard fabricaRows={fab.horasPorDestino ?? []} dateFrom={dateFrom} dateTo={dateTo} compact fill />
             </div>
           </div>
         </>
