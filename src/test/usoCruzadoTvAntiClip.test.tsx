@@ -147,11 +147,11 @@ describe('UsoCruzadoCard — visão de mesa (sem fill)', () => {
     // a hora continua dele e divide pelo percentual, 10 h em cada casa (22/11/2026).
     // Realizado da Sustentação = 4 × 10 h + 10 h = 50 h.
     expect(linhaDe(container, 'Sustentação')).toContain('50:00/360:00');
-    // Evolução: 4 pessoas cheias (Infra inclusa) + meia = 360 h; realizado 4 × 10 + 10 = 50 h.
-    expect(linhaDe(container, 'Evolução')).toContain('50:00/360:00');
+    // Evolução: 3 pessoas cheias + meia = 280 h; realizado 3 × 10 + 10 = 40 h.
+    expect(linhaDe(container, 'Evolução')).toContain('40:00/280:00');
     expect(linhaDe(container, 'Híbrida')).toContain('10:00/80:00');
-    // 9 fábricas + 3 áreas cheias + 1 dividido = 13 pessoas; nada some no rateio.
-    expect(linhaDe(container, 'Áreas de apoio')).toContain('30:00/240:00');
+    // Infra é área de apoio desde 22/11/2026: 4 áreas cheias = 320 h, 40 h lançadas.
+    expect(linhaDe(container, 'Áreas de apoio')).toContain('40:00/320:00');
   });
 
   it('confere à vista que nenhuma hora sumiu: 12 × 10 h + 20 h = 140 h', () => {

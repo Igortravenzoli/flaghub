@@ -20,10 +20,12 @@ import { fabricaColor } from '@/lib/chartColors';
  */
 
 describe('estrutura do organograma', () => {
-  it('tem os três grupos de fábrica, na ordem de leitura, e as nove fábricas', () => {
+  it('tem os três grupos de fábrica, na ordem de leitura, e as oito fábricas', () => {
     expect(GRUPOS.slice(0, 3).map((g) => g.rotulo)).toEqual(['Sustentação', 'Evolução', 'Híbrida']);
     expect(fabricasDoGrupo('SUSTENTACAO').map((f) => f.codigo)).toEqual(['GPS_GO', 'APP', 'PROMO_SUITE', 'ERP_SUST']);
-    expect(fabricasDoGrupo('EVOLUCAO').map((f) => f.codigo)).toEqual(['ERP_EVOL', 'IR', 'LAB', 'INFRA']);
+    expect(fabricasDoGrupo('EVOLUCAO').map((f) => f.codigo)).toEqual(['ERP_EVOL', 'IR', 'LAB']);
+    // Infra sustenta todas as fábricas: é área de apoio (22/11/2026).
+    expect(fabricasDoGrupo('APOIO').map((f) => f.codigo)).toEqual(['INFRA', 'QUALIDADE', 'DESIGN', 'PRODUTOS']);
     expect(fabricasDoGrupo('HIBRIDA').map((f) => f.codigo)).toEqual(['STAGING']);
   });
 
