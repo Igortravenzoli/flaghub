@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useSprintSnapshots, type SnapshotScopeBreakdown, type SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
-import { avisoForaDoFormato, fabricasDaFoto, MAX_FABRICAS_FOTO, recortePorFormato, rotuloFabricaFoto } from '@/lib/fabricaFoto';
-import { fabricaColor } from '@/lib/chartColors';
+import {
+  avisoForaDoFormato, corFabricaFoto, escoposPorGrupo, fabricasDaFoto, MAX_FABRICAS_FOTO, recortePorFormato,
+  rotuloFabricaFoto,
+} from '@/lib/fabricaFoto';
 import { quarterLabel } from '@/lib/sprintCalendar';
 import { concluidoDoEscopo } from '@/lib/fabricaTvSeries';
 
@@ -128,8 +130,16 @@ export type ColunaQualidade = { label: string; cells: Record<string, CelulaFabri
  */
 export function montaColunasQualidade(
   snapshots: Record<string, SprintSnapshotRow>,
-  opts: { groupBy: GroupBy; maxSprints: number; anoVigente: number },
-): { columns: ColunaQualidade[]; fabricasOrdenadas: string[]; detalhes: Record<string, SprintDetalhe[]>; foraDoFormato: string } {
+  opts: {
+    groupBy: GroupBy; maxSprints: number; anoVigente: number;
+    /**
+     * Uma barra por GRUPO do organograma (soma das fábricas dele) em vez de uma
+     * por fábrica — o telão (F3, 23/11/2026). Só vale na foto do organograma;
+     * no formato anterior não há grupo e as barras seguem por squad.
+     */
+    porGrupo?: boolean;
+  },
+): { columns: ColunaQualidade[]; fabricasOrdenadas: string[]; detalhes: Record<string, SprintDetalhe[]>; foraDoFormato: string; porGrupo: boolean } {
   const { groupBy, maxSprints, anoVigente } = opts;
   const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
   const todas = Object.values(snapshots)
@@ -138,6 +148,7 @@ export function montaColunasQualidade(
   // No quarter, agrega o ANO INTEIRO (várias colunas Q); por sprint, últimas N.
   // Depois, o formato da sprint mais recente: K8 e GPS/GO não somam na mesma barra.
   const { fotos: rows, formato, fora } = recortePorFormato(groupBy === 'quarter' ? todas : todas.slice(-maxSprints));
+  const porGrupo = !!opts.porGrupo && formato === 'organograma';
 
   const colOrder: string[] = [];
   const raw = new Map<string, Map<string, RawSums>>();
@@ -153,7 +164,11 @@ export function montaColunasQualidade(
     const colMap = raw.get(colKey)!;
     // Só fábricas de verdade — "Sem fábrica", áreas e Épicos soltos viravam
     // séries extras e deixavam as barras ilegíveis.
-    for (const [name, scope] of Object.entries(fabricasDaFoto(s.category_breakdown, formato))) {
+    const daFoto = fabricasDaFoto(s.category_breakdown, formato);
+    const escopos: Record<string, SnapshotScopeBreakdown> = porGrupo
+      ? escoposPorGrupo(daFoto) as Record<string, SnapshotScopeBreakdown>
+      : daFoto;
+    for (const [name, scope] of Object.entries(escopos)) {
       const c = colMap.get(name) ?? emptySums();
       addScope(c, scope);
       colMap.set(name, c);
@@ -185,7 +200,7 @@ export function montaColunasQualidade(
     .sort((x, y) => y.score - x.score)
     .map((x) => x.name);
 
-  return { columns, fabricasOrdenadas, detalhes, foraDoFormato: avisoForaDoFormato(fora, formato) };
+  return { columns, fabricasOrdenadas, detalhes, foraDoFormato: avisoForaDoFormato(fora, formato), porGrupo };
 }
 
 /**
@@ -206,9 +221,10 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
   const [detalhe, setDetalhe] = useState<{ coluna: string; fabrica: string; metrica: MetricKey } | null>(null);
   const anoVigente = new Date().getFullYear();
 
-  const { columns, fabricasOrdenadas, detalhes, foraDoFormato } = useMemo(
-    () => montaColunasQualidade(snapshots, { groupBy, maxSprints, anoVigente }),
-    [snapshots, anoVigente, maxSprints, groupBy],
+  // No telão, um barra por grupo: oito barras por sprint ficam finas demais a 3–5 m.
+  const { columns, fabricasOrdenadas, detalhes, foraDoFormato, porGrupo } = useMemo(
+    () => montaColunasQualidade(snapshots, { groupBy, maxSprints, anoVigente, porGrupo: fill }),
+    [snapshots, anoVigente, maxSprints, groupBy, fill],
   );
 
   // Linhas e totais do popup de composição (recalculados só quando abre/muda).
@@ -226,7 +242,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
   /** Cor fixa por fábrica (a mesma da legenda), independente da posição da barra. */
   const corDaFabrica = useMemo(() => {
     const mapa = new Map<string, string>();
-    fabricasOrdenadas.forEach((f, i) => mapa.set(f, fabricaColor(f, i)));
+    fabricasOrdenadas.forEach((f, i) => mapa.set(f, corFabricaFoto(f, i)));
     return (f: string) => mapa.get(f) ?? 'hsl(var(--muted-foreground))';
   }, [fabricasOrdenadas]);
 
@@ -262,14 +278,14 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-primary" />
-            Qualidade das Fábricas — {groupBy === 'quarter' ? 'por quarter' : 'por sprint'}
+            Qualidade das Fábricas — {porGrupo ? 'por grupo, ' : ''}{groupBy === 'quarter' ? 'por quarter' : 'por sprint'}
           </CardTitle>
           <div className="flex items-center gap-3 flex-wrap">
             {fabricasOrdenadas.length > 0 && (
               <div className="flex gap-3 flex-wrap text-xs">
                 {fabricasOrdenadas.map((f, i) => (
                   <span key={f} className="inline-flex items-center gap-1.5 font-medium">
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: fabricaColor(f, i) }} />
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: corFabricaFoto(f, i) }} />
                     {rotuloFabricaFoto(f)}
                   </span>
                 ))}

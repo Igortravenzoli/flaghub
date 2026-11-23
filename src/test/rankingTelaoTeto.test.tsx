@@ -36,17 +36,30 @@ vi.mock('@/hooks/useSprintSnapshots', () => ({
 describe('RankingFabricasCard — organograma no telão', () => {
   it('telão: 4 mini-gráficos numa linha e "+4" declarado', () => {
     const { container } = render(<RankingFabricasCard columns={4} maxSprints={3} chartHeight="100%" />);
-    expect(container.querySelectorAll('.recharts-responsive-container')).toHaveLength(4);
-    expect(screen.getByTestId('ranking-ocultas').textContent).toContain('+4 fábricas fora do telão');
+    // F3: um gráfico por GRUPO (Sustentação, Evolução, Híbrida), nada escondido.
+    expect(container.querySelectorAll('.recharts-responsive-container')).toHaveLength(3);
+    expect(screen.queryByTestId('ranking-ocultas')).toBeNull();
+    // As fábricas do grupo aparecem embaixo, com o score de cada uma.
+    const sust = screen.getByTestId('grupo-SUSTENTACAO').textContent ?? '';
+    for (const f of ['GPS / GO', 'APP', 'PROMO / SUITE', 'ERP']) expect(sust).toContain(f);
+    expect(screen.getByTestId('grupo-HIBRIDA').textContent).toContain('STAGING');
     // "Sem fábrica" nunca entra no pódio.
     expect(screen.queryByText('Sem fábrica')).toBeNull();
   });
 
-  it('mesa: as 8 fábricas, com o nome do grupo onde o rótulo se repete', () => {
+  it('o grupo é a SOMA das fábricas, não a média dos scores', () => {
+    render(<RankingFabricasCard columns={4} maxSprints={3} chartHeight="100%" />);
+    // Evolução: ERP 1/4 + I & R 6/8 + LAB 2/7 = 9/19 encerrados → 47,4 (sem bug nem retorno no fixture).
+    expect(screen.getByTestId('grupo-EVOLUCAO').textContent).toContain('score 47.4');
+  });
+
+  it('mesa: grupo › fábrica, as 8 fábricas e o "ERP" uma vez em cada grupo', () => {
     const { container } = render(<RankingFabricasCard />);
     expect(container.querySelectorAll('.recharts-responsive-container')).toHaveLength(8);
     expect(screen.queryByTestId('ranking-ocultas')).toBeNull();
-    expect(screen.getByText('ERP · Sustentação')).toBeTruthy();
-    expect(screen.getByText('ERP · Evolução')).toBeTruthy();
+    for (const g of ['SUSTENTACAO', 'EVOLUCAO', 'HIBRIDA']) expect(screen.getByTestId(`grupo-${g}`)).toBeTruthy();
+    expect(screen.getByTestId('grupo-SUSTENTACAO').textContent).toContain('ERP');
+    expect(screen.getByTestId('grupo-EVOLUCAO').textContent).toContain('ERP');
+    expect(screen.getByTestId('grupo-SUSTENTACAO').textContent).toContain('4 fábricas');
   });
 });

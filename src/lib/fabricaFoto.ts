@@ -16,8 +16,11 @@
  */
 import type { SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { cleanFabricaName } from '@/lib/fabricaNames';
+import { fabricaColor } from '@/lib/chartColors';
 import { SQUADS } from '@/lib/fabricaRoster';
-import { CODIGOS_FABRICA, FABRICAS, fabricaOrg, rotuloFabricaLongo } from '@/lib/fabricaOrganograma';
+import {
+  CODIGOS_FABRICA, FABRICAS, fabricaOrg, GRUPOS, type GrupoFabrica, type GrupoId, rotuloFabricaLongo,
+} from '@/lib/fabricaOrganograma';
 
 export type FormatoFoto = 'organograma' | 'anterior';
 
@@ -34,6 +37,59 @@ export const FABRICAS_DE_ENTREGA: string[] = FABRICAS
 
 /** Teto de fábricas numa coluna de gráfico, nos dois formatos. */
 export const MAX_FABRICAS_FOTO = Math.max(SQUADS.length, FABRICAS_DE_ENTREGA.length);
+
+/** Grupos que têm fábrica de entrega (Sustentação, Evolução, Híbrida), na ordem do organograma. */
+export const GRUPOS_DE_ENTREGA: GrupoFabrica[] = GRUPOS.filter((g) =>
+  FABRICAS.some((f) => f.grupo === g.id && FABRICAS_DE_ENTREGA.includes(f.codigo)));
+
+/** Grupo de uma fábrica de entrega; null para o resto (squad antiga, "Sem fábrica"). */
+export function grupoDeEntrega(codigo: string): GrupoFabrica | null {
+  const f = fabricaOrg(codigo);
+  if (!f || !FABRICAS_DE_ENTREGA.includes(codigo)) return null;
+  return GRUPOS_DE_ENTREGA.find((g) => g.id === f.grupo) ?? null;
+}
+
+/**
+ * Soma de escopos: o grupo é a SOMA das fábricas (contagens e ids), nunca média
+ * de percentuais — fábrica de 4 itens pesaria igual à de 21. Os ids só existem
+ * se todas as partes têm (fotos anteriores à SN-7 não guardam ids).
+ */
+export function somarEscopos(partes: SnapshotScopeBreakdown[]): SnapshotScopeBreakdown | null {
+  if (partes.length === 0) return null;
+  const soma = <T extends Record<string, number>>(sel: (s: SnapshotScopeBreakdown) => T): T => {
+    const out = {} as Record<string, number>;
+    for (const p of partes) for (const [k, v] of Object.entries(sel(p))) out[k] = (out[k] ?? 0) + (Number(v) || 0);
+    return out as T;
+  };
+  const comIds = partes.every((p) => p.ids);
+  return {
+    total: partes.reduce((s, p) => s + p.total, 0),
+    cats: soma((p) => p.cats),
+    entregue: soma((p) => p.entregue),
+    done: soma((p) => p.done),
+    ...(comIds ? {
+      ids: {
+        entregue: partes.flatMap((p) => p.ids!.entregue),
+        done: partes.flatMap((p) => p.ids!.done),
+        bug: partes.flatMap((p) => p.ids!.bug),
+        retorno_qa: partes.flatMap((p) => p.ids!.retorno_qa),
+      },
+    } : {}),
+    priorizado_done: partes.reduce((s, p) => s + (p.priorizado_done ?? 0), 0),
+    priorizado_em_dev: partes.reduce((s, p) => s + (p.priorizado_em_dev ?? 0), 0),
+  };
+}
+
+/** Escopos de uma foto (já lidos com `fabricasDaFoto`) somados por grupo do organograma. */
+export function escoposPorGrupo(fabricas: Record<string, SnapshotScopeBreakdown>): Partial<Record<GrupoId, SnapshotScopeBreakdown>> {
+  const out: Partial<Record<GrupoId, SnapshotScopeBreakdown>> = {};
+  for (const g of GRUPOS_DE_ENTREGA) {
+    const partes = Object.entries(fabricas).filter(([c]) => grupoDeEntrega(c)?.id === g.id).map(([, s]) => s);
+    const total = somarEscopos(partes);
+    if (total) out[g.id] = total;
+  }
+  return out;
+}
 
 export function formatoDaFoto(cb: BreakdownFoto): FormatoFoto {
   return cb?.fabricas_org ? 'organograma' : 'anterior';
@@ -59,9 +115,19 @@ export function fabricasDaFoto(cb: BreakdownFoto, formato: FormatoFoto = formato
   return out;
 }
 
-/** Nome para a tela: código do organograma vira rótulo ("ERP · Sustentação"); o resto volta como veio. */
+/**
+ * Nome para a tela: código do organograma vira rótulo ("ERP · Sustentação"),
+ * id de grupo vira o nome do grupo ("Sustentação"); o resto volta como veio.
+ */
 export function rotuloFabricaFoto(nome: string): string {
+  const grupo = GRUPOS.find((g) => g.id === nome);
+  if (grupo) return grupo.rotulo;
   return fabricaOrg(nome) ? rotuloFabricaLongo(nome) : nome;
+}
+
+/** Cor na tela: a do grupo para um id de grupo; a da fábrica para o resto. */
+export function corFabricaFoto(nome: string, idx = 0): string {
+  return GRUPOS.find((g) => g.id === nome)?.cor ?? fabricaColor(nome, idx);
 }
 
 /** Ordem de leitura: a do organograma, depois a das squads antigas. */

@@ -2,7 +2,10 @@ import { useMemo } from 'react';
 import { Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSprintSnapshots } from '@/hooks/useSprintSnapshots';
-import { avisoForaDoFormato, fabricasDaFoto, recortePorFormato, rotuloFabricaFoto } from '@/lib/fabricaFoto';
+import {
+  avisoForaDoFormato, fabricasDaFoto, grupoDeEntrega, GRUPOS_DE_ENTREGA, recortePorFormato, rotuloFabricaFoto,
+} from '@/lib/fabricaFoto';
+import { type GrupoFabrica, rotuloFabrica } from '@/lib/fabricaOrganograma';
 import { concluidoDoEscopo } from '@/lib/fabricaTvSeries';
 import { fabricaColor, medalColor } from '@/lib/chartColors';
 import { DesempenhoTrendChart, COR_SERIE } from '@/components/fabrica/DesempenhoTrendChart';
@@ -36,6 +39,14 @@ type SprintCell = {
   doneAbs: number;
 };
 type FabricaRank = { name: string; score: number; desempenho: number; cells: SprintCell[] };
+/** Grupo do organograma: score da SOMA das fábricas dele (nunca média dos scores). */
+type GrupoRank = { grupo: GrupoFabrica; score: number; fabricas: FabricaRank[] };
+
+type Somas = { done: number; scope: number; bug: number; retorno: number };
+function scoreDe(a: Somas): { desempenho: number; score: number } {
+  const desempenho = pct(a.done, a.scope);
+  return { desempenho, score: Math.round((desempenho - 0.5 * pct(a.bug, a.scope) - 0.5 * pct(a.retorno, a.scope)) * 10) / 10 };
+}
 
 /**
  * TV-3 — verde proporcional aos PBIs encerrados.
@@ -79,7 +90,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
    */
   const esticar = typeof chartHeight === 'string';
 
-  const { ranking, foraDoFormato, formato } = useMemo(() => {
+  const { ranking, grupos, foraDoFormato, formato } = useMemo(() => {
     const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
     const janela = Object.values(snapshots)
       .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
@@ -116,27 +127,67 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
 
     const lista: FabricaRank[] = [...byFabrica.entries()]
       .filter(([, a]) => a.scope > 0) // sem escopo não há o que ranquear
-      .map(([name, a]) => {
-        const desempenho = pct(a.done, a.scope);
-        return {
-          name,
-          desempenho,
-          score: Math.round((desempenho - 0.5 * pct(a.bug, a.scope) - 0.5 * pct(a.retorno, a.scope)) * 10) / 10,
-          cells: a.cells,
-        };
-      })
+      .map(([name, a]) => ({ name, ...scoreDe(a), cells: a.cells }))
       .sort((x, y2) => y2.score - x.score);
-    return { ranking: lista, foraDoFormato: avisoForaDoFormato(fora, formato), formato };
+
+    // F3: no organograma, o grupo é a SOMA das fábricas dele (Sustentação, Evolução, Híbrida).
+    const porGrupo: GrupoRank[] = formato === 'organograma'
+      ? GRUPOS_DE_ENTREGA
+        .map((grupo) => {
+          const fabs = lista.filter((f) => grupoDeEntrega(f.name)?.id === grupo.id);
+          const somas = fabs.reduce<Somas>((acc, f) => {
+            const a = byFabrica.get(f.name)!;
+            return { done: acc.done + a.done, scope: acc.scope + a.scope, bug: acc.bug + a.bug, retorno: acc.retorno + a.retorno };
+          }, { done: 0, scope: 0, bug: 0, retorno: 0 });
+          return { grupo, score: scoreDe(somas).score, fabricas: fabs, scope: somas.scope };
+        })
+        .filter((g) => g.scope > 0)
+        .sort((x, y2) => y2.score - x.score)
+        .map(({ grupo, score, fabricas }) => ({ grupo, score, fabricas }))
+      : [];
+    return { ranking: lista, grupos: porGrupo, foraDoFormato: avisoForaDoFormato(fora, formato), formato };
   }, [snapshots, anoVigente, maxSprints]);
 
   /**
-   * Telão (gráfico esticado): uma linha só, `columns` mini-gráficos. Com o
-   * organograma são até 8 fábricas — em duas linhas os gráficos somem (medido no
-   * harness 1320×742 em 23/11/2026). O telão mostra o pódio e DECLARA o resto;
-   * o ranking completo fica na aba Executiva. O agrupamento por grupo é a F3.
+   * Telão (gráfico esticado): uma linha só, no máximo `columns` mini-gráficos —
+   * em duas linhas eles somem (harness 1320×742, 23/11/2026). No organograma a
+   * TV mostra um gráfico por GRUPO (3) com as fábricas dele em texto; no formato
+   * anterior, as fábricas. O que não couber é DECLARADO, nunca some calado.
    */
-  const visiveis = esticar && ranking.length > columns ? ranking.slice(0, columns) : ranking;
-  const ocultas = ranking.length - visiveis.length;
+  const tvPorGrupo = esticar && formato === 'organograma';
+  const gruposVisiveis = tvPorGrupo ? grupos.slice(0, columns) : grupos;
+  const visiveis = esticar && !tvPorGrupo && ranking.length > columns ? ranking.slice(0, columns) : ranking;
+  const ocultas = tvPorGrupo ? grupos.length - gruposVisiveis.length : ranking.length - visiveis.length;
+  const ocultasRotulo = tvPorGrupo ? (ocultas === 1 ? 'grupo' : 'grupos') : (ocultas === 1 ? 'fábrica' : 'fábricas');
+
+  /** Mini-card de uma fábrica (medalha = posição no ranking geral). */
+  const cardFabrica = (f: FabricaRank, rotulo: string) => {
+    const idx = ranking.indexOf(f);
+    const color = fabricaColor(f.name, idx);
+    return (
+      <div key={f.name} className={`border rounded-lg p-3 ${esticar ? 'min-h-0 flex flex-col' : ''}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span
+            className="inline-grid place-items-center w-6 h-6 rounded-full text-white font-mono font-bold text-xs shrink-0"
+            style={{ background: medalColor(idx) }}
+          >
+            {idx + 1}
+          </span>
+          <span className="font-semibold" style={{ color }}>{rotulo}</span>
+          <span className="ml-auto text-xs text-muted-foreground">
+            score <span className="font-mono font-semibold text-foreground">{f.score}</span>
+          </span>
+        </div>
+        {esticar ? (
+          <div className="flex-1 min-h-0">
+            <DesempenhoTrendChart fabrica={f.name} formato={formato} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
+          </div>
+        ) : (
+          <DesempenhoTrendChart fabrica={f.name} formato={formato} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
+        )}
+      </div>
+    );
+  };
 
   /**
    * TV-3 — ranking DA SPRINT corrente, pela contagem absoluta de PBIs
@@ -235,6 +286,62 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
               );
             })}
           </div>
+        ) : tvPorGrupo ? (
+          /* ── Telão no organograma · um gráfico por GRUPO ────────────────────
+             Oito mini-gráficos não cabem numa linha a 3–5 m. O grupo é a soma
+             das fábricas dele; as fábricas aparecem embaixo, com o score de
+             cada uma, sempre visíveis (telão não tem mouse). */
+          <div className="grid gap-3 flex-1 min-h-0" style={{ gridTemplateColumns: `repeat(${gruposVisiveis.length}, minmax(0, 1fr))` }}>
+            {gruposVisiveis.map((g, idx) => (
+              <div key={g.grupo.id} className="border rounded-lg p-3 min-h-0 flex flex-col" data-testid={`grupo-${g.grupo.id}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="inline-grid place-items-center w-6 h-6 rounded-full text-white font-mono font-bold text-xs shrink-0"
+                    style={{ background: medalColor(idx) }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span className="font-semibold" style={{ color: g.grupo.cor }}>{g.grupo.rotulo}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    score <span className="font-mono font-semibold text-foreground">{g.score}</span>
+                  </span>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <DesempenhoTrendChart grupo={g.grupo.id} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
+                </div>
+                <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] leading-4 text-muted-foreground">
+                  {g.fabricas.map((f) => (
+                    <span key={f.name} className="inline-flex items-center gap-1 whitespace-nowrap">
+                      <span className="inline-block w-2 h-2 rounded-sm" style={{ background: fabricaColor(f.name, 0) }} />
+                      {rotuloFabrica(f.name)}
+                      <b className="font-mono text-foreground">{f.score}</b>
+                    </span>
+                  ))}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : formato === 'organograma' ? (
+          /* ── Mesa no organograma · grupo › fábrica ──────────────────────────
+             Cada grupo com o score da soma das fábricas, e as fábricas dele em
+             mini-cards. A medalha da fábrica é a posição no ranking geral. */
+          <div className="space-y-4">
+            {grupos.map((g) => (
+              <section key={g.grupo.id} data-testid={`grupo-${g.grupo.id}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: g.grupo.cor }} />
+                  <span className="text-sm font-semibold">{g.grupo.rotulo}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {g.fabricas.length} {g.fabricas.length === 1 ? 'fábrica' : 'fábricas'} · score do grupo{' '}
+                    <span className="font-mono font-semibold text-foreground">{g.score}</span>
+                  </span>
+                </div>
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+                  {g.fabricas.map((f) => cardFabrica(f, rotuloFabrica(f.name)))}
+                </div>
+              </section>
+            ))}
+          </div>
         ) : (
           /* ── Painel · evolução por sprint de CADA fábrica ───────────────────
              Mesmo gráfico de linhas do "Desempenho · evolução por sprint"
@@ -242,32 +349,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
              06/08/2026, substituindo as barras aninhadas. Hover na bolinha
              lista os itens; clique abre a lista completa (drill-down herdado). */
           <div className={`grid gap-3 ${esticar ? 'flex-1 min-h-0' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-            {visiveis.map((f, idx) => {
-              const color = fabricaColor(f.name, idx);
-              return (
-                <div key={f.name} className={`border rounded-lg p-3 ${esticar ? 'min-h-0 flex flex-col' : ''}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className="inline-grid place-items-center w-6 h-6 rounded-full text-white font-mono font-bold text-xs shrink-0"
-                      style={{ background: medalColor(idx) }}
-                    >
-                      {idx + 1}
-                    </span>
-                    <span className="font-semibold" style={{ color }}>{rotuloFabricaFoto(f.name)}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      score <span className="font-mono font-semibold text-foreground">{f.score}</span>
-                    </span>
-                  </div>
-                  {esticar ? (
-                    <div className="flex-1 min-h-0">
-                      <DesempenhoTrendChart fabrica={f.name} formato={formato} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
-                    </div>
-                  ) : (
-                    <DesempenhoTrendChart fabrica={f.name} formato={formato} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
-                  )}
-                </div>
-              );
-            })}
+            {visiveis.map((f) => cardFabrica(f, rotuloFabricaFoto(f.name)))}
           </div>
         )}
         <p className="text-[11px] text-muted-foreground mt-2">
@@ -276,12 +358,16 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
             /* No telão (esticar) a frase do mouse sai (hover não existe na parede)
                e a fórmula do score ENTRA em texto: no desktop ela vive no tooltip
                do ícone Info, que na TV seria informação inacessível. */
-            : `Linhas por sprint de cada fábrica: Entrega (% encerrado do escopo, ↑ melhor), Bug e Retorno QA (% do escopo, ↓ melhor). Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints.${esticar
-              ? ' Fotos seladas · score = desempenho − ½·bug − ½·retorno QA.'
-              : ' Passe o mouse na bolinha para ver os itens; clique para a lista completa.'}`}
+            : tvPorGrupo
+              /* Telão por grupo: uma linha. A régua das séries já está na legenda do
+                 cabeçalho; cada palavra a mais aqui sai da altura dos gráficos. */
+              ? `Grupo = soma das fábricas · embaixo, o score de cada fábrica · últimas ${maxSprints} sprints · score = desempenho − ½·bug − ½·retorno QA.`
+              : `Linhas por sprint de cada fábrica: Entrega (% encerrado do escopo, ↑ melhor), Bug e Retorno QA (% do escopo, ↓ melhor). Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints.${esticar
+                ? ' Fotos seladas · score = desempenho − ½·bug − ½·retorno QA.'
+                : ' Passe o mouse na bolinha para ver os itens; clique para a lista completa.'}`}
           {ocultas > 0 && (
             <b className="text-foreground/80" data-testid="ranking-ocultas">
-              {' '}+{ocultas} {ocultas === 1 ? 'fábrica' : 'fábricas'} fora do telão — ranking completo na aba Executiva.
+              {' '}+{ocultas} {ocultasRotulo} fora do telão — ranking completo na aba Executiva.
             </b>
           )}
           {foraDoFormato && <> {foraDoFormato}</>}
