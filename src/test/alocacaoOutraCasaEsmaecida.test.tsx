@@ -52,9 +52,11 @@ vi.mock('@/hooks/useColaboradorAusencias', () => ({
 
 import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
 
-// 10 h num Épico de squad (formato anterior) e 5 h no Épico de Infra.
-const fabricaRows = [{ key: '[K8] - Squad', collaborators: [{ name: 'dev lab', minutes: 600 }], taskIds: [101] }];
-const foraDasFabricas = [{ key: 'Outras', collaborators: [{ name: 'dev lab', minutes: 300 }], taskIds: [202] }];
+// 10 h lançadas na área do time LAB e 5 h no Épico [INFRA] (destinos de `horasPorDestino`).
+const fabricaRows = [
+  { key: 'area:LAB', collaborators: [{ name: 'dev lab', minutes: 600 }], taskIds: [101] },
+  { key: 'epico:INFRA', collaborators: [{ name: 'dev lab', minutes: 300 }], taskIds: [202] },
+];
 // 03 a 14/08/2026 = 10 dias úteis → 35 h a 50% de 7 h.
 const periodo = { dateFrom: new Date(2026, 7, 3), dateTo: new Date(2026, 7, 14) };
 
@@ -62,7 +64,7 @@ function montar(squad: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <AlocacaoLeadDevCard fabricaRows={fabricaRows} foraDasFabricas={foraDasFabricas} {...periodo} squadEmbutida={squad} />
+      <AlocacaoLeadDevCard fabricaRows={fabricaRows} {...periodo} squadEmbutida={squad} />
     </QueryClientProvider>,
   );
 }

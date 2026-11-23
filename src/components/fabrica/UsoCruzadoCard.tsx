@@ -3,10 +3,9 @@ import { ArrowLeftRight, ChevronRight, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlocacaoLeadDevCard } from '@/components/fabrica/AlocacaoLeadDevCard';
-import { cleanFabricaName } from '@/lib/fabricaNames';
 import { fabricaColor } from '@/lib/chartColors';
-import { buildAlocacaoMap, buildNaoContaSet, casasDe, ehArea, GRUPOS_HORAS, horasDiaNaCasa, normName, repartirHora, SEM_SQUAD, SQUADS } from '@/lib/fabricaRoster';
-import { epicoDaFabrica, fabricaOrg, fabricasDoGrupo, GRUPOS, grupoDaFabrica, rotuloFabrica, rotuloFabricaLongo, type GrupoId } from '@/lib/fabricaOrganograma';
+import { buildAlocacaoMap, buildNaoContaSet, casasDe, ehArea, GRUPOS_HORAS, horasDiaNaCasa, lerDestino, marcaDaHora, type MarcaHora, normName, ordemDestino, repartirHoraPorPessoa, SEM_SQUAD } from '@/lib/fabricaRoster';
+import { fabricaOrg, fabricasDoGrupo, GRUPOS, grupoDaFabrica, rotuloFabrica, rotuloFabricaLongo, type GrupoId } from '@/lib/fabricaOrganograma';
 import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { useColaboradorAusencias } from '@/hooks/useColaboradorAusencias';
 import { capacidadeMinutos, diasUteisAusentes, indexarAusencias } from '@/lib/capacidade';
@@ -19,7 +18,11 @@ type FabricaScopeRow = {
 };
 
 type UsoCruzadoCardProps = {
-  /** Linhas de horas por fábrica (Epic) com colaboradores — ex.: fab.horasPorFabricaFull. */
+  /**
+   * TODA hora do período por destino de lançamento (`area:IR`, `epico:STAGING`,
+   * `nenhum`…), com colaboradores — `fab.horasPorDestino`. A fábrica sai da
+   * pessoa; o destino só marca onde a hora foi lançada.
+   */
   fabricaRows: FabricaScopeRow[];
   /** Período do realizado — capacidade = h/dia × dias úteis nesse intervalo. */
   dateFrom?: Date | null;
@@ -30,18 +33,15 @@ type UsoCruzadoCardProps = {
   fill?: boolean;
   /** Task id -> PBI/Bug pai; habilita o nivel de PBI no drill dos devs. */
   pbiByTaskId?: Record<number, number>;
-  /**
-   * Apontamento fora dos épicos de squad (sem Épico ou Infra) — ex.:
-   * `fab.horasForaDasFabricas`. Entra SÓ no balde "Sem squad": somar às squads
-   * inflaria a utilização de quem está no roster.
-   */
-  foraDasFabricas?: FabricaScopeRow[];
   /** Abre o popup analítico de um colaborador a partir do drill. */
   onAnalisarColaborador?: (nome: string) => void;
 };
 
-const OUTRAS = 'Outras';
+/** Hora lançada na área/Épico de OUTRA fábrica. */
 const COR_CRUZADO = 'hsl(28,92%,55%)';
+/** Hora lançada no formato anterior (K8/FLEXX) ou sem área/Épico: questão de orientação. */
+const COR_ORIENTAR = 'hsl(215,14%,62%)';
+const MARCAS_ORIENTAR: MarcaHora[] = ['anterior', 'sem_destino'];
 
 /**
  * Teto de linhas no telão (TV). A lista cresceu ao passar a exibir capacidade
@@ -64,7 +64,7 @@ const TV_MAX_GRUPOS_COM_FABRICAS = 4;
  * fixos. A fatia âmbar do realizado é o uso cruzado (horas em item de outra
  * fábrica). Fora da diagonal na matriz = uso cruzado.
  */
-export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false, fill = false, pbiByTaskId, foraDasFabricas, onAnalisarColaborador }: UsoCruzadoCardProps) {
+export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false, fill = false, pbiByTaskId, onAnalisarColaborador }: UsoCruzadoCardProps) {
   const { data: rosterRows = [], isLoading: rosterLoading } = useFabricaRoster();
   const { data: ausencias = [] } = useColaboradorAusencias();
   const ausenciasPorPessoa = useMemo(() => indexarAusencias(ausencias), [ausencias]);
@@ -115,98 +115,71 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     return { capByHome: cap, ausenteByHome: ausente };
   }, [rosterRows, businessDays, dateFrom, dateTo, ausenciasPorPessoa]);
 
-  const { matrix, squadTotals, crossTotals, semSquadMin, destinos, hasData } = useMemo(() => {
+  /**
+   * Regra de 22/11/2026: a hora é da fábrica da PESSOA; onde ela foi lançada
+   * vira MARCA (`repartirHoraPorPessoa`). Nada se perde: toda hora cai numa
+   * casa, em "Sem squad" ou na fatia do lead só gestor — e o rodapé confere.
+   */
+  const { matrix, squadTotals, crossTotals, orientarTotals, semSquadMin, naoContaMin, totalLancadoMin, destinos, hasData } = useMemo(() => {
     const matrix: Record<string, Record<string, number>> = {};
+    const marcas: Record<string, Partial<Record<MarcaHora, number>>> = {};
     const destSet = new Set<string>();
     let semSquad = 0;
+    let naoConta = 0;
+    let total = 0;
     const bump = (home: string, dest: string, min: number) => {
       (matrix[home] ??= {})[dest] = (matrix[home]?.[dest] ?? 0) + min;
     };
     for (const row of fabricaRows) {
-      const clean = cleanFabricaName(row.key);
-      const dest = SQUADS.includes(clean) ? clean : OUTRAS;
-      destSet.add(dest);
+      const destino = lerDestino(row.key);
+      destSet.add(destino.id);
       for (const c of row.collaborators) {
-        if (naoContaSet.has(normName(c.name))) continue; // lead só gestor não conta
+        total += c.minutes;
+        // Lead só gestor (conta_horas=false) fica fora da conta de fábrica — declarado no rodapé.
+        if (naoContaSet.has(normName(c.name))) { naoConta += c.minutes; continue; }
         const casas = casasDe(alocMap, c.name);
         if (casas.length === 0) {
           semSquad += c.minutes;
-          bump(SEM_SQUAD, dest, c.minutes);
+          bump(SEM_SQUAD, destino.id, c.minutes);
           continue;
         }
-        // Quem divide o tempo: a hora vai para a casa do trabalho (ver repartirHora).
-        const origem = { epico: SQUADS.includes(clean) ? clean : null, fora: false };
-        for (const p of repartirHora(casas, origem)) bump(p.squad, dest, c.minutes * p.peso);
-      }
-    }
-    /**
-     * Horas fora dos épicos de squad entram SÓ para quem não tem squad de casa.
-     * Somá-las a um membro do roster inflaria a utilização dele contra uma
-     * capacidade que é medida sobre trabalho de squad.
-     */
-    let foraMin = 0;
-    for (const row of foraDasFabricas ?? []) {
-      for (const c of row.collaborators) {
-        if (naoContaSet.has(normName(c.name))) continue;
-        const casas = casasDe(alocMap, c.name);
-        if (casas.length === 0) {
-          foraMin += c.minutes;
-          semSquad += c.minutes;
-          bump(SEM_SQUAD, OUTRAS, c.minutes);
-          continue;
-        }
-        // Só casa de ÁREA recebe: hora sem épico de squad na fábrica inflaria a
-        // utilização contra uma capacidade medida sobre trabalho de squad.
-        for (const casa of repartirHora(casas, { epico: null, fora: true })) {
-          /**
-           * Área é o caso oposto: o trabalho dela VIVE fora dos épicos de squad
-           * (o do Infra pendura no épico 2700, que é justamente o que
-           * `horasPorFabricaFull` descarta). Sem esta linha, quem entra numa
-           * área perde as horas duas vezes — não conta na fábrica porque não é
-           * fábrica, e não conta em "Sem squad" porque agora tem casa. Em
-           * 08/2026 isso deixou o INFRA com 1:30 de realizado.
-           */
-          const min = c.minutes * casa.peso;
-          foraMin += min;
-          bump(casa.squad, OUTRAS, min);
+        for (const p of repartirHoraPorPessoa(casas, destino)) {
+          const min = c.minutes * p.peso;
+          bump(p.squad, destino.id, min);
+          const m = (marcas[p.squad] ??= {});
+          m[p.marca] = (m[p.marca] ?? 0) + min;
         }
       }
     }
-    if (foraMin > 0) destSet.add(OUTRAS);
 
     /**
-     * Os totais fecham DEPOIS do laço acima, nunca antes.
-     *
-     * Enquanto eram calculados antes, a barra de uma área lia o total sem as
-     * horas fora de épico e a matriz lia com — mesmo card, dois números
-     * diferentes (INFRA aparecia com 1:30 na barra e 64:41 na matriz).
+     * Os totais fecham DEPOIS do laço acima, nunca antes: a barra e a matriz
+     * leem o mesmo número (em 08/2026 o INFRA aparecia com 1:30 numa e 64:41
+     * na outra).
      */
     const squadTotals: Record<string, number> = {};
     const crossTotals: Record<string, number> = {};
+    const orientarTotals: Record<string, number> = {};
     for (const home of GRUPOS_HORAS) {
-      const byDest = matrix[home] ?? {};
-      const total = Object.values(byDest).reduce((s, v) => s + v, 0);
-      squadTotals[home] = total;
-      /**
-       * Uso cruzado = hora da fábrica em item de OUTRO Épico. Só dá para medir
-       * onde a fábrica tem um Épico de squad que ainda a representa (STAGING e
-       * APP, além das squads do formato anterior). Para as demais não existe
-       * "casa" no DevOps: tratar tudo como cruzado pintaria a fábrica inteira
-       * de âmbar por um motivo que não é dela.
-       */
-      const epico = epicoDaFabrica(home);
-      crossTotals[home] = epico ? total - (byDest[epico] ?? 0) : 0;
+      squadTotals[home] = Object.values(matrix[home] ?? {}).reduce((s, v) => s + v, 0);
+      crossTotals[home] = marcas[home]?.cruzado ?? 0;
+      orientarTotals[home] = MARCAS_ORIENTAR.reduce((s, k) => s + (marcas[home]?.[k] ?? 0), 0);
     }
 
-    const destinos = [...SQUADS.filter((s) => destSet.has(s)), ...(destSet.has(OUTRAS) ? [OUTRAS] : [])];
+    const destinos = [...destSet].sort((a, b) => ordemDestino(a) - ordemDestino(b) || a.localeCompare(b));
     // "Sem squad" conta como dado: senão, filtrar alguém fora do roster deixava
     // o card vazio mesmo havendo horas apontadas.
     const hasData = Object.keys(matrix).length > 0
       && (GRUPOS_HORAS.some((s) => squadTotals[s] > 0) || semSquad > 0);
-    return { matrix, squadTotals, crossTotals, semSquadMin: semSquad, destinos, hasData };
-  }, [fabricaRows, foraDasFabricas, alocMap, naoContaSet]);
+    return {
+      matrix, squadTotals, crossTotals, orientarTotals,
+      semSquadMin: semSquad, naoContaMin: naoConta, totalLancadoMin: total, destinos, hasData,
+    };
+  }, [fabricaRows, alocMap, naoContaSet]);
 
   const temCapacidade = !!businessDays && GRUPOS_HORAS.some((s) => (capByHome[s] ?? 0) > 0);
+  /** O que o card mostra: fábricas + "Sem squad". Com o lead só gestor, fecha com o lançado. */
+  const distribuidoMin = GRUPOS_HORAS.reduce((s, h) => s + (squadTotals[h] ?? 0), 0) + semSquadMin;
 
   /**
    * Densidade de telão. No modo TV o card divide a faixa de baixo com o
@@ -232,7 +205,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
   const gruposResumo = GRUPOS.map((grupo) => {
     const fabs = fabricasDoGrupo(grupo.id).map((f) => f.codigo).filter((c) => fabricasVisiveis.includes(c));
     const soma = (rec: Record<string, number>) => fabs.reduce((s, c) => s + (rec[c] ?? 0), 0);
-    return { grupo, fabs, real: soma(squadTotals), cross: soma(crossTotals), cap: soma(capByHome), ausente: soma(ausenteByHome) };
+    return { grupo, fabs, real: soma(squadTotals), cross: soma(crossTotals), orientar: soma(orientarTotals), cap: soma(capByHome), ausente: soma(ausenteByHome) };
   }).filter((g) => g.fabs.length > 0);
   /**
    * UMA escala de horas para o card inteiro: a barra da fábrica usa a mesma
@@ -304,6 +277,7 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     const area = ehArea(squad);
     const nome = rotuloFabricaLongo(squad);
     const produtos = fabricaOrg(squad)?.produtos;
+    const semCasaNoDevops = !fabricaOrg(squad)?.devops;
     const lead = leadPorSquad[squad];
     return (
       <Tooltip>
@@ -325,6 +299,12 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
             ? <>Lead {lead.papel === 'gestor' ? 'Gestor' : 'Executor'}: <b>{lead.nome}</b></>
             : <>Sem lead definido no roster</>}
           {produtos && <p className="mt-1 text-muted-foreground">{produtos}</p>}
+          {semCasaNoDevops && (
+            <p className="mt-1.5 border-t border-border/60 pt-1.5">
+              Sem área de time nem Épico próprio no DevOps: as horas contam aqui
+              pela pessoa e aparecem marcadas com o lugar onde foram lançadas.
+            </p>
+          )}
           {area && (
             <p className="mt-1.5 border-t border-border/60 pt-1.5">
               Só horas: aparecem nesta visão, mas <b>não são contabilizadas nos KPIs
@@ -342,7 +322,6 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     <div className={`mt-1 mb-2 border rounded-lg overflow-hidden ${home === SEM_SQUAD ? '' : 'ml-4'}`}>
       <AlocacaoLeadDevCard
         fabricaRows={fabricaRows}
-        foraDasFabricas={foraDasFabricas}
         dateFrom={dateFrom}
         dateTo={dateTo}
         squadEmbutida={home}
@@ -357,12 +336,14 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
     const real = squadTotals[home] || 0;
     const cor = fabricaColor(home, GRUPOS_HORAS.indexOf(home));
     const cross = crossTotals[home] || 0;
-    const own = real - cross;
+    const orientar = orientarTotals[home] || 0;
+    const own = Math.max(0, real - cross - orientar);
     const cap = capByHome[home] ?? 0;
     const comCap = temCapacidade && cap > 0;
     const aberta = squadAberta === home;
     const ownPct = real > 0 ? (own / real) * 100 : 0;
     const crossPct = real > 0 ? (cross / real) * 100 : 0;
+    const orientarPct = real > 0 ? (orientar / real) * 100 : 0;
     const delta = real - cap;
     return (
       <div key={home}>
@@ -383,6 +364,8 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
               title={[
                 `capacidade ${horasHM(cap)}`,
                 `realizado ${horasHM(real)}`,
+                cross > 0 ? `lançado em área/Épico de outra fábrica ${horasHM(cross)}` : '',
+                orientar > 0 ? `formato anterior ou sem área/Épico ${horasHM(orientar)}` : '',
                 (ausenteByHome[home] ?? 0) > 0
                   ? `já descontado ${horasHM(ausenteByHome[home])} de ausência no período`
                   : '',
@@ -391,21 +374,23 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
               <div className="relative h-4 rounded overflow-hidden bg-[hsl(var(--muted))]" style={{ width: `${(cap / maxCapGrupo) * 100}%` }}>
                 {/* ociosa (hachura) */}
                 <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 5px, hsl(var(--border)) 5px, hsl(var(--border)) 6px)' }} />
-                {/* realizado: própria + cruzado */}
+                {/* realizado: na casa + cruzado + a orientar — tudo conta, a cor só diz onde foi lançado */}
                 <div className="absolute inset-y-0 left-0 flex" style={{ width: `${Math.min(real / cap, 1) * 100}%` }}>
                   <div style={{ width: `${ownPct}%`, background: cor }} />
-                  <div style={{ width: `${crossPct}%`, background: COR_CRUZADO }} title={`uso cruzado ${horasHM(cross)}`} />
+                  <div style={{ width: `${crossPct}%`, background: COR_CRUZADO }} title={`cruzado ${horasHM(cross)}`} />
+                  <div style={{ width: `${orientarPct}%`, background: COR_ORIENTAR }} title={`a orientar ${horasHM(orientar)}`} />
                 </div>
                 {/* traço de 100% da capacidade (borda direita do track) */}
                 <div className="absolute inset-y-[-2px] right-0 w-0.5 bg-foreground/60" />
               </div>
             </div>
           ) : (
-            // Sem período/capacidade: só realizado, própria vs cruzado.
+            // Sem período/capacidade: só realizado, pela marca de onde foi lançado.
             <div className="h-4 w-full overflow-hidden rounded bg-muted">
               <div className="flex h-full" style={{ width: `${(real / maxRealGrupo) * 100}%` }}>
                 <div style={{ width: `${ownPct}%`, background: cor }} />
                 <div style={{ width: `${crossPct}%`, background: COR_CRUZADO }} />
+                <div style={{ width: `${orientarPct}%`, background: COR_ORIENTAR }} />
               </div>
             </div>
           )}
@@ -476,7 +461,8 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
               title={[
                 `capacidade ${horasHM(cap)}`,
                 `realizado ${horasHM(real)}`,
-                cross > 0 ? `uso cruzado ${horasHM(cross)}` : '',
+                cross > 0 ? `cruzado ${horasHM(cross)}` : '',
+                g.orientar > 0 ? `a orientar ${horasHM(g.orientar)}` : '',
                 g.ausente > 0 ? `já descontado ${horasHM(g.ausente)} de ausência no período` : '',
               ].filter(Boolean).join(' · ')}
             >
@@ -624,18 +610,23 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
             )}
 
             {/*
-              Matriz origem → destino. A origem é a fábrica de casa da pessoa
-              (organograma); o destino é o Épico do item no DevOps, que ainda
-              segue o formato anterior. Por isso as colunas não repetem as linhas.
+              Matriz pessoa → lançamento. A linha é a fábrica de casa da pessoa
+              (organograma), que é quem conta a hora; a coluna é onde a hora foi
+              LANÇADA no DevOps (área do time ou Épico). Fora da casa = marca.
             */}
             <div className={`mt-4 overflow-x-auto ${compact ? 'hidden' : ''}`}>
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="text-muted-foreground">
-                    <th className="text-left font-medium py-1.5 pr-2">fábrica ↓ / Épico do item →</th>
-                    {destinos.map((d) => (
-                      <th key={d} className="text-center font-medium px-2" style={{ color: d === OUTRAS ? undefined : fabricaColor(d, destinos.indexOf(d)) }}>{d}</th>
-                    ))}
+                    <th className="text-left font-medium py-1.5 pr-2">fábrica ↓ / lançado em →</th>
+                    {destinos.map((d) => {
+                      const dest = lerDestino(d);
+                      return (
+                        <th key={d} className="text-center font-medium px-2 whitespace-nowrap" style={{ color: dest.codigos[0] ? fabricaColor(dest.codigos[0], GRUPOS_HORAS.indexOf(dest.codigos[0])) : undefined }}>
+                          {dest.rotulo}
+                        </th>
+                      );
+                    })}
                     <th className="text-right font-medium pl-2">total</th>
                   </tr>
                 </thead>
@@ -647,7 +638,6 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                     const total = Object.values(byDest).reduce((s, v) => s + v, 0);
                     // Traço mais forte onde muda o grupo: separa os blocos sem repetir o nome dele.
                     const mudouGrupo = hi > 0 && grupoDaFabrica(home)?.id !== grupoDaFabrica(lista[hi - 1])?.id;
-                    const epico = epicoDaFabrica(home);
                     return (
                       <tr key={home} className={mudouGrupo ? 'border-t-2 border-border' : 'border-t border-border/60'}>
                         <th className="text-left font-semibold py-1.5 pr-2">
@@ -658,13 +648,16 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                         </th>
                         {destinos.map((dest) => {
                           const min = byDest[dest] ?? 0;
-                          // Só é cruzado onde a fábrica tem Épico próprio para comparar.
-                          const isCross = !!epico && epico !== dest && min > 0;
+                          // A célula tem a marca do par (casa, lugar do lançamento); "Sem squad" não tem casa.
+                          const marca = home === SEM_SQUAD || min <= 0 ? null : marcaDaHora(home, lerDestino(dest));
+                          const isCross = marca === 'cruzado';
+                          const isOrientar = marca != null && MARCAS_ORIENTAR.includes(marca);
                           return (
                             <td
                               key={dest}
-                              className={`text-center px-2 font-mono tabular-nums ${isCross ? 'text-amber-700 dark:text-amber-300 font-semibold' : min > 0 ? '' : 'text-muted-foreground/40'}`}
-                              style={isCross ? { background: 'hsl(28,92%,55%,0.12)' } : undefined}
+                              data-marca={marca ?? undefined}
+                              className={`text-center px-2 font-mono tabular-nums ${isCross ? 'text-amber-700 dark:text-amber-300 font-semibold' : isOrientar ? 'text-muted-foreground font-semibold' : min > 0 ? '' : 'text-muted-foreground/40'}`}
+                              style={isCross ? { background: 'hsl(28,92%,55%,0.12)' } : isOrientar ? { background: 'hsl(215,14%,62%,0.14)' } : undefined}
                             >
                               {min > 0 ? horasHM(min) : '—'}
                             </td>
@@ -681,7 +674,10 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
             {/* Legenda enxuta: o parágrafo antigo tinha 4 linhas e competia com os dados. */}
             <p className={`text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 ${denso ? 'text-[10px] mt-1' : 'text-[11px] mt-2'}`}>
               <span className="inline-flex items-center gap-1">
-                <span className="inline-block w-2.5 h-2 rounded-sm" style={{ background: COR_CRUZADO }} />uso cruzado
+                <span className="inline-block w-2.5 h-2 rounded-sm" style={{ background: COR_CRUZADO }} />cruzado
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block w-2.5 h-2 rounded-sm" style={{ background: COR_ORIENTAR }} />a orientar
               </span>
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block w-2.5 h-2 rounded-sm" style={{ background: 'repeating-linear-gradient(90deg, transparent, transparent 2px, hsl(var(--border)) 2px, hsl(var(--border)) 3px)', border: '1px solid hsl(var(--border))' }} />ociosa
@@ -700,15 +696,26 @@ export function UsoCruzadoCard({ fabricaRows, dateFrom, dateTo, compact = false,
                   não conta. A barra preenchida é o realizado; no grupo, cada trecho é uma fábrica.
                   {' '}Quem divide o tempo entre duas fábricas entra com a fatia da capacidade e das
                   horas em cada uma, pelo percentual de alocação do cadastro.
-                  {' '}Uso cruzado só é medido onde a fábrica tem Épico próprio no DevOps (hoje STAGING
-                  e APP): os Épicos ainda seguem o organograma anterior, e por isso as colunas da
-                  matriz são os Épicos, não as fábricas.
+                  {' '}A hora é da fábrica da pessoa, pelo cadastro do organograma, mesmo quando
+                  lançada em outro lugar. A cor só diz onde foi lançada: <b>cruzado</b> = área ou
+                  Épico de outra fábrica; <b>a orientar</b> = Épico do formato anterior (K8, FLEXX)
+                  ou item sem área de time nem Épico. Área de apoio no item de uma fábrica é
+                  atendimento e conta como da casa.
                   {' '}Áreas de apoio e Infra mostram horas, mas não entram nos KPIs de entrega e de
                   qualidade nesta versão.
                   {podeAbrir && ' Clique no grupo para abrir as fábricas, na fábrica para ver as pessoas, na pessoa para ver os PBIs, no PBI para ver as tasks e na task para ver cada lançamento.'}
                   {semSquadMin > 0 && ` "${SEM_SQUAD}" = ${horasHM(semSquadMin)} de quem não está no roster.`}
                 </TooltipContent>
               </Tooltip>
+              {/*
+                Conferência à vista (regra de 22/11/2026: não perder hora). Tudo o
+                que foi lançado no período está numa fábrica, em "Sem squad" ou na
+                fatia do lead só gestor; se um dia não fechar, aparece aqui.
+              */}
+              <span className="ml-auto tabular-nums" data-testid="horas-conferencia" title="Toda hora lançada no período está neste card: nas fábricas, em Sem squad ou, se houver, na fatia do lead só gestor.">
+                {horasHM(Math.round(distribuidoMin))} de {horasHM(Math.round(totalLancadoMin))} lançadas
+                {naoContaMin > 0 && <> · {horasHM(Math.round(naoContaMin))} de lead só gestor</>}
+              </span>
             </p>
           </>
         )}

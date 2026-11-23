@@ -2811,7 +2811,7 @@ export default function FabricaDashboard() {
                   mesmo realizado/capacidade e o mesmo uso cruzado, em dois
                   cards seguidos (mesclados em 11/08/2026).
                 */}
-                  <UsoCruzadoCard fabricaRows={fab.horasPorFabricaFull || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} pbiByTaskId={fab.managerIdByTaskId} foraDasFabricas={fab.horasForaDasFabricas || []} onAnalisarColaborador={(n) => setAnaliseColabs([n])} />
+                  <UsoCruzadoCard fabricaRows={fab.horasPorDestino || []} dateFrom={effectiveRange?.from ?? null} dateTo={effectiveRange?.to ?? null} pbiByTaskId={fab.managerIdByTaskId} onAnalisarColaborador={(n) => setAnaliseColabs([n])} />
             </div>
 
               {/* Horas por Colaborador (chart compacto) */}
