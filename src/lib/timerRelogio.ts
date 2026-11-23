@@ -249,6 +249,33 @@ export function houveSuspensao(ultimoTiqueMs: number, agoraMs: number, limiarMs 
   return agoraMs - ultimoTiqueMs > limiarMs;
 }
 
+/**
+ * O que foi a lacuna no relógio local (23/11/2026). O navegador congela a
+ * página para poupar energia (aba em segundo plano, app instalado minimizado)
+ * e avisa pelo evento `freeze` da Page Lifecycle API; o computador dormindo
+ * não avisa. Antes, os dois viravam "computador suspenso" e o timer pausava,
+ * mesmo com a pessoa trabalhando em outro programa.
+ *
+ *   • normal    — sem lacuna;
+ *   • congelada — houve `freeze` depois do último tique: a pessoa pode estar
+ *                 trabalhando; o app NÃO pausa e manda o sinal na hora. O
+ *                 servidor segue sendo o teto: passou de sem_sinal_seg sem
+ *                 sinal, ele já fechou no último sinal;
+ *   • suspensao — lacuna sem `freeze`: a máquina dormiu (ou o processo parou);
+ *                 pausa no último tique, como antes.
+ */
+export type Lacuna = 'normal' | 'congelada' | 'suspensao';
+
+export function classificarLacuna(
+  ultimoTiqueMs: number,
+  agoraMs: number,
+  congeladaEmMs: number | null,
+  limiarMs = LIMIAR_SUSPENSAO_MS,
+): Lacuna {
+  if (!houveSuspensao(ultimoTiqueMs, agoraMs, limiarMs)) return 'normal';
+  return congeladaEmMs !== null && congeladaEmMs >= ultimoTiqueMs - 2000 ? 'congelada' : 'suspensao';
+}
+
 // ---------------------------------------------------------------------------
 // Textos
 // ---------------------------------------------------------------------------

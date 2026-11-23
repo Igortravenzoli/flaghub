@@ -4,15 +4,16 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
 import { detectarCliente, detectarPlataforma, ehCelular, versaoDesktop } from '@/lib/timerAcesso';
 import { avisarEstadoMudou, CHAVE_ESTADO_MUDOU, lerPausaSistema, ponteDesktop, type MotivoSistema } from '@/lib/timerDesktop';
 import { temDeteccaoAusencia } from '@/lib/timerPwa';
 import {
   aLancarDoItem,
   ausenciaVencida,
+  classificarLacuna,
   desvioServidor,
   devePerguntarPresenca,
-  houveSuspensao,
   lerEstado,
   lerRodandoTodos,
   mensagemErroTimer,
@@ -374,6 +375,32 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
   // com o servidor — senão cada visita pelo celular viraria "tentativa".
   const somenteConsulta = typeof navigator !== 'undefined' && ehCelular(navigator.userAgent);
 
+  // O navegador avisa antes de congelar a página (Page Lifecycle API): guarda
+  // o momento, para a lacuna não virar "computador suspenso" (23/11/2026).
+  const congeladaEm = useRef<number | null>(null);
+  useEffect(() => {
+    const aoCongelar = () => {
+      congeladaEm.current = Date.now();
+    };
+    document.addEventListener('freeze', aoCongelar);
+    return () => document.removeEventListener('freeze', aoCongelar);
+  }, []);
+
+  // Enquanto há timer rodando, segura uma trava (Web Locks): o Chromium evita
+  // congelar a página que segura uma. Reduz a chance; não garante.
+  useEffect(() => {
+    if (!rodandoId || somenteConsulta) return;
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+    if (!locks?.request) return;
+    let soltar: (() => void) | null = null;
+    void locks
+      .request('timer-flag-rodando', { mode: 'shared' }, () => new Promise<void>((r) => (soltar = r)))
+      .catch(() => {
+        // sem trava: segue com o sinal e o servidor
+      });
+    return () => soltar?.();
+  }, [rodandoId, somenteConsulta]);
+
   useEffect(() => {
     if (!rodandoId) return;
     ultimoTique.current = Date.now();
@@ -391,8 +418,30 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
         return;
       }
 
-      // 1. a máquina dormiu: pausa no último tique antes de dormir
-      if (houveSuspensao(ultimoTique.current, agora)) {
+      const lacuna = classificarLacuna(ultimoTique.current, agora, congeladaEm.current);
+
+      // 1a. o NAVEGADOR congelou a página (a pessoa pode estar trabalhando em
+      // outro programa): não pausa; manda o sinal na hora. Se o congelamento
+      // passou do prazo do servidor, ele já pausou no último sinal.
+      if (lacuna === 'congelada') {
+        const paradoMin = Math.round((agora - ultimoTique.current) / 60_000);
+        const cortado = agora + e.desvioMs - Date.parse(ref.ultimo_sinal_em) > e.regras.sem_sinal_seg * 1000;
+        congeladaEm.current = null;
+        ultimoTique.current = agora;
+        setAgoraLocal(agora);
+        ultimaTentativaSinal.current = agora;
+        if (!a.sinal.isPending) a.sinal.mutate(false);
+        void registrarEventoTimer('janela_visivel', { retomou: 'congelada', parado_min: paradoMin, cortado });
+        toast.info(
+          cortado
+            ? `O navegador congelou o Timer por ${paradoMin} min: passou do prazo e o timer foi pausado no último sinal.`
+            : `O navegador congelou o Timer por ${paradoMin} min. O tempo seguiu contando.`,
+        );
+        return;
+      }
+
+      // 1b. a máquina dormiu: pausa no último tique antes de dormir
+      if (lacuna === 'suspensao') {
         const fim = new Date(ultimoTique.current + e.desvioMs).toISOString();
         ultimoTique.current = agora;
         if (!a.pausar.isPending) {
@@ -406,7 +455,7 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
       ultimoTique.current = agora;
       setAgoraLocal(agora);
 
-      // 1b. "Você está aí?" sem resposta no prazo: pausa no início da inatividade
+      // 1c. "Você está aí?" sem resposta no prazo: pausa no início da inatividade
       const aus = ausenciaRef.current;
       if (aus && ausenciaVencida(aus, agora)) {
         setAusencia(null);
