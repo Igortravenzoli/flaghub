@@ -6,7 +6,8 @@ import { ExternalLink } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useSprintSnapshots, type SnapshotScopeBreakdown } from '@/hooks/useSprintSnapshots';
 import { useWorkItemsByIds } from '@/hooks/useWorkItemsByIds';
-import { type BreakdownFoto, fabricasDaFoto, type FormatoFoto, formatoDaFoto } from '@/lib/fabricaFoto';
+import { type BreakdownFoto, escoposPorGrupo, fabricasDaFoto, type FormatoFoto, formatoDaFoto } from '@/lib/fabricaFoto';
+import type { GrupoId } from '@/lib/fabricaOrganograma';
 import { META_ENTREGA_PCT, TETO_BUG_PCT } from '@/lib/fabricaMetas';
 import { concluidoDoEscopo, idsDaSerie, type SerieSprint } from '@/lib/fabricaTvSeries';
 
@@ -15,6 +16,8 @@ type DesempenhoTrendChartProps = {
   fabrica?: string | null;
   /** Formato em que a fábrica é lida (o da janela do card pai). Ausente = o de cada foto. */
   formato?: FormatoFoto;
+  /** Grupo do organograma (soma das fábricas dele). Tem precedência sobre `fabrica`. */
+  grupo?: GrupoId | null;
   /** Quantas sprints mais recentes exibir. */
   maxSprints?: number;
   /** Altura do gráfico; use "100%" para preencher o card (o pai precisa ter altura). */
@@ -67,8 +70,11 @@ function scopeFor(
   breakdown: (BreakdownFoto & { geral: SnapshotScopeBreakdown }) | null,
   fabrica?: string | null,
   formato?: FormatoFoto,
+  grupo?: GrupoId | null,
 ): SnapshotScopeBreakdown | null {
   if (!breakdown) return null;
+  // Grupo só existe no organograma: soma das fábricas dele naquela foto.
+  if (grupo) return escoposPorGrupo(fabricasDaFoto(breakdown, 'organograma'))[grupo] ?? null;
   if (!fabrica) return breakdown.geral;
   return fabricasDaFoto(breakdown, formato ?? formatoDaFoto(breakdown))[fabrica] ?? null;
 }
@@ -183,6 +189,7 @@ export function DesempenhoTrendChart({
   showValues = true,
   showLegend = true,
   showMetas = false,
+  grupo,
 }: DesempenhoTrendChartProps) {
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const anoVigente = new Date().getFullYear();
@@ -210,7 +217,7 @@ export function DesempenhoTrendChart({
     return Object.values(snapshots)
       .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
       .map((s) => {
-        const scope = scopeFor(s.category_breakdown, fabrica, formato);
+        const scope = scopeFor(s.category_breakdown, fabrica, formato, grupo);
         if (!scope) return null;
         return {
           sprint: s.sprint_code.split('-')[0],
@@ -231,7 +238,7 @@ export function DesempenhoTrendChart({
       .filter((r): r is Ponto => r !== null)
       .sort((a, b) => a.num - b.num)
       .slice(-maxSprints);
-  }, [snapshots, fabrica, formato, anoVigente, maxSprints]);
+  }, [snapshots, fabrica, formato, grupo, anoVigente, maxSprints]);
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground py-10 text-center">Carregando evolução…</p>;

@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { FABRICAS } from '@/lib/fabricaOrganograma';
 import {
-  avisoForaDoFormato, FABRICAS_DE_ENTREGA, fabricasDaFoto, formatoDaFoto, MAX_FABRICAS_FOTO,
-  recortePorFormato, rotuloFabricaFoto,
+  avisoForaDoFormato, corFabricaFoto, escoposPorGrupo, FABRICAS_DE_ENTREGA, fabricasDaFoto, formatoDaFoto,
+  GRUPOS_DE_ENTREGA, MAX_FABRICAS_FOTO, recortePorFormato, rotuloFabricaFoto, somarEscopos,
 } from '@/lib/fabricaFoto';
 import { montaColunasQualidade } from '@/components/fabrica/QualidadePorFabricaCharts';
 import type { SnapshotScopeBreakdown, SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
@@ -92,6 +92,49 @@ describe('janela com os dois formatos', () => {
     expect(r.columns.map((c) => c.label)).toEqual(['S23']);
     expect(Object.keys(r.columns[0].cells).sort()).toEqual(['ERP_SUST', 'IR']);
     expect(r.foraDoFormato).toContain('2 sprints');
+  });
+});
+
+describe('grupos do organograma (F3)', () => {
+  it('só os três grupos com fábrica de entrega, na ordem de leitura', () => {
+    expect(GRUPOS_DE_ENTREGA.map((g) => g.id)).toEqual(['SUSTENTACAO', 'EVOLUCAO', 'HIBRIDA']);
+  });
+
+  it('o grupo é a soma das fábricas dele (contagens e ids)', () => {
+    const a = { ...escopo(5, 3, 1, 1, 0), ids: { entregue: [1], done: [2, 3], bug: [4], retorno_qa: [] } };
+    const b = { ...escopo(3, 1, 0, 0, 1), ids: { entregue: [], done: [5], bug: [], retorno_qa: [6] } };
+    const s = somarEscopos([a, b])!;
+    expect(s.total).toBe(8);
+    expect(s.done.total).toBe(4);
+    expect(s.cats.bug).toBe(1);
+    expect(s.cats.retorno_qa).toBe(1);
+    expect(s.ids!.done).toEqual([2, 3, 5]);
+    // Parte sem ids (foto antiga) = soma sem ids, nunca ids pela metade.
+    expect(somarEscopos([a, escopo(1)])!.ids).toBeUndefined();
+    expect(somarEscopos([])).toBeNull();
+  });
+
+  it('agrupa a foto: ERP Sustentação na Sustentação, ERP Evolução e I & R na Evolução', () => {
+    const g = escoposPorGrupo(fabricasDaFoto(organograma));
+    expect(g.SUSTENTACAO?.total).toBe(3);
+    expect(g.EVOLUCAO?.total).toBe(5);
+    expect(g.HIBRIDA).toBeUndefined();
+  });
+
+  it('id de grupo tem nome e cor do grupo', () => {
+    expect(rotuloFabricaFoto('EVOLUCAO')).toBe('Evolução');
+    expect(corFabricaFoto('SUSTENTACAO')).toBe('hsl(160,55%,38%)');
+  });
+
+  it('Qualidade no telão: uma barra por grupo no organograma; por squad no formato anterior', () => {
+    const snaps = { 'S23-2026': { sprint_code: 'S23-2026', snapshot_source: null, as_of_datetime: null, category_breakdown: organograma } as SprintSnapshotRow };
+    const r = montaColunasQualidade(snaps, { groupBy: 'sprint', maxSprints: 3, anoVigente: 2026, porGrupo: true });
+    expect(r.porGrupo).toBe(true);
+    expect(Object.keys(r.columns[0].cells).sort()).toEqual(['EVOLUCAO', 'SUSTENTACAO']);
+    const antigo = { 'S22-2026': { sprint_code: 'S22-2026', snapshot_source: null, as_of_datetime: null, category_breakdown: anterior } as SprintSnapshotRow };
+    const r2 = montaColunasQualidade(antigo, { groupBy: 'sprint', maxSprints: 3, anoVigente: 2026, porGrupo: true });
+    expect(r2.porGrupo).toBe(false);
+    expect(Object.keys(r2.columns[0].cells).sort()).toEqual(['APP', 'K8']);
   });
 });
 
