@@ -67,7 +67,7 @@ export const GRUPOS: GrupoFabrica[] = [
   { id: 'SUSTENTACAO', rotulo: 'Sustentação', cor: 'hsl(160,55%,38%)', descricao: 'Fábrica de Sustentação: mantém o que está em produção.' },
   { id: 'EVOLUCAO', rotulo: 'Evolução', cor: 'hsl(265,52%,56%)', descricao: 'Fábrica Evolução: produto novo, inovação e reescrita.' },
   { id: 'HIBRIDA', rotulo: 'Híbrida', cor: 'hsl(205,55%,47%)', descricao: 'Fábrica Híbrida: sustenta e evolui os portais e stagings.' },
-  { id: 'APOIO', rotulo: 'Áreas de apoio', cor: 'hsl(215,16%,52%)', descricao: 'Áreas de apoio: entram nas horas, não nos KPIs de entrega.' },
+  { id: 'APOIO', rotulo: 'Áreas de apoio', cor: 'hsl(215,16%,52%)', descricao: 'Áreas de apoio: sustentam todas as fábricas; entram nas horas, não nos KPIs de entrega.' },
   { id: 'ANTERIOR', rotulo: 'Formato anterior', cor: 'hsl(43,74%,49%)', descricao: 'Squads do organograma anterior que ainda têm gente cadastrada.' },
 ];
 
@@ -81,10 +81,11 @@ export const FABRICAS: FabricaOrg[] = [
   { codigo: 'ERP_EVOL', rotulo: 'ERP', grupo: 'EVOLUCAO', cor: 'hsl(265,52%,44%)', entrega: true, devops: { area: 'ERP' }, produtos: 'FlexX, Decision' },
   { codigo: 'IR', rotulo: 'I & R', grupo: 'EVOLUCAO', cor: 'hsl(265,50%,60%)', entrega: true, devops: { area: 'IR' }, produtos: 'Connect Sales, Connect Promo, Flexx Sales, Flexx Promo, Suite Flexx, WEBPromo, Novo Decision, Novo Flexx, Quick One' },
   { codigo: 'LAB', rotulo: 'LAB', grupo: 'EVOLUCAO', cor: 'hsl(265,55%,70%)', entrega: true, devops: { area: 'LAB', epicos: ['IA'] }, produtos: 'BI, GO, SmartSales' },
-  { codigo: 'INFRA', rotulo: 'Infra', grupo: 'EVOLUCAO', cor: 'hsl(250,30%,62%)', entrega: false, devops: { epicos: ['INFRA'] }, produtos: 'Ambiente, Arquitetura, Administração, Data Center' },
   // ── Híbrida ──
   { codigo: 'STAGING', rotulo: 'STAGING', grupo: 'HIBRIDA', cor: 'hsl(205,55%,47%)', entrega: true, epico: 'STAGING', devops: { epicos: ['STAGING'] }, produtos: 'Hub API, Portal Broker 3.0, Portal Froneri, Stagings HNK e Nestlé' },
   // ── Áreas de apoio (só horas) ──
+  // Infra veio da Evolução em 22/11/2026 (Igor): ela sustenta todas as fábricas, não uma.
+  { codigo: 'INFRA', rotulo: 'Infra', grupo: 'APOIO', cor: 'hsl(215,24%,32%)', entrega: false, devops: { epicos: ['INFRA'] }, produtos: 'Ambiente, Arquitetura, Administração, Data Center' },
   { codigo: 'QUALIDADE', rotulo: 'Qualidade', grupo: 'APOIO', cor: 'hsl(215,18%,42%)', entrega: false },
   { codigo: 'DESIGN', rotulo: 'Design', grupo: 'APOIO', cor: 'hsl(215,16%,54%)', entrega: false, devops: { epicos: ['DESIGN'] } },
   { codigo: 'PRODUTOS', rotulo: 'Produtos', grupo: 'APOIO', cor: 'hsl(215,16%,66%)', entrega: false, devops: { area: 'Produto' } },
