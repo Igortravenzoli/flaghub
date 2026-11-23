@@ -3,15 +3,16 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { FABRICAS } from '@/lib/fabricaOrganograma';
 import {
-  avisoForaDoFormato, corFabricaFoto, escoposPorGrupo, FABRICAS_DE_ENTREGA, fabricasDaFoto, formatoDaFoto,
-  GRUPOS_DE_ENTREGA, MAX_FABRICAS_FOTO, recortePorFormato, rotuloFabricaFoto, somarEscopos,
+  avisoForaDoOrganograma, corFabricaFoto, escoposPorGrupo, FABRICAS_DE_ENTREGA, fabricasDaFoto,
+  GRUPOS_DE_ENTREGA, MAX_FABRICAS_FOTO, recorteOrganograma, rotuloFabricaFoto, somarEscopos, temOrganograma,
 } from '@/lib/fabricaFoto';
 import { montaColunasQualidade } from '@/components/fabrica/QualidadePorFabricaCharts';
 import type { SnapshotScopeBreakdown, SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
 
 /**
  * F2 (23/11/2026): a foto de sprint ganhou `fabricas_org` (fábrica do item pela
- * pessoa) ao lado de `fabricas` (por Épico). Os dois formatos não se somam.
+ * pessoa) ao lado de `fabricas` (por Épico). F4 (23/11/2026): os cards leem SÓ
+ * `fabricas_org`; a chave por Épico segue gravada, mas não entra em conta.
  */
 
 function escopo(total: number, done = 0, entregue = 0, bug = 0, retorno = 0): SnapshotScopeBreakdown {
@@ -25,7 +26,12 @@ function escopo(total: number, done = 0, entregue = 0, bug = 0, retorno = 0): Sn
   };
 }
 
-const anterior = {
+/** Foto de antes do organograma (até a S13): só a chave por Épico. */
+const anterior: {
+  geral: SnapshotScopeBreakdown;
+  fabricas: Record<string, SnapshotScopeBreakdown>;
+  fabricas_org?: Record<string, SnapshotScopeBreakdown>;
+} = {
   geral: escopo(10),
   fabricas: { '[K8] - Squad': escopo(4, 2), '[APP] - Squad': escopo(3, 1), 'Sem fábrica': escopo(2), 'Dash Dinâmico': escopo(1) },
 };
@@ -35,23 +41,21 @@ const organograma = {
 };
 
 describe('fábricas da foto', () => {
-  it('a foto com fabricas_org é do organograma; sem ela, do formato anterior', () => {
-    expect(formatoDaFoto(organograma)).toBe('organograma');
-    expect(formatoDaFoto(anterior)).toBe('anterior');
-    expect(formatoDaFoto(null)).toBe('anterior');
+  it('só a foto com fabricas_org tem a fábrica do organograma', () => {
+    expect(temOrganograma(organograma)).toBe(true);
+    expect(temOrganograma(anterior)).toBe(false);
+    expect(temOrganograma(null)).toBe(false);
   });
 
-  it('organograma: só fábrica de entrega atual (sem "Sem fábrica", área de apoio nem K8)', () => {
+  it('só fábrica de entrega atual (sem "Sem fábrica", área de apoio nem K8)', () => {
     expect(Object.keys(fabricasDaFoto(organograma)).sort()).toEqual(['ERP_SUST', 'IR']);
   });
 
-  it('formato anterior: Épico limpo e só as squads antigas', () => {
-    expect(Object.keys(fabricasDaFoto(anterior)).sort()).toEqual(['APP', 'K8']);
-    // A mesma foto lida no formato anterior ignora a chave nova.
-    expect(Object.keys(fabricasDaFoto(organograma, 'anterior')).sort()).toEqual(['APP', 'K8']);
+  it('a chave por Épico não entra mais em conta: foto sem fabricas_org não tem fábrica', () => {
+    expect(fabricasDaFoto(anterior)).toEqual({});
   });
 
-  it('nome para a tela: "ERP" diz de qual grupo é; squad antiga volta como veio', () => {
+  it('nome para a tela: "ERP" diz de qual grupo é; código desconhecido volta como veio', () => {
     expect(rotuloFabricaFoto('ERP_SUST')).toBe('ERP · Sustentação');
     expect(rotuloFabricaFoto('IR')).toBe('I & R');
     expect(rotuloFabricaFoto('K8')).toBe('K8');
@@ -63,33 +67,26 @@ describe('fábricas da foto', () => {
   });
 });
 
-describe('janela com os dois formatos', () => {
+describe('janela com fotos de antes do organograma', () => {
   const fotos = [
-    { sprint_code: 'S21-2026', category_breakdown: anterior },
-    { sprint_code: 'S22-2026', category_breakdown: anterior },
-    { sprint_code: 'S23-2026', category_breakdown: organograma },
+    { sprint_code: 'S12-2026', category_breakdown: anterior },
+    { sprint_code: 'S13-2026', category_breakdown: anterior },
+    { sprint_code: 'S14-2026', category_breakdown: organograma },
   ];
 
-  it('segue o formato da sprint mais recente e conta quem ficou de fora', () => {
-    const r = recortePorFormato(fotos);
-    expect(r.formato).toBe('organograma');
-    expect(r.fotos.map((f) => f.sprint_code)).toEqual(['S23-2026']);
+  it('fica só com as fotos do organograma e conta quem ficou de fora', () => {
+    const r = recorteOrganograma(fotos);
+    expect(r.fotos.map((f) => f.sprint_code)).toEqual(['S14-2026']);
     expect(r.fora).toBe(2);
-    expect(avisoForaDoFormato(r.fora, r.formato)).toBe('2 sprints anteriores ao organograma (foto por Épico) ficaram fora da conta.');
-    expect(avisoForaDoFormato(1, 'organograma')).toBe('1 sprint anterior ao organograma (foto por Épico) ficou fora da conta.');
-    expect(avisoForaDoFormato(0, 'organograma')).toBe('');
-  });
-
-  it('enquanto a última foto é por Épico, nada muda para quem já lia assim', () => {
-    const r = recortePorFormato(fotos.slice(0, 2));
-    expect(r.formato).toBe('anterior');
-    expect(r.fora).toBe(0);
+    expect(avisoForaDoOrganograma(r.fora)).toBe('2 sprints anteriores ao organograma ficaram fora da conta.');
+    expect(avisoForaDoOrganograma(1)).toBe('1 sprint anterior ao organograma ficou fora da conta.');
+    expect(avisoForaDoOrganograma(0)).toBe('');
   });
 
   it('a Qualidade das Fábricas não soma K8 de uma sprint com IR da outra', () => {
     const snaps = Object.fromEntries(fotos.map((f) => [f.sprint_code, { ...f, snapshot_source: null, as_of_datetime: null } as SprintSnapshotRow]));
     const r = montaColunasQualidade(snaps, { groupBy: 'sprint', maxSprints: 6, anoVigente: 2026 });
-    expect(r.columns.map((c) => c.label)).toEqual(['S23']);
+    expect(r.columns.map((c) => c.label)).toEqual(['S14']);
     expect(Object.keys(r.columns[0].cells).sort()).toEqual(['ERP_SUST', 'IR']);
     expect(r.foraDoFormato).toContain('2 sprints');
   });
@@ -126,15 +123,11 @@ describe('grupos do organograma (F3)', () => {
     expect(corFabricaFoto('SUSTENTACAO')).toBe('hsl(160,55%,38%)');
   });
 
-  it('Qualidade no telão: uma barra por grupo no organograma; por squad no formato anterior', () => {
+  it('Qualidade no telão: uma barra por grupo', () => {
     const snaps = { 'S23-2026': { sprint_code: 'S23-2026', snapshot_source: null, as_of_datetime: null, category_breakdown: organograma } as SprintSnapshotRow };
     const r = montaColunasQualidade(snaps, { groupBy: 'sprint', maxSprints: 3, anoVigente: 2026, porGrupo: true });
     expect(r.porGrupo).toBe(true);
     expect(Object.keys(r.columns[0].cells).sort()).toEqual(['EVOLUCAO', 'SUSTENTACAO']);
-    const antigo = { 'S22-2026': { sprint_code: 'S22-2026', snapshot_source: null, as_of_datetime: null, category_breakdown: anterior } as SprintSnapshotRow };
-    const r2 = montaColunasQualidade(antigo, { groupBy: 'sprint', maxSprints: 3, anoVigente: 2026, porGrupo: true });
-    expect(r2.porGrupo).toBe(false);
-    expect(Object.keys(r2.columns[0].cells).sort()).toEqual(['APP', 'K8']);
   });
 });
 
@@ -166,7 +159,8 @@ describe('espelho SQL do organograma', () => {
     const noTs = FABRICAS.map((f, i) => ({
       codigo: f.codigo,
       entrega: f.entrega,
-      anterior: f.grupo === 'ANTERIOR',
+      // K8/FLEXX saíram na F4: a coluna fica (assinatura estável) e é falsa em todas.
+      anterior: false,
       ordem: i,
       area: f.devops?.area ?? null,
       epicos: f.devops?.epicos ?? [],

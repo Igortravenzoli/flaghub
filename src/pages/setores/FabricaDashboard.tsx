@@ -3377,7 +3377,6 @@ export default function FabricaDashboard() {
             <GerenciaTab
               items={collaboratorScopedItems}
               allItems={fab.allItems}
-              fabricaByItemId={fab.fabricaByItemId}
               snapshots={sprintSnapshots.data}
               sortedSprints={fab.sortedSprints}
               isLoading={fab.isLoading}

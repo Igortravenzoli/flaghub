@@ -10,7 +10,7 @@
  * RLS — este repositório é público.
  */
 
-export type GrupoId = 'SUSTENTACAO' | 'EVOLUCAO' | 'HIBRIDA' | 'APOIO' | 'ANTERIOR';
+export type GrupoId = 'SUSTENTACAO' | 'EVOLUCAO' | 'HIBRIDA' | 'APOIO';
 
 export interface GrupoFabrica {
   id: GrupoId;
@@ -35,17 +35,6 @@ export interface FabricaOrg {
    */
   entrega: boolean;
   /**
-   * Nome LIMPO do Épico de squad desta fábrica no DevOps (`cleanFabricaName`),
-   * quando existe um que ainda representa o time.
-   *
-   * É o que permite medir uso cruzado: hora da fábrica em item de outro Épico.
-   * Em 11/2026 o DevOps segue com os Épicos do formato anterior ([K8], [FLEXX],
-   * [STAGING], [APP]); só STAGING e APP sobreviveram com o mesmo time/escopo.
-   * Para as demais não há como dizer "fora de casa", então a tela não inventa:
-   * sem `epico`, toda hora é própria. Preencher aqui quando o Épico for criado.
-   */
-  epico?: string;
-  /**
    * Onde o trabalho desta fábrica é LANÇADO no DevOps hoje (conferido em
    * 22/11/2026). Só serve para MARCAR a hora; nunca para tirá-la de alguém.
    *
@@ -55,6 +44,7 @@ export interface FabricaOrg {
    *
    * A hora é sempre da fábrica da PESSOA (regra de 22/11/2026); isto diz só se
    * ela caiu "na casa" ou no lugar de outra fábrica (`repartirHoraPorPessoa`).
+   * Também é o que a régua do ITEM usa no SQL (`fn_fabrica_organograma`).
    * Fábrica sem nada aqui (GPS/GO, PROMO/SUITE) não tem casa no DevOps: o que
    * ela lança aparece marcado, e isso é orientação, não conta.
    */
@@ -68,13 +58,12 @@ export const GRUPOS: GrupoFabrica[] = [
   { id: 'EVOLUCAO', rotulo: 'Evolução', cor: 'hsl(265,52%,56%)', descricao: 'Fábrica Evolução: produto novo, inovação e reescrita.' },
   { id: 'HIBRIDA', rotulo: 'Híbrida', cor: 'hsl(205,55%,47%)', descricao: 'Fábrica Híbrida: sustenta e evolui os portais e stagings.' },
   { id: 'APOIO', rotulo: 'Áreas de apoio', cor: 'hsl(215,16%,52%)', descricao: 'Áreas de apoio: sustentam todas as fábricas; entram nas horas, não nos KPIs de entrega.' },
-  { id: 'ANTERIOR', rotulo: 'Formato anterior', cor: 'hsl(43,74%,49%)', descricao: 'Squads do organograma anterior que ainda têm gente cadastrada.' },
 ];
 
 export const FABRICAS: FabricaOrg[] = [
   // ── Sustentação ──
   { codigo: 'GPS_GO', rotulo: 'GPS / GO', grupo: 'SUSTENTACAO', cor: 'hsl(160,58%,28%)', entrega: true, produtos: 'Mapa, Roteirizador, Planner, APP' },
-  { codigo: 'APP', rotulo: 'APP', grupo: 'SUSTENTACAO', cor: 'hsl(160,55%,42%)', entrega: true, epico: 'APP', devops: { epicos: ['APP'] }, produtos: 'Connect Sales, Flexx Sales, Check Stock, Tracking' },
+  { codigo: 'APP', rotulo: 'APP', grupo: 'SUSTENTACAO', cor: 'hsl(160,55%,42%)', entrega: true, devops: { epicos: ['APP'] }, produtos: 'Connect Sales, Flexx Sales, Check Stock, Tracking' },
   { codigo: 'PROMO_SUITE', rotulo: 'PROMO / SUITE', grupo: 'SUSTENTACAO', cor: 'hsl(160,45%,54%)', entrega: true, produtos: 'Connect Promo, Flexx Promo, Suite Flexx, WEBPROMO, BI' },
   { codigo: 'ERP_SUST', rotulo: 'ERP', grupo: 'SUSTENTACAO', cor: 'hsl(176,50%,36%)', entrega: true, devops: { area: 'ERP' }, produtos: 'FlexX, Decision, QuickOne, SmartSales' },
   // ── Evolução ──
@@ -82,16 +71,13 @@ export const FABRICAS: FabricaOrg[] = [
   { codigo: 'IR', rotulo: 'I & R', grupo: 'EVOLUCAO', cor: 'hsl(265,50%,60%)', entrega: true, devops: { area: 'IR' }, produtos: 'Connect Sales, Connect Promo, Flexx Sales, Flexx Promo, Suite Flexx, WEBPromo, Novo Decision, Novo Flexx, Quick One' },
   { codigo: 'LAB', rotulo: 'LAB', grupo: 'EVOLUCAO', cor: 'hsl(265,55%,70%)', entrega: true, devops: { area: 'LAB', epicos: ['IA'] }, produtos: 'BI, GO, SmartSales' },
   // ── Híbrida ──
-  { codigo: 'STAGING', rotulo: 'STAGING', grupo: 'HIBRIDA', cor: 'hsl(205,55%,47%)', entrega: true, epico: 'STAGING', devops: { epicos: ['STAGING'] }, produtos: 'Hub API, Portal Broker 3.0, Portal Froneri, Stagings HNK e Nestlé' },
+  { codigo: 'STAGING', rotulo: 'STAGING', grupo: 'HIBRIDA', cor: 'hsl(205,55%,47%)', entrega: true, devops: { epicos: ['STAGING'] }, produtos: 'Hub API, Portal Broker 3.0, Portal Froneri, Stagings HNK e Nestlé' },
   // ── Áreas de apoio (só horas) ──
   // Infra veio da Evolução em 22/11/2026 (Igor): ela sustenta todas as fábricas, não uma.
   { codigo: 'INFRA', rotulo: 'Infra', grupo: 'APOIO', cor: 'hsl(215,24%,32%)', entrega: false, devops: { epicos: ['INFRA'] }, produtos: 'Ambiente, Arquitetura, Administração, Data Center' },
   { codigo: 'QUALIDADE', rotulo: 'Qualidade', grupo: 'APOIO', cor: 'hsl(215,18%,42%)', entrega: false },
   { codigo: 'DESIGN', rotulo: 'Design', grupo: 'APOIO', cor: 'hsl(215,16%,54%)', entrega: false, devops: { epicos: ['DESIGN'] } },
   { codigo: 'PRODUTOS', rotulo: 'Produtos', grupo: 'APOIO', cor: 'hsl(215,16%,66%)', entrega: false, devops: { area: 'Produto' } },
-  // ── Formato anterior: saem quando ninguém mais estiver cadastrado neles ──
-  { codigo: 'K8', rotulo: 'K8', grupo: 'ANTERIOR', cor: 'hsl(43,74%,49%)', entrega: true, epico: 'K8', devops: { epicos: ['K8'] } },
-  { codigo: 'FLEXX', rotulo: 'FLEXX', grupo: 'ANTERIOR', cor: 'hsl(265,35%,52%)', entrega: true, epico: 'FLEXX', devops: { epicos: ['FLEXX'] } },
 ];
 
 const POR_CODIGO = new Map(FABRICAS.map((f) => [f.codigo, f]));
@@ -140,7 +126,3 @@ export function ehFabricaDeEntrega(codigo: string | null | undefined): boolean {
   return fabricaOrg(codigo)?.entrega === true;
 }
 
-/** Épico de squad que representa a fábrica, quando existe (ver `FabricaOrg.epico`). */
-export function epicoDaFabrica(codigo: string | null | undefined): string | null {
-  return fabricaOrg(codigo)?.epico ?? null;
-}

@@ -32,16 +32,16 @@ const { FIXTURE } = vi.hoisted(() => {
     sprint_code: code,
     snapshot_source: 'test',
     as_of_datetime: null,
-    category_breakdown: { geral: scope({ total: 0, done: 0, entregue: 0 }), fabricas },
+    category_breakdown: { geral: scope({ total: 0, done: 0, entregue: 0 }), fabricas_org: fabricas },
   });
   const FIXTURE = {
     [`S13-${ano}`]: snap(`S13-${ano}`, {
-      '[K8] - Squad': scope({ total: 10, done: 8, entregue: 1, bug: 1 }),
-      '[APP] - Squad': scope({ total: 12, done: 5, entregue: 2, bug: 2 }),
+      IR: scope({ total: 10, done: 8, entregue: 1, bug: 1 }),
+      APP: scope({ total: 12, done: 5, entregue: 2, bug: 2 }),
     }),
     [`S14-${ano}`]: snap(`S14-${ano}`, {
-      '[K8] - Squad': scope({ total: 8, done: 4, entregue: 2, bug: 1 }),
-      '[APP] - Squad': scope({ total: 10, done: 6, entregue: 1, bug: 3 }),
+      IR: scope({ total: 8, done: 4, entregue: 2, bug: 1 }),
+      APP: scope({ total: 10, done: 6, entregue: 1, bug: 3 }),
     }),
   };
   return { FIXTURE };
@@ -63,7 +63,8 @@ describe('QualidadePorFabricaCharts — visão default', () => {
 
   it('no TV (fill) permanece por sprint, sem toggle', () => {
     render(<QualidadePorFabricaCharts fill />);
-    expect(screen.getByText(/Qualidade das Fábricas — por sprint/)).toBeTruthy();
+    // No telão a barra é por grupo do organograma (F3).
+    expect(screen.getByText(/Qualidade das Fábricas — por grupo, por sprint/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Quarter' })).toBeNull();
   });
 });
@@ -71,7 +72,7 @@ describe('QualidadePorFabricaCharts — visão default', () => {
 describe('RankingFabricasCard — grade de gráficos de linha por fábrica', () => {
   it('renderiza um gráfico de linhas (evolução) para cada fábrica, com medalha e score', () => {
     const { container } = render(<RankingFabricasCard />);
-    expect(screen.getByText('K8')).toBeTruthy();
+    expect(screen.getByText('I & R')).toBeTruthy();
     expect(screen.getByText('APP')).toBeTruthy();
     // Um LineChart (ResponsiveContainer) por fábrica do fixture.
     expect(container.querySelectorAll('.recharts-responsive-container')).toHaveLength(2);
