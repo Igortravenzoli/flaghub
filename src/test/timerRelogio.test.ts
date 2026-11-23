@@ -13,6 +13,7 @@ import {
   horaNoDia,
   horas,
   houveSuspensao,
+  classificarLacuna,
   lerEstado,
   mensagemErroTimer,
   presencaPerguntarEm,
@@ -273,5 +274,22 @@ describe('ausência: pergunta antes de pausar (18/11/2026)', () => {
   it('início da inatividade nunca fica no futuro', () => {
     const agora = t('2026-11-18T14:15:00.000Z');
     expect(novaAusencia(agora + 60_000, agora).desdeMs).toBe(agora);
+  });
+});
+
+describe('classificarLacuna (23/11/2026: navegador congelado não é PC suspenso)', () => {
+  const t0 = 1_800_000_000_000;
+  it('sem lacuna é normal, com ou sem freeze', () => {
+    expect(classificarLacuna(t0, t0 + 60_000, null)).toBe('normal');
+    expect(classificarLacuna(t0, t0 + 60_000, t0 + 1000)).toBe('normal');
+  });
+  it('lacuna com freeze depois do último tique = navegador congelou (não pausa)', () => {
+    expect(classificarLacuna(t0, t0 + 10 * 60_000, t0 + 30_000)).toBe('congelada');
+    // o freeze chega no mesmo instante do último tique (folga de 2 s)
+    expect(classificarLacuna(t0, t0 + 10 * 60_000, t0 - 1500)).toBe('congelada');
+  });
+  it('lacuna sem freeze, ou com freeze velho, = computador suspenso (pausa)', () => {
+    expect(classificarLacuna(t0, t0 + 10 * 60_000, null)).toBe('suspensao');
+    expect(classificarLacuna(t0, t0 + 10 * 60_000, t0 - 60_000)).toBe('suspensao');
   });
 });
