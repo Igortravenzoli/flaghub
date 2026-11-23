@@ -8,8 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useSprintSnapshots, type SnapshotScopeBreakdown, type SprintSnapshotRow } from '@/hooks/useSprintSnapshots';
-import { cleanFabricaName } from '@/lib/fabricaNames';
-import { SQUADS } from '@/lib/fabricaRoster';
+import { avisoForaDoFormato, fabricasDaFoto, MAX_FABRICAS_FOTO, recortePorFormato, rotuloFabricaFoto } from '@/lib/fabricaFoto';
 import { fabricaColor } from '@/lib/chartColors';
 import { quarterLabel } from '@/lib/sprintCalendar';
 import { concluidoDoEscopo } from '@/lib/fabricaTvSeries';
@@ -30,14 +29,6 @@ function sprintNum(code: string): number {
 function pct(part: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((part / total) * 1000) / 10;
-}
-
-function normalizedFabricas(snap: SprintSnapshotRow): Record<string, SnapshotScopeBreakdown> {
-  const out: Record<string, SnapshotScopeBreakdown> = {};
-  for (const [raw, scope] of Object.entries(snap.category_breakdown?.fabricas ?? {})) {
-    out[cleanFabricaName(raw)] = scope;
-  }
-  return out;
 }
 
 type RawSums = { encerrados: number; scope: number; bug: number; retorno: number };
@@ -99,7 +90,7 @@ function TooltipQualidade({ active, label, payload, cor }: {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload;
   const itens: Array<{ fabrica: string; valor: number }> = [];
-  for (let i = 0; i < SQUADS.length; i++) {
+  for (let i = 0; i < MAX_FABRICAS_FOTO; i++) {
     const fabrica = row[`f${i}`];
     const valor = row[`v${i}`];
     if (typeof fabrica !== 'string' || !fabrica || typeof valor !== 'number') continue;
@@ -114,7 +105,7 @@ function TooltipQualidade({ active, label, payload, cor }: {
         <p key={it.fabrica} className="flex items-center gap-1.5 leading-relaxed">
           <span className="text-muted-foreground w-3">{i + 1}º</span>
           <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: cor(it.fabrica) }} />
-          <span className="flex-1">{it.fabrica}</span>
+          <span className="flex-1">{rotuloFabricaFoto(it.fabrica)}</span>
           <span className="font-mono font-semibold tabular-nums ml-2">{it.valor}%</span>
         </p>
       ))}
@@ -138,14 +129,15 @@ export type ColunaQualidade = { label: string; cells: Record<string, CelulaFabri
 export function montaColunasQualidade(
   snapshots: Record<string, SprintSnapshotRow>,
   opts: { groupBy: GroupBy; maxSprints: number; anoVigente: number },
-): { columns: ColunaQualidade[]; fabricasOrdenadas: string[]; detalhes: Record<string, SprintDetalhe[]> } {
+): { columns: ColunaQualidade[]; fabricasOrdenadas: string[]; detalhes: Record<string, SprintDetalhe[]>; foraDoFormato: string } {
   const { groupBy, maxSprints, anoVigente } = opts;
   const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
   const todas = Object.values(snapshots)
     .filter((s) => reAno.test(s.sprint_code) && s.category_breakdown)
     .sort((a, b) => sprintNum(a.sprint_code) - sprintNum(b.sprint_code));
   // No quarter, agrega o ANO INTEIRO (várias colunas Q); por sprint, últimas N.
-  const rows = groupBy === 'quarter' ? todas : todas.slice(-maxSprints);
+  // Depois, o formato da sprint mais recente: K8 e GPS/GO não somam na mesma barra.
+  const { fotos: rows, formato, fora } = recortePorFormato(groupBy === 'quarter' ? todas : todas.slice(-maxSprints));
 
   const colOrder: string[] = [];
   const raw = new Map<string, Map<string, RawSums>>();
@@ -159,10 +151,9 @@ export function montaColunasQualidade(
       : s.sprint_code.split('-')[0];
     if (!raw.has(colKey)) { raw.set(colKey, new Map()); colOrder.push(colKey); }
     const colMap = raw.get(colKey)!;
-    for (const [name, scope] of Object.entries(normalizedFabricas(s))) {
-      // Só as squads reais — "Sem fábrica"/"DESIGN"/"FLG" viravam séries extras
-      // e deixavam as barras ilegíveis (7 séries em vez de 4).
-      if (!SQUADS.includes(name)) continue;
+    // Só fábricas de verdade — "Sem fábrica", áreas e Épicos soltos viravam
+    // séries extras e deixavam as barras ilegíveis.
+    for (const [name, scope] of Object.entries(fabricasDaFoto(s.category_breakdown, formato))) {
       const c = colMap.get(name) ?? emptySums();
       addScope(c, scope);
       colMap.set(name, c);
@@ -194,7 +185,7 @@ export function montaColunasQualidade(
     .sort((x, y) => y.score - x.score)
     .map((x) => x.name);
 
-  return { columns, fabricasOrdenadas, detalhes };
+  return { columns, fabricasOrdenadas, detalhes, foraDoFormato: avisoForaDoFormato(fora, formato) };
 }
 
 /**
@@ -215,7 +206,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
   const [detalhe, setDetalhe] = useState<{ coluna: string; fabrica: string; metrica: MetricKey } | null>(null);
   const anoVigente = new Date().getFullYear();
 
-  const { columns, fabricasOrdenadas, detalhes } = useMemo(
+  const { columns, fabricasOrdenadas, detalhes, foraDoFormato } = useMemo(
     () => montaColunasQualidade(snapshots, { groupBy, maxSprints, anoVigente }),
     [snapshots, anoVigente, maxSprints, groupBy],
   );
@@ -251,7 +242,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
     columns.map((col) => {
       const itens = ordenaColuna(col.cells, fabricasOrdenadas, metric, maiorPrimeiro);
       const row: Record<string, number | string | undefined> = { label: col.label };
-      for (let i = 0; i < SQUADS.length; i++) {
+      for (let i = 0; i < MAX_FABRICAS_FOTO; i++) {
         row[`v${i}`] = itens[i]?.v;
         row[`f${i}`] = itens[i]?.f ?? '';
       }
@@ -279,7 +270,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
                 {fabricasOrdenadas.map((f, i) => (
                   <span key={f} className="inline-flex items-center gap-1.5 font-medium">
                     <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: fabricaColor(f, i) }} />
-                    {f}
+                    {rotuloFabricaFoto(f)}
                   </span>
                 ))}
               </div>
@@ -325,7 +316,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
                             />
                           )}
                         />
-                        {Array.from({ length: SQUADS.length }, (_, slot) => (
+                        {Array.from({ length: MAX_FABRICAS_FOTO }, (_, slot) => (
                           <Bar
                             key={slot}
                             dataKey={`v${slot}`}
@@ -363,6 +354,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
           A legenda segue a ordem do ranking Desempenho × Qualidade.
           {groupBy === 'quarter' && ' Sprint entra no quarter pelo mês em que termina.'}
           {!fill && <b> Clique numa barra para ver a composição do número.</b>}
+          {foraDoFormato && <> {foraDoFormato}</>}
         </p>
 
         {/* Popup de composição — o que está por trás da barra clicada (06/08/2026). */}
@@ -373,7 +365,7 @@ export function QualidadePorFabricaCharts({ maxSprints = 6, chartHeight = 190, f
                 <DialogHeader>
                   <DialogTitle className="text-sm flex items-center gap-2">
                     <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: corDaFabrica(detalhe.fabrica) }} />
-                    {detalhe.fabrica} · {detalhe.coluna} — {METRICA_INFO[detalhe.metrica].titulo}
+                    {rotuloFabricaFoto(detalhe.fabrica)} · {detalhe.coluna} — {METRICA_INFO[detalhe.metrica].titulo}
                   </DialogTitle>
                 </DialogHeader>
                 <div className="max-h-[55vh] overflow-y-auto">

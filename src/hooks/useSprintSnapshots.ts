@@ -30,7 +30,11 @@ export interface SprintSnapshotRow {
   as_of_datetime: string | null;
   category_breakdown: {
     geral: SnapshotScopeBreakdown;
+    /** Formato anterior: escopo = título do Épico raiz. */
     fabricas: Record<string, SnapshotScopeBreakdown>;
+    /** Organograma (desde 23/11/2026): escopo = código da fábrica pela pessoa. Ver `@/lib/fabricaFoto`. */
+    fabricas_org?: Record<string, SnapshotScopeBreakdown>;
+    fabricas_org_meta?: { regra?: string; criterios?: Record<string, number>; preenchido_depois?: string };
   } | null;
 }
 
