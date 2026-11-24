@@ -9,6 +9,8 @@ import { type GrupoFabrica, rotuloFabrica } from '@/lib/fabricaOrganograma';
 import { concluidoDoEscopo } from '@/lib/fabricaTvSeries';
 import { fabricaColor, medalColor } from '@/lib/chartColors';
 import { DesempenhoTrendChart, COR_SERIE } from '@/components/fabrica/DesempenhoTrendChart';
+import { ChaveModoValor } from '@/components/fabrica/ChaveModoValor';
+import { type ModoValor, useModoValor } from '@/hooks/useModoValor';
 
 type RankingFabricasCardProps = {
   /** Quantas sprints mais recentes considerar (linhas do gráfico + agregado do score). */
@@ -99,6 +101,10 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
    * corte. `fill` continua sendo a outra variante (caixinhas da sprint).
    */
   const esticar = typeof chartHeight === 'string';
+  /** Chave Percentual | Quantidade: só na mesa — no telão ninguém clica, fica em percentual. */
+  const mesa = !fill && !esticar;
+  const [modoEscolhido, setModo] = useModoValor();
+  const modo: ModoValor = mesa ? modoEscolhido : 'percentual';
 
   const { ranking, grupos, foraDoFormato } = useMemo(() => {
     const reAno = new RegExp(`^S\\d+-${anoVigente}$`);
@@ -184,7 +190,7 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
             score <span className="font-mono font-semibold text-foreground">{f.score}</span>
           </span>
         </div>
-        <DesempenhoTrendChart fabrica={f.name} maxSprints={maxSprints} height={chartHeight} showLegend={false} />
+        <DesempenhoTrendChart fabrica={f.name} maxSprints={maxSprints} height={chartHeight} showLegend={false} modo={modo} />
       </div>
     );
   };
@@ -232,7 +238,8 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
               <title>{RANKING_FORMULA}</title>
             </Info>
           </CardTitle>
-          <div className="flex gap-3 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            {mesa && <ChaveModoValor modo={modo} onChange={setModo} />}
             {!fill && (
               <span className="inline-flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: COR_SERIE['Entrega'] }} /> Entrega</span>
             )}
@@ -362,7 +369,9 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
               /* Telão por grupo: uma linha. A régua das séries já está na legenda do
                  cabeçalho; cada palavra a mais aqui sai da altura dos gráficos. */
               ? `Grupo = soma das fábricas · embaixo, o score de cada fábrica · últimas ${maxSprints} sprints · score = desempenho − ½·bug − ½·retorno QA.`
-              : `Linhas por sprint de cada fábrica: Entrega (% encerrado do escopo, ↑ melhor), Bug e Retorno QA (% do escopo, ↓ melhor). Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints. Passe o mouse na bolinha para ver os itens; clique para a lista completa.`}
+              : modo === 'quantidade'
+                ? `Linhas por sprint de cada fábrica, em QUANTIDADE de itens: Entrega (encerrados, ↑ melhor), Bug e Retorno QA (↓ melhor); o eixo vai até o maior escopo da janela. Medalha e score seguem em % do escopo, nas últimas ${maxSprints} sprints. Passe o mouse na bolinha para ver os itens; clique para a lista completa.`
+                : `Linhas por sprint de cada fábrica, em % DO ESCOPO da sprint: Entrega (% encerrado, ↑ melhor), Bug e Retorno QA (↓ melhor) — com escopo de 3 itens, 33% é 1 item. Medalha e score cruzam Desempenho × Qualidade nas últimas ${maxSprints} sprints. Passe o mouse na bolinha para ver os itens; clique para a lista completa.`}
           {ocultas > 0 && (
             <b className="text-foreground/80" data-testid="ranking-ocultas">
               {' '}+{ocultas} {ocultasRotulo} fora do telão — ranking completo na aba Executiva.

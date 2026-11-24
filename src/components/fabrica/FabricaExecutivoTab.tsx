@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { Zap, RotateCcw, CalendarClock } from 'lucide-react';
 import { BlocoCard } from '@/components/executivo/BlocoCard';
 import { DesempenhoTrendChart } from '@/components/fabrica/DesempenhoTrendChart';
+import { ChaveModoValor } from '@/components/fabrica/ChaveModoValor';
+import { useModoValor } from '@/hooks/useModoValor';
 import { RankingFabricasCard } from '@/components/fabrica/RankingFabricasCard';
 import { QualidadePorFabricaCharts } from '@/components/fabrica/QualidadePorFabricaCharts';
 import { DailyProgressCard } from '@/components/fabrica/DailyProgressCard';
@@ -55,6 +57,7 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
   const concluido = fab.done + fab.entregue;
   const conclPct = fab.total > 0 ? Math.round((concluido / fab.total) * 100) : 0;
   const emDev = Math.max(0, fab.inProgress - fab.entregue);
+  const [modoValor, setModoValor] = useModoValor();
 
   return (
     <div className="space-y-4">
@@ -113,13 +116,20 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
       </div>
 
       {/* Desempenho · evolução por sprint */}
-      <BlocoCard icon={CalendarClock} titulo="Desempenho · evolução por sprint">
-        <DesempenhoTrendChart height={220} />
+      <BlocoCard
+        icon={CalendarClock}
+        titulo="Desempenho · evolução por sprint"
+        headerRight={<ChaveModoValor modo={modoValor} onChange={setModoValor} />}
+      >
+        <DesempenhoTrendChart height={220} modo={modoValor} />
         <p className="text-[11px] text-muted-foreground border-t pt-2">
-          % Entrega (concluído ÷ escopo, ↑ melhor) · % Retorno QA · % Bug (↓ melhor) — últimas 8 sprints.
+          {modoValor === 'quantidade'
+            ? 'Quantidade de itens: Entrega (concluídos, ↑ melhor) · Retorno QA · Bug (↓ melhor) — últimas 8 sprints; o eixo vai até o maior escopo.'
+            : '% Entrega (concluído ÷ escopo, ↑ melhor) · % Retorno QA · % Bug (↓ melhor) — últimas 8 sprints.'}
           É a visão <b>geral do quadro</b>: todas as fábricas juntas, mais os itens <b>sem fábrica</b> — a linha de
           cada fábrica e de cada grupo está no ranking abaixo.
-          Os três percentuais são <b>sobre o escopo da sprint</b> (régua do guia de indicadores) e vêm das
+          Os percentuais são <b>sobre o escopo da sprint</b> (régua do guia de indicadores; a chave acima troca para
+          quantidade) e vêm das
           <b> fotografias seladas</b>: a sprint em curso não tem ponto aqui.
           Escopo = o mesmo do card <b>Itens no escopo</b> (PBI + Bug do quadro no corte).
           Passe o mouse na bolinha para ver os itens — cada um abre no <b>DevOps</b>; clique para a lista completa.

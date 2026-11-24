@@ -10,6 +10,7 @@ import { type BreakdownFoto, escoposPorGrupo, fabricasDaFoto } from '@/lib/fabri
 import type { GrupoId } from '@/lib/fabricaOrganograma';
 import { META_ENTREGA_PCT, TETO_BUG_PCT } from '@/lib/fabricaMetas';
 import { concluidoDoEscopo, idsDaSerie, type SerieSprint } from '@/lib/fabricaTvSeries';
+import type { ModoValor } from '@/hooks/useModoValor';
 
 type DesempenhoTrendChartProps = {
   /** Fábrica (código do organograma, ex.: "IR") para escopar; null/ausente = geral. */
@@ -31,6 +32,11 @@ type DesempenhoTrendChartProps = {
    * parede. Na mesa fica desligado — a leitura de meta mora nos painéis.
    */
   showMetas?: boolean;
+  /**
+   * Número na bolinha e eixo: % do escopo (padrão, a régua dos indicadores) ou
+   * quantidade de itens. O telão fica sempre em percentual.
+   */
+  modo?: ModoValor;
 };
 
 // Semântica das cores: Entrega ↑ é bom (verde), Bug ↓ é ruim (vermelho),
@@ -82,6 +88,10 @@ type Ponto = {
   escopo: number;
   temIds: boolean;
   ids: Record<Serie, number[]>;
+  /** % do escopo e quantidade de itens de cada série — o painel mostra os dois. */
+  pct: Record<Serie, number>;
+  qtd: Record<Serie, number>;
+  /** Valor desenhado (o do modo escolhido). */
   'Entrega': number;
   'Retorno QA': number;
   'Bug': number;
@@ -185,7 +195,9 @@ export function DesempenhoTrendChart({
   showLegend = true,
   showMetas = false,
   grupo,
+  modo = 'percentual',
 }: DesempenhoTrendChartProps) {
+  const emQtd = modo === 'quantidade';
   const { data: snapshots = {}, isLoading } = useSprintSnapshots();
   const anoVigente = new Date().getFullYear();
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -214,6 +226,17 @@ export function DesempenhoTrendChart({
       .map((s) => {
         const scope = scopeFor(s.category_breakdown, fabrica, grupo);
         if (!scope) return null;
+        const qtd: Record<Serie, number> = {
+          'Entrega': concluidoDoEscopo(scope),
+          'Retorno QA': scope.cats.retorno_qa,
+          'Bug': scope.cats.bug,
+        };
+        const pcts: Record<Serie, number> = {
+          'Entrega': pct(qtd['Entrega'], scope.total),
+          'Retorno QA': pct(qtd['Retorno QA'], scope.total),
+          'Bug': pct(qtd['Bug'], scope.total),
+        };
+        const desenhado = emQtd ? qtd : pcts;
         return {
           sprint: s.sprint_code.split('-')[0],
           code: s.sprint_code,
@@ -225,15 +248,20 @@ export function DesempenhoTrendChart({
             'Retorno QA': idsDaSerie(scope, 'Retorno QA'),
             'Bug': idsDaSerie(scope, 'Bug'),
           },
-          'Entrega': pct(concluidoDoEscopo(scope), scope.total),
-          'Retorno QA': pct(scope.cats.retorno_qa, scope.total),
-          'Bug': pct(scope.cats.bug, scope.total),
+          pct: pcts,
+          qtd,
+          'Entrega': desenhado['Entrega'],
+          'Retorno QA': desenhado['Retorno QA'],
+          'Bug': desenhado['Bug'],
         } satisfies Ponto;
       })
       .filter((r): r is Ponto => r !== null)
       .sort((a, b) => a.num - b.num)
       .slice(-maxSprints);
-  }, [snapshots, fabrica, grupo, anoVigente, maxSprints]);
+  }, [snapshots, fabrica, grupo, anoVigente, maxSprints, emQtd]);
+
+  /** Topo do eixo em quantidade: o maior escopo da janela (encerrados nunca passam dele). */
+  const tetoQtd = Math.max(1, ...data.map((p) => p.escopo));
 
   if (isLoading) {
     return <p className="text-sm text-muted-foreground py-10 text-center">Carregando evolução…</p>;
@@ -259,7 +287,9 @@ export function DesempenhoTrendChart({
       let dy = 0;
       const bug = payload?.['Bug'];
       const ret = payload?.['Retorno QA'];
-      if (typeof bug === 'number' && typeof ret === 'number' && Math.abs(bug - ret) < 9) {
+      // "Perto" = menos de 9% da altura do eixo (100 em percentual, o maior escopo em quantidade).
+      const perto = (emQtd ? tetoQtd : 100) * 0.09;
+      if (typeof bug === 'number' && typeof ret === 'number' && Math.abs(bug - ret) < perto) {
         const bugMaisBaixo = bug <= ret; // menor valor = mais embaixo no gráfico
         if (serie === 'Bug') dy = bugMaisBaixo ? radius : -radius;
         else if (serie === 'Retorno QA') dy = bugMaisBaixo ? -radius : radius;
@@ -307,12 +337,14 @@ export function DesempenhoTrendChart({
         <LineChart data={data} margin={{ top: 18, right: 18, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="sprint" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />
+          {emQtd
+            ? <YAxis tick={{ fontSize: 11 }} domain={[0, tetoQtd]} allowDecimals={false} />
+            : <YAxis tick={{ fontSize: 11 }} unit="%" domain={[0, 100]} />}
           {showLegend && <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />}
           {/* Metas tracejadas: bug e retorno QA compartilham o teto (30%), então
               uma linha neutra serve os dois; se as constantes divergirem um dia,
               separar. Rótulo sempre visível — regra de TV, nada só em hover. */}
-          {showMetas && (
+          {showMetas && !emQtd && (
             <ReferenceLine
               y={META_ENTREGA_PCT}
               stroke={COR_ENTREGA}
@@ -321,7 +353,7 @@ export function DesempenhoTrendChart({
               label={{ value: `piso entrega ${META_ENTREGA_PCT}%`, position: 'insideTopRight', fill: COR_ENTREGA, fontSize: 11, opacity: 0.8 }}
             />
           )}
-          {showMetas && (
+          {showMetas && !emQtd && (
             <ReferenceLine
               y={TETO_BUG_PCT}
               stroke="hsl(var(--muted-foreground))"
@@ -352,8 +384,9 @@ export function DesempenhoTrendChart({
             <span className="text-xs font-semibold" style={{ color: COR[foco.serie] }}>
               {foco.serie} · {foco.ponto.sprint}
             </span>
-            <span className="text-[11px] text-muted-foreground">
-              {foco.ponto[foco.serie]}% de {foco.ponto.escopo}
+            {/* Sempre os dois: "1 de 3 · 33.3%" — nunca só o percentual. */}
+            <span className="text-[11px] text-muted-foreground" data-testid="foco-valor">
+              {foco.ponto.qtd[foco.serie]} de {foco.ponto.escopo} · {foco.ponto.pct[foco.serie]}%
             </span>
           </div>
           {foco.ponto.temIds ? (
@@ -378,8 +411,8 @@ export function DesempenhoTrendChart({
                 <span className="flex items-baseline gap-2">
                   <span style={{ color: COR[aberto.serie] }}>{aberto.serie}</span>
                   <span className="text-muted-foreground">
-                    · {aberto.ponto.code} · {aberto.ponto.ids[aberto.serie].length} de {aberto.ponto.escopo} itens
-                    ({aberto.ponto[aberto.serie]}%)
+                    · {aberto.ponto.code} · {aberto.ponto.qtd[aberto.serie]} de {aberto.ponto.escopo} itens
+                    ({aberto.ponto.pct[aberto.serie]}%)
                   </span>
                 </span>
               )}
