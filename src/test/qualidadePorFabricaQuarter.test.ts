@@ -36,7 +36,7 @@ function snap(code: string, fabricas: Record<string, SnapshotScopeBreakdown>): S
     sprint_code: code,
     snapshot_source: 'test',
     as_of_datetime: null,
-    category_breakdown: { geral: scope({ total: 0, done: 0, entregue: 0 }), fabricas_org: fabricas },
+    category_breakdown: { geral: scope({ total: 0, done: 0, entregue: 0 }), fabricas: {}, fabricas_org: fabricas },
   };
 }
 

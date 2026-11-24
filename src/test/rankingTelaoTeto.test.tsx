@@ -62,4 +62,18 @@ describe('RankingFabricasCard — organograma no telão', () => {
     expect(screen.getByTestId('grupo-EVOLUCAO').textContent).toContain('ERP');
     expect(screen.getByTestId('grupo-SUSTENTACAO').textContent).toContain('4 fábricas');
   });
+
+  it('mesa: cada grupo ocupa uma coluna por fábrica numa grade de 4, sem cartão sozinho a meia largura', () => {
+    const { container } = render(<RankingFabricasCard />);
+    const grade = screen.getByTestId('grupo-SUSTENTACAO').parentElement!;
+    expect(grade.className).toContain('xl:grid-cols-4');
+    // `dense`: o grupo de 1 fábrica entra no buraco ao lado do de 3.
+    expect(grade.className).toContain('xl:grid-flow-row-dense');
+    expect(screen.getByTestId('grupo-SUSTENTACAO').className).toContain('xl:col-span-4');
+    expect(screen.getByTestId('grupo-EVOLUCAO').className).toContain('xl:col-span-3');
+    expect(screen.getByTestId('grupo-HIBRIDA').className).toContain('xl:col-span-1');
+    // Dentro do grupo, uma coluna por fábrica: as 3 da Evolução lado a lado.
+    expect(screen.getByTestId('grupo-EVOLUCAO').querySelector('.xl\\:grid-cols-3')).toBeTruthy();
+    expect(container.querySelectorAll('section[data-testid^="grupo-"]')).toHaveLength(3);
+  });
 });
