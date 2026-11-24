@@ -13,7 +13,7 @@ import { DesempenhoTrendChart, COR_SERIE } from '@/components/fabrica/Desempenho
 type RankingFabricasCardProps = {
   /** Quantas sprints mais recentes considerar (linhas do gráfico + agregado do score). */
   maxSprints?: number;
-  /** Colunas do grid de fábricas (4 no modo TV = tudo numa linha). */
+  /** Telão: quantos grupos cabem na linha (o resto é declarado). A mesa usa a grade de 4 colunas própria. */
   columns?: number;
   /** Altura do gráfico de linhas de cada fábrica: px, ou '100%' para esticar até o pai (telão). */
   chartHeight?: number | string;
@@ -22,6 +22,16 @@ type RankingFabricasCardProps = {
 };
 
 const RANKING_FORMULA = 'Ranking = Desempenho − (½·Bug + ½·Retorno QA), somando todas as sprints do período. Desempenho = itens encerrados (done + entregue) ÷ escopo. Maior valor = melhor cruzamento de desempenho e qualidade.';
+
+/** Mesa: colunas da grade de grupos (xl) e as classes por quantidade de fábricas (literais, para o Tailwind). */
+const COLUNAS_MESA = 4;
+const SPAN_MESA: Record<number, string> = { 1: 'xl:col-span-1', 2: 'xl:col-span-2', 3: 'xl:col-span-3', 4: 'xl:col-span-4' };
+const COLS_MESA: Record<number, string> = {
+  1: 'xl:grid-cols-1',
+  2: 'sm:grid-cols-2 xl:grid-cols-2',
+  3: 'sm:grid-cols-2 xl:grid-cols-3',
+  4: 'sm:grid-cols-2 xl:grid-cols-4',
+};
 
 function sprintNum(code: string): number {
   return Number(code.match(/\d+/)?.[0] ?? 0);
@@ -314,23 +324,32 @@ export function RankingFabricasCard({ maxSprints = 6, columns = 2, chartHeight =
         ) : (
           /* ── Mesa · grupo › fábrica ─────────────────────────────────────────
              Cada grupo com o score da soma das fábricas, e as fábricas dele em
-             mini-cards. A medalha da fábrica é a posição no ranking geral. */
-          <div className="space-y-4">
-            {grupos.map((g) => (
-              <section key={g.grupo.id} data-testid={`grupo-${g.grupo.id}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: g.grupo.cor }} />
-                  <span className="text-sm font-semibold">{g.grupo.rotulo}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {g.fabricas.length} {g.fabricas.length === 1 ? 'fábrica' : 'fábricas'} · score do grupo{' '}
-                    <span className="font-mono font-semibold text-foreground">{g.score}</span>
-                  </span>
-                </div>
-                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-                  {g.fabricas.map((f) => cardFabrica(f, rotuloFabrica(f.name)))}
-                </div>
-              </section>
-            ))}
+             mini-cards. A medalha da fábrica é a posição no ranking geral.
+
+             Grade única de 4 colunas (xl): cada grupo ocupa uma coluna por
+             fábrica, e o `dense` encaixa o grupo pequeno no buraco da linha
+             de cima — Sustentação (4) numa linha, Evolução (3) + Híbrida (1)
+             na outra, sem cartão sozinho a meia largura (24/11/2026). A ordem
+             dos grupos segue o score; só a posição na grade se ajusta. */
+          <div className="grid grid-cols-1 gap-x-3 gap-y-4 xl:grid-cols-4 xl:grid-flow-row-dense">
+            {grupos.map((g) => {
+              const n = Math.max(1, Math.min(COLUNAS_MESA, g.fabricas.length));
+              return (
+                <section key={g.grupo.id} data-testid={`grupo-${g.grupo.id}`} className={`min-w-0 ${SPAN_MESA[n]}`}>
+                  <div className="flex items-center gap-x-2 gap-y-0.5 mb-2 flex-wrap">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: g.grupo.cor }} />
+                    <span className="text-sm font-semibold">{g.grupo.rotulo}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {g.fabricas.length} {g.fabricas.length === 1 ? 'fábrica' : 'fábricas'} · score do grupo{' '}
+                      <span className="font-mono font-semibold text-foreground">{g.score}</span>
+                    </span>
+                  </div>
+                  <div className={`grid gap-3 grid-cols-1 ${COLS_MESA[n]}`}>
+                    {g.fabricas.map((f) => cardFabrica(f, rotuloFabrica(f.name)))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
         <p className="text-[11px] text-muted-foreground mt-2">

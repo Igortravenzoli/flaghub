@@ -117,6 +117,8 @@ export function FabricaExecutivoTab({ fab, selectedSprintCode, dateFrom, dateTo,
         <DesempenhoTrendChart height={220} />
         <p className="text-[11px] text-muted-foreground border-t pt-2">
           % Entrega (concluído ÷ escopo, ↑ melhor) · % Retorno QA · % Bug (↓ melhor) — últimas 8 sprints.
+          É a visão <b>geral do quadro</b>: todas as fábricas juntas, mais os itens <b>sem fábrica</b> — a linha de
+          cada fábrica e de cada grupo está no ranking abaixo.
           Os três percentuais são <b>sobre o escopo da sprint</b> (régua do guia de indicadores) e vêm das
           <b> fotografias seladas</b>: a sprint em curso não tem ponto aqui.
           Escopo = o mesmo do card <b>Itens no escopo</b> (PBI + Bug do quadro no corte).
