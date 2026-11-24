@@ -1,4 +1,10 @@
-// devops-sync-timelog v3.5 — Background processing via EdgeRuntime.waitUntil()
+// devops-sync-timelog v3.6 — Background processing via EdgeRuntime.waitUntil()
+// v3.6: falha passageira do diff não regrava mais a base. Em 30 dias foram 52
+//       quedas por "statement timeout" (45 nos minutos :15 e :45, banco travado
+//       por alguns segundos), cada uma regravando ~9,7 mil lançamentos. Agora a
+//       RPC ganha uma nova tentativa e, se falhar de novo, a rodada é pulada; só
+//       regrava tudo com a função ausente, no modo completo ou depois de três
+//       puladas seguidas. Regra e motivo em _shared/timelogContorno.ts.
 // v3.5: grava só o que mudou (migration 20260928120000, EG-4). A Fase A reenviava
 //       os ~8,6 mil lançamentos a cada 15 min — 483 MB/dia de upload, mais o WAL
 //       do ON CONFLICT — para o trigger cancelar quase tudo. Agora a edge manda
@@ -36,6 +42,15 @@ import {
   impressaoLancamento,
   resumirPorBalde,
 } from '../_shared/timelogImpressao.ts'
+import {
+  comNovaTentativa,
+  decidirSemDiff,
+  type ErroRpc,
+  falhaEstrutural,
+  MODO_PULADO,
+  puladasSeguidas,
+  PULADAS_ANTES_DE_REGRAVAR,
+} from '../_shared/timelogContorno.ts'
 
 const TIMELOG_BASE =
   'https://extmgmt.dev.azure.com/FlagIW/_apis/ExtensionManagement/InstalledExtensions/TechsBCN/DevOps-TimeLog/Data/Scopes/Default/Current/Collections'
@@ -197,7 +212,8 @@ interface PlanoGravacao {
   /** motivo para o run sair como erro no hub_sync_runs (além da guarda) */
   falha: string | null
   diff: {
-    modo: 'baldes' | 'completo' | 'legado'
+    /** 'pulado' = diff falhou e a rodada não gravou nada (v3.6) */
+    modo: 'baldes' | 'completo' | 'legado' | typeof MODO_PULADO
     baldes: number
     divergentes: number
     enviados: number
@@ -234,12 +250,15 @@ async function planejarGravacao(sb: SupabaseAdmin, rowsWithId: NormalizedRow[], 
   }))
   const resumo = resumirPorBalde(itens)
 
-  const { data: d1, error: e1 } = await sb.rpc('rpc_timelog_baldes_divergentes', {
-    p_baldes: resumo.baldes,
-    p_qtds: resumo.qtds,
-    p_somas: resumo.somas,
-  })
-  if (e1) return caminhoLegado(sb, rowsWithId, `rodada 1: ${motivoFalhaRpc(e1)}`)
+  const { data: d1, error: e1, tentativas: t1 } = await comNovaTentativa<Rodada1>(() =>
+    sb.rpc('rpc_timelog_baldes_divergentes', {
+      p_baldes: resumo.baldes,
+      p_qtds: resumo.qtds,
+      p_somas: resumo.somas,
+    })
+  )
+  if (e1) return semDiff(sb, rowsWithId, modo, `rodada 1, ${t1} tentativa(s): ${motivoFalhaRpc(e1)}`, e1)
+  if (t1 > 1) console.warn('[timelog] Rodada 1 do diff só passou na segunda tentativa')
   const r1 = d1 as Rodada1
 
   // No modo completo todo balde vai para a rodada 2, inclusive os que só existem
@@ -268,13 +287,18 @@ async function planejarGravacao(sb: SupabaseAdmin, rowsWithId: NormalizedRow[], 
 
   const naRodada2 = new Set(divergentes)
   const enviados = itens.filter((x) => naRodada2.has(baldeDoLancamento(x.id)))
-  const { data: d2, error: e2 } = await sb.rpc('rpc_timelog_sincronizar_baldes', {
-    p_baldes: divergentes,
-    p_ids: enviados.map((x) => x.id),
-    p_impressoes: enviados.map((x) => x.impressao.slice(0, IMPRESSAO_ENVIADA)),
-    p_total_payload: itens.length,
-  })
-  if (e2) return caminhoLegado(sb, rowsWithId, `rodada 2: ${motivoFalhaRpc(e2)}`)
+  // A rodada 2 pode repetir sem risco: recebe o mesmo payload e reconcilia os
+  // órfãos por diferença de conjuntos, então a segunda chamada chega ao mesmo estado.
+  const { data: d2, error: e2, tentativas: t2 } = await comNovaTentativa<Rodada2>(() =>
+    sb.rpc('rpc_timelog_sincronizar_baldes', {
+      p_baldes: divergentes,
+      p_ids: enviados.map((x) => x.id),
+      p_impressoes: enviados.map((x) => x.impressao.slice(0, IMPRESSAO_ENVIADA)),
+      p_total_payload: itens.length,
+    })
+  )
+  if (e2) return semDiff(sb, rowsWithId, modo, `rodada 2, ${t2} tentativa(s): ${motivoFalhaRpc(e2)}`, e2)
+  if (t2 > 1) console.warn('[timelog] Rodada 2 do diff só passou na segunda tentativa')
   const { alterados, baldes: _baldes, enviados: _enviados, ...orfaos } = d2 as Rodada2
   const gravar = new Set(alterados)
 
@@ -292,11 +316,62 @@ async function planejarGravacao(sb: SupabaseAdmin, rowsWithId: NormalizedRow[], 
   }
 }
 
+/** Quantas das últimas rodadas deste job foram puladas em sequência (v3.6). */
+async function puladasAnteriores(sb: SupabaseAdmin): Promise<number> {
+  const { data: job } = await sb
+    .from('hub_sync_jobs')
+    .select('id')
+    .eq('job_key', 'devops-sync-timelog')
+    .maybeSingle()
+  if (!job?.id) return 0
+  const { data, error } = await sb
+    .from('hub_sync_runs')
+    .select('meta')
+    .eq('job_id', job.id)
+    .order('started_at', { ascending: false })
+    .limit(PULADAS_ANTES_DE_REGRAVAR)
+  // Se nem esta leitura passa, o banco segue travado: conta zero e a rodada é pulada.
+  if (error || !data) return 0
+  return puladasSeguidas(data.map((r) => (r.meta as { diff?: { modo?: string } } | null)?.diff?.modo))
+}
+
+/**
+ * O diff falhou mesmo com a nova tentativa. Falha passageira pula a rodada: nada
+ * é regravado e a próxima, em 15 min, compara de novo. Regravar tudo fica para a
+ * função ausente, o modo completo e a terceira pulada seguida
+ * (_shared/timelogContorno.ts). Nos dois casos o run sai como erro.
+ */
+async function semDiff(
+  sb: SupabaseAdmin,
+  rowsWithId: NormalizedRow[],
+  modo: ModoSync,
+  motivo: string,
+  err: ErroRpc,
+): Promise<PlanoGravacao> {
+  const modoCompleto = modo === 'completo'
+  const puladasAntes = falhaEstrutural(err) || modoCompleto ? 0 : await puladasAnteriores(sb)
+  if (decidirSemDiff(err, { modoCompleto, puladasAntes }) === 'regravar') {
+    return caminhoLegado(
+      sb,
+      rowsWithId,
+      puladasAntes > 0 ? `${motivo}; ${puladasAntes} rodadas puladas em sequência antes desta` : motivo,
+    )
+  }
+  console.warn(`[timelog] Diff por balde indisponível, rodada pulada (${puladasAntes + 1}ª seguida): ${motivo}`)
+  return {
+    paraGravar: [],
+    orfaos: null,
+    falha: `Diff por balde indisponível (${motivo}); rodada pulada, nada foi regravado ` +
+      `(${puladasAntes + 1}ª seguida). A próxima rodada compara de novo.`,
+    diff: { modo: MODO_PULADO, baldes: 0, divergentes: 0, enviados: 0, alterados: 0 },
+  }
+}
+
 /**
  * Caminho da v3.4: regrava tudo (o trigger cancela o que não mudou) e reconcilia
- * os órfãos com os ids do payload inteiro (EG-3). Só roda quando o diff por
- * balde falha; o run sai como erro para aparecer no SyncCentral, porque a
- * economia de upload sumiu.
+ * os órfãos com os ids do payload inteiro (EG-3). Desde a v3.6 só roda quando
+ * `semDiff` decide regravar; o run sai como erro para aparecer no SyncCentral,
+ * porque a economia de upload sumiu.
  */
 async function caminhoLegado(sb: SupabaseAdmin, rowsWithId: NormalizedRow[], motivo: string): Promise<PlanoGravacao> {
   console.error(`[timelog] Diff por balde indisponível, regravando tudo: ${motivo}`)
