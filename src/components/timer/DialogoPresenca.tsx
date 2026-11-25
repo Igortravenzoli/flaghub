@@ -1,4 +1,6 @@
-import { UserCheck } from 'lucide-react';
+import { useState } from 'react';
+import { BellRing, UserCheck } from 'lucide-react';
+import { pedirPermissaoDoAviso, permissaoDoAviso } from '@/lib/timerAtencao';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +28,7 @@ import { horaCurta, presencaPerguntarEm, relogio } from '@/lib/timerRelogio';
  */
 export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
   const { rodandoTodos, referencia, estado, perguntarPresenca, prazoPresencaMs, agoraServidor, acoes, ausencia } = motor;
+  const [permissao, setPermissao] = useState(permissaoDoAviso);
   if (!referencia || !estado) return null;
 
   const varios = rodandoTodos.length > 1;
@@ -92,6 +95,21 @@ export function DialogoPresenca({ motor }: { motor: MotorTimer }) {
             {porAusencia ? ', quando o computador parou de ser usado.' : ', a hora da pergunta.'}
           </p>
         </div>
+        {/* Só no navegador que ainda não respondeu ao pedido: no app desktop o
+            aviso do sistema já vem liberado. */}
+        {permissao === 'default' && (
+          // dentro de um div: o DialogContent esconde botão que seja filho direto (o X de fechar)
+          <div className="flex justify-center">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              onClick={() => void pedirPermissaoDoAviso(true).then(setPermissao)}
+            >
+              <BellRing className="h-3.5 w-3.5" />
+              Avisar também fora desta aba, na próxima vez
+            </button>
+          </div>
+        )}
         <DialogFooter className="gap-2 sm:gap-0">
           <Button
             variant="outline"

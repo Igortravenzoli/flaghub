@@ -40,6 +40,10 @@ const MARGEM_MINI = 12;
 // Antes do ready: o FlagHub reconhece o app por aqui.
 app.userAgentFallback = `${app.userAgentFallback} TimerFlag/${app.getVersion()}`;
 
+// Windows: sem o identificador do app (o mesmo appId do instalador), o aviso
+// do sistema que a tela dispara quando pergunta algo não aparece.
+if (process.platform === 'win32') app.setAppUserModelId('br.com.flag.timer');
+
 // Sem aceleração por GPU (17/11/2026): quando o processo de GPU cai (depois de
 // suspender, ou com alguns drivers), a janela transparente do mini fica com as
 // quinas pretas e para de redesenhar: o relógio congela. Testado no Windows: sem
@@ -108,7 +112,10 @@ function criarPrincipal(): BrowserWindow {
     mostrarMini();
   });
   win.on('show', () => esconderMini());
-  win.on('focus', () => win.flashFrame(false));
+  win.on('focus', () => {
+    win.flashFrame(false);
+    soltarAtencao();
+  });
   void win.loadURL(URL_TIMER);
   return win;
 }
@@ -190,6 +197,26 @@ function mostrarPrincipal() {
   esconderMini();
 }
 
+// A tela está perguntando algo ("Ainda está nesta tarefa?", "Você está aí?"):
+// a janela completa vem para cima das outras e FICA, mesmo quando o Windows
+// nega o foco, até a pessoa clicar nela ou a pergunta acabar (1.0.6; pedido do
+// Igor, 25/11/2026: com a pessoa em outro programa, só a barra de tarefas
+// piscando passava batido).
+let emAtencao = false;
+
+function chamarAtencao() {
+  mostrarPrincipal();
+  if (!principal || principal.isDestroyed() || principal.isFocused()) return;
+  emAtencao = true;
+  principal.setAlwaysOnTop(true, 'floating');
+}
+
+function soltarAtencao() {
+  if (!emAtencao) return;
+  emAtencao = false;
+  if (principal && !principal.isDestroyed()) principal.setAlwaysOnTop(false);
+}
+
 function montarBandeja() {
   const icone = nativeImage.createFromPath(ICONE_BANDEJA);
   bandeja = new Tray(icone.isEmpty() ? nativeImage.createFromPath(ICONE).resize({ width: 16, height: 16 }) : icone);
@@ -260,6 +287,11 @@ ipcMain.on('janela:abrir-completo', (e) => {
 });
 ipcMain.on('janela:abrir-mini', (e) => {
   if (remetenteConhecido(e)) mostrarMini();
+});
+ipcMain.on('janela:chamar-atencao', (e, ativo: unknown) => {
+  if (!remetenteConhecido(e)) return;
+  if (ativo === true) chamarAtencao();
+  else soltarAtencao();
 });
 
 // ─── ciclo de vida ──────────────────────────────────────────────────────────

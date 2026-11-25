@@ -7,10 +7,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
 import { detectarCliente, detectarPlataforma, ehCelular, versaoDesktop } from '@/lib/timerAcesso';
 import { avisarEstadoMudou, CHAVE_ESTADO_MUDOU, lerPausaSistema, ponteDesktop, type MotivoSistema } from '@/lib/timerDesktop';
+import { chamarAtencao, pedirPermissaoDoAviso, textoDoAviso, type TextoDoAviso } from '@/lib/timerAtencao';
 import { temDeteccaoAusencia } from '@/lib/timerPwa';
 import { gravarSelecao, lerSelecao } from '@/lib/timerSelecao';
 import {
   aLancarDoItem,
+  AUSENCIA_TOLERANCIA_MS,
   ausenciaVencida,
   classificarLacuna,
   desvioServidor,
@@ -109,6 +111,9 @@ export function useAcoesTimer() {
 
   const iniciar = useMutation({
     mutationFn: (item: IniciarTimer) => {
+      // Iniciar é um clique: a hora certa de pedir o aviso do sistema, que
+      // depois chama a pessoa quando o Timer perguntar algo (uma vez só).
+      void pedirPermissaoDoAviso();
       const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
       const path = typeof window !== 'undefined' ? window.location.pathname : '/timer';
       return rpc('timer_iniciar', {
@@ -631,6 +636,22 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
       : null;
   useEffect(() => {
     if (chavePergunta) ponteDesktop()?.abrirCompleto();
+  }, [chavePergunta]);
+
+  // E chama a atenção de quem está em outra tela: aviso do sistema, toque e o
+  // ícone da aba piscando, até responder (pedido do Igor, 25/11/2026).
+  const textoPerguntaRef = useRef<TextoDoAviso | null>(null);
+  textoPerguntaRef.current = perguntando
+    ? textoDoAviso(
+        perguntarAusencia ? 'ausencia' : 'presenca',
+        rodandoTodos,
+        perguntarAusencia ? AUSENCIA_TOLERANCIA_MS / 60_000 : (estado?.regras.presenca_tolerancia_seg ?? 600) / 60,
+      )
+    : null;
+  useEffect(() => {
+    const texto = textoPerguntaRef.current;
+    if (!chavePergunta || !texto) return;
+    return chamarAtencao({ chave: chavePergunta, texto });
   }, [chavePergunta]);
 
   // Título da aba: o tempo correndo, ou o pedido de confirmação.
