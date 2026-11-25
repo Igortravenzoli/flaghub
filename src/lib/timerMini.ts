@@ -1,10 +1,10 @@
 /**
  * O que o mini timer mostra (25/11/2026).
  *
- *  • Parado: a pílula diz "Sem timer ativo". O ▶ de retomar a última tarefa
- *    escolhida só existe se a demanda dela continua ABERTA; o nome dela vai na
- *    dica do botão, não na pílula. Antes o mini lia só a escolha guardada no
- *    navegador e seguia oferecendo o ▶ numa demanda já encerrada.
+ *  • Parado: o ▶ de retomar a última tarefa escolhida só existe se a demanda
+ *    dela continua ABERTA, e a pílula diz "Retomar: <tarefa>"; sem isso, diz
+ *    "Sem timer ativo". Antes o mini lia só a escolha guardada no navegador e
+ *    seguia oferecendo o ▶ numa demanda já encerrada.
  *  • Com timers em paralelo: mostra um por vez, com "1/2"; o clique passa ao
  *    próximo. Pausar e Encerrar valem para o que está à vista.
  */
@@ -29,6 +29,17 @@ export function selecaoAberta<S extends { id: number }>(sel: S | null, demandasA
 export function rotuloRetomar(sel: { id: number; title?: string | null }): string {
   const titulo = (sel.title ?? '').trim();
   return titulo ? `Retomar #${sel.id} ${titulo}` : `Retomar #${sel.id}`;
+}
+
+/**
+ * O texto da pílula sem timer rodando: o que o ▶ vai retomar, ou "Sem timer
+ * ativo" quando não há nada a retomar. O "Retomar:" na frente é o que separa
+ * isto de um timer aberto na tarefa.
+ */
+export function textoDoMiniParado(retomavel: { id: number; title?: string | null } | null): string {
+  if (!retomavel) return 'Sem timer ativo';
+  const titulo = (retomavel.title ?? '').trim();
+  return `Retomar: ${titulo || `#${retomavel.id}`}`;
 }
 
 /** Qual dos que rodam o mini mostra: o preferido, se ainda roda; senão o mais recente (o primeiro). */

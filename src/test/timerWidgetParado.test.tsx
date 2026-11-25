@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  * Mini timer (/timer/widget) sem timer rodando — 25/11/2026.
  *
  * Parado, a pílula mostrava o nome da última tarefa escolhida e "00:00:00" ao
- * lado: parecia um timer aberto naquela tarefa. Agora diz "Sem timer ativo", o
- * relógio some e o que o ▶ retoma fica na dica do botão.
+ * lado: parecia um timer aberto naquela tarefa. Agora o relógio some e a
+ * pílula diz "Retomar: <tarefa>" quando há o que retomar, ou "Sem timer ativo".
  */
 
 let motor: Record<string, unknown>;
@@ -46,11 +46,13 @@ const guardarEscolha = () =>
 afterEach(() => localStorage.clear());
 
 describe('mini timer parado', () => {
-  it('com demanda aberta para retomar: diz "Sem timer ativo", sem nome nem relógio; o ▶ diz o que retoma', () => {
+  it('com demanda aberta para retomar: diz "Retomar: <tarefa>", sem relógio; o ▶ diz o que retoma', () => {
     guardarEscolha();
     montar({ rodando: false, demandas: [19300] });
-    expect(screen.getByText('Sem timer ativo')).toBeTruthy();
+    expect(screen.getByText("Retomar: Refinamento KPI's")).toBeTruthy();
+    // o nome sozinho, como num timer rodando, não aparece
     expect(screen.queryByText("Refinamento KPI's")).toBeNull();
+    expect(screen.queryByText('Sem timer ativo')).toBeNull();
     expect(screen.queryByText('00:00:00')).toBeNull();
     expect(screen.getByRole('button', { name: "Retomar #19300 Refinamento KPI's" })).toBeTruthy();
   });
