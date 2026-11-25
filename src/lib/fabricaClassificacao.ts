@@ -104,6 +104,26 @@ export function itemEhNaoPriorizado(item: ItemClassificavel): boolean {
   return ehNaoPriorizado(classificaDemanda(item));
 }
 
+/**
+ * Marcas de tag de um item, cada uma por si (sem a precedência de
+ * `classificaDemanda`): um item com Avião e Transbordo conta nas duas.
+ * Usado no placar do Timer (25/11/2026), que conta e filtra por tag.
+ */
+export type MarcaTag = 'aviao' | 'retorno_qa' | 'priorizacao' | 'transbordo';
+
+const RE_AVIAO_TRANSBORDADO = /(^|;)\s*avi[aã]o\s+transbordad[oa]\s*(;|$)/i;
+
+export function marcasDeTag(tags: string | null | undefined): MarcaTag[] {
+  const t = tags || '';
+  if (!t) return [];
+  const m: MarcaTag[] = [];
+  if (RE_AVIAO.test(t)) m.push('aviao');
+  if (RE_RETORNO_QA.test(t)) m.push('retorno_qa');
+  if (RE_PRIORIZACAO.test(t)) m.push('priorizacao');
+  if (RE_TRANSBORDO.test(t) || RE_AVIAO_TRANSBORDADO.test(t)) m.push('transbordo');
+  return m;
+}
+
 /** Rótulo de UI, único no produto. */
 export function rotuloCategoria(cat: CategoriaDemanda): string {
   switch (cat) {
