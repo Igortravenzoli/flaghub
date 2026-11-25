@@ -254,6 +254,55 @@ export function estadoConcluido(estados: unknown): string {
   return (achado?.name as string | undefined) ?? 'Done'
 }
 
+// 25/11/2026 (pedido do Igor): PBI e Bug também andam pelo Timer. Quem muda o
+// estado é o responsável pelo item, e o PBI tem mais de um passo até o fim
+// (New › Em desenvolvimento › Aguardando Teste › … › Done): no encerrar, a
+// pessoa escolhe para onde ele vai, e o padrão é o estado de conclusão.
+
+/** Tipos cujo estado o Timer muda no encerrar. */
+export const TIPOS_QUE_ANDAM = ['Task', 'Product Backlog Item', 'Bug']
+
+const ORDEM_CATEGORIA: Record<string, number> = { Proposed: 0, InProgress: 1, Resolved: 2, Completed: 3 }
+
+export interface EstadoDoTipo {
+  nome: string
+  categoria: string
+}
+
+/**
+ * Os estados do tipo que o Timer pode gravar: todos menos a categoria Removed,
+ * na ordem do fluxo (a categoria manda; dentro dela, a ordem do DevOps).
+ */
+export function estadosDoTipo(estados: unknown): EstadoDoTipo[] {
+  const lista = (estados as { value?: { name?: unknown; category?: unknown }[] } | null)?.value ?? []
+  return lista
+    .filter((e) => typeof e?.name === 'string' && (e.name as string).trim() !== '' && e.category !== 'Removed')
+    .map((e, i) => ({ nome: e.name as string, categoria: typeof e.category === 'string' ? e.category : '', i }))
+    .sort((a, b) => (ORDEM_CATEGORIA[a.categoria] ?? 1) - (ORDEM_CATEGORIA[b.categoria] ?? 1) || a.i - b.i)
+    .map(({ nome, categoria }) => ({ nome, categoria }))
+}
+
+/**
+ * Para onde o item vai no encerrar.
+ *   • com `pedido` (o estado escolhido na tela): tem de ser um estado do tipo,
+ *     fora da categoria Removed; devolve o nome como o DevOps escreve.
+ *   • sem `pedido`: a Task vai para o estado de conclusão (como desde 19/11);
+ *     PBI e Bug não mudam (`destino: null`) — só andam com escolha explícita.
+ */
+export function destinoDoEncerrar(
+  tipo: string,
+  pedido: unknown,
+  estados: unknown,
+): { ok: true; destino: string | null } | { ok: false; motivo: 'estado_invalido' } {
+  if (pedido === undefined || pedido === null || pedido === '') {
+    return { ok: true, destino: tipo === 'Task' ? estadoConcluido(estados) : null }
+  }
+  if (typeof pedido !== 'string' || pedido.length > 100) return { ok: false, motivo: 'estado_invalido' }
+  const alvo = pedido.trim().toLowerCase()
+  const achado = estadosDoTipo(estados).find((e) => e.nome.toLowerCase() === alvo)
+  return achado ? { ok: true, destino: achado.nome } : { ok: false, motivo: 'estado_invalido' }
+}
+
 /**
  * A Task está atribuída a esta pessoa? Compara o GUID do DevOps e, sem ele, o
  * e-mail (uniqueName), sem diferenciar maiúsculas.

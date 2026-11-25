@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import { Maximize2, Pause, Play, Square } from 'lucide-react';
 import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
 import { useMotorTimer } from '@/hooks/useTimerRelogio';
+import { useTimerExibido } from '@/hooks/useTimerExibido';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
 import { lerSelecao } from '@/lib/timerSelecao';
+import { dicaParalelos, selecaoAberta } from '@/lib/timerMini';
 import { relogio } from '@/lib/timerRelogio';
 import { pedirEncerrar, ponteDesktop } from '@/lib/timerDesktop';
 import { PilulaMini, BotaoMini, useFundoTransparente } from '@/components/timer/PilulaMini';
@@ -13,7 +15,14 @@ import { cn } from '@/lib/utils';
 /**
  * /timer/widget: o mini timer do app desktop (Electron), uma pílula escura e
  * translúcida sempre por cima. No navegador também funciona. Mesmo motor e
- * mesmas regras de /timer: iniciar usa a tarefa escolhida em /timer.
+ * mesmas regras de /timer.
+ *
+ * Parado, mostra a última tarefa escolhida em /timer para retomar — mas só
+ * enquanto a demanda dela está aberta. Encerrada, some: "Sem timer ativo"
+ * (25/11/2026; antes o ▶ seguia oferecendo a demanda já encerrada).
+ *
+ * Com timers em paralelo, mostra um por vez: o "1/2" passa ao próximo, e
+ * Pausar/Encerrar valem para o que está à vista.
  *
  * Encerrar pausa aqui e pede à janela completa o diálogo de lançamento (o
  * pedido atravessa pelo localStorage, que as duas janelas compartilham).
@@ -21,8 +30,8 @@ import { cn } from '@/lib/utils';
 export default function TimerWidget() {
   useFundoTransparente();
   const motor = useMotorTimer({ tituloDaAba: true });
-  const { rodando, rodandoTodos, segundos, acoes, carregando, somenteConsulta } = motor;
-  const outros = Math.max(0, rodandoTodos.length - 1);
+  const { rodandoTodos, acoes, carregando, somenteConsulta, estado } = motor;
+  const { exibido, posicao, total, segundos, proximo } = useTimerExibido(motor);
   const [selecionada, setSelecionada] = useState(() => lerSelecao());
 
   useEffect(() => {
@@ -36,17 +45,19 @@ export default function TimerWidget() {
   }, []);
 
   const ocupado = acoes.iniciar.isPending || acoes.pausar.isPending;
-  const alvo = rodando
-    ? { id: rodando.work_item_id, titulo: rodando.titulo }
-    : selecionada
-      ? { id: selecionada.id, titulo: selecionada.title ?? `#${selecionada.id}` }
+  // parado: só retoma demanda que segue aberta no servidor
+  const retomavel = exibido ? null : selecaoAberta(selecionada, estado?.demandas ?? null);
+  const alvo = exibido
+    ? { id: exibido.work_item_id, titulo: exibido.titulo }
+    : retomavel
+      ? { id: retomavel.id, titulo: retomavel.title ?? `#${retomavel.id}` }
       : null;
 
   const abrirCompleto = () => ponteDesktop()?.abrirCompleto();
 
   const encerrar = () => {
-    if (!rodando) return;
-    const item = { id: rodando.work_item_id, titulo: rodando.titulo };
+    if (!exibido) return;
+    const item = { id: exibido.work_item_id, titulo: exibido.titulo, tipo: exibido.tipo };
     acoes.pausar.mutate(
       { motivo: 'manual', workItemId: item.id },
       {
@@ -60,38 +71,42 @@ export default function TimerWidget() {
 
   return (
     <>
-      <PilulaMini ativo={!!rodando}>
+      <PilulaMini ativo={!!exibido}>
         <span
           // rodando: verde piscando leve, para mostrar que está em atividade
           className={cn(
             'h-2 w-2 shrink-0 rounded-full',
-            rodando ? 'animate-[pulse_2.4s_ease-in-out_infinite] bg-emerald-400' : 'bg-white/30',
+            exibido ? 'animate-[pulse_2.4s_ease-in-out_infinite] bg-emerald-400' : 'bg-white/30',
           )}
           aria-hidden
         />
         <span
-          className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/85"
+          className={cn('min-w-0 flex-1 truncate text-[13px] font-medium', alvo ? 'text-white/85' : 'text-white/55')}
           title={alvo ? `#${alvo.id} ${alvo.titulo}` : undefined}
         >
-          {carregando ? 'Timer Flag' : alvo ? alvo.titulo : 'Escolha uma tarefa'}
+          {carregando ? 'Timer Flag' : alvo ? alvo.titulo : 'Sem timer ativo'}
         </span>
-        {rodando && outros > 0 && (
-          <span
-            className="shrink-0 rounded-full bg-white/15 px-1.5 text-[11px] font-semibold tabular-nums text-white/85"
-            title={`Mais ${outros} ${outros === 1 ? 'timer rodando' : 'timers rodando'} em paralelo`}
+        {exibido && total > 1 && (
+          <button
+            type="button"
+            onClick={proximo}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className="shrink-0 rounded-full bg-white/15 px-1.5 text-[11px] font-semibold tabular-nums text-white/85 transition hover:bg-white/25"
+            title={dicaParalelos(rodandoTodos)}
+            aria-label={`Timer ${posicao + 1} de ${total} em paralelo: ver o próximo`}
           >
-            +{outros}
-          </span>
+            {posicao + 1}/{total}
+          </button>
         )}
-        <span className={cn('font-mono text-[13px] font-semibold tabular-nums', rodando ? 'text-white' : 'text-white/45')}>
+        <span className={cn('font-mono text-[13px] font-semibold tabular-nums', exibido ? 'text-white' : 'text-white/45')}>
           {relogio(segundos)}
         </span>
 
-        {rodando ? (
+        {exibido ? (
           <>
             <BotaoMini
               titulo="Pausar"
-              onClick={() => acoes.pausar.mutate({ motivo: 'manual', workItemId: rodando.work_item_id })}
+              onClick={() => acoes.pausar.mutate({ motivo: 'manual', workItemId: exibido.work_item_id })}
               disabled={ocupado}
             >
               <Pause className="h-3.5 w-3.5" />
@@ -102,19 +117,18 @@ export default function TimerWidget() {
               </BotaoMini>
             )}
           </>
-        ) : somenteConsulta ? null : (
+        ) : somenteConsulta || !retomavel ? null : (
           <BotaoMini
-            titulo="Iniciar"
+            titulo="Retomar"
             onClick={() =>
-              selecionada &&
               acoes.iniciar.mutate({
-                id: selecionada.id,
-                titulo: selecionada.title ?? `#${selecionada.id}`,
-                tipo: selecionada.work_item_type ?? 'Task',
-                projeto: selecionada.projeto,
+                id: retomavel.id,
+                titulo: retomavel.title ?? `#${retomavel.id}`,
+                tipo: retomavel.work_item_type ?? 'Task',
+                projeto: retomavel.projeto,
               })
             }
-            disabled={!selecionada || ocupado || carregando}
+            disabled={ocupado || carregando}
           >
             <Play className="h-3.5 w-3.5" />
           </BotaoMini>

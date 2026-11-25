@@ -96,7 +96,7 @@ export default function TimerHome() {
         /* segue */
       }
       void refazerSemana();
-      setAlvo({ id: p.id, titulo: p.titulo, encerrar: true });
+      setAlvo({ id: p.id, titulo: p.titulo, tipo: p.tipo ?? null, encerrar: true });
     };
     try {
       atender(localStorage.getItem(CHAVE_PEDIDO_ENCERRAR));
@@ -131,7 +131,7 @@ export default function TimerHome() {
   const lancarRodando = (item: { id: number; titulo: string }) =>
     motor.acoes.partir.mutate(item.id, { onSuccess: () => setAlvo({ ...item, encerrar: false }) });
   // Em andamento → Encerrar: pausa e abre o lançamento + encerramento.
-  const encerrarRodando = (item: { id: number; titulo: string }) =>
+  const encerrarRodando = (item: { id: number; titulo: string; tipo?: string | null }) =>
     motor.acoes.pausar.mutate(
       { motivo: 'manual', workItemId: item.id },
       { onSuccess: () => setAlvo({ ...item, encerrar: true }) },
@@ -189,7 +189,7 @@ export default function TimerHome() {
           podeRetomar={!somenteConsulta}
           onRetomar={retomar}
           onLancar={(d) => setAlvo({ id: d.work_item_id, titulo: d.titulo, encerrar: false })}
-          onEncerrar={(d) => setAlvo({ id: d.work_item_id, titulo: d.titulo, encerrar: true })}
+          onEncerrar={(d) => setAlvo({ id: d.work_item_id, titulo: d.titulo, tipo: d.tipo, encerrar: true })}
           className={COLUNA}
         />
 
