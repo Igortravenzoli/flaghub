@@ -250,7 +250,10 @@ export function FabricaTvView({ fab, sprintCode, periodLabel, dateFrom, dateTo }
                 <Legenda cor={COR_SERIE['Entrega']} rotulo="Entrega ↑" />
                 <Legenda cor={COR_SERIE['Bug']} rotulo="Bug ↓" />
                 <Legenda cor={COR_SERIE['Retorno QA']} rotulo="Retorno QA ↓" />
-                <span>fotos seladas · {sprintLabel ?? 'sprint'} em curso sem ponto</span>
+                {/* Regra de 24/11/2026: o número subiu porque passou a contar a volta
+                    do teste (o QA devolve para "New" sem a tag). Na parede, sem
+                    hover, a regra tem que estar escrita. */}
+                <span>retorno QA = tag ou volta do teste · fotos seladas · {sprintLabel ?? 'sprint'} em curso sem ponto</span>
               </div>
             </div>
             <div className="flex-1 min-h-0">
