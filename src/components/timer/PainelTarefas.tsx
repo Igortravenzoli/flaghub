@@ -21,6 +21,8 @@ import { lerArrasto, type AnotacaoArrastada } from '@/lib/timerArrastar';
 import { ordenarPorAbertura, soAbertos, type OrdemTasks } from '@/lib/ordemAbertura';
 import { BotaoOrdemAbertura } from '@/components/atividades/BotaoOrdemAbertura';
 import { SeletorTags } from '@/components/timer/SeletorTags';
+import { PlacarDemandas } from '@/components/timer/PlacarDemandas';
+import { bateFiltro, type FiltroPlacar } from '@/lib/timerPlacar';
 import { avisoTagsDescartadas, classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
 import { hojeISO, prazoSprint } from '@/lib/prazoSprint';
@@ -89,7 +91,13 @@ export function PainelTarefas({
   const hoje = hojeISO();
   const itens = useMemo(() => minhas.data?.itens ?? [], [minhas.data]);
   const ancestrais = useMemo(() => minhas.data?.ancestrais ?? [], [minhas.data]);
-  const filtrados = useMemo(() => filtrarAtividades(itens, ancestrais, busca), [itens, ancestrais, busca]);
+  // placar (25/11/2026): um chip ativo filtra a árvore por tipo ou tag
+  const [filtroPlacar, setFiltroPlacar] = useState<FiltroPlacar | null>(null);
+  const doPlacar = useMemo(
+    () => (filtroPlacar ? itens.filter((i) => bateFiltro(i, filtroPlacar)) : itens),
+    [itens, filtroPlacar],
+  );
+  const filtrados = useMemo(() => filtrarAtividades(doPlacar, ancestrais, busca), [doPlacar, ancestrais, busca]);
   const grupos = useMemo(() => agruparPorHierarquia(filtrados, ancestrais, hoje), [filtrados, ancestrais, hoje]);
 
   // Quadro minimizado: na primeira carga, só as épicas à vista.
@@ -229,6 +237,19 @@ export function PainelTarefas({
       </Cabeca>
       <Corpo className="space-y-4">
         {!embutido && campoBusca}
+        {!minhas.isLoading && (
+          <PlacarDemandas
+            itens={itens}
+            filtro={filtroPlacar}
+            onFiltro={(f) => {
+              setFiltroPlacar(f);
+              // filtrando, a árvore abre para mostrar o que bateu; limpando, volta às épicas
+              setRecolhidos(
+                f ? new Set() : new Set(chavesRecolhiveis(agruparPorHierarquia(filtrarAtividades(itens, ancestrais, busca), ancestrais, hoje))),
+              );
+            }}
+          />
+        )}
 
         {minhas.isLoading ? (
           <div className="space-y-2">
