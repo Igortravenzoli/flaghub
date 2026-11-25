@@ -73,14 +73,18 @@ export function ColunaAnotacoes({ emConversao, onVirarTask, onArrastar, classNam
                   onArrastar?.(a);
                 }}
                 onDragEnd={() => onArrastar?.(null)}
-                title="Arraste até um PBI para virar Task nele"
+                // a dica do cartão é o texto inteiro: na coluna estreita ele corta
+                // (pedido do Igor, 25/11/2026). "Arraste" ficou na alça.
+                title={editando?.id === a.id ? undefined : a.texto}
                 className={cn(
                   'group flex items-center gap-1 rounded-lg border bg-card py-1.5 pl-1 pr-1.5 text-sm transition-colors hover:bg-muted/50',
                   editando?.id !== a.id && 'cursor-grab active:cursor-grabbing',
                   emConversao === a.id ? 'border-flag-gold bg-flag-gold/10' : 'border-border',
                 )}
               >
-                <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground" aria-hidden />
+                <span className="flex shrink-0 items-center" title="Arraste até um PBI para virar Task nele">
+                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground" aria-hidden />
+                </span>
                 {editando?.id === a.id ? (
                   <Input
                     autoFocus
@@ -103,7 +107,8 @@ export function ColunaAnotacoes({ emConversao, onVirarTask, onArrastar, classNam
                   <button
                     type="button"
                     className="min-w-0 flex-1 truncate text-left font-medium"
-                    title="Clique para editar"
+                    title={a.texto}
+                    aria-label={`Editar a anotação "${a.texto}"`}
                     onClick={() => setEditando({ id: a.id, texto: a.texto })}
                   >
                     {a.texto}

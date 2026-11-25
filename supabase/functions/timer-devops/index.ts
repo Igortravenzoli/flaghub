@@ -30,8 +30,11 @@
 //   • relancar (fase 4): lançamento com erro — procura o documento pelo id
 //     ANTES de regravar; nunca repete POST às cegas.
 //   • concluir (19/11/2026): "Encerrar demanda" leva a Task ao estado de
-//     conclusão do processo (Done/Closed). Só Task, só atribuída à própria
-//     pessoa, só o campo System.State.
+//     conclusão do processo (Done/Closed). Só atribuída à própria pessoa, só
+//     o campo System.State. Desde 25/11/2026, PBI e Bug também andam, mas só
+//     com o `estado` escolhido na tela (um estado do tipo, nunca Removed).
+//   • estados (25/11/2026): só leitura — o tipo, o estado de hoje e os
+//     estados possíveis de um item, para o diálogo de encerrar.
 //
 // O único update de work item é o `concluir`, e não há consulta livre: o Timer
 // não vira um proxy do PAT. Toda op além de `ativar` exige timer_access ativo.
@@ -69,9 +72,11 @@ import {
   CAMPO_PRODUTO,
   CAMPOS_ITEM,
   descricaoHtml,
+  destinoDoEncerrar,
   ehRaiz,
   ESTADOS_FECHADOS,
   estadoConcluido,
+  estadosDoTipo,
   hojeSaoPaulo,
   idsDaWiql,
   idsDosFilhos,
@@ -80,6 +85,7 @@ import {
   PAI_PERMITIDO,
   paraItem,
   sprintOficial,
+  TIPOS_QUE_ANDAM,
   validarCriacao,
   wiqlBusca,
   wiqlFilhos,
@@ -614,36 +620,81 @@ async function camposDoProjeto(req: Request, corpo: Json, pat: string): Promise<
 
 // ─── concluir ───────────────────────────────────────────────────────────────
 
-async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
-  const id = Number(corpo.id)
-  if (!Number.isInteger(id) || id <= 0) return responder(req, 400, { ok: false, motivo: 'item_invalido' })
-
+/** O que o concluir e o estados precisam saber do item, lido ao vivo. */
+async function lerItemParaEstado(id: number, acesso: Acesso, pat: string) {
   const wi = (await lerAzure(
     `https://dev.azure.com/${ORG}/_apis/wit/workitems/${id}?fields=System.State,System.WorkItemType,System.AssignedTo,System.TeamProject&api-version=7.1`,
     pat,
   )) as { fields?: Record<string, unknown> }
   const f = wi.fields ?? {}
-  const tipo = typeof f['System.WorkItemType'] === 'string' ? (f['System.WorkItemType'] as string) : ''
-  const estado = typeof f['System.State'] === 'string' ? (f['System.State'] as string) : ''
-  const projeto = typeof f['System.TeamProject'] === 'string' ? (f['System.TeamProject'] as string) : ''
+  const texto = (k: string) => (typeof f[k] === 'string' ? (f[k] as string) : '')
+  return {
+    tipo: texto('System.WorkItemType'),
+    estado: texto('System.State'),
+    projeto: texto('System.TeamProject'),
+    atribuido: atribuidoA(f['System.AssignedTo'], acesso),
+  }
+}
 
-  // PBI e Bug não fecham por aqui; o encerrar segue normal no Timer
-  if (tipo !== 'Task') return responder(req, 200, { ok: true, mudou: false, motivo: 'nao_task' })
+function lerEstadosDoTipo(projeto: string, tipo: string, pat: string): Promise<unknown> {
+  return lerAzure(
+    `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/workitemtypes/${encodeURIComponent(tipo)}/states?api-version=7.1`,
+    pat,
+  )
+}
+
+// estados (25/11/2026): para o diálogo de encerrar oferecer o destino do
+// PBI/Bug. Só leitura; devolve o tipo, o estado de hoje, se o item é da pessoa
+// e os estados do tipo no processo do projeto (sem a categoria Removed).
+async function estadosDoItem(req: Request, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
+  const id = Number(corpo.id)
+  if (!Number.isInteger(id) || id <= 0) return responder(req, 400, { ok: false, motivo: 'item_invalido' })
+  const item = await lerItemParaEstado(id, acesso, pat)
+  const anda = TIPOS_QUE_ANDAM.includes(item.tipo)
+  const brutos = anda && item.projeto ? await lerEstadosDoTipo(item.projeto, item.tipo, pat) : null
+  return responder(req, 200, {
+    ok: true,
+    id,
+    tipo: item.tipo,
+    estado: item.estado,
+    atribuido: item.atribuido,
+    fechado: ESTADOS_FECHADOS.includes(item.estado),
+    estados: brutos ? estadosDoTipo(brutos) : [],
+    concluido: brutos ? estadoConcluido(brutos) : null,
+  })
+}
+
+async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
+  const id = Number(corpo.id)
+  if (!Number.isInteger(id) || id <= 0) return responder(req, 400, { ok: false, motivo: 'item_invalido' })
+  const pedido = corpo.estado
+
+  const { tipo, estado, projeto, atribuido } = await lerItemParaEstado(id, acesso, pat)
+
+  // Epic e Feature não andam por aqui; PBI e Bug só com o estado escolhido na
+  // tela (sem ele, o encerrar segue normal no Timer e o item fica como está)
+  if (!TIPOS_QUE_ANDAM.includes(tipo) || (tipo !== 'Task' && (pedido === undefined || pedido === null || pedido === ''))) {
+    return responder(req, 200, { ok: true, mudou: false, motivo: 'nao_task' })
+  }
   if (ESTADOS_FECHADOS.includes(estado)) return responder(req, 200, { ok: true, mudou: false, motivo: 'ja_fechado', estado })
-  if (!atribuidoA(f['System.AssignedTo'], acesso)) {
+  if (!atribuido) {
     return responder(req, 403, {
       ok: false,
       motivo: 'nao_atribuido',
-      mensagem: `A Task #${id} não está atribuída a você: feche no DevOps.`,
+      mensagem: `O item #${id} não está atribuído a você: mude o estado no DevOps.`,
     })
   }
 
-  const destino = estadoConcluido(
-    await lerAzure(
-      `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/workitemtypes/Task/states?api-version=7.1`,
-      pat,
-    ),
-  )
+  const decidido = destinoDoEncerrar(tipo, pedido, await lerEstadosDoTipo(projeto, tipo, pat))
+  if (!decidido.ok) {
+    return responder(req, 400, {
+      ok: false,
+      motivo: decidido.motivo,
+      mensagem: `O estado pedido não existe para o item #${id} no DevOps.`,
+    })
+  }
+  const destino = decidido.destino
+  if (!destino || destino === estado) return responder(req, 200, { ok: true, mudou: false, motivo: 'mesmo_estado', estado })
   // Escrita: SEM repetir 5xx (como no criar).
   const resp = await devopsFetch(
     `https://dev.azure.com/${ORG}/_apis/wit/workitems/${id}?api-version=7.1`,
@@ -660,7 +711,7 @@ async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Jso
     return responder(req, 422, {
       ok: false,
       motivo: 'devops_recusou',
-      mensagem: `O DevOps não aceitou mudar a Task #${id} para ${destino}.`,
+      mensagem: `O DevOps não aceitou mudar o item #${id} para ${destino}.`,
     })
   }
 
@@ -669,12 +720,12 @@ async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Jso
     evento: 'concluiu_work_item',
     origem: 'servidor',
     work_item_id: id,
-    detalhe: { de: estado, para: destino, projeto },
+    detalhe: { de: estado, para: destino, projeto, tipo },
   })
   if (error) console.warn('[timer-devops] trilha do concluir falhou:', error.message)
 
   cacheMinhas.apagar(userId)
-  return responder(req, 200, { ok: true, mudou: true, estado: destino })
+  return responder(req, 200, { ok: true, mudou: true, estado: destino, tipo })
 }
 
 // ─── Rec reunião ────────────────────────────────────────────────────────────
@@ -1018,7 +1069,7 @@ serve(async (req) => {
   if (corpo.op === 'ativar') return await ativar(req, quem.user, quem.token)
 
   const op = corpo.op
-  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'campos', 'reuniao', 'concluir']
+  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'campos', 'reuniao', 'concluir', 'estados']
   if (typeof op !== 'string' || !OPS.includes(op)) {
     return responder(req, 400, { ok: false, motivo: 'op_desconhecida' })
   }
@@ -1039,6 +1090,7 @@ serve(async (req) => {
     if (op === 'campos') return await camposDoProjeto(req, corpo, pat)
     if (op === 'reuniao') return await reuniao(req, quem.user.id, acesso, corpo, pat)
     if (op === 'concluir') return await concluir(req, quem.user.id, acesso, corpo, pat)
+    if (op === 'estados') return await estadosDoItem(req, acesso, corpo, pat)
     return await criar(req, quem.user.id, acesso, corpo, pat)
   } catch (e) {
     return erroDevops(req, e)

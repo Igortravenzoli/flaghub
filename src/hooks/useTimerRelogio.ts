@@ -8,6 +8,7 @@ import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
 import { detectarCliente, detectarPlataforma, ehCelular, versaoDesktop } from '@/lib/timerAcesso';
 import { avisarEstadoMudou, CHAVE_ESTADO_MUDOU, lerPausaSistema, ponteDesktop, type MotivoSistema } from '@/lib/timerDesktop';
 import { temDeteccaoAusencia } from '@/lib/timerPwa';
+import { gravarSelecao, lerSelecao } from '@/lib/timerSelecao';
 import {
   aLancarDoItem,
   ausenciaVencida,
@@ -250,17 +251,22 @@ export function useAcoesTimer() {
   // TM8: encerra a demanda (sai do Em espera); se estiver rodando, pausa antes.
   // Depois, a Task vai para Done no DevOps (19/11/2026). Falha no DevOps não
   // desfaz o encerrar: avisa e deixa o link para fechar à mão.
+  // PBI e Bug (25/11/2026) só mudam com `estado`, o destino escolhido no
+  // diálogo de encerrar; sem ele ficam como estão.
   const encerrarDemanda = useMutation({
-    mutationFn: async (workItemId: number) => {
-      const e = await rpc('timer_demanda_encerrar', { p_work_item_id: workItemId });
-      const devops = await concluirNoDevops(workItemId);
-      return { e, devops, workItemId };
+    mutationFn: async (p: { id: number; estado?: string | null }) => {
+      const e = await rpc('timer_demanda_encerrar', { p_work_item_id: p.id });
+      const devops = await concluirNoDevops(p.id, p.estado ?? null);
+      return { e, devops, workItemId: p.id };
     },
     onSuccess: ({ e, devops, workItemId }) => {
+      // demanda encerrada não é mais a "última escolhida": o mini timer deixa
+      // de oferecer o ▶ nela (25/11/2026)
+      if (lerSelecao()?.id === workItemId) gravarSelecao(null);
       gravar(e);
       void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'minhas'] });
-      if (devops.mudou) toast.success(`Task #${workItemId} marcada como ${devops.estado ?? 'Done'} no DevOps.`);
-      else if (!devops.ok) toast.warning(devops.mensagem ?? `Demanda encerrada, mas a Task #${workItemId} segue aberta no DevOps.`);
+      if (devops.mudou) toast.success(`#${workItemId} foi para ${devops.estado ?? 'Done'} no DevOps.`);
+      else if (!devops.ok) toast.warning(devops.mensagem ?? `Demanda encerrada, mas o item #${workItemId} não mudou de estado no DevOps.`);
     },
     onError: falhou,
   });
@@ -291,9 +297,14 @@ export interface RespostaConcluir {
   mensagem?: string;
 }
 
-/** Leva a Task para Done no DevOps (edge `concluir`). Nunca lança erro. */
-async function concluirNoDevops(id: number): Promise<RespostaConcluir> {
-  const { data, error } = await supabase.functions.invoke('timer-devops', { body: { op: 'concluir', id } });
+/**
+ * Leva a Task para Done no DevOps (edge `concluir`); com `estado`, leva o item
+ * (PBI e Bug inclusive) para o estado escolhido. Nunca lança erro.
+ */
+async function concluirNoDevops(id: number, estado: string | null = null): Promise<RespostaConcluir> {
+  const { data, error } = await supabase.functions.invoke('timer-devops', {
+    body: estado ? { op: 'concluir', id, estado } : { op: 'concluir', id },
+  });
   if (!error) return (data as RespostaConcluir) ?? { ok: false };
   const ctx = (error as { context?: Response }).context;
   if (ctx && typeof ctx.json === 'function') {

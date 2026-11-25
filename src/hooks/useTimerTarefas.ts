@@ -100,6 +100,37 @@ export function useFilhosTimer(id: number | null) {
   });
 }
 
+export interface EstadosDoItem {
+  id: number;
+  tipo: string;
+  /** o estado de hoje no DevOps */
+  estado: string;
+  /** o item está atribuído à pessoa (só assim o Timer muda o estado) */
+  atribuido: boolean;
+  fechado: boolean;
+  /** estados do tipo no processo do projeto, na ordem do fluxo (sem Removed) */
+  estados: { nome: string; categoria: string }[];
+  /** o estado de conclusão (Done/Closed) */
+  concluido: string | null;
+}
+
+/**
+ * Estado de hoje e estados possíveis de um item, lidos do DevOps na hora: o
+ * diálogo de encerrar usa para oferecer o destino do PBI/Bug (25/11/2026).
+ * `id` nulo = não consulta. Sem cache: o estado muda fora do Timer.
+ */
+export function useEstadosItemTimer(id: number | null) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['timer-tarefas', 'estados', user?.id ?? null, id],
+    enabled: !!user?.id && id != null,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    queryFn: () => chamar<EstadosDoItem>({ op: 'estados', id }),
+  });
+}
+
 export interface NovoItem {
   tipo: 'Task' | 'PBI';
   titulo: string;

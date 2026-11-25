@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, PictureInPicture2 } from 'lucide-react';
 import type { MotorTimer } from '@/hooks/useTimerRelogio';
+import { useTimerExibido } from '@/hooks/useTimerExibido';
+import { dicaParalelos } from '@/lib/timerMini';
 import { relogio } from '@/lib/timerRelogio';
 import { temMiniTimer } from '@/lib/timerPwa';
 import { ponteDesktop } from '@/lib/timerDesktop';
@@ -62,35 +64,53 @@ export function MiniTimer({ motor }: { motor: MotorTimer }) {
     setJanela(w);
   };
 
-  const { rodando, rodandoTodos, segundos, acoes } = motor;
-  const mais = rodandoTodos.length > 1 ? ` (+${rodandoTodos.length - 1})` : '';
-
   return (
     <>
       <BotaoIcone icone={PictureInPicture2} rotulo="Mini timer flutuante" variante="ghost" onClick={() => void abrir()} />
-      {janela &&
-        createPortal(
-          <div className="flex h-screen items-center gap-3 bg-[hsl(var(--sidebar-background))] px-3 text-[hsl(var(--sidebar-foreground))]">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-flag-gold" aria-hidden />
-            <div className="min-w-0 flex-1">
-              <p className="font-mono text-xl font-semibold leading-tight tabular-nums">{relogio(segundos)}</p>
-              <p className="truncate text-xs opacity-75">{rodando ? `#${rodando.work_item_id} ${rodando.titulo}${mais}` : 'Nada rodando'}</p>
-            </div>
-            {rodando && (
-              <button
-                type="button"
-                className="rounded-lg bg-white/10 p-2 hover:bg-white/20 disabled:opacity-50"
-                disabled={acoes.pausar.isPending}
-                onClick={() => acoes.pausar.mutate({ motivo: 'manual', workItemId: rodando.work_item_id })}
-                aria-label="Pausar"
-                title="Pausar"
-              >
-                <Pause className="h-4 w-4" />
-              </button>
-            )}
-          </div>,
-          janela.document.body,
-        )}
+      {janela && createPortal(<ConteudoMini motor={motor} />, janela.document.body)}
     </>
+  );
+}
+
+/**
+ * O que aparece na janela flutuante. Com timers em paralelo mostra um por vez:
+ * o "1/2" passa ao próximo e o Pausar vale para o que está à vista (25/11/2026).
+ */
+function ConteudoMini({ motor }: { motor: MotorTimer }) {
+  const { rodandoTodos, acoes } = motor;
+  const { exibido, posicao, total, segundos, proximo } = useTimerExibido(motor);
+  return (
+    <div className="flex h-screen items-center gap-3 bg-[hsl(var(--sidebar-background))] px-3 text-[hsl(var(--sidebar-foreground))]">
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${exibido ? 'bg-flag-gold' : 'bg-white/30'}`} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="font-mono text-xl font-semibold leading-tight tabular-nums">{relogio(segundos)}</p>
+        <p className="truncate text-xs opacity-75" title={exibido ? `#${exibido.work_item_id} ${exibido.titulo}` : undefined}>
+          {exibido ? `#${exibido.work_item_id} ${exibido.titulo}` : 'Sem timer ativo'}
+        </p>
+      </div>
+      {exibido && total > 1 && (
+        <button
+          type="button"
+          className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold tabular-nums hover:bg-white/20"
+          onClick={proximo}
+          title={dicaParalelos(rodandoTodos)}
+          aria-label={`Timer ${posicao + 1} de ${total} em paralelo: ver o próximo`}
+        >
+          {posicao + 1}/{total}
+        </button>
+      )}
+      {exibido && (
+        <button
+          type="button"
+          className="rounded-lg bg-white/10 p-2 hover:bg-white/20 disabled:opacity-50"
+          disabled={acoes.pausar.isPending}
+          onClick={() => acoes.pausar.mutate({ motivo: 'manual', workItemId: exibido.work_item_id })}
+          aria-label="Pausar"
+          title="Pausar"
+        >
+          <Pause className="h-4 w-4" />
+        </button>
+      )}
+    </div>
   );
 }

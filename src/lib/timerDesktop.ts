@@ -59,11 +59,16 @@ export interface PedidoEncerrar {
   id: number;
   titulo: string;
   ts: number;
+  /** tipo do work item, quando o mini sabe (o diálogo decide se oferece o estado do PBI) */
+  tipo?: string;
 }
 
-export function pedirEncerrar(item: { id: number; titulo: string }, agoraMs = Date.now()): void {
+export function pedirEncerrar(item: { id: number; titulo: string; tipo?: string | null }, agoraMs = Date.now()): void {
   try {
-    localStorage.setItem(CHAVE_PEDIDO_ENCERRAR, JSON.stringify({ id: item.id, titulo: item.titulo, ts: agoraMs }));
+    localStorage.setItem(
+      CHAVE_PEDIDO_ENCERRAR,
+      JSON.stringify({ id: item.id, titulo: item.titulo, ts: agoraMs, ...(item.tipo ? { tipo: item.tipo } : {}) }),
+    );
   } catch {
     /* sem storage: a pessoa encerra pela janela completa */
   }
@@ -78,7 +83,8 @@ export function lerPedidoEncerrar(bruto: string | null, agoraMs = Date.now()): P
     const ts = Number(o.ts);
     if (!Number.isInteger(id) || id <= 0 || typeof o.titulo !== 'string') return null;
     if (!Number.isFinite(ts) || agoraMs - ts > VALIDADE_PEDIDO_MS || ts > agoraMs + 5_000) return null;
-    return { id, titulo: o.titulo.slice(0, 300), ts };
+    const tipo = typeof o.tipo === 'string' && o.tipo.length > 0 && o.tipo.length <= 60 ? o.tipo : null;
+    return { id, titulo: o.titulo.slice(0, 300), ts, ...(tipo ? { tipo } : {}) };
   } catch {
     return null;
   }

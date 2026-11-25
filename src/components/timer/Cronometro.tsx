@@ -16,6 +16,7 @@ import {
   type TrechoRodando,
 } from '@/lib/timerRelogio';
 import { diaSP, lancadoHojeSeg } from '@/lib/timerLancamento';
+import { urlWorkItem } from '@/lib/timerSelecao';
 import { BotaoIcone, Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
 import { MiniTimer } from '@/components/timer/MiniTimer';
@@ -31,7 +32,7 @@ interface Props {
   /** Lançar: corta o trecho agora e lança o que falta, sem encerrar */
   onLancar: (item: { id: number; titulo: string }) => void;
   /** Encerrar: pausa, lança o que falta e encerra a demanda */
-  onEncerrar: (item: { id: number; titulo: string }) => void;
+  onEncerrar: (item: { id: number; titulo: string; tipo?: string | null }) => void;
   className?: string;
 }
 
@@ -109,7 +110,7 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onReuniao,
               podeLancar={podeLancar}
               onPausar={() => acoes.pausar.mutate({ motivo: 'manual', workItemId: r.work_item_id })}
               onLancar={() => onLancar({ id: r.work_item_id, titulo: r.titulo })}
-              onEncerrar={() => onEncerrar({ id: r.work_item_id, titulo: r.titulo })}
+              onEncerrar={() => onEncerrar({ id: r.work_item_id, titulo: r.titulo, tipo: r.tipo })}
             />
           ))}
         </div>
@@ -200,7 +201,16 @@ function CartaoRodando({
             {rodando.titulo}
           </p>
           <p className="truncate text-xs text-muted-foreground">
-            <span className="font-mono">#{rodando.work_item_id}</span> · a lançar
+            <a
+              href={urlWorkItem(rodando.work_item_id, rodando.projeto)}
+              target="_blank"
+              rel="noreferrer"
+              title={`Abrir #${rodando.work_item_id} no Azure DevOps`}
+              className="font-mono underline-offset-2 hover:text-foreground hover:underline focus-visible:underline"
+            >
+              #{rodando.work_item_id}
+            </a>{' '}
+            · a lançar
           </p>
         </div>
         <span className={cn('shrink-0 font-mono font-semibold tabular-nums', compacto ? 'text-base' : 'text-xl')} aria-live="off">

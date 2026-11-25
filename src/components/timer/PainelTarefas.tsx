@@ -12,7 +12,7 @@ import {
   ArvoreAtividades,
   IconeTipo,
   Aviso,
-  LinkDevops,
+  IdDevops,
   RotuloSprint,
   SinalAlvo,
   type AlvoAnotacao,
@@ -520,7 +520,7 @@ function LinhaRemota({
             <span className="w-3.5 shrink-0" />
           )}
           <IconeTipo tipo={tipo} />
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{item.id}</span>
+          <IdDevops item={item} className="text-[11px] text-muted-foreground" />
           <span className="block min-w-0 flex-1 truncate text-sm" title={item.title ?? ''}>
             {item.title}
           </span>
@@ -540,7 +540,6 @@ function LinhaRemota({
               onNovo={(t) => setCriando({ tipo: t, pai: item })}
             />
           )}
-          <LinkDevops item={item} />
         </div>
       </AlvoPbi>
       {formPara(item, tipo === 'Feature' ? 'PBI' : 'Task')}

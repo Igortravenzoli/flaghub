@@ -340,14 +340,13 @@ function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: strin
             </span>
           </div>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-[1.375rem] text-[11px] text-muted-foreground">
-            <span className="shrink-0 font-mono">#{pbi.id}</span>
+            <IdDevops item={pbi} />
             {pbi.state && <span className="min-w-0 truncate">{pbi.state}</span>}
             {grupo.prazo && <RotuloSprint prazo={grupo.prazo} tags={pbi.tags} />}
             <span className="ml-auto flex shrink-0 items-center gap-0.5">
               <SinalAlvo item={pbi} alvo={acoes?.alvo} />
               {acoes?.ordenarTasks && grupo.tasks.length > 1 && <BotaoOrdemAbertura ordem={ordem} onMudar={setOrdem} />}
               {!acoes?.alvo?.escolhendo && !acoes?.alvo?.arrastando && acoes?.pbi?.(pbi)}
-              <LinkDevops item={pbi} />
             </span>
           </div>
         </AlvoPbi>
@@ -367,13 +366,10 @@ function BlocoPbiCompacto({ grupo, hoje, acoes }: { grupo: GrupoPbi; hoje: strin
               </span>
             </div>
             <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-3 text-[11px] text-muted-foreground">
-              <span className="shrink-0 font-mono">#{t.id}</span>
+              <IdDevops item={t} />
               {t.state && <span className="min-w-0 truncate">{t.state}</span>}
               {mostrarSprintDaTask(t, grupo, p) && <RotuloSprint prazo={p} tags={t.tags} />}
-              <span className="ml-auto flex shrink-0 items-center gap-0.5">
-                {acoes?.task?.(t)}
-                <LinkDevops item={t} />
-              </span>
+              <span className="ml-auto flex shrink-0 items-center gap-0.5">{acoes?.task?.(t)}</span>
             </div>
           </div>
         );
@@ -528,6 +524,26 @@ function PontoEstado({ state }: { state: string | null }) {
         ? 'bg-muted-foreground/40'
         : 'bg-border';
   return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cor}`} title={state ?? ''} />;
+}
+
+/**
+ * O número do item como link para o Azure DevOps (Timer, pedido do Igor em
+ * 25/11/2026: o `#id` leva ao item e o ícone de link sai da linha). Sem
+ * endereço, é só o número.
+ */
+export function IdDevops({ item, className = '' }: { item: ItemDevops; className?: string }) {
+  if (!item.web_url) return <span className={`shrink-0 font-mono ${className}`}>#{item.id}</span>;
+  return (
+    <a
+      href={item.web_url}
+      target="_blank"
+      rel="noreferrer"
+      title={`Abrir #${item.id} no Azure DevOps`}
+      className={`shrink-0 rounded font-mono underline-offset-2 hover:text-foreground hover:underline focus-visible:underline ${className}`}
+    >
+      #{item.id}
+    </a>
+  );
 }
 
 export function LinkDevops({ item }: { item: ItemDevops }) {

@@ -51,6 +51,15 @@ export function gravarSelecao(
   }
 }
 
+/**
+ * Endereço do work item no Azure DevOps. Sem o projeto, o endereço da
+ * organização resolve do mesmo jeito (o DevOps redireciona para o projeto).
+ */
+export function urlWorkItem(id: number, projeto?: string | null): string {
+  const p = projeto?.trim();
+  return `https://dev.azure.com/FlagIW/${p ? `${encodeURIComponent(p)}/` : ''}_workitems/edit/${id}`;
+}
+
 function local(): Storage | null {
   try {
     return typeof window !== 'undefined' ? window.localStorage : null;
