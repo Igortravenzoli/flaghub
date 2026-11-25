@@ -1,6 +1,13 @@
 # Timer Flag: escritas no Azure DevOps com a identidade de cada dev
 
-25/11/2026. Ramo `claude/timer-identidade-por-dev`. Nada disto está publicado: o código entra desligado e depende dos passos do Igor (seção 4).
+25/11/2026. Ramo `claude/timer-identidade-por-dev`. O código entra **desligado** e só passa a valer com as duas chaves da seção 4.5.
+
+**Estado em 25/11/2026, 13h20 (São Paulo):**
+
+- Entra (4.1) e Azure DevOps (4.2): feitos. A organização `FlagIW` está conectada ao tenant do SSO.
+- Migration TM10 (4.3): ensaiada, aplicada e registrada como `20261125163000`; verificação `TM10 OK`.
+- Secrets e edge (4.4): os três secrets existem; a `timer-devops` v21 está no ar com este código.
+- Ligar (4.5) e testar (4.6): **ainda não**. `TIMER_DEVOPS_DELEGADO` e `VITE_SSO_ESCOPOS_EXTRAS` estão ausentes, e o Timer grava pelo PAT como antes.
 
 ## 1. Decisão recomendada
 
@@ -12,7 +19,7 @@ Trocar o PAT único por um **token Microsoft Entra delegado da própria pessoa**
 - Leituras, TimeLog (TechsBCN) e o lançamento automático das 23:50 **não mudam**: seguem no PAT de serviço.
 - A alternativa `bypassRules` + `System.ChangedBy` **não serve** (seção 2, ponto 4).
 
-O caminho se sustenta na documentação, mas **não foi testado ao vivo** contra o Entra nem contra o DevOps (seção 5). O primeiro teste real é o passo 4.6.
+O caminho se sustenta na documentação, mas a troca do token **não foi testada ao vivo** contra o Entra nem contra o DevOps (seção 5). O primeiro teste real é o passo 4.6.
 
 ## 2. Os cinco pontos
 
@@ -91,11 +98,12 @@ Efeito colateral bom: o limite de uso do DevOps é por identidade ("Azure DevOps
 | --- | --- |
 | `supabase/functions/timer-devops/identidade.ts` | Parte pura: chave ligada/desligada, escolha do cabeçalho, validade, renovação, conferência do dono, cifra. |
 | `supabase/functions/timer-devops/index.ts` | `escreverNoAzure` (usada por `criar`, `reuniao`, `concluir`) e a op `vincular`. Com a chave desligada, o comportamento é o de hoje. |
-| `supabase/migrations/20261125163000_tm10_timer_devops_token.sql` | Tabela `privado.timer_devops_token`, três funções só do `service_role`, gatilho que apaga o vínculo ao revogar o Timer. **Não aplicada.** |
+| `supabase/migrations/20261125163000_tm10_timer_devops_token.sql` | Tabela `privado.timer_devops_token`, três funções só do `service_role`, gatilho que apaga o vínculo ao revogar o Timer. Aplicada em 25/11/2026. |
 | `supabase/verificacao/tm10_devops_token_timer.sql` | Ensaio e conferência da TM10. |
 | `src/lib/timerVinculoDevops.ts`, `src/hooks/useTimerVinculoDevops.ts` | Escopos do login pela variável e envio do refresh token à edge, uma vez por login. |
 | `src/contexts/AuthContext.tsx`, `src/components/timer/TimerRoute.tsx` | Duas ligações pequenas. Sem a variável, o login pede os mesmos escopos de sempre. |
 | `src/test/timerIdentidade.test.ts` | 45 testes da parte pura. |
+| `scripts/tm10-prod.mjs` | Aplicação manual em produção: `pre`, `ensaio`, `aplicar`, `edge`, `conferir`, `volta`. O `conferir` mostra os vínculos e os eventos `devops_*` dos últimos 7 dias. |
 
 Eventos novos em `timer_eventos` (origem `servidor`): `devops_vinculado`, `devops_vinculo_falhou` (`motivo`, `erro`), `devops_caiu_no_pat` (`op`, `motivo`). Motivos da queda: `sem_vinculo`, `renovacao_recusada`, `renovacao_falhou`, `dono_nao_confere`, `cifra_nao_abre`, `configuracao_pendente`, `erro_interno`, `devops_401`, `devops_403`, `devops_203`.
 
@@ -114,10 +122,10 @@ Chaves, todas desligadas ou ausentes por padrão:
 
 A ordem importa: consentimento antes do escopo no login; migration e edge antes de ligar a chave.
 
-**4.1 Entra — app registration do SSO** (o Client ID está no painel da Supabase, em Authentication › Providers › Azure)
+**4.1 Entra — app registration do SSO** (o Client ID está no painel da Supabase, em Authentication › Providers › Azure; no portal, o caminho é **Registros de aplicativo › Todos os aplicativos**, não *Aplicativos empresariais*)
 
 1. **API permissions › Add a permission ›** aba *APIs my organization uses* › **Azure DevOps › Delegated permissions › `vso.work_write`** ("read, create, and update work items and queries" [M2]). Não usar `user_impersonation`: é acesso total às APIs do DevOps [M2].
-2. Conferir que **`offline_access`** está na lista (Microsoft Graph › Delegated › OpenId permissions); se não, adicionar.
+2. Pôr na lista as quatro **OpenId permissions** do Microsoft Graph: `openid`, `email`, `profile` e `offline_access`. As três primeiras o login já pede; têm de estar na lista **antes** do passo 3, porque conceder o consentimento troca o consentimento geral do app pela lista configurada (aviso do próprio portal), e escopo fora dela voltaria a pedir consentimento no login.
 3. **Grant admin consent for Flag** [M9]. Pede o papel Cloud Application Administrator ou acima. Depois disso ninguém vê tela de consentimento.
 4. **Authentication:** o redirect `https://nxmgppfyltwsqryfxkbm.supabase.co/auth/v1/callback` tem de estar na plataforma **Web**, não em *Single-page application* (em SPA o refresh token dura 24 h [M6]).
 5. **Certificates & secrets › New client secret**, com nome próprio (ex.: `timer-devops edge`). Segredo separado do que a Supabase usa: cada um gira sem derrubar o outro. Anotar o valor e a validade.
@@ -128,10 +136,11 @@ A ordem importa: consentimento antes do escopo no login; migration e edge antes 
 2. **Organization settings › Policies:** nada a fazer em "Third-party application access via OAuth" [M4]. Se "Enable IP Conditional Access policy validation on non-interactive flows" estiver ligada e houver política de Acesso Condicional por IP, as chamadas saem dos IPs da Supabase e podem ser barradas [M5].
 3. Cada dev precisa ter, **com a própria conta**, permissão para o que faz pelo Timer (criar Task/PBI, mudar estado) nos projetos em que trabalha. Onde não tiver, o DevOps responde 403 e a escrita cai no PAT, com o evento registrado.
 
-**4.3 Supabase — migration** (precisa do "pode aplicar")
+**4.3 Supabase — migration** (precisa do "pode aplicar"; feita em 25/11/2026)
 
-1. Conferir em `supabase_migrations.schema_migrations` que `20261125163000` está livre. **Eu não consegui conferir** (sem token da Supabase nesta sessão); entre os ramos locais e remotos não há outra migration de 25/11.
-2. Ensaio: corpo da migration + `supabase/verificacao/tm10_devops_token_timer.sql` numa chamada só; tem de terminar em `TM10 OK`. Depois aplicar e registrar.
+1. `node scripts/tm10-prod.mjs pre`: confere em `supabase_migrations.schema_migrations` que `20261125163000` está livre.
+2. `node scripts/tm10-prod.mjs ensaio`: migration + `supabase/verificacao/tm10_devops_token_timer.sql` numa transação que se desfaz; tem de terminar em `TM10 OK`.
+3. `node scripts/tm10-prod.mjs aplicar`: aplica, registra a versão e roda a verificação de novo.
 
 **4.4 Supabase — secrets e edge** (precisa do "pode publicar")
 
@@ -141,7 +150,7 @@ A ordem importa: consentimento antes do escopo no login; migration e edge antes 
    $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
    ```
 
-2. Publicar a `timer-devops`. **Antes, conciliar com o ramo `claude/timer-ajustes-2511`**, que mexe no mesmo `index.ts` (op `estados`, PBI/Bug no `concluir`). Os cortes foram feitos em regiões diferentes para a mescla não conflitar, mas a edge publicada tem de sair de um commit com os dois.
+2. Publicar a `timer-devops` com `node scripts/tm10-prod.mjs edge`. O script recusa publicar de um commit que não tenha o que já está no ar (a op `estados` do PR #150). Feito em 25/11/2026: v21, do commit `9b4bec4`.
 3. Com a chave ainda ausente, o Timer tem de se comportar exatamente como hoje.
 
 **4.5 Ligar**
@@ -165,8 +174,7 @@ A ordem importa: consentimento antes do escopo no login; migration e edge antes 
 - **O login muda para o FlagHub inteiro**, não só para o Timer. Com `offline_access`, o refresh token Microsoft de todo usuário SSO passa pelo navegador e fica na sessão guardada até a primeira renovação da sessão da Supabase (cerca de 1 h). Ele não é utilizável sem o client secret.
 - **A versão do Auth do projeto pode ser mais antiga** que o `master` do GoTrue lido aqui.
 - **403 cai no PAT.** Se o dev não tem permissão no DevOps, o Timer ainda grava pelo PAT, como hoje. A tarefa pediu assim; o evento deixa rastro. Se a intenção for o DevOps mandar, basta tirar o 403 de `ehFalhaDeAutorizacao`.
-- **A migration não foi ensaiada** em banco nenhum. A verificação apaga uma linha de `auth.users` para provar o `ON DELETE CASCADE`; se o `postgres` da Supabase não puder, esse trecho precisa de ajuste.
-- **A edge não foi conferida pelo Deno** (não há Deno nesta máquina). A parte pura tem 45 testes; a ligação em `index.ts` só será exercitada no passo 4.6.
+- **A edge não foi conferida pelo Deno** (não há Deno na máquina de onde saiu). Passou numa checagem de tipos estrita do TypeScript, com os globais do Deno declarados à mão, e sobe em produção (responde 401 sem sessão). A parte pura tem 45 testes; o caminho com token da pessoa em `index.ts` só será exercitado no passo 4.6.
 - **Validade do client secret:** quando vencer, toda renovação falha e tudo cai no PAT. Anotar a data.
 - **Backup:** o dump de `D:\FlagHubBackup` passa a conter as cifras. Sem a chave elas não abrem; num restore, os vínculos são refeitos no login.
 
