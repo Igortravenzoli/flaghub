@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, Profile } from "@/types/database";
 import { hasElevated, hasManagement, hasQuality, hasOperational, canPerformImport, canManageConfig } from "@/lib/roleMap";
 import { isMonitorUser } from "@/lib/monitorUser";
+import { escoposDoSso, lembrarTokenDoLogin } from "@/lib/timerVinculoDevops";
 
 interface AuthState {
   user: User | null;
@@ -559,6 +560,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       console.log("[Auth] onAuthStateChange:", event);
 
+      // O refresh token Microsoft do login chega uma única vez, neste evento
+      // (só existe com offline_access nos escopos). Fica em memória até o
+      // Timer entregá-lo à edge; sem ele, esta linha não faz nada.
+      lembrarTokenDoLogin(session);
+
       // Eventos de erro
       // TOKEN_REFRESH_FAILED não é um AuthChangeEvent oficial, mas pode aparecer
       const eventName = event as string;
@@ -706,7 +712,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
-        scopes: "email profile openid",
+        // Extras (ex.: offline_access) só com VITE_SSO_ESCOPOS_EXTRAS; sem ela,
+        // os escopos de sempre. Ver docs/timer-identidade-por-dev.md.
+        scopes: escoposDoSso(import.meta.env.VITE_SSO_ESCOPOS_EXTRAS),
         redirectTo: window.location.origin + "/auth/callback",
       },
     });

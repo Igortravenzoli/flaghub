@@ -23,6 +23,10 @@
 //   • reuniao (18/11/2026): "Rec reunião" — Task "Reunião - <tema>" na Feature
 //     escolhida ou na raiz do projeto (sem pai), na sprint atual. Se o DevOps
 //     recusar a Task direto na Feature, ela vai para a raiz do mesmo projeto.
+//   • vincular (25/11/2026, só com TIMER_DEVOPS_DELEGADO ligado): recebe o
+//     refresh token Microsoft do login da pessoa, troca no Entra por um token
+//     do Azure DevOps, confere de quem é e guarda CIFRADO. Com a chave
+//     desligada (o padrão) responde `ligado: false` e não guarda nada.
 //   • lancar  (fase 4): soma os trechos fechados (item × dia) no BANCO
 //     (timer_lancamento_preparar: só a própria hora, últimos 7 dias, teto de
 //     12 h contando o que já está no TimeLog) e grava UM documento na
@@ -50,6 +54,14 @@
 //
 // PAT: DEVOPS_PAT_TIMER (PAT de serviço só do Timer). Enquanto ele não existir,
 // cai no DEVOPS_PAT, que é amplo demais e deve ser revisto.
+//
+// Identidade das escritas (docs/timer-identidade-por-dev.md): com o PAT, o
+// History do Azure DevOps mostra o dono do PAT em tudo o que o Timer grava.
+// Com TIMER_DEVOPS_DELEGADO ligado, `criar`, `reuniao` e `concluir` gravam com
+// o token Entra delegado da própria pessoa (ver identidade.ts); sem token ou
+// com recusa de autorização, caem no PAT como hoje e deixam o evento
+// `devops_caiu_no_pat` em timer_eventos. As LEITURAS seguem no PAT: os caches
+// de tags e de campos são de todos, não podem refletir a permissão de um só.
 //
 // Deploy: igual às outras edges do FlagHub, com --no-verify-jwt; a função
 // valida o JWT por conta própria.
@@ -113,6 +125,22 @@ import {
   valoresPermitidos,
   type Permitidos,
 } from './reuniao.ts'
+import {
+  autorizacaoPat,
+  corpoDaRenovacao,
+  delegadoLigado,
+  ehFalhaDeAutorizacao,
+  escolherAutorizacao,
+  lerConfigEntra,
+  obterTokenDaPessoa,
+  prepararVinculo,
+  refreshTokenPlausivel,
+  subDaIdentidadeAzure,
+  urlDoToken,
+  type ConfigEntra,
+  type Portas,
+  type VinculoGuardado,
+} from './identidade.ts'
 
 const REDESCOBRIR_GUID_MS = 10 * 60 * 1000
 const TETO_MINHAS = 200
@@ -499,14 +527,13 @@ async function criar(req: Request, userId: string, acesso: Acesso, corpo: Json, 
 
   // Escrita: SEM repetir 5xx (devopsFetch só repete 429 em POST). Repetir às
   // cegas criaria item duplicado no quadro.
-  const resp = await devopsFetch(
+  const resp = await escreverNoAzure(
+    userId,
+    'criar',
     `https://dev.azure.com/${ORG}/${encodeURIComponent(pai.team_project)}/_apis/wit/workitems/$${encodeURIComponent(v.tipo)}?api-version=7.1`,
-    {
-      method: 'POST',
-      headers: { ...devopsAuthHeaders(pat), 'Content-Type': 'application/json-patch+json' },
-      body: JSON.stringify(ops),
-    },
-    { client: 'timer-criar' },
+    'POST',
+    ops,
+    'timer-criar',
   )
   if (!resp.ok) throw new ErroDevops(resp.status, (await resp.text()).slice(0, 300))
 
@@ -696,14 +723,13 @@ async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Jso
   const destino = decidido.destino
   if (!destino || destino === estado) return responder(req, 200, { ok: true, mudou: false, motivo: 'mesmo_estado', estado })
   // Escrita: SEM repetir 5xx (como no criar).
-  const resp = await devopsFetch(
+  const resp = await escreverNoAzure(
+    userId,
+    'concluir',
     `https://dev.azure.com/${ORG}/_apis/wit/workitems/${id}?api-version=7.1`,
-    {
-      method: 'PATCH',
-      headers: { ...devopsAuthHeaders(pat), 'Content-Type': 'application/json-patch+json' },
-      body: JSON.stringify([{ op: 'add', path: '/fields/System.State', value: destino }]),
-    },
-    { client: 'timer-concluir' },
+    'PATCH',
+    [{ op: 'add', path: '/fields/System.State', value: destino }],
+    'timer-concluir',
   )
   if (!resp.ok) {
     const texto = (await resp.text()).slice(0, 300)
@@ -730,16 +756,15 @@ async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Jso
 
 // ─── Rec reunião ────────────────────────────────────────────────────────────
 
-async function criarNoAzure(projeto: string, tipo: string, ops: Json[]): Promise<Response> {
+async function criarNoAzure(userId: string, projeto: string, tipo: string, ops: Json[]): Promise<Response> {
   // Escrita: SEM repetir 5xx (ver criar).
-  return await devopsFetch(
+  return await escreverNoAzure(
+    userId,
+    'reuniao',
     `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/workitems/$${encodeURIComponent(tipo)}?api-version=7.1`,
-    {
-      method: 'POST',
-      headers: { ...devopsAuthHeaders(patDoTimer() ?? ''), 'Content-Type': 'application/json-patch+json' },
-      body: JSON.stringify(ops),
-    },
-    { client: 'timer-criar' },
+    'POST',
+    ops,
+    'timer-criar',
   )
 }
 
@@ -810,7 +835,7 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     if (!cls.ok) return responder(req, 422, { ok: false, motivo: cls.motivo, mensagem: cls.mensagem })
     const atual = await iteracaoAtual(feature.team_project, pat)
     const iteracao = atual.caminho ?? feature.iteration_path ?? feature.team_project
-    const resp = await criarNoAzure(feature.team_project, 'Task', [...camposDaTask(iteracao, area, cls.ops), vinculoPai(feature.id)])
+    const resp = await criarNoAzure(userId, feature.team_project, 'Task', [...camposDaTask(iteracao, area, cls.ops), vinculoPai(feature.id)])
     if (resp.ok) {
       item = paraItem(await resp.json())
       pai = feature
@@ -829,7 +854,7 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     const cls = await classificar(projeto)
     if (!cls.ok) return responder(req, 422, { ok: false, motivo: cls.motivo, mensagem: cls.mensagem })
     const atual = await iteracaoAtual(projeto, pat)
-    const resp = await criarNoAzure(projeto, 'Task', camposDaTask(atual.caminho ?? projeto, area, cls.ops))
+    const resp = await criarNoAzure(userId, projeto, 'Task', camposDaTask(atual.caminho ?? projeto, area, cls.ops))
     if (!resp.ok) throw new ErroDevops(resp.status, (await resp.text()).slice(0, 300))
     item = paraItem(await resp.json())
   }
@@ -851,6 +876,166 @@ async function reuniao(req: Request, userId: string, acesso: Acesso, corpo: Json
     recusouFeature,
     tagsDescartadas,
   })
+}
+
+// ─── identidade das escritas (docs/timer-identidade-por-dev.md) ─────────────
+
+const TETO_VINCULOS_POR_HORA = 6
+
+/** Access token da pessoa, só em memória da instância (dura cerca de 1 h). */
+const cacheTokenPessoa = new CacheCurto<{ accessToken: string; expiraEm: number }>(60 * 60 * 1000, 200)
+
+const delegadoEstaLigado = () => delegadoLigado(Deno.env.get('TIMER_DEVOPS_DELEGADO'))
+const configEntra = () => lerConfigEntra((nome) => Deno.env.get(nome))
+
+/** Troca um refresh token no Entra. O corpo NUNCA vai para o log. */
+async function renovarNoEntra(cfg: ConfigEntra, refreshToken: string): Promise<{ status: number; json: unknown }> {
+  const resp = await fetch(urlDoToken(cfg.tenantId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: corpoDaRenovacao(cfg, refreshToken),
+    signal: AbortSignal.timeout(8000),
+  })
+  let json: unknown = null
+  try {
+    json = await resp.json()
+  } catch {
+    // corpo que não é JSON: fica só o status
+  }
+  return { status: resp.status, json }
+}
+
+const portasDoToken: Portas = {
+  cache: {
+    ler: (userId) => cacheTokenPessoa.ler(userId)?.valor ?? null,
+    gravar: (userId, t) => cacheTokenPessoa.gravar(userId, t),
+    apagar: (userId) => cacheTokenPessoa.apagar(userId),
+  },
+  lerVinculo: async (userId) => {
+    const { data, error } = await admin().rpc('timer_devops_token_ler', { p_user: userId })
+    if (error) throw new Error(`timer_devops_token_ler: ${error.message}`)
+    return (data as VinculoGuardado | null) ?? null
+  },
+  regravarVinculo: async (userId, refreshCifrado) => {
+    const { error } = await admin().rpc('timer_devops_token_gravar', { p_user: userId, p_cifrado: refreshCifrado })
+    if (error) throw new Error(`timer_devops_token_gravar: ${error.message}`)
+  },
+  apagarVinculo: async (userId) => {
+    const { error } = await admin().rpc('timer_devops_token_apagar', { p_user: userId })
+    if (error) console.warn('[timer-devops] não apagou o vínculo:', error.message)
+  },
+  renovar: renovarNoEntra,
+}
+
+async function trilhaDaIdentidade(userId: string, evento: string, detalhe: Json): Promise<void> {
+  const { error } = await admin().from('timer_eventos').insert({ user_id: userId, evento, origem: 'servidor', detalhe })
+  if (error) console.warn(`[timer-devops] trilha ${evento} falhou:`, error.message)
+}
+
+/**
+ * A escrita de work item (JSON Patch). Com a chave ligada e um token válido da
+ * pessoa, sai como a pessoa; senão, com o PAT de serviço, como sempre foi.
+ *
+ * A volta ao PAT só acontece ANTES de o Azure processar o pedido: sem token,
+ * ou com 401/403/203 (a credencial foi recusada). Erro de rede, 400 e 5xx com
+ * o token da pessoa NÃO repetem com o PAT: o item pode ter sido criado.
+ */
+async function escreverNoAzure(
+  userId: string,
+  op: string,
+  url: string,
+  metodo: 'POST' | 'PATCH',
+  ops: Json[],
+  client: string,
+): Promise<Response> {
+  const pat = patDoTimer() ?? ''
+  const enviar = (authorization: string) =>
+    devopsFetch(
+      url,
+      { method: metodo, headers: { 'Content-Type': 'application/json-patch+json', Authorization: authorization }, body: JSON.stringify(ops) },
+      { client },
+    )
+
+  if (!delegadoEstaLigado()) return await enviar(autorizacaoPat(pat))
+
+  let tokenPessoa: string | null = null
+  let queda: Json | null = null
+  const cfg = configEntra()
+  if (!cfg) {
+    queda = { motivo: 'configuracao_pendente' }
+  } else {
+    try {
+      const t = await obterTokenDaPessoa(userId, cfg, portasDoToken)
+      if (t.ok) tokenPessoa = t.accessToken
+      else queda = { motivo: t.motivo, ...(t.erro ? { erro: t.erro } : {}) }
+    } catch (e) {
+      console.warn('[timer-devops] token da pessoa indisponível:', e instanceof Error ? e.message : e)
+      queda = { motivo: 'erro_interno' }
+    }
+  }
+
+  const escolha = escolherAutorizacao({ ligado: true, tokenPessoa, pat })
+  if (escolha.identidade === 'pessoa') {
+    const resp = await enviar(escolha.authorization)
+    if (!ehFalhaDeAutorizacao(resp.status)) return resp
+    await resp.body?.cancel()
+    // 401 e 203: o token não serve mais. 403 é permissão: o token segue bom.
+    if (resp.status !== 403) cacheTokenPessoa.apagar(userId)
+    queda = { motivo: `devops_${resp.status}` }
+  }
+
+  console.warn(`[timer-devops] ${op}: escrita caiu no PAT (${String(queda?.motivo)})`)
+  await trilhaDaIdentidade(userId, 'devops_caiu_no_pat', { op, ...queda })
+  return await enviar(autorizacaoPat(pat))
+}
+
+/**
+ * Guarda o vínculo da pessoa com o Azure DevOps. O refresh token chega do
+ * navegador logo após o login SSO (a Supabase o entrega uma vez e não guarda).
+ * Aqui ele é trocado no Entra, conferido contra o dono da sessão e só então
+ * gravado, cifrado. Com a chave desligada, não faz nada.
+ */
+async function vincular(req: Request, user: UsuarioSupabase, token: string, corpo: Json): Promise<Response> {
+  if (!delegadoEstaLigado()) return responder(req, 200, { ok: true, ligado: false })
+  const cfg = configEntra()
+  if (!cfg) return responder(req, 200, { ok: true, ligado: false, motivo: 'configuracao_pendente' })
+
+  if (!(await acessoAtivo(user.id))) {
+    return responder(req, 403, { ok: false, motivo: 'timer_sem_acesso', mensagem: 'Você não tem o Timer ativo.' })
+  }
+  const sso = validarSsoFlag(user, lerClaimsJwt(token), {
+    tenantId: Deno.env.get('TIMER_SSO_TENANT_ID') ?? null,
+    dominios: lerDominios(Deno.env.get('TIMER_SSO_DOMINIOS')),
+  })
+  if (!sso.ok) return responder(req, 403, { ok: false, motivo: sso.motivo, mensagem: MENSAGEM_RECUSA[sso.motivo] })
+  if (!refreshTokenPlausivel(corpo.refresh_token)) return responder(req, 400, { ok: false, motivo: 'token_invalido' })
+
+  // Cada tentativa vai ao Entra: um laço no app não pode virar rajada lá.
+  const sb = admin()
+  const umaHora = new Date(Date.now() - 3_600_000).toISOString()
+  const { count } = await sb
+    .from('timer_eventos')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .in('evento', ['devops_vinculado', 'devops_vinculo_falhou'])
+    .gte('criado_em', umaHora)
+  if ((count ?? 0) >= TETO_VINCULOS_POR_HORA) return responder(req, 429, { ok: false, motivo: 'limite_de_vinculo' })
+
+  const r = await prepararVinculo(user.id, subDaIdentidadeAzure(user.identities), corpo.refresh_token, cfg, renovarNoEntra)
+  if (!r.ok) {
+    console.warn(`[timer-devops] vínculo recusado: ${r.motivo} (${r.erro})`)
+    await trilhaDaIdentidade(user.id, 'devops_vinculo_falhou', { motivo: r.motivo, erro: r.erro })
+    return responder(req, r.motivo === 'entra_indisponivel' ? 503 : 422, { ok: false, ligado: true, motivo: r.motivo })
+  }
+
+  const { error } = await sb.rpc('timer_devops_token_gravar', { p_user: user.id, p_cifrado: r.refreshCifrado, p_sub: r.sub })
+  if (error) {
+    console.error('[timer-devops] gravação do vínculo falhou:', error.message)
+    return responder(req, 500, { ok: false, motivo: 'erro_interno' })
+  }
+  cacheTokenPessoa.gravar(user.id, { accessToken: r.accessToken, expiraEm: r.expiraEm })
+  await trilhaDaIdentidade(user.id, 'devops_vinculado', {})
+  return responder(req, 200, { ok: true, ligado: true, vinculado: true })
 }
 
 // ─── lançamento (fase 4) ─────────────────────────────────────────────────────
@@ -1067,6 +1252,7 @@ serve(async (req) => {
   }
 
   if (corpo.op === 'ativar') return await ativar(req, quem.user, quem.token)
+  if (corpo.op === 'vincular') return await vincular(req, quem.user, quem.token, corpo)
 
   const op = corpo.op
   const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'campos', 'reuniao', 'concluir', 'estados']

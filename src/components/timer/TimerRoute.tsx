@@ -5,6 +5,7 @@ import { PilulaMini, BotaoMini, useFundoTransparente } from '@/components/timer/
 import { ponteDesktop } from '@/lib/timerDesktop';
 import { useAuth } from '@/hooks/useAuth';
 import { useAtivarTimer, useTimerAcesso } from '@/hooks/useTimerAcesso';
+import { useVincularDevops } from '@/hooks/useTimerVinculoDevops';
 import { estadoAcesso, guardarDestino } from '@/lib/timerAcesso';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +22,9 @@ export function TimerRoute({ children, compacto = false }: { children: ReactNode
   const { isAuthenticated, isLoading, isMonitor, mfaRequired } = useAuth();
   const location = useLocation();
   const acesso = useTimerAcesso();
+  // Só na janela completa e com o Timer ativo: entrega à edge o vínculo com o
+  // Azure DevOps deste login (inerte com o recurso desligado).
+  useVincularDevops(!compacto && isAuthenticated && !isMonitor && acesso.data?.status === 'ativo');
 
   // Mini timer (/timer/widget): cabe numa pílula. Nada de cartão, login ou
   // ativação ali; tudo o que não for "rodar o timer" abre a janela completa.
