@@ -6,7 +6,7 @@ import { useMotorTimer } from '@/hooks/useTimerRelogio';
 import { useTimerExibido } from '@/hooks/useTimerExibido';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
 import { lerSelecao } from '@/lib/timerSelecao';
-import { dicaParalelos, rotuloRetomar, selecaoAberta } from '@/lib/timerMini';
+import { dicaParalelos, rotuloRetomar, selecaoAberta, textoDoMiniParado } from '@/lib/timerMini';
 import { relogio } from '@/lib/timerRelogio';
 import { pedirEncerrar, ponteDesktop } from '@/lib/timerDesktop';
 import { PilulaMini, BotaoMini, useFundoTransparente } from '@/components/timer/PilulaMini';
@@ -17,9 +17,9 @@ import { cn } from '@/lib/utils';
  * translúcida sempre por cima. No navegador também funciona. Mesmo motor e
  * mesmas regras de /timer.
  *
- * Parado, diz "Sem timer ativo" e o ▶ retoma a última tarefa escolhida em
- * /timer (o nome dela fica na dica do botão) — mas só enquanto a demanda dela
- * está aberta; encerrada, o ▶ some (25/11/2026).
+ * Parado, com a demanda da última tarefa iniciada em /timer ainda aberta, diz
+ * "Retomar: <tarefa>" e o ▶ a retoma; encerrada a demanda, diz "Sem timer
+ * ativo" e o ▶ some (25/11/2026). Parado, não há relógio.
  *
  * Com timers em paralelo, mostra um por vez: o "1/2" passa ao próximo, e
  * Pausar/Encerrar valem para o que está à vista.
@@ -75,15 +75,16 @@ export default function TimerWidget() {
           )}
           aria-hidden
         />
-        {/* O nome da tarefa só aparece com o timer RODANDO. Parado, a pílula diz
-            "Sem timer ativo" mesmo havendo o que retomar: o nome com 00:00:00 ao
-            lado parecia um timer aberto naquela tarefa (pedido do Igor, 25/11/2026).
-            O que o ▶ retoma fica na dica do botão. */}
+        {/* Parado, a pílula nunca mostra o nome da tarefa sozinho com 00:00:00 ao
+            lado: parecia um timer aberto nela. Havendo o que retomar, diz
+            "Retomar: <tarefa>", para a pessoa saber o que o ▶ inicia antes de
+            clicar; sem nada a retomar, "Sem timer ativo" (escolha do Igor,
+            25/11/2026). */}
         <span
           className={cn('min-w-0 flex-1 truncate text-[13px] font-medium', exibido ? 'text-white/85' : 'text-white/55')}
-          title={exibido ? `#${exibido.work_item_id} ${exibido.titulo}` : undefined}
+          title={exibido ? `#${exibido.work_item_id} ${exibido.titulo}` : retomavel ? rotuloRetomar(retomavel) : undefined}
         >
-          {carregando ? 'Timer Flag' : exibido ? exibido.titulo : 'Sem timer ativo'}
+          {carregando ? 'Timer Flag' : exibido ? exibido.titulo : textoDoMiniParado(retomavel)}
         </span>
         {exibido && total > 1 && (
           <button
