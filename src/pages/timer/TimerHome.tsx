@@ -8,7 +8,9 @@ import { EmEspera } from '@/components/timer/EmEspera';
 import { DialogoEncerrar, type AlvoLancamento } from '@/components/timer/DialogoEncerrar';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
 import { DialogoReuniao } from '@/components/timer/DialogoReuniao';
+import { DialogoAnotacao } from '@/components/timer/DialogoAnotacao';
 import { useMinhasTarefasTimer } from '@/hooks/useTimerTarefas';
+import type { ItemDevops } from '@/lib/minhasAtividades';
 import { Coluna } from '@/components/timer/visual';
 import { TimerLayout } from '@/components/timer/TimerLayout';
 import { useMotorTimer, useTimerEstado } from '@/hooks/useTimerRelogio';
@@ -34,7 +36,9 @@ export default function TimerHome() {
   const podeLancar = !!acesso?.devops_guid;
   const somenteConsulta = motor.somenteConsulta;
 
-  const [anotacao, setAnotacao] = useState<Anotacao | null>(null);
+  // anotação virando Task: o pop-up "Virar Task" (▶ = escolhe o PBI e inicia;
+  // arrastar até um PBI = ele já vem escolhido, sem iniciar). 25/11/2026.
+  const [virar, setVirar] = useState<{ anotacao: { id: string; texto: string }; pbi: ItemDevops | null; iniciar: boolean } | null>(null);
   // anotação sendo arrastada até um PBI (a árvore realça os alvos)
   const [arrastada, setArrastada] = useState<Anotacao | null>(null);
   const [alvo, setAlvo] = useState<AlvoLancamento | null>(null);
@@ -153,13 +157,13 @@ export default function TimerHome() {
       {/* 4 colunas do mesmo tamanho; o conteúdo rola dentro de cada uma */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <ColunaAnotacoes
-          emConversao={anotacao?.id ?? null}
-          onVirarTask={setAnotacao}
+          emConversao={virar?.anotacao.id ?? null}
+          onVirarTask={(a: Anotacao) => setVirar({ anotacao: a, pbi: null, iniciar: true })}
           onArrastar={setArrastada}
           className={COLUNA}
         />
 
-        <Coluna icone={ListTree} titulo="Iniciar demanda" destaque={!!anotacao} className={COLUNA}>
+        <Coluna icone={ListTree} titulo="Iniciar demanda" className={COLUNA}>
           <PainelTarefas
             embutido
             iniciarRecolhido
@@ -171,13 +175,10 @@ export default function TimerHome() {
             }
             rodandoIds={rodandoIds}
             onSelecionar={iniciar}
-            anotacao={anotacao}
             anotacaoArrastada={arrastada}
-            onCancelarAnotacao={() => setAnotacao(null)}
-            onItemCriado={(item, anotacaoId) => {
-              if (anotacaoId) fecharAnotacao.mutate({ id: anotacaoId, virouItemId: item.id });
-              setAnotacao(null);
+            onAnotacaoSolta={(pai, a) => {
               setArrastada(null);
+              setVirar({ anotacao: a, pbi: pai, iniciar: false });
             }}
           />
         </Coluna>
@@ -222,6 +223,27 @@ export default function TimerHome() {
           })
         }
       />
+      {virar && (
+        <DialogoAnotacao
+          key={`${virar.anotacao.id}-${virar.pbi?.id ?? ''}`}
+          anotacao={virar.anotacao}
+          pbiInicial={virar.pbi}
+          iniciar={virar.iniciar && !somenteConsulta}
+          onFechar={() => setVirar(null)}
+          onCriada={(item) => {
+            fecharAnotacao.mutate({ id: virar.anotacao.id, virouItemId: item.id });
+            if (virar.iniciar)
+              iniciar({
+                id: item.id,
+                title: item.title,
+                work_item_type: item.work_item_type ?? 'Task',
+                caminho: null,
+                web_url: item.web_url,
+                projeto: item.team_project ?? null,
+              });
+          }}
+        />
+      )}
       <DialogoEncerrar alvo={alvo} grupos={gruposDoAlvo} motor={motor} podeLancar={podeLancar} onFechar={() => setAlvo(null)} />
     </TimerLayout>
   );

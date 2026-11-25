@@ -438,3 +438,54 @@ export function novaAusencia(desdeMs: number, agoraMs: number): Ausencia {
 }
 
 export const ausenciaVencida = (a: Ausencia | null, agoraMs: number) => !!a && agoraMs >= a.prazoMs;
+
+// ---------------------------------------------------------------------------
+// Hora trabalhada do dia (relógio), sem somar os paralelos
+// ---------------------------------------------------------------------------
+
+/** 00:00 de hoje em São Paulo (ms). Sem horário de verão desde 2019: UTC−3. */
+export function inicioDoDiaSP(agoraMs: number): number {
+  const dia = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(agoraMs));
+  return Date.parse(`${dia}T00:00:00-03:00`);
+}
+
+/**
+ * Hora de RELÓGIO trabalhada hoje (pedido do Igor, 25/11/2026): a união dos
+ * trechos do dia, fechados (sem descartados) e rodando. Duas tarefas em
+ * paralelo das 14h às 15h dão 1 h aqui, e não 2 h — o "A lançar" e o
+ * TimeLog seguem contando a hora inteira em cada tarefa.
+ */
+export function horaTrabalhadaSeg(estado: EstadoTimer, agoraServidorMs: number): number {
+  const ini = inicioDoDiaSP(agoraServidorMs);
+  const intervalos: [number, number][] = [];
+  for (const t of estado.trechos) {
+    if (t.descartado) continue;
+    const a = Math.max(ms(t.iniciado_em), ini);
+    const b = Math.min(ms(t.encerrado_em), agoraServidorMs);
+    if (b > a) intervalos.push([a, b]);
+  }
+  for (const r of estado.rodandoTodos) {
+    const a = Math.max(ms(r.iniciado_em), ini);
+    if (agoraServidorMs > a) intervalos.push([a, agoraServidorMs]);
+  }
+  intervalos.sort((x, y) => x[0] - y[0]);
+  let total = 0;
+  let fimAtual = -Infinity;
+  let iniAtual = -Infinity;
+  for (const [a, b] of intervalos) {
+    if (a > fimAtual) {
+      if (fimAtual > iniAtual) total += fimAtual - iniAtual;
+      iniAtual = a;
+      fimAtual = b;
+    } else if (b > fimAtual) {
+      fimAtual = b;
+    }
+  }
+  if (fimAtual > iniAtual) total += fimAtual - iniAtual;
+  return Math.floor(total / 1000);
+}
