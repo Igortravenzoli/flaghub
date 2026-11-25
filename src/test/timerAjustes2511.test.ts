@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { destinoDoEncerrar, estadosDoTipo, TIPOS_QUE_ANDAM } from '../../supabase/functions/timer-devops/tarefas';
 import { destinoPadrao, MANTER_ESTADO, opcoesDeDestino } from '@/lib/timerEstadoItem';
-import { dicaParalelos, entrouTimerNovo, proximoExibido, rotuloRetomar, selecaoAberta, timerExibido } from '@/lib/timerMini';
+import { dicaParalelos, entrouTimerNovo, proximoExibido, rotuloRetomar, timerExibido, ultimaTrabalhada } from '@/lib/timerMini';
 import { lerPedidoEncerrar } from '@/lib/timerDesktop';
 import { urlWorkItem } from '@/lib/timerSelecao';
 
@@ -78,14 +78,21 @@ describe('encerrar PBI/Bug pelo Timer: o seletor do diálogo', () => {
 describe('mini timer: demanda encerrada sai e paralelos alternam', () => {
   const sel = { id: 19234, title: 'Evolução de Segurança' };
 
-  it('parado, só oferece retomar a demanda que segue aberta', () => {
-    expect(selecaoAberta(sel, [{ work_item_id: 19234 }, { work_item_id: 19281 }])).toBe(sel);
-    // encerrou (ou deu Done): a escolha guardada não vale mais
-    expect(selecaoAberta(sel, [{ work_item_id: 19281 }])).toBeNull();
-    expect(selecaoAberta(sel, [])).toBeNull();
-    // estado ainda não chegou do servidor: não oferece nada
-    expect(selecaoAberta(sel, null)).toBeNull();
-    expect(selecaoAberta(null, [{ work_item_id: 19234 }])).toBeNull();
+  it('parado, o ▶ retoma a última trabalhada que segue aberta', () => {
+    const a = { work_item_id: 19234, ultima_atividade_em: '2026-11-25T17:00:00Z' };
+    const b = { work_item_id: 19300, ultima_atividade_em: '2026-11-25T18:00:00Z' };
+    const fim = (id: number, quando: string, descartado = false) => ({ work_item_id: id, encerrado_em: quando, descartado });
+
+    // a que PAROU por último, e não a que foi iniciada por último
+    expect(ultimaTrabalhada([b, a], [fim(19300, '2026-11-25T20:10:00Z'), fim(19234, '2026-11-25T21:40:00Z')])).toBe(a);
+    // encerrou (ou deu Done) a última: vale a anterior que segue aberta
+    expect(ultimaTrabalhada([b], [fim(19234, '2026-11-25T21:40:00Z'), fim(19300, '2026-11-25T20:10:00Z')])).toBe(b);
+    // trecho descartado não conta como trabalho
+    expect(ultimaTrabalhada([b, a], [fim(19234, '2026-11-25T21:40:00Z', true), fim(19300, '2026-11-25T20:10:00Z')])).toBe(b);
+    // sem trecho fechado à vista (dia novo): a demanda mexida por último
+    expect(ultimaTrabalhada([a, b], [])).toBe(b);
+    // nenhuma demanda aberta: nada a retomar
+    expect(ultimaTrabalhada([], [fim(19234, '2026-11-25T21:40:00Z')])).toBeNull();
   });
 
   it('parado, o nome da tarefa fica só na dica do ▶', () => {

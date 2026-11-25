@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Maximize2, Pause, Play, Square } from 'lucide-react';
 import { registrarEventoTimer } from '@/hooks/useTimerAcesso';
 import { useMotorTimer } from '@/hooks/useTimerRelogio';
 import { useTimerExibido } from '@/hooks/useTimerExibido';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
-import { lerSelecao } from '@/lib/timerSelecao';
-import { dicaParalelos, rotuloRetomar, selecaoAberta, textoDoMiniParado } from '@/lib/timerMini';
+import { dicaParalelos, rotuloRetomar, ultimaTrabalhada } from '@/lib/timerMini';
 import { relogio } from '@/lib/timerRelogio';
 import { pedirEncerrar, ponteDesktop } from '@/lib/timerDesktop';
 import { PilulaMini, BotaoMini, useFundoTransparente } from '@/components/timer/PilulaMini';
@@ -17,9 +16,10 @@ import { cn } from '@/lib/utils';
  * translúcida sempre por cima. No navegador também funciona. Mesmo motor e
  * mesmas regras de /timer.
  *
- * Parado, com a demanda da última tarefa iniciada em /timer ainda aberta, diz
- * "Retomar: <tarefa>" e o ▶ a retoma; encerrada a demanda, diz "Sem timer
- * ativo" e o ▶ some (25/11/2026). Parado, não há relógio.
+ * Parado, diz sempre "Sem timer ativo", sem nome de tarefa nem relógio. O ▶
+ * retoma a última tarefa trabalhada que segue com a demanda aberta, lida do
+ * servidor; a dica do botão diz qual é. Sem demanda aberta, o ▶ some
+ * (25/11/2026).
  *
  * Com timers em paralelo, mostra um por vez: o "1/2" passa ao próximo, e
  * Pausar/Encerrar valem para o que está à vista.
@@ -32,21 +32,16 @@ export default function TimerWidget() {
   const motor = useMotorTimer({ tituloDaAba: true });
   const { rodandoTodos, acoes, carregando, somenteConsulta, estado } = motor;
   const { exibido, posicao, total, segundos, proximo } = useTimerExibido(motor);
-  const [selecionada, setSelecionada] = useState(() => lerSelecao());
 
   useEffect(() => {
     void registrarEventoTimer('abriu');
-    // a escolha é feita em /timer (outra janela): acompanha
-    const aoMudar = (e: StorageEvent) => {
-      if (e.key === null || e.key === 'timer-flag:tarefa-selecionada') setSelecionada(lerSelecao());
-    };
-    window.addEventListener('storage', aoMudar);
-    return () => window.removeEventListener('storage', aoMudar);
   }, []);
 
   const ocupado = acoes.iniciar.isPending || acoes.pausar.isPending;
-  // parado: só retoma demanda que segue aberta no servidor
-  const retomavel = exibido ? null : selecaoAberta(selecionada, estado?.demandas ?? null);
+  // Parado: o ▶ retoma a última tarefa trabalhada que segue aberta, pelo que o
+  // servidor diz (não pela escolha guardada neste navegador, que só conhecia o
+  // que foi iniciado pela janela completa e ficava para trás).
+  const retomavel = exibido || !estado ? null : ultimaTrabalhada(estado.demandas, estado.trechos);
 
   const abrirCompleto = () => ponteDesktop()?.abrirCompleto();
 
@@ -75,16 +70,15 @@ export default function TimerWidget() {
           )}
           aria-hidden
         />
-        {/* Parado, a pílula nunca mostra o nome da tarefa sozinho com 00:00:00 ao
-            lado: parecia um timer aberto nela. Havendo o que retomar, diz
-            "Retomar: <tarefa>", para a pessoa saber o que o ▶ inicia antes de
-            clicar; sem nada a retomar, "Sem timer ativo" (escolha do Igor,
-            25/11/2026). */}
+        {/* Pausou, a pílula fica em "Sem timer ativo": nome de tarefa só com o
+            timer RODANDO (escolha do Igor, 25/11/2026; com o nome ali, mesmo
+            precedido de "Retomar:", parecia que o título anterior tinha ficado).
+            O que o ▶ retoma está na dica do botão. */}
         <span
           className={cn('min-w-0 flex-1 truncate text-[13px] font-medium', exibido ? 'text-white/85' : 'text-white/55')}
-          title={exibido ? `#${exibido.work_item_id} ${exibido.titulo}` : retomavel ? rotuloRetomar(retomavel) : undefined}
+          title={exibido ? `#${exibido.work_item_id} ${exibido.titulo}` : undefined}
         >
-          {carregando ? 'Timer Flag' : exibido ? exibido.titulo : textoDoMiniParado(retomavel)}
+          {carregando ? 'Timer Flag' : exibido ? exibido.titulo : 'Sem timer ativo'}
         </span>
         {exibido && total > 1 && (
           <button
@@ -117,12 +111,12 @@ export default function TimerWidget() {
           </>
         ) : somenteConsulta || !retomavel ? null : (
           <BotaoMini
-            titulo={rotuloRetomar(retomavel)}
+            titulo={rotuloRetomar({ id: retomavel.work_item_id, title: retomavel.titulo })}
             onClick={() =>
               acoes.iniciar.mutate({
-                id: retomavel.id,
-                titulo: retomavel.title ?? `#${retomavel.id}`,
-                tipo: retomavel.work_item_type ?? 'Task',
+                id: retomavel.work_item_id,
+                titulo: retomavel.titulo || `#${retomavel.work_item_id}`,
+                tipo: retomavel.tipo || 'Task',
                 projeto: retomavel.projeto,
               })
             }
