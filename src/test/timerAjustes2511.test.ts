@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { destinoDoEncerrar, estadosDoTipo, TIPOS_QUE_ANDAM } from '../../supabase/functions/timer-devops/tarefas';
 import { destinoPadrao, MANTER_ESTADO, opcoesDeDestino } from '@/lib/timerEstadoItem';
-import { dicaParalelos, entrouTimerNovo, proximoExibido, selecaoAberta, timerExibido } from '@/lib/timerMini';
+import { dicaParalelos, entrouTimerNovo, proximoExibido, rotuloRetomar, selecaoAberta, timerExibido } from '@/lib/timerMini';
 import { lerPedidoEncerrar } from '@/lib/timerDesktop';
 import { urlWorkItem } from '@/lib/timerSelecao';
 
@@ -86,6 +86,12 @@ describe('mini timer: demanda encerrada sai e paralelos alternam', () => {
     // estado ainda não chegou do servidor: não oferece nada
     expect(selecaoAberta(sel, null)).toBeNull();
     expect(selecaoAberta(null, [{ work_item_id: 19234 }])).toBeNull();
+  });
+
+  it('parado, o nome da tarefa fica só na dica do ▶', () => {
+    expect(rotuloRetomar(sel)).toBe('Retomar #19234 Evolução de Segurança');
+    expect(rotuloRetomar({ id: 7, title: null })).toBe('Retomar #7');
+    expect(rotuloRetomar({ id: 7, title: '  ' })).toBe('Retomar #7');
   });
 
   const rodando = [
