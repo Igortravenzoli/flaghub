@@ -16,6 +16,16 @@ describe('classificaDemanda — precedência canônica', () => {
     expect(classificaDemanda({ work_item_type: 'Product Backlog Item', tags: 'Retorno de QA; PRIORIZACAO' })).toBe('retorno_qa');
   });
 
+  it('volta do teste pelo histórico conta como retorno de QA, mesmo sem a tag (regra de 24/11/2026)', () => {
+    expect(classificaDemanda({ work_item_type: 'Bug', tags: 'BUG; FLEXX', retorno_qa_hist: true })).toBe('retorno_qa');
+    expect(classificaDemanda({ work_item_type: 'Product Backlog Item', tags: 'AVIAO', retorno_qa_hist: true })).toBe('retorno_qa');
+    expect(classificaDemanda({ work_item_type: 'Product Backlog Item', tags: 'PRIORIZACAO', retorno_qa_hist: true })).toBe('retorno_qa');
+    // sem volta, a régua antiga decide
+    expect(classificaDemanda({ work_item_type: 'Bug', tags: 'BUG', retorno_qa_hist: false })).toBe('bug');
+    expect(classificaDemanda({ work_item_type: 'Bug', tags: 'BUG', retorno_qa_hist: null })).toBe('bug');
+    expect(contaCategorias([{ work_item_type: 'Bug', tags: '', retorno_qa_hist: true }, { work_item_type: 'Bug', tags: '' }]).retornoQa).toBe(1);
+  });
+
   it('avião vence priorização e bug, e distingue transbordado', () => {
     expect(classificaDemanda({ work_item_type: 'Product Backlog Item', tags: 'AVIAO; FLEXX' })).toBe('aviao_sprint');
     expect(classificaDemanda({ work_item_type: 'Bug', tags: 'AVIÃO' })).toBe('aviao_sprint');

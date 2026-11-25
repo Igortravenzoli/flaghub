@@ -16,7 +16,7 @@
  *   - bloco inline duplicado em `FabricaExecutivoTab` e `FabricaTvView`
  *
  * PRECEDÊNCIA (não reordenar sem mudar o SQL junto):
- *   retorno_qa > avião (sprint/transbordado) > priorização (pura/transbordo,
+ *   retorno_qa (tag ou volta do teste) > avião (sprint/transbordado) > priorização (pura/transbordo,
  *   INCLUI bug priorizado) > bug > priorização.
  *
  * As regexes são ancoradas em SEGMENTO de tag (separador `;`), igual ao SQL.
@@ -32,10 +32,18 @@ export type CategoriaDemanda =
   | 'aviao_sprint'
   | 'aviao_transbordado';
 
-/** Item com o mínimo que a classificação precisa. */
+/**
+ * Item com o mínimo que a classificação precisa.
+ *
+ * `retorno_qa_hist` (24/11/2026, regra do Igor): Retorno QA é a tag OU o item
+ * ter saído de "Em Teste" para estado anterior (inclui "New", o processo desde
+ * set/2026). Vem do campo calculado do banco (`retorno_qa_hist`, mesma régua de
+ * `fn_retorno_qa_hist` e de `src/lib/qaRework.ts`); na foto, o corte é o da sprint.
+ */
 export type ItemClassificavel = {
   work_item_type?: string | null;
   tags?: string | null;
+  retorno_qa_hist?: boolean | null;
 };
 
 const RE_RETORNO_QA = /(^|;)\s*retorno\s*(de\s*)?qa\s*(;|$)/i;
@@ -52,11 +60,11 @@ export function ehItemDeGestor(workItemType: string | null | undefined): boolean
   return TIPOS_DE_GESTOR.has(workItemType || '');
 }
 
-/** Classificação canônica. Mesma saída de `fn_classifica_demanda`. */
+/** Classificação canônica. Mesma saída de `fn_classifica_demanda(tipo, tags, state_history, corte)`. */
 export function classificaDemanda(item: ItemClassificavel): CategoriaDemanda {
   const tags = item.tags || '';
 
-  if (RE_RETORNO_QA.test(tags)) return 'retorno_qa';
+  if (item.retorno_qa_hist === true || RE_RETORNO_QA.test(tags)) return 'retorno_qa';
 
   if (RE_AVIAO.test(tags)) {
     return (RE_TRANSBORDO.test(tags) || RE_AVIAO_COMPOSTO.test(tags))

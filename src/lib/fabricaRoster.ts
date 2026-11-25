@@ -149,18 +149,50 @@ export function segmentoArea(areaPath: string | null | undefined): string | null
  */
 export const EPICOS_FORMATO_ANTERIOR: readonly string[] = ['K8', 'FLEXX'];
 
+/**
+ * DE → PARA das Features do formato anterior (24/11/2026, decisões do Igor).
+ * Espelho de `fn_fabrica_de_para()` (migration 20261124130000) — o teste
+ * `fabricaDePara.test.ts` reprova se divergir. Hora lançada numa dessas Features
+ * tem destino nas fábricas do PARA: marca "na casa"/"cruzado"/"atendimento",
+ * não "formato anterior".
+ */
+export const DE_PARA_FORMATO_ANTERIOR: Readonly<Record<number, { de: string; para: readonly string[] }>> = {
+  10012: { de: 'WMAN', para: ['ERP_SUST', 'ERP_EVOL'] },
+  10015: { de: 'NFEE', para: ['ERP_SUST', 'ERP_EVOL'] },
+  10011: { de: 'WDCS', para: ['ERP_SUST', 'ERP_EVOL'] },
+  15635: { de: 'WDES', para: ['ERP_SUST', 'ERP_EVOL'] },
+  10014: { de: 'QUCK', para: ['ERP_SUST'] },
+  9993: { de: 'WFES', para: ['ERP_SUST'] },
+  10016: { de: 'SMSL', para: ['ERP_SUST'] },
+  10013: { de: 'QUCT', para: ['ERP_SUST'] },
+  10001: { de: 'MRCH', para: ['PROMO_SUITE'] },
+  10004: { de: 'SWFX', para: ['PROMO_SUITE'] },
+  10003: { de: 'FLXP', para: ['PROMO_SUITE'] },
+  10005: { de: 'PBII', para: ['PROMO_SUITE'] },
+  10000: { de: 'PFWE', para: ['PROMO_SUITE'] },
+  13509: { de: 'NOVODECISION', para: ['IR'] },
+};
+
 const fabricasDaArea = (seg: string) => FABRICAS.filter((f) => f.devops?.area === seg).map((f) => f.codigo);
 const fabricasDoEpico = (ep: string) => FABRICAS.filter((f) => f.devops?.epicos?.includes(ep)).map((f) => f.codigo);
 
 /**
- * Id do destino de um item: área de time conhecida › Épico conhecido › área
- * desconhecida › outro Épico › nenhum. A área vem antes porque é assim que os
- * times novos lançam (o item da área IR não tem Épico).
+ * Id do destino de um item: área de time conhecida › Feature do DE-PARA (só
+ * debaixo de Épico do formato anterior) › Épico conhecido › área desconhecida ›
+ * outro Épico › nenhum. A área vem antes porque é assim que os times novos
+ * lançam (o item da área IR não tem Épico).
  */
-export function destinoIdDoItem(areaPath: string | null | undefined, epicoTitulo: string | null | undefined): string {
+export function destinoIdDoItem(
+  areaPath: string | null | undefined,
+  epicoTitulo: string | null | undefined,
+  featureDePara?: number | null,
+): string {
   const seg = segmentoArea(areaPath);
   if (seg && fabricasDaArea(seg).length > 0) return `area:${seg}`;
   const ep = epicoTitulo ? cleanFabricaName(epicoTitulo) : null;
+  if (ep && EPICOS_FORMATO_ANTERIOR.includes(ep) && featureDePara != null && DE_PARA_FORMATO_ANTERIOR[featureDePara]) {
+    return `depara:${featureDePara}`;
+  }
   if (ep && (fabricasDoEpico(ep).length > 0 || EPICOS_FORMATO_ANTERIOR.includes(ep))) return `epico:${ep}`;
   if (seg) return `area:${seg}`;
   if (ep) return `outro:${ep}`;
@@ -180,6 +212,9 @@ export function lerDestino(id: string): DestinoHora {
     d = { id, codigos: fabricasDaArea(nome), rotulo: `área ${nome}`, anterior: false };
   } else if (tipo === 'epico' && nome) {
     d = { id, codigos: fabricasDoEpico(nome), rotulo: `Épico ${nome}`, anterior: EPICOS_FORMATO_ANTERIOR.includes(nome) };
+  } else if (tipo === 'depara' && DE_PARA_FORMATO_ANTERIOR[Number(nome)]) {
+    const dp = DE_PARA_FORMATO_ANTERIOR[Number(nome)];
+    d = { id, codigos: [...dp.para], rotulo: `Feature ${dp.de} (DE-PARA)`, anterior: false };
   } else if (tipo === 'outro' && nome) {
     d = { id, codigos: [], rotulo: `Épico ${nome}`, anterior: false };
   } else {

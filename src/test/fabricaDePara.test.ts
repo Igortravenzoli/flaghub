@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { FABRICAS } from '@/lib/fabricaOrganograma';
+import { DE_PARA_FORMATO_ANTERIOR } from '@/lib/fabricaRoster';
 
 /**
  * DE → PARA do formato anterior (24/11/2026): a Feature debaixo de [K8]/[FLEXX]
@@ -46,5 +47,12 @@ describe('DE → PARA do formato anterior', () => {
     expect(por[10004]).toEqual(['PROMO_SUITE']);
     for (const wmanNfeeWdcsWdes of [10012, 10015, 10011, 15635]) expect(por[wmanNfeeWdcsWdes]).toEqual(['ERP_SUST', 'ERP_EVOL']);
     expect(por[13509]).toEqual(['IR']);
+  });
+
+  it('a tabela do front (selo do Uso cruzado) é a mesma do banco', () => {
+    const doBanco = Object.fromEntries(tabela.map((t) => [t.id, t.para]));
+    const doFront = Object.fromEntries(Object.entries(DE_PARA_FORMATO_ANTERIOR).map(([id, v]) => [Number(id), [...v.para]]));
+    expect(doFront).toEqual(doBanco);
+    for (const t of tabela) expect(t.de.endsWith(`- ${DE_PARA_FORMATO_ANTERIOR[t.id].de}`), t.de).toBe(true);
   });
 });

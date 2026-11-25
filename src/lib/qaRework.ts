@@ -15,8 +15,9 @@ export interface QaDoneItem {
 }
 
 const DONE_STATES = new Set(['done', 'closed', 'resolved']);
-const QA_ORIGIN_STATES = new Set(['em teste', 'in test', 'testing']);
-const DEV_DEST_STATES = new Set([
+/** Régua da volta do teste. O SQL (`fn_retorno_qa_hist`) usa as mesmas listas — há teste. */
+export const QA_ORIGIN_STATES: ReadonlySet<string> = new Set(['em teste', 'in test', 'testing']);
+export const DEV_DEST_STATES: ReadonlySet<string> = new Set([
   'em desenvolvimento',
   'in progress',
   'in development',
