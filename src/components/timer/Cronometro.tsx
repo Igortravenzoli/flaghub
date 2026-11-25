@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, ChevronDown, Pause, PlayCircle, Send, Split, Square } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Pause, PlayCircle, Split, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,7 @@ import {
 } from '@/lib/timerRelogio';
 import { diaSP, lancadoHojeSeg } from '@/lib/timerLancamento';
 import { urlWorkItem } from '@/lib/timerSelecao';
-import { BotaoIcone, Coluna, Pilula, SOMBRA_XS } from '@/components/timer/visual';
+import { BotaoIcone, Coluna, IconeLancar, Pilula, SOMBRA_XS } from '@/components/timer/visual';
 import { TrechosDoDia } from '@/components/timer/TrechosDoDia';
 import { MiniTimer } from '@/components/timer/MiniTimer';
 
@@ -221,7 +221,7 @@ function CartaoRodando({
         {/* Pausar: um clique, pausa na hora (decisão do Igor, 17/11/2026: sem menu).
             Trecho esquecido rodando se acerta depois em Lançamentos (encurtar). */}
         <BotaoIcone icone={Pause} rotulo="Pausar" disabled={ocupado} onClick={onPausar} />
-        <BotaoIcone icone={Send} rotulo="Lançar até agora (o timer continua)" disabled={ocupado || !podeLancar} onClick={onLancar} />
+        <BotaoIcone icone={IconeLancar} rotulo="Lançar até agora (o timer continua)" disabled={ocupado || !podeLancar} onClick={onLancar} />
         <BotaoIcone
           icone={Square}
           rotulo="Encerrar demanda"

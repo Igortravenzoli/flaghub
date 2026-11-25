@@ -1,4 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
+import { ClockArrowUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -10,6 +11,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
  */
 
 export const SOMBRA_XS = 'shadow-[0_1px_2px_0_rgb(16_24_40/0.05)]';
+
+/**
+ * Ícone de "lançar horas" em todo o Timer: relógio com a seta de envio. O
+ * aviãozinho (Send) não dizia que o que sai é tempo (pedido do Igor, 25/11/2026).
+ */
+export const IconeLancar = ClockArrowUp;
 
 /** Coluna do cockpit: cabeçalho fixo e corpo que rola por dentro. */
 export function Coluna({
@@ -98,6 +105,7 @@ export function BotaoIcone({
   onClick,
   disabled,
   variante = 'outline',
+  discreto = false,
   className,
 }: {
   icone: ComponentType<{ className?: string }>;
@@ -105,8 +113,34 @@ export function BotaoIcone({
   onClick: () => void;
   disabled?: boolean;
   variante?: 'default' | 'outline' | 'destructive' | 'ghost';
+  /** sem caixa e menor, como os botões da linha de anotação; a cor vem do className */
+  discreto?: boolean;
   className?: string;
 }) {
+  if (discreto) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={rotulo}
+            className={cn(
+              'rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'disabled:pointer-events-none disabled:opacity-40',
+              className,
+            )}
+          >
+            {/* 16 px e não os 14 da anotação: o relógio com seta perde a seta abaixo disso */}
+            <Icone className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{rotulo}</TooltipContent>
+      </Tooltip>
+    );
+  }
   return (
     <Tooltip>
       <TooltipTrigger asChild>

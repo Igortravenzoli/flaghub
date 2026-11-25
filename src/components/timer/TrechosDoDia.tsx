@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, ExternalLink, History, Loader2, RotateCcw, Scissors, Send, Trash2 } from 'lucide-react';
+import { ChevronRight, ExternalLink, History, Loader2, RotateCcw, Scissors, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Pilula, SOMBRA_XS, Vazio } from '@/components/timer/visual';
+import { IconeLancar, Pilula, SOMBRA_XS, Vazio } from '@/components/timer/visual';
 import { pedeAtencao, ROTULO_SITUACAO, rotuloDia, situacao } from '@/lib/timerLancamento';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -323,7 +323,7 @@ function ListaPorTarefa({
                       const s = situacao(l);
                       return (
                         <li key={l.id} className="flex flex-wrap items-center gap-2 text-xs">
-                          <Send className="h-3 w-3 text-muted-foreground" />
+                          <IconeLancar className="h-3 w-3 text-muted-foreground" />
                           {mostrarDia && <span className="text-muted-foreground">{rotuloDia(l.dia)}</span>}
                           <span className="font-medium tabular-nums">{horas(l.minutos * 60)}</span>
                           <Pilula tom={s === 'conferido' ? 'sucesso' : pedeAtencao(s) ? 'alerta' : 'neutro'}>{ROTULO_SITUACAO[s]}</Pilula>

@@ -1,8 +1,8 @@
-import { PauseCircle, Play, Send, Square } from 'lucide-react';
+import { PauseCircle, Play, Square } from 'lucide-react';
 import { horas } from '@/lib/timerRelogio';
 import type { DemandaEmEspera } from '@/lib/timerLancamento';
 import { urlWorkItem } from '@/lib/timerSelecao';
-import { BotaoIcone, Coluna, Pilula, SOMBRA_XS, Vazio } from '@/components/timer/visual';
+import { BotaoIcone, Coluna, IconeLancar, Pilula, SOMBRA_XS, Vazio } from '@/components/timer/visual';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -56,20 +56,31 @@ export function EmEspera({ demandas, ocupado, onRetomar, onLancar, onEncerrar, c
                     <Pilula tom="sucesso">tudo lançado</Pilula>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                {/* Botões sem caixa, do tamanho dos da linha de anotação (pedido do
+                    Igor, 25/11/2026): as duas colunas ficam com o mesmo peso. */}
+                <div className="flex shrink-0 items-center gap-0.5">
                   {podeRetomar && (
-                    <BotaoIcone icone={Play} rotulo="Retomar" variante="default" disabled={ocupado} onClick={() => onRetomar(d)} />
+                    <BotaoIcone
+                      discreto
+                      icone={Play}
+                      rotulo="Retomar"
+                      disabled={ocupado}
+                      onClick={() => onRetomar(d)}
+                      className="text-[hsl(var(--success))] hover:bg-[hsl(var(--success)/0.1)] hover:text-[hsl(var(--success))]"
+                    />
                   )}
                   <BotaoIcone
-                    icone={Send}
+                    discreto
+                    icone={IconeLancar}
                     rotulo="Lançar o que falta (a demanda continua)"
                     disabled={ocupado || d.minutos === 0}
                     onClick={() => onLancar(d)}
+                    className="text-foreground/80"
                   />
                   <BotaoIcone
+                    discreto
                     icone={Square}
                     rotulo="Encerrar demanda"
-                    variante="ghost"
                     disabled={ocupado}
                     onClick={() => onEncerrar(d)}
                     className="text-destructive hover:bg-destructive/10 hover:text-destructive"
