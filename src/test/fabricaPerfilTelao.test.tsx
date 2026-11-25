@@ -38,6 +38,8 @@ function wi(id: number, o: Partial<Linha>): Linha {
     id,
     rev: 1,
     tags: null,
+    // campo calculado do PostgREST (migration 20261124151000)
+    retorno_qa_hist: false,
     title: `Item ${id}`,
     parent_id: null,
     assigned_to_display: null,
@@ -116,7 +118,7 @@ function linhaView(id: number, countInKpi = true): Linha {
     assigned_to_display: w.assigned_to_display, priority: w.priority, effort: w.effort,
     iteration_path: w.iteration_path, created_date: w.created_date, changed_date: w.changed_date,
     parent_id: w.parent_id, parent_title: pai?.title ?? null, parent_type: pai?.work_item_type ?? null,
-    web_url: w.web_url, tags: w.tags, count_in_kpi: countInKpi,
+    web_url: w.web_url, tags: w.tags, count_in_kpi: countInKpi, retorno_qa_hist: w.retorno_qa_hist,
   };
 }
 

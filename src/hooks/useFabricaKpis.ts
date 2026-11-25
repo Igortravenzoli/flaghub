@@ -7,7 +7,7 @@ import { useFabricaRoster } from '@/hooks/useFabricaRoster';
 import { normalizeProduct, extractProducts } from '@/lib/products';
 import { ehEstadoEntregue } from '@/lib/fabricaEstados';
 import { ehFabricaDeEntrega } from '@/lib/fabricaOrganograma';
-import { destinoIdDoItem } from '@/lib/fabricaRoster';
+import { DE_PARA_FORMATO_ANTERIOR, destinoIdDoItem } from '@/lib/fabricaRoster';
 
 const normalizeFabricaState = (state: string | null | undefined): string => (state || '').trim().toLowerCase();
 
@@ -136,6 +136,12 @@ export interface FabricaItem {
    * double-counting PBIs alongside their child Tasks.
    */
   count_in_kpi?: boolean;
+  /**
+   * Campo calculado `retorno_qa_hist` (PostgREST, migration 20261124151000): o
+   * item já voltou de "Em Teste" para estado anterior. Conta como Retorno QA
+   * junto com a tag (`classificaDemanda`).
+   */
+  retorno_qa_hist?: boolean | null;
 }
 
 export interface TimelogAggregation {
@@ -223,7 +229,7 @@ interface UseFabricaKpisOptions {
 
 /** Todas as colunas da `vw_fabrica_kpis` — as telas de mesa usam todas. */
 export const VW_FABRICA_COLUNAS =
-  'id, title, work_item_type, state, assigned_to_display, priority, effort, iteration_path, created_date, changed_date, parent_id, parent_title, parent_type, web_url, tags, count_in_kpi';
+  'id, title, work_item_type, state, assigned_to_display, priority, effort, iteration_path, created_date, changed_date, parent_id, parent_title, parent_type, web_url, tags, count_in_kpi, retorno_qa_hist';
 
 /**
  * As colunas da `vw_fabrica_kpis` que o telão e os cards do Home leem.
@@ -233,14 +239,14 @@ export const VW_FABRICA_COLUNAS =
  * da sprint não casa com nenhum item.
  */
 export const VW_FABRICA_COLUNAS_ENXUTAS =
-  'id, title, work_item_type, state, assigned_to_display, iteration_path, created_date, changed_date, parent_id, tags, count_in_kpi';
+  'id, title, work_item_type, state, assigned_to_display, iteration_path, created_date, changed_date, parent_id, tags, count_in_kpi, retorno_qa_hist';
 
 /**
  * Colunas de `devops_work_items` lidas pela mesa. `area_path` saiu em 11/10/2026:
  * nada no front lê (≈5% dos bytes da carga).
  */
 export const WI_COLUNAS_MESA =
-  'id, tags, title, parent_id, assigned_to_display, work_item_type, iteration_history, state, iteration_path, priority, effort, created_date, changed_date, web_url';
+  'id, tags, title, parent_id, assigned_to_display, work_item_type, iteration_history, state, iteration_path, priority, effort, created_date, changed_date, web_url, retorno_qa_hist';
 
 /**
  * Colunas de `devops_work_items` no perfil do telão: as que decidem escopo e KPI
@@ -248,7 +254,7 @@ export const WI_COLUNAS_MESA =
  * fora da Fábrica, tags para a classificação Priorizado/Bug/Retorno/Avião).
  */
 export const WI_COLUNAS_TELAO =
-  'id, title, work_item_type, state, assigned_to_display, iteration_path, parent_id, tags';
+  'id, title, work_item_type, state, assigned_to_display, iteration_path, parent_id, tags, retorno_qa_hist';
 
 /** Colunas da hierarquia (subida até o Epic) no perfil do telão. */
 export const WI_COLUNAS_HIERARQUIA = 'id, parent_id, work_item_type, title';
@@ -272,12 +278,13 @@ export interface WorkItemMeta {
   created_date: string | null;
   changed_date: string | null;
   web_url: string | null;
+  retorno_qa_hist?: boolean | null;
 }
 
 const WI_VAZIO: Omit<WorkItemMeta, 'id'> = {
   tags: null, title: null, parent_id: null, assigned_to_display: null, work_item_type: null,
   iteration_history: null, state: null, iteration_path: null, priority: null, effort: null,
-  created_date: null, changed_date: null, web_url: null,
+  created_date: null, changed_date: null, web_url: null, retorno_qa_hist: null,
 };
 
 /** Completa com null as colunas que um select enxuto não trouxe. */
@@ -288,7 +295,7 @@ export function completarWorkItem(parcial: Partial<WorkItemMeta> & { id: number 
 const FABRICA_ITEM_VAZIO: Omit<FabricaItem, 'id'> = {
   title: null, work_item_type: null, state: null, assigned_to_display: null, priority: null,
   effort: null, iteration_path: null, created_date: null, changed_date: null, parent_id: null,
-  parent_title: null, parent_type: null, web_url: null,
+  parent_title: null, parent_type: null, web_url: null, retorno_qa_hist: null,
 };
 
 /** Idem para a linha da `vw_fabrica_kpis` lida com `VW_FABRICA_COLUNAS_ENXUTAS`. */
@@ -880,6 +887,7 @@ export function useFabricaKpis(
       parent_type: null,
       web_url: wi.web_url,
       tags: wi.tags,
+      retorno_qa_hist: wi.retorno_qa_hist ?? null,
       count_in_kpi: true,
     }));
 
@@ -920,6 +928,7 @@ export function useFabricaKpis(
       parent_type: null,
       web_url: wi.web_url,
       tags: wi.tags,
+      retorno_qa_hist: wi.retorno_qa_hist ?? null,
       count_in_kpi: true,
     }));
 
@@ -1042,6 +1051,7 @@ export function useFabricaKpis(
       parent_type: null,
       web_url: wi.web_url,
       tags: wi.tags,
+      retorno_qa_hist: wi.retorno_qa_hist ?? null,
       count_in_kpi: false,
     }));
 
@@ -1366,11 +1376,20 @@ export function useFabricaKpis(
    * aparecia com 0,3 h de 93 h lançadas.
    */
   const areaPorItem = areaPorItemQuery.data || {};
+  /** Feature do DE-PARA na cadeia de pais do item (a mesma subida de `findEpic`). */
+  const featureDeParaDe = (workItemId: number): number | null => {
+    let id: number | null | undefined = workItemId;
+    for (let passo = 0; id != null && passo <= 10; passo++) {
+      if (DE_PARA_FORMATO_ANTERIOR[id]) return id;
+      id = wiMap.get(id)?.parent_id;
+    }
+    return null;
+  };
   const horasPorDestino: TimelogFabricaScope[] = hasTimeLogsFull
     ? aggregateFabrica(completeTimeLogs, (epic, workItemId) => {
         // `findEpic` devolve o topo da cadeia quando não há Epic; aqui só vale Epic de verdade.
         const ehEpic = epic != null && wiMap.get(epic.id)?.work_item_type === 'Epic';
-        return destinoIdDoItem(areaPorItem[workItemId], ehEpic ? epic.title : null);
+        return destinoIdDoItem(areaPorItem[workItemId], ehEpic ? epic.title : null, featureDeParaDe(workItemId));
       })
     : [];
   const totalHoursLoggedFull = horasPorDestino.reduce((sum, r) => sum + r.minutes, 0) / 60;

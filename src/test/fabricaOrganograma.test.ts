@@ -187,6 +187,16 @@ describe('jornada e atribuição de quem divide o tempo', () => {
     expect(destinoIdDoItem(null, null)).toBe(DESTINO_NENHUM);
     expect(lerDestino('epico:K8').anterior).toBe(true);
     expect(lerDestino('area:ERP').codigos).toEqual(['ERP_SUST', 'ERP_EVOL']);
+    // Feature do DE-PARA debaixo de [K8]/[FLEXX]: destino nas fábricas do PARA, sem a marca "formato anterior".
+    expect(destinoIdDoItem('Flag.Planejamento', '[K8] - Squad', 10004)).toBe('depara:10004');
+    expect(lerDestino('depara:10004')).toMatchObject({ codigos: ['PROMO_SUITE'], anterior: false, rotulo: 'Feature SWFX (DE-PARA)' });
+    expect(marcaDaHora('PROMO_SUITE', lerDestino('depara:10004'))).toBe('casa');
+    expect(marcaDaHora('ERP_SUST', lerDestino('depara:10004'))).toBe('cruzado');
+    expect(marcaDaHora('ERP_EVOL', lerDestino('depara:10012'))).toBe('casa');
+    // Feature fora do DE-PARA, ou Épico que não é do formato anterior, segue a régua de antes.
+    expect(destinoIdDoItem('Flag.Planejamento', '[K8] - Squad', 99999)).toBe('epico:K8');
+    expect(destinoIdDoItem('Flag.Planejamento', '[STAGING] - Squad', 10004)).toBe('epico:STAGING');
+    expect(destinoIdDoItem('Flag.Planejamento\\IR', '[FLEXX] - Squad', 13509)).toBe('area:IR');
     // Id desconhecido não quebra nem some: vira destino sem fábrica.
     expect(lerDestino('???').codigos).toEqual([]);
   });

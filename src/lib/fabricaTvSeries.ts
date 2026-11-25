@@ -104,6 +104,7 @@ export type ItemLive = {
   state?: string | null;
   work_item_type?: string | null;
   tags?: string | null;
+  retorno_qa_hist?: boolean | null;
 };
 
 /**
