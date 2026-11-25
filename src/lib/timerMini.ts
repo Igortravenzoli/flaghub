@@ -1,25 +1,17 @@
 /**
  * O que o mini timer mostra (25/11/2026).
  *
- *  • Parado: o ▶ de retomar a última tarefa escolhida só existe se a demanda
- *    dela continua ABERTA, e a pílula diz "Retomar: <tarefa>"; sem isso, diz
- *    "Sem timer ativo". Antes o mini lia só a escolha guardada no navegador e
- *    seguia oferecendo o ▶ numa demanda já encerrada.
+ *  • Parado: a pílula diz "Sem timer ativo", sem nome de tarefa. O ▶ retoma a
+ *    última tarefa trabalhada cuja demanda continua ABERTA (`ultimaTrabalhada`,
+ *    pelo estado do servidor); a dica do botão diz qual é. Antes o mini lia a
+ *    escolha guardada no navegador e oferecia o ▶ numa demanda já encerrada ou
+ *    numa tarefa anterior à que acabou de ser pausada.
  *  • Com timers em paralelo: mostra um por vez, com "1/2"; o clique passa ao
  *    próximo. Pausar e Encerrar valem para o que está à vista.
  */
 
 interface ComItem {
   work_item_id: number;
-}
-
-/**
- * A escolha guardada vale? Só com a demanda aberta. `demandasAbertas` nulo =
- * o estado ainda não chegou do servidor: não oferece nada.
- */
-export function selecaoAberta<S extends { id: number }>(sel: S | null, demandasAbertas: ComItem[] | null): S | null {
-  if (!sel || !demandasAbertas) return null;
-  return demandasAbertas.some((d) => d.work_item_id === sel.id) ? sel : null;
 }
 
 /**
@@ -32,14 +24,32 @@ export function rotuloRetomar(sel: { id: number; title?: string | null }): strin
 }
 
 /**
- * O texto da pílula sem timer rodando: o que o ▶ vai retomar, ou "Sem timer
- * ativo" quando não há nada a retomar. O "Retomar:" na frente é o que separa
- * isto de um timer aberto na tarefa.
+ * A última tarefa trabalhada que ainda dá para retomar: entre as demandas
+ * ABERTAS, a do trecho que parou por último; sem trecho fechado à vista (dia
+ * novo, por exemplo), a demanda mexida por último. Vem do estado do servidor,
+ * então vale também para o que foi iniciado por outro caminho (anotação que
+ * virou Task, reunião, outra janela), que a escolha guardada no navegador não
+ * via. Sem demanda aberta, null.
  */
-export function textoDoMiniParado(retomavel: { id: number; title?: string | null } | null): string {
-  if (!retomavel) return 'Sem timer ativo';
-  const titulo = (retomavel.title ?? '').trim();
-  return `Retomar: ${titulo || `#${retomavel.id}`}`;
+export function ultimaTrabalhada<D extends ComItem & { ultima_atividade_em: string }>(
+  demandasAbertas: D[],
+  trechos: (ComItem & { encerrado_em: string; descartado?: boolean })[],
+): D | null {
+  if (demandasAbertas.length === 0) return null;
+  let melhor: D | null = null;
+  let quando = -Infinity;
+  for (const t of trechos) {
+    if (t.descartado) continue;
+    const fim = Date.parse(t.encerrado_em);
+    if (!(fim > quando)) continue;
+    const d = demandasAbertas.find((x) => x.work_item_id === t.work_item_id);
+    if (d) {
+      melhor = d;
+      quando = fim;
+    }
+  }
+  if (melhor) return melhor;
+  return demandasAbertas.reduce((a, b) => (Date.parse(b.ultima_atividade_em) > Date.parse(a.ultima_atividade_em) ? b : a));
 }
 
 /** Qual dos que rodam o mini mostra: o preferido, se ainda roda; senão o mais recente (o primeiro). */
