@@ -6,7 +6,7 @@ import { useMotorTimer } from '@/hooks/useTimerRelogio';
 import { useTimerExibido } from '@/hooks/useTimerExibido';
 import { DialogoPresenca } from '@/components/timer/DialogoPresenca';
 import { lerSelecao } from '@/lib/timerSelecao';
-import { dicaParalelos, selecaoAberta } from '@/lib/timerMini';
+import { dicaParalelos, rotuloRetomar, selecaoAberta } from '@/lib/timerMini';
 import { relogio } from '@/lib/timerRelogio';
 import { pedirEncerrar, ponteDesktop } from '@/lib/timerDesktop';
 import { PilulaMini, BotaoMini, useFundoTransparente } from '@/components/timer/PilulaMini';
@@ -17,9 +17,9 @@ import { cn } from '@/lib/utils';
  * translúcida sempre por cima. No navegador também funciona. Mesmo motor e
  * mesmas regras de /timer.
  *
- * Parado, mostra a última tarefa escolhida em /timer para retomar — mas só
- * enquanto a demanda dela está aberta. Encerrada, some: "Sem timer ativo"
- * (25/11/2026; antes o ▶ seguia oferecendo a demanda já encerrada).
+ * Parado, diz "Sem timer ativo" e o ▶ retoma a última tarefa escolhida em
+ * /timer (o nome dela fica na dica do botão) — mas só enquanto a demanda dela
+ * está aberta; encerrada, o ▶ some (25/11/2026).
  *
  * Com timers em paralelo, mostra um por vez: o "1/2" passa ao próximo, e
  * Pausar/Encerrar valem para o que está à vista.
@@ -47,11 +47,6 @@ export default function TimerWidget() {
   const ocupado = acoes.iniciar.isPending || acoes.pausar.isPending;
   // parado: só retoma demanda que segue aberta no servidor
   const retomavel = exibido ? null : selecaoAberta(selecionada, estado?.demandas ?? null);
-  const alvo = exibido
-    ? { id: exibido.work_item_id, titulo: exibido.titulo }
-    : retomavel
-      ? { id: retomavel.id, titulo: retomavel.title ?? `#${retomavel.id}` }
-      : null;
 
   const abrirCompleto = () => ponteDesktop()?.abrirCompleto();
 
@@ -80,11 +75,15 @@ export default function TimerWidget() {
           )}
           aria-hidden
         />
+        {/* O nome da tarefa só aparece com o timer RODANDO. Parado, a pílula diz
+            "Sem timer ativo" mesmo havendo o que retomar: o nome com 00:00:00 ao
+            lado parecia um timer aberto naquela tarefa (pedido do Igor, 25/11/2026).
+            O que o ▶ retoma fica na dica do botão. */}
         <span
-          className={cn('min-w-0 flex-1 truncate text-[13px] font-medium', alvo ? 'text-white/85' : 'text-white/55')}
-          title={alvo ? `#${alvo.id} ${alvo.titulo}` : undefined}
+          className={cn('min-w-0 flex-1 truncate text-[13px] font-medium', exibido ? 'text-white/85' : 'text-white/55')}
+          title={exibido ? `#${exibido.work_item_id} ${exibido.titulo}` : undefined}
         >
-          {carregando ? 'Timer Flag' : alvo ? alvo.titulo : 'Sem timer ativo'}
+          {carregando ? 'Timer Flag' : exibido ? exibido.titulo : 'Sem timer ativo'}
         </span>
         {exibido && total > 1 && (
           <button
@@ -98,9 +97,7 @@ export default function TimerWidget() {
             {posicao + 1}/{total}
           </button>
         )}
-        <span className={cn('font-mono text-[13px] font-semibold tabular-nums', exibido ? 'text-white' : 'text-white/45')}>
-          {relogio(segundos)}
-        </span>
+        {exibido && <span className="font-mono text-[13px] font-semibold tabular-nums text-white">{relogio(segundos)}</span>}
 
         {exibido ? (
           <>
@@ -119,7 +116,7 @@ export default function TimerWidget() {
           </>
         ) : somenteConsulta || !retomavel ? null : (
           <BotaoMini
-            titulo="Retomar"
+            titulo={rotuloRetomar(retomavel)}
             onClick={() =>
               acoes.iniciar.mutate({
                 id: retomavel.id,

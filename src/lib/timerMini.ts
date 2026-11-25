@@ -1,10 +1,10 @@
 /**
  * O que o mini timer mostra (25/11/2026).
  *
- *  • Parado: a última tarefa escolhida só aparece (com o ▶ de retomar) se a
- *    demanda dela continua ABERTA. Encerrou, some: "Sem timer ativo". Antes o
- *    mini lia só a escolha guardada no navegador e seguia oferecendo o ▶ numa
- *    demanda já encerrada.
+ *  • Parado: a pílula diz "Sem timer ativo". O ▶ de retomar a última tarefa
+ *    escolhida só existe se a demanda dela continua ABERTA; o nome dela vai na
+ *    dica do botão, não na pílula. Antes o mini lia só a escolha guardada no
+ *    navegador e seguia oferecendo o ▶ numa demanda já encerrada.
  *  • Com timers em paralelo: mostra um por vez, com "1/2"; o clique passa ao
  *    próximo. Pausar e Encerrar valem para o que está à vista.
  */
@@ -20,6 +20,15 @@ interface ComItem {
 export function selecaoAberta<S extends { id: number }>(sel: S | null, demandasAbertas: ComItem[] | null): S | null {
   if (!sel || !demandasAbertas) return null;
   return demandasAbertas.some((d) => d.work_item_id === sel.id) ? sel : null;
+}
+
+/**
+ * Dica do ▶ com o mini parado: diz o que será retomado. O nome da tarefa não
+ * aparece na pílula sem timer rodando (parecia um timer aberto nela).
+ */
+export function rotuloRetomar(sel: { id: number; title?: string | null }): string {
+  const titulo = (sel.title ?? '').trim();
+  return titulo ? `Retomar #${sel.id} ${titulo}` : `Retomar #${sel.id}`;
 }
 
 /** Qual dos que rodam o mini mostra: o preferido, se ainda roda; senão o mais recente (o primeiro). */
