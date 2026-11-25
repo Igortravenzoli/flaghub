@@ -194,42 +194,58 @@ function CartaoRodando({
   onEncerrar: () => void;
 }) {
   return (
-    <div className={cn('space-y-2 rounded-lg border border-flag-gold/50 bg-flag-gold/5', compacto ? 'p-2.5' : 'p-3', SOMBRA_XS)}>
+    <div className={cn('space-y-1 rounded-lg border border-flag-gold/50 bg-flag-gold/5', compacto ? 'p-2.5' : 'p-3', SOMBRA_XS)}>
       <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold" title={rodando.titulo}>
-            {rodando.titulo}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            <a
-              href={urlWorkItem(rodando.work_item_id, rodando.projeto)}
-              target="_blank"
-              rel="noreferrer"
-              title={`Abrir #${rodando.work_item_id} no Azure DevOps`}
-              className="font-mono underline-offset-2 hover:text-foreground hover:underline focus-visible:underline"
-            >
-              #{rodando.work_item_id}
-            </a>{' '}
-            · a lançar
-          </p>
-        </div>
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold" title={rodando.titulo}>
+          {rodando.titulo}
+        </p>
         <span className={cn('shrink-0 font-mono font-semibold tabular-nums', compacto ? 'text-base' : 'text-xl')} aria-live="off">
           {relogio(segundos)}
         </span>
       </div>
-      <div className="flex items-center gap-1.5">
-        {/* Pausar: um clique, pausa na hora (decisão do Igor, 17/11/2026: sem menu).
-            Trecho esquecido rodando se acerta depois em Lançamentos (encurtar). */}
-        <BotaoIcone icone={Pause} rotulo="Pausar" disabled={ocupado} onClick={onPausar} />
-        <BotaoIcone icone={IconeLancar} rotulo="Lançar até agora (o timer continua)" disabled={ocupado || !podeLancar} onClick={onLancar} />
-        <BotaoIcone
-          icone={Square}
-          rotulo="Encerrar demanda"
-          variante="destructive"
-          disabled={ocupado}
-          onClick={onEncerrar}
-          className={SOMBRA_XS}
-        />
+      {/* Mesmo desenho do cartão do Em espera (pedido do Igor, 25/11/2026):
+          número à esquerda e os botões sem caixa à direita. */}
+      <div className="flex items-center gap-2">
+        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          <a
+            href={urlWorkItem(rodando.work_item_id, rodando.projeto)}
+            target="_blank"
+            rel="noreferrer"
+            title={`Abrir #${rodando.work_item_id} no Azure DevOps`}
+            className="font-mono underline-offset-2 hover:text-foreground hover:underline focus-visible:underline"
+          >
+            #{rodando.work_item_id}
+          </a>{' '}
+          · a lançar
+        </p>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {/* Pausar: um clique, pausa na hora (decisão do Igor, 17/11/2026: sem menu).
+              Trecho esquecido rodando se acerta depois em Lançamentos (encurtar). */}
+          <BotaoIcone
+            discreto
+            icone={Pause}
+            rotulo="Pausar"
+            disabled={ocupado}
+            onClick={onPausar}
+            className="text-foreground/80 hover:bg-foreground/10"
+          />
+          <BotaoIcone
+            discreto
+            icone={IconeLancar}
+            rotulo="Lançar até agora (o timer continua)"
+            disabled={ocupado || !podeLancar}
+            onClick={onLancar}
+            className="text-foreground/80 hover:bg-foreground/10"
+          />
+          <BotaoIcone
+            discreto
+            icone={Square}
+            rotulo="Encerrar demanda"
+            disabled={ocupado}
+            onClick={onEncerrar}
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+          />
+        </div>
       </div>
     </div>
   );
