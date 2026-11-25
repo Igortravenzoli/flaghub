@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2, RotateCcw, Send } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, RotateCcw } from 'lucide-react';
+import { IconeLancar } from '@/components/timer/visual';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -69,7 +70,7 @@ export function LancamentosTimeLog({ fonte, motor, podeLancar, mostrarDia, mostr
               disabled={!podeLancar || escolhidos.length === 0 || lancar.isPending}
               className="bg-flag-gold text-flag-navy hover:bg-flag-gold/90"
             >
-              {lancar.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+              {lancar.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <IconeLancar className="mr-1.5 h-4 w-4" />}
               Lançar {escolhidos.length > 0 ? horas(totalMin * 60) : ''}
             </Button>
           </div>

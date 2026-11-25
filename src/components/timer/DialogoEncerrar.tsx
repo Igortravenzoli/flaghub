@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Loader2, Send, Square } from 'lucide-react';
+import { Loader2, Square } from 'lucide-react';
+import { IconeLancar } from '@/components/timer/visual';
 import {
   Dialog,
   DialogContent,
@@ -202,7 +203,7 @@ export function DialogoEncerrar({ alvo, grupos, motor, podeLancar, onFechar }: P
             ) : alvo?.encerrar ? (
               <Square className="mr-1.5 h-4 w-4" />
             ) : (
-              <Send className="mr-1.5 h-4 w-4" />
+              <IconeLancar className="mr-1.5 h-4 w-4" />
             )}
             {rotuloBotao}
           </Button>
