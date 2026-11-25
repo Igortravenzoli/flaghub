@@ -22,6 +22,12 @@ export interface PonteDesktop {
   onMostrada?: (cb: () => void) => () => void;
   abrirCompleto: () => void;
   abrirMini: () => void;
+  /**
+   * A tela está perguntando algo (true) ou parou de perguntar (false): a
+   * janela completa fica por cima das outras até a pessoa clicar nela (app
+   * 1.0.6+; antes disso não existe e vale só o abrirCompleto).
+   */
+  chamarAtencao?: (ativo: boolean) => void;
 }
 
 // ─── sincronia entre janelas (app + mini, ou abas do navegador) ─────────────

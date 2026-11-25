@@ -27,4 +27,6 @@ contextBridge.exposeInMainWorld('timerFlagDesktop', {
   },
   abrirCompleto: () => ipcRenderer.send('janela:abrir-completo'),
   abrirMini: () => ipcRenderer.send('janela:abrir-mini'),
+  // Tela → main (1.0.6): a tela está perguntando algo (true) ou parou (false).
+  chamarAtencao: (ativo: boolean) => ipcRenderer.send('janela:chamar-atencao', ativo === true),
 });
