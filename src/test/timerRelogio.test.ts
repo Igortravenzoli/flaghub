@@ -25,6 +25,8 @@ import {
   sinalDevido,
   situacaoTrecho,
   totalHojeSeg,
+  horaTrabalhadaSeg,
+  inicioDoDiaSP,
   NOTA_LANCAMENTO_AUTO,
   type TrechoFechado,
   type TrechoRodando,
@@ -291,5 +293,42 @@ describe('classificarLacuna (23/11/2026: navegador congelado não é PC suspenso
   it('lacuna sem freeze, ou com freeze velho, = computador suspenso (pausa)', () => {
     expect(classificarLacuna(t0, t0 + 10 * 60_000, null)).toBe('suspensao');
     expect(classificarLacuna(t0, t0 + 10 * 60_000, t0 - 60_000)).toBe('suspensao');
+  });
+});
+
+describe('hora trabalhada do dia (25/11/2026)', () => {
+  const fechado = (id: string, ini: string, fim: string, descartado = false): TrechoFechado => ({
+    id, work_item_id: 1, titulo: 'x', tipo: 'Task', projeto: null, iniciado_em: ini, encerrado_em: fim,
+    encerrado_original_em: null, motivo_fim: 'manual', descartado, lancamento_id: null,
+  });
+  const agora = t('2026-11-25T18:00:00.000Z'); // 15:00 em São Paulo
+
+  it('00:00 de São Paulo', () => {
+    expect(inicioDoDiaSP(agora)).toBe(t('2026-11-25T03:00:00.000Z'));
+    expect(inicioDoDiaSP(t('2026-11-26T02:30:00.000Z'))).toBe(t('2026-11-25T03:00:00.000Z')); // 23:30 SP
+  });
+
+  it('paralelos sobrepostos contam uma vez', () => {
+    // 10:00–11:00 e 10:30–11:30 (SP) = 1h30 de relógio, não 2 h
+    const e = lerEstado({
+      trechos: [fechado('a', '2026-11-25T13:00:00Z', '2026-11-25T14:00:00Z'), fechado('b', '2026-11-25T13:30:00Z', '2026-11-25T14:30:00Z')],
+    });
+    expect(horaTrabalhadaSeg(e, agora)).toBe(90 * 60);
+  });
+
+  it('rodando juntos com um fechado; descartado e ontem ficam fora', () => {
+    const r1 = rodando({ id: 'r1', work_item_id: 2, iniciado_em: '2026-11-25T17:00:00.000Z' }); // 14:00
+    const r2 = rodando({ id: 'r2', work_item_id: 3, iniciado_em: '2026-11-25T17:30:00.000Z' }); // 14:30
+    const e = lerEstado({
+      rodando: r2,
+      rodando_todos: [r2, r1],
+      trechos: [
+        fechado('c', '2026-11-25T12:00:00Z', '2026-11-25T13:00:00Z'), // 09–10: 1 h
+        fechado('d', '2026-11-25T12:00:00Z', '2026-11-25T12:30:00Z', true), // descartado
+        fechado('e', '2026-11-24T22:00:00Z', '2026-11-25T03:30:00Z'), // de ontem até 00:30: só 30 min contam
+      ],
+    });
+    // 30 min (madrugada) + 1 h (manhã) + 1 h (14–15, dois rodando) = 2h30
+    expect(horaTrabalhadaSeg(e, agora)).toBe(150 * 60);
   });
 });

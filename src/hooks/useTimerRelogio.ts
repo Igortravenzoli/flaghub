@@ -25,7 +25,7 @@ import {
   relogio,
   segundosRodando,
   sinalDevido,
-  totalHojeSeg,
+  horaTrabalhadaSeg,
   type Ausencia,
   type EstadoTimer,
   type TrechoRodando,
@@ -643,7 +643,8 @@ export function useMotorTimer(opcoes: { tituloDaAba?: boolean } = {}) {
     }
   }, [tituloDaAba, rodando, rodandoTodos.length, perguntando, segundos, agoraLocal]);
 
-  const totalHoje = useMemo(() => (estado ? totalHojeSeg(estado, agoraServidor) : 0), [estado, agoraServidor]);
+  // hora de relógio do dia: paralelos sobrepostos contam uma vez (25/11/2026)
+  const totalHoje = useMemo(() => (estado ? horaTrabalhadaSeg(estado, agoraServidor) : 0), [estado, agoraServidor]);
 
   return {
     estado,

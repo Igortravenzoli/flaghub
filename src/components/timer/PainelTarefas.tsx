@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, ListTree, Loader2, NotebookPen, Play, Plus, RefreshCw, Search } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, ListTree, Loader2, Play, Plus, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +25,7 @@ import { avisoTagsDescartadas, classificacaoCompleta, classificacaoVazia, type C
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
 import { hojeISO, prazoSprint } from '@/lib/prazoSprint';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
-import { caminhoDe, pbisDaSprint, TIPOS_SELECIONAVEIS, type TarefaSelecionada } from '@/lib/timerSelecao';
+import { caminhoDe, TIPOS_SELECIONAVEIS, type TarefaSelecionada } from '@/lib/timerSelecao';
 import {
   ErroTimer,
   useBuscaTimer,
@@ -37,8 +37,7 @@ import {
   type ItemTimer,
 } from '@/hooks/useTimerTarefas';
 
-/** `iniciar: false` = veio de arrastar uma anotação: cria sem iniciar o timer */
-type Criando = { tipo: 'Task' | 'PBI'; pai: ItemDevops; iniciar?: boolean } | null;
+type Criando = { tipo: 'Task' | 'PBI'; pai: ItemDevops } | null;
 
 /**
  * Painel "Tasks atribuídas" do Timer: a árvore do que está atribuído à pessoa
@@ -46,18 +45,15 @@ type Criando = { tipo: 'Task' | 'PBI'; pai: ItemDevops; iniciar?: boolean } | nu
  * inteiro e a criação de Task (sob PBI/Bug) e PBI (sob Feature).
  *
  * `selecionada` = o item que está rodando (destaque); `onSelecionar` inicia
- * o timer nele. Com `anotacao` (▶ na anotação), o painel está no modo
- * "escolha o PBI": um clique num PBI/Bug cria a Task com o texto da anotação e
- * inicia o timer. Arrastar a anotação para um PBI/Bug faz o mesmo.
+ * o timer nele. Arrastar uma anotação até um PBI/Bug chama `onAnotacaoSolta`
+ * (a tela abre o pop-up "Virar Task" com o PBI escolhido; 25/11/2026).
  */
 export function PainelTarefas({
   selecionada,
   rodandoIds,
   onSelecionar,
-  anotacao = null,
   anotacaoArrastada = null,
-  onCancelarAnotacao,
-  onItemCriado,
+  onAnotacaoSolta,
   embutido = false,
   iniciarRecolhido = false,
   podeIniciar = true,
@@ -66,12 +62,10 @@ export function PainelTarefas({
   /** com timers em paralelo, todos os que rodam (TM9) */
   rodandoIds?: number[];
   onSelecionar: (t: TarefaSelecionada) => void;
-  anotacao?: { id: string; texto: string } | null;
   /** anotação sendo arrastada da outra coluna: os PBIs/Bugs se mostram como alvo */
   anotacaoArrastada?: AnotacaoArrastada | null;
-  onCancelarAnotacao?: () => void;
-  /** item criado; `anotacaoId` = a anotação que virou esta Task (▶ ou arrastada) */
-  onItemCriado?: (item: ItemTimer, anotacaoId?: string) => void;
+  /** a anotação foi solta num PBI/Bug */
+  onAnotacaoSolta?: (pai: ItemDevops, a: AnotacaoArrastada) => void;
   /** dentro de outra coluna: sem a moldura de Card e sem título */
   embutido?: boolean;
   /** abre com as épicas recolhidas (o quadro minimizado) */
@@ -85,8 +79,6 @@ export function PainelTarefas({
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const [criando, setCriando] = useState<Criando>(null);
   const [recolheuInicio, setRecolheuInicio] = useState(!iniciarRecolhido);
-  const criarTask = useCriarItemTimer();
-  const [criandoEm, setCriandoEm] = useState<number | null>(null);
 
   useEffect(() => {
     const t = window.setTimeout(() => setBuscaAtrasada(busca), 450);
@@ -105,16 +97,6 @@ export function PainelTarefas({
     setRecolheuInicio(true);
     setRecolhidos(new Set(chavesRecolhiveis(grupos)));
   }
-
-  // Transformando anotação: primeiro os PBIs da sprint corrente (um clique);
-  // a árvore só abre inteira quando não há nenhum para oferecer.
-  const sprintAtual = getCurrentOfficialSprintCode();
-  const daSprint = useMemo(() => pbisDaSprint(itens, ancestrais, sprintAtual), [itens, ancestrais, sprintAtual]);
-  const anotacaoId = anotacao?.id ?? null;
-  const semAtalho = daSprint.length === 0;
-  useEffect(() => {
-    if (anotacaoId && semAtalho) setRecolhidos(new Set());
-  }, [anotacaoId, semAtalho]);
 
   const conhecidos = useMemo(() => {
     const m = new Map<number, ItemDevops>();
@@ -140,61 +122,17 @@ export function PainelTarefas({
       return n;
     });
 
-  // Anotação → Task num clique (▶) ou ao soltar: o título é o texto da
-  // anotação. O ▶ cria e já inicia o timer (decisão de 16/11); arrastar só
-  // MOVE a anotação para dentro do PBI, sem iniciar (decisão do Igor, 19/11).
-  const criarDaAnotacao = async (pai: ItemDevops, a: AnotacaoArrastada, iniciar: boolean) => {
-    const titulo = a.texto.trim();
-    if (criarTask.isPending) return;
-    if (titulo.length < 3) {
-      setCriando({ tipo: 'Task', pai, iniciar }); // curto demais: abre o formulário para completar
-      return;
-    }
-    // Cliente e Produto são obrigatórios (decisão do Igor, 18/11/2026): o um
-    // clique herda os dois do CAMPO do PBI; faltando algum, abre o formulário.
-    const { cliente, produto } = pai as Partial<ItemTimer>;
-    if (!cliente || !produto) {
-      setCriando({ tipo: 'Task', pai, iniciar });
-      toast.info(`O #${pai.id} não tem cliente e produto preenchidos: complete na Task.`);
-      return;
-    }
-    setCriandoEm(pai.id);
-    try {
-      const r = await criarTask.mutateAsync({ tipo: 'Task', titulo, paiId: pai.id, cliente, produto, herdado: true });
-      const novo = r.item ?? null;
-      const url = novo?.web_url;
-      toast.success(`Task #${novo?.id ?? ''} criada em #${pai.id} e atribuída a você${iniciar ? '' : ' (timer parado)'}.`, {
-        description: `Cliente ${cliente} · produto ${produto} (do PBI). Para mudar, abra no DevOps.`,
-        duration: 10_000,
-        ...(url ? { action: { label: 'Abrir no DevOps', onClick: () => window.open(url, '_blank', 'noopener') } } : {}),
-      });
-      if (novo) {
-        onItemCriado?.(novo, a.id);
-        if (iniciar && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
-      }
-    } catch (e) {
-      // o que veio do PBI não coube na lista da Task: completa no formulário
-      if (e instanceof ErroTimer && ['sem_cliente', 'sem_produto'].includes(e.motivo)) {
-        setCriando({ tipo: 'Task', pai, iniciar });
-        toast.info(`${e.message} Complete na Task.`);
-      } else {
-        toast.error(e instanceof ErroTimer ? e.message : 'Não foi possível criar a Task.');
-      }
-    } finally {
-      setCriandoEm(null);
-    }
-  };
-
+  // Anotação solta num PBI: a tela abre o pop-up "Virar Task" com ele já
+  // escolhido (sem iniciar o timer, decisão de 19/11). O ▶ da anotação abre o
+  // mesmo pop-up sem PBI: não há mais o modo "clique no PBI" aqui (25/11/2026).
   const alvo: AlvoAnotacao = {
-    escolhendo: !!anotacao,
+    escolhendo: false,
     arrastando: !!anotacaoArrastada,
-    ocupado: criandoEm,
-    onEscolher: (pai) => {
-      if (anotacao) void criarDaAnotacao(pai, anotacao, true);
-    },
+    ocupado: null,
+    onEscolher: () => {},
     onSoltar: (pai, dt) => {
       const a = lerArrasto(dt) ?? anotacaoArrastada;
-      if (a) void criarDaAnotacao(pai, a, false);
+      if (a) onAnotacaoSolta?.(pai, a);
     },
   };
 
@@ -212,12 +150,10 @@ export function PainelTarefas({
       <FormNovoItem
         tipo={tipo}
         pai={item}
-        tituloInicial={tipo === 'Task' && anotacao ? anotacao.texto : ''}
         onCancelar={() => setCriando(null)}
         onCriado={(novo) => {
           setCriando(null);
-          if (novo) onItemCriado?.(novo, tipo === 'Task' ? anotacao?.id : undefined);
-          if (novo && criando?.iniciar !== false && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
+          if (novo && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
         }}
       />
     ) : null;
@@ -292,61 +228,6 @@ export function PainelTarefas({
         )}
       </Cabeca>
       <Corpo className="space-y-4">
-        {anotacao && (
-          <div className="flex items-center gap-2 rounded-lg border border-flag-gold/60 bg-flag-gold/10 px-3 py-2 text-sm">
-            <NotebookPen className="h-4 w-4 shrink-0 text-flag-gold" />
-            <p className="min-w-0 flex-1">
-              <span className="block truncate font-medium" title={anotacao.texto}>
-                {anotacao.texto}
-              </span>
-              <span className="block text-[11px] text-muted-foreground">
-                Clique no PBI em que esta Task vai entrar (ou arraste a anotação até ele).
-              </span>
-            </p>
-            {onCancelarAnotacao && (
-              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onCancelarAnotacao}>
-                Cancelar
-              </Button>
-            )}
-          </div>
-        )}
-        {anotacao && !minhas.isLoading && (
-          <section className="space-y-1.5" aria-label={`PBIs da sprint ${sprintAtual}`}>
-            <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Na sprint {sprintAtual}
-            </h3>
-            {daSprint.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhum PBI seu aberto nesta sprint.</p>
-            ) : (
-              <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
-                {daSprint.map((p) => {
-                  const onde = caminhoDe(p, conhecidos);
-                  return (
-                    <div key={p.id}>
-                      <AlvoPbi item={p} alvo={alvo}>
-                        <div className="flex min-w-0 items-center gap-2">
-                          <IconeTipo tipo={p.work_item_type} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm" title={p.title ?? ''}>
-                              {p.title}
-                            </span>
-                            <span className="block truncate text-[11px] text-muted-foreground">
-                              <span className="font-mono">#{p.id}</span>
-                              {onde ? ` · ${onde}` : ''}
-                            </span>
-                          </span>
-                          <SinalAlvo item={p} alvo={alvo} />
-                        </div>
-                      </AlvoPbi>
-                      {formPara(p, 'Task')}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <p className="pt-0.5 text-[11px] text-muted-foreground">Outro PBI: na árvore abaixo ou busque por #id.</p>
-          </section>
-        )}
         {!embutido && campoBusca}
 
         {minhas.isLoading ? (
@@ -487,8 +368,8 @@ function FormNovoItem({
   const criar = useCriarItemTimer();
   const acrescentarTags = useAcrescentarTags();
   const [titulo, setTitulo] = useState(tituloInicial);
-  // cliente e produto do CAMPO do pai já vêm escolhidos (nunca deduzidos de tag)
-  const [cls, setCls] = useState<Classificacao>(() => classificacaoVazia(pai as Partial<ItemTimer>));
+  // cliente, produto e categoria começam sem seleção (pedido do Igor, 25/11/2026)
+  const [cls, setCls] = useState<Classificacao>(() => classificacaoVazia());
   const projeto = (pai as Partial<ItemTimer>).team_project ?? null;
   const tipoDevops = tipo === 'Task' ? 'Task' : 'Product Backlog Item';
   const campos = useCamposTimer(projeto, tipoDevops);

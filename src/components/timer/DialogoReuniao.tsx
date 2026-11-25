@@ -142,11 +142,8 @@ export function DialogoReuniao({
   const camposOk = !criaItem || classificacaoCompleta(cls, campos.data);
   const pronto = temaOk && ondeOk && camposOk && !ocupado;
 
-  const escolher = (item: ItemDevops) => {
-    setEscolhidos((e) => ({ ...e, [destino]: item }));
-    // no PBI, cliente e produto do campo dele já vêm escolhidos
-    if (destino === 'pbi') setCls((c) => ({ ...c, ...classificacaoVazia(item as Partial<ItemTimer>), tags: c.tags }));
-  };
+  // cliente, produto e categoria começam sem seleção (pedido do Igor, 25/11/2026)
+  const escolher = (item: ItemDevops) => setEscolhidos((e) => ({ ...e, [destino]: item }));
   const limpar = () => {
     setTema('');
     setBusca('');

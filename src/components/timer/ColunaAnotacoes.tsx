@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, GripVertical, NotebookPen, Play, X } from 'lucide-react';
+import { GripVertical, NotebookPen, Play, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useTimerAnotacoes, type Anotacao } from '@/hooks/useTimerAnotacoes';
@@ -16,12 +16,13 @@ interface Props {
 }
 
 /**
- * Anotações: lembrete, não marca tempo. ▶ vira Task: pede o PBI/Bug, e um
- * clique nele cria a Task e inicia o timer. Arrastar a anotação até o PBI faz
- * o mesmo. ✓ feita; ✕ apaga.
+ * Anotações: lembrete, não marca tempo. ▶ abre o pop-up "Virar Task" (escolhe
+ * o PBI/Bug; a Task é criada e o timer inicia). Arrastar a anotação até um PBI
+ * abre o mesmo pop-up com ele escolhido. ✕ apaga. O ✓ "feita" saiu a pedido do
+ * Igor (25/11/2026): só ▶ e ✕.
  */
 export function ColunaAnotacoes({ emConversao, onVirarTask, onArrastar, className }: Props) {
-  const { anotacoes, anotar, fechar, apagar, editar } = useTimerAnotacoes();
+  const { anotacoes, anotar, apagar, editar } = useTimerAnotacoes();
   const [texto, setTexto] = useState('');
   const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null);
 
@@ -112,19 +113,10 @@ export function ColunaAnotacoes({ emConversao, onVirarTask, onArrastar, classNam
                   type="button"
                   className="rounded-md p-1.5 text-[hsl(var(--success))] hover:bg-[hsl(var(--success)/0.1)]"
                   onClick={() => onVirarTask(a)}
-                  title="Virar Task: escolha o PBI e o timer inicia"
+                  title="Virar Task: abre a escolha do PBI e o timer inicia"
                   aria-label={`Virar "${a.texto}" em Task: escolher o PBI`}
                 >
                   <Play className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={() => fechar.mutate({ id: a.id })}
-                  title="Feita"
-                  aria-label={`Marcar "${a.texto}" como feita`}
-                >
-                  <Check className="h-3.5 w-3.5" />
                 </button>
                 <button
                   type="button"

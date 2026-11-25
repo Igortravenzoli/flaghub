@@ -35,9 +35,9 @@ interface Props {
   className?: string;
 }
 
-function Contador({ rotulo, valor, destaque = false }: { rotulo: string; valor: string; destaque?: boolean }) {
+function Contador({ rotulo, valor, destaque = false, dica }: { rotulo: string; valor: string; destaque?: boolean; dica?: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-border bg-background px-2.5 py-1.5">
+    <div className="min-w-0 rounded-lg border border-border bg-background px-2.5 py-1.5" title={dica}>
       <p className="truncate text-[11px] text-muted-foreground">{rotulo}</p>
       <p className={cn('truncate font-mono text-sm font-semibold tabular-nums', !destaque && 'text-foreground')}>{valor}</p>
     </div>
@@ -91,7 +91,8 @@ export function Cronometro({ motor, podeLancar, paralelo, onParalelo, onReuniao,
     >
       {/* contadores do dia: um timer por vez, então acumulado = tempo real trabalhado */}
       <div className="grid grid-cols-3 gap-1.5">
-        <Contador rotulo="Hoje acumulado" valor={horas(totalHoje)} />
+        {/* hora de relógio trabalhada hoje: paralelos sobrepostos contam uma vez */}
+        <Contador rotulo="Trabalhado" valor={horas(totalHoje)} dica="Hora de relógio trabalhada hoje: timers em paralelo no mesmo horário contam uma vez" />
         <Contador rotulo="Lançado" valor={horas(lancado)} />
         <Contador rotulo="A lançar" valor={horas(aLancar)} />
       </div>
