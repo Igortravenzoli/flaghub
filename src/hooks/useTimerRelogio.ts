@@ -128,7 +128,19 @@ export function useAcoesTimer() {
         ...(item.paralelo ? { p_paralelo: true } : {}),
       });
     },
-    onSuccess: (e) => gravar(e),
+    onSuccess: (e, item) => {
+      gravar(e);
+      // Deu play numa Task: ela sai de To Do e vai para In Progress no DevOps
+      // (pedido do Igor, 26/11/2026). Depois de o timer já rodar e sem esperar:
+      // se o DevOps não mudar, o timer segue igual.
+      if (item.tipo === 'Task') {
+        void andarNoDevops(item.id).then((r) => {
+          if (!r?.mudou) return;
+          toast.success(`#${item.id} foi para ${r.estado ?? 'In Progress'} no DevOps.`);
+          void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'minhas'] });
+        });
+      }
+    },
     onError: falhou,
   });
 
@@ -320,6 +332,21 @@ async function concluirNoDevops(id: number, estado: string | null = null): Promi
     }
   }
   return { ok: false };
+}
+
+/**
+ * Avisa a edge que o timer começou num item: a Task atribuída à pessoa que
+ * está em To Do vai para In Progress. Melhor-esforço: qualquer falha (edge
+ * antiga sem a op, DevOps fora, item de outra pessoa) devolve null e o timer
+ * segue rodando.
+ */
+async function andarNoDevops(id: number): Promise<{ mudou?: boolean; estado?: string } | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('timer-devops', { body: { op: 'iniciar', id } });
+    return error ? null : ((data as { mudou?: boolean; estado?: string } | null) ?? null);
+  } catch {
+    return null;
+  }
 }
 
 async function chamarEdge(corpo: Record<string, unknown>): Promise<RespostaLancamento> {

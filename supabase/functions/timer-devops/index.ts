@@ -39,9 +39,12 @@
 //     com o `estado` escolhido na tela (um estado do tipo, nunca Removed).
 //   • estados (25/11/2026): só leitura — o tipo, o estado de hoje e os
 //     estados possíveis de um item, para o diálogo de encerrar.
+//   • iniciar (26/11/2026): deu play, a Task atribuída à pessoa sai de To Do
+//     (categoria Proposed) e vai para In Progress. Só Task, só System.State;
+//     o app chama depois de o timer já rodar e não depende da resposta.
 //
-// O único update de work item é o `concluir`, e não há consulta livre: o Timer
-// não vira um proxy do PAT. Toda op além de `ativar` exige timer_access ativo.
+// Os únicos updates de work item são o `concluir` e o `iniciar`, os dois só no
+// System.State, e não há consulta livre: o Timer não vira um proxy do PAT. Toda op além de `ativar` exige timer_access ativo.
 //
 // Regras que não podem afrouxar:
 //   • Quem é a pessoa vem SEMPRE do JWT (getUser). Nada de e-mail, GUID ou
@@ -57,7 +60,7 @@
 //
 // Identidade das escritas (docs/timer-identidade-por-dev.md): com o PAT, o
 // History do Azure DevOps mostra o dono do PAT em tudo o que o Timer grava.
-// Com TIMER_DEVOPS_DELEGADO ligado, `criar`, `reuniao` e `concluir` gravam com
+// Com TIMER_DEVOPS_DELEGADO ligado, `criar`, `reuniao`, `concluir` e `iniciar` gravam com
 // o token Entra delegado da própria pessoa (ver identidade.ts); sem token ou
 // com recusa de autorização, caem no PAT como hoje e deixam o evento
 // `devops_caiu_no_pat` em timer_eventos. As LEITURAS seguem no PAT: os caches
@@ -85,6 +88,7 @@ import {
   CAMPOS_ITEM,
   descricaoHtml,
   destinoDoEncerrar,
+  destinoDoIniciar,
   ehRaiz,
   ESTADOS_FECHADOS,
   estadoConcluido,
@@ -98,6 +102,7 @@ import {
   paraItem,
   sprintOficial,
   TIPOS_QUE_ANDAM,
+  TIPOS_QUE_ANDAM_AO_INICIAR,
   validarCriacao,
   wiqlBusca,
   wiqlFilhos,
@@ -754,6 +759,69 @@ async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Jso
   return responder(req, 200, { ok: true, mudou: true, estado: destino, tipo })
 }
 
+// ─── iniciar (26/11/2026) ───────────────────────────────────────────────────
+
+/** Estados por projeto e tipo: mudam quase nunca, e o `iniciar` roda a cada play. */
+const cacheEstados = new CacheCurto<unknown>(6 * 60 * 60 * 1000, 60)
+
+async function estadosEmCache(projeto: string, tipo: string, pat: string): Promise<unknown> {
+  const chave = `${projeto.toLowerCase()}|${tipo.toLowerCase()}`
+  const guardado = cacheEstados.ler(chave)
+  if (guardado) return guardado.valor
+  const brutos = await lerEstadosDoTipo(projeto, tipo, pat)
+  cacheEstados.gravar(chave, brutos)
+  return brutos
+}
+
+// Deu play: a Task sai de To Do e vai para In Progress. O app chama depois de o
+// timer já estar rodando, sem esperar: nada aqui segura nem desfaz o timer. Só
+// Task, só atribuída à própria pessoa, e só quando ela está num estado da
+// categoria Proposed — Task já em andamento, concluída ou removida fica como
+// está. Tudo o que não muda responde 200 com `mudou: false` e o motivo.
+async function andarAoIniciar(req: Request, userId: string, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
+  const id = Number(corpo.id)
+  if (!Number.isInteger(id) || id <= 0) return responder(req, 400, { ok: false, motivo: 'item_invalido' })
+
+  const { tipo, estado, projeto, atribuido } = await lerItemParaEstado(id, acesso, pat)
+  if (!TIPOS_QUE_ANDAM_AO_INICIAR.includes(tipo)) return responder(req, 200, { ok: true, mudou: false, motivo: 'nao_task' })
+  if (!atribuido) return responder(req, 200, { ok: true, mudou: false, motivo: 'nao_atribuido', estado })
+  if (!projeto) return responder(req, 200, { ok: true, mudou: false, motivo: 'sem_projeto', estado })
+
+  const destino = destinoDoIniciar(estado, await estadosEmCache(projeto, tipo, pat))
+  if (!destino || destino === estado) return responder(req, 200, { ok: true, mudou: false, motivo: 'mesmo_estado', estado })
+
+  // Escrita: SEM repetir 5xx (como no criar e no concluir).
+  const resp = await escreverNoAzure(
+    userId,
+    'iniciar',
+    `https://dev.azure.com/${ORG}/_apis/wit/workitems/${id}?api-version=7.1`,
+    'PATCH',
+    [{ op: 'add', path: '/fields/System.State', value: destino }],
+    'timer-iniciar',
+  )
+  if (!resp.ok) {
+    const texto = (await resp.text()).slice(0, 300)
+    console.warn(`[timer-devops] iniciar #${id} recusado (${resp.status}): ${texto}`)
+    return responder(req, 422, {
+      ok: false,
+      motivo: 'devops_recusou',
+      mensagem: `O DevOps não aceitou mudar o item #${id} para ${destino}.`,
+    })
+  }
+
+  const { error } = await admin().from('timer_eventos').insert({
+    user_id: userId,
+    evento: 'andou_work_item',
+    origem: 'servidor',
+    work_item_id: id,
+    detalhe: { de: estado, para: destino, projeto, tipo },
+  })
+  if (error) console.warn('[timer-devops] trilha do iniciar falhou:', error.message)
+
+  cacheMinhas.apagar(userId)
+  return responder(req, 200, { ok: true, mudou: true, estado: destino, tipo })
+}
+
 // ─── Rec reunião ────────────────────────────────────────────────────────────
 
 async function criarNoAzure(userId: string, projeto: string, tipo: string, ops: Json[]): Promise<Response> {
@@ -1255,7 +1323,7 @@ serve(async (req) => {
   if (corpo.op === 'vincular') return await vincular(req, quem.user, quem.token, corpo)
 
   const op = corpo.op
-  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'campos', 'reuniao', 'concluir', 'estados']
+  const OPS = ['minhas', 'buscar', 'filhos', 'criar', 'lancar', 'relancar', 'tags', 'campos', 'reuniao', 'concluir', 'estados', 'iniciar']
   if (typeof op !== 'string' || !OPS.includes(op)) {
     return responder(req, 400, { ok: false, motivo: 'op_desconhecida' })
   }
@@ -1277,6 +1345,7 @@ serve(async (req) => {
     if (op === 'reuniao') return await reuniao(req, quem.user.id, acesso, corpo, pat)
     if (op === 'concluir') return await concluir(req, quem.user.id, acesso, corpo, pat)
     if (op === 'estados') return await estadosDoItem(req, acesso, corpo, pat)
+    if (op === 'iniciar') return await andarAoIniciar(req, quem.user.id, acesso, corpo, pat)
     return await criar(req, quem.user.id, acesso, corpo, pat)
   } catch (e) {
     return erroDevops(req, e)

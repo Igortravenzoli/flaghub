@@ -303,6 +303,27 @@ export function destinoDoEncerrar(
   return achado ? { ok: true, destino: achado.nome } : { ok: false, motivo: 'estado_invalido' }
 }
 
+// 26/11/2026 (pedido do Igor): deu play, a Task sai de To Do e vai para In
+// Progress. Só Task: o PBI e o Bug têm mais de um passo e seguem andando só no
+// encerrar, com o destino escolhido na tela.
+
+/** Tipos cujo estado o Timer muda ao INICIAR o timer. */
+export const TIPOS_QUE_ANDAM_AO_INICIAR = ['Task']
+
+/**
+ * Para onde o item vai quando o timer começa: só sai de um estado da categoria
+ * Proposed (To Do, New) para o primeiro da categoria InProgress do tipo.
+ * `null` = fica onde está (já em andamento, concluído, removido, estado que o
+ * tipo não conhece, ou tipo sem estado "em andamento").
+ */
+export function destinoDoIniciar(estadoAtual: string, estados: unknown): string | null {
+  const lista = estadosDoTipo(estados)
+  const alvo = estadoAtual.trim().toLowerCase()
+  const atual = lista.find((e) => e.nome.toLowerCase() === alvo)
+  if (!atual || atual.categoria !== 'Proposed') return null
+  return lista.find((e) => e.categoria === 'InProgress')?.nome ?? null
+}
+
 /**
  * A Task está atribuída a esta pessoa? Compara o GUID do DevOps e, sem ele, o
  * e-mail (uniqueName), sem diferenciar maiúsculas.
