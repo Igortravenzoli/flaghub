@@ -97,7 +97,7 @@ Efeito colateral bom: o limite de uso do DevOps é por identidade ("Azure DevOps
 | Arquivo | O quê |
 | --- | --- |
 | `supabase/functions/timer-devops/identidade.ts` | Parte pura: chave ligada/desligada, escolha do cabeçalho, validade, renovação, conferência do dono, cifra. |
-| `supabase/functions/timer-devops/index.ts` | `escreverNoAzure` (usada por `criar`, `reuniao`, `concluir`) e a op `vincular`. Com a chave desligada, o comportamento é o de hoje. |
+| `supabase/functions/timer-devops/index.ts` | `escreverNoAzure` (usada por `criar`, `reuniao`, `concluir` e, desde 26/11/2026, `iniciar`: a Task sai de To Do para In Progress ao dar play) e a op `vincular`. Com a chave desligada, o comportamento é o de hoje. |
 | `supabase/migrations/20261125163000_tm10_timer_devops_token.sql` | Tabela `privado.timer_devops_token`, três funções só do `service_role`, gatilho que apaga o vínculo ao revogar o Timer. Aplicada em 25/11/2026. |
 | `supabase/verificacao/tm10_devops_token_timer.sql` | Ensaio e conferência da TM10. |
 | `src/lib/timerVinculoDevops.ts`, `src/hooks/useTimerVinculoDevops.ts` | Escopos do login pela variável e envio do refresh token à edge, uma vez por login. |
