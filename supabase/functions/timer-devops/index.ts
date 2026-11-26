@@ -37,6 +37,9 @@
 //     conclusão do processo (Done/Closed). Só atribuída à própria pessoa, só
 //     o campo System.State. Desde 25/11/2026, PBI e Bug também andam, mas só
 //     com o `estado` escolhido na tela (um estado do tipo, nunca Removed).
+//     Desde 26/11/2026 a tela também chama esta op sem timer nenhum, pelo
+//     controle de estado da linha do PBI/Bug; e PBI/Bug só vão para o estado
+//     de conclusão sem filho aberto (409 `filhos_abertos`).
 //   • estados (25/11/2026): só leitura — o tipo, o estado de hoje e os
 //     estados possíveis de um item, para o diálogo de encerrar.
 //   • iniciar (26/11/2026): deu play, a Task atribuída à pessoa sai de To Do
@@ -89,6 +92,7 @@ import {
   descricaoHtml,
   destinoDoEncerrar,
   destinoDoIniciar,
+  ehConclusao,
   ehRaiz,
   ESTADOS_FECHADOS,
   estadoConcluido,
@@ -97,12 +101,14 @@ import {
   idsDaWiql,
   idsDosFilhos,
   interpretarBusca,
+  mensagemFilhosAbertos,
   ORG,
   PAI_PERMITIDO,
   paraItem,
   sprintOficial,
   TIPOS_QUE_ANDAM,
   TIPOS_QUE_ANDAM_AO_INICIAR,
+  TIPOS_QUE_FECHAM_SEM_FILHO_ABERTO,
   validarCriacao,
   wiqlBusca,
   wiqlFilhos,
@@ -668,6 +674,11 @@ async function lerItemParaEstado(id: number, acesso: Acesso, pat: string) {
   }
 }
 
+/** Ids dos filhos ABERTOS de um item (os que seguram o Done do PBI/Bug). */
+async function filhosAbertosDe(id: number, pat: string): Promise<number[]> {
+  return idsDosFilhos(await wiql(wiqlFilhos(id), 200, pat), id)
+}
+
 function lerEstadosDoTipo(projeto: string, tipo: string, pat: string): Promise<unknown> {
   return lerAzure(
     `https://dev.azure.com/${ORG}/${encodeURIComponent(projeto)}/_apis/wit/workitemtypes/${encodeURIComponent(tipo)}/states?api-version=7.1`,
@@ -675,15 +686,18 @@ function lerEstadosDoTipo(projeto: string, tipo: string, pat: string): Promise<u
   )
 }
 
-// estados (25/11/2026): para o diálogo de encerrar oferecer o destino do
-// PBI/Bug. Só leitura; devolve o tipo, o estado de hoje, se o item é da pessoa
-// e os estados do tipo no processo do projeto (sem a categoria Removed).
+// estados (25/11/2026): para a tela oferecer o destino do PBI/Bug (no encerrar
+// e, desde 26/11, no controle de estado da linha). Só leitura; devolve o tipo,
+// o estado de hoje, se o item é da pessoa, os estados do tipo no processo do
+// projeto (sem a categoria Removed) e, no PBI/Bug, os filhos abertos — com
+// eles a tela já mostra o Done barrado antes do clique.
 async function estadosDoItem(req: Request, acesso: Acesso, corpo: Json, pat: string): Promise<Response> {
   const id = Number(corpo.id)
   if (!Number.isInteger(id) || id <= 0) return responder(req, 400, { ok: false, motivo: 'item_invalido' })
   const item = await lerItemParaEstado(id, acesso, pat)
   const anda = TIPOS_QUE_ANDAM.includes(item.tipo)
   const brutos = anda && item.projeto ? await lerEstadosDoTipo(item.projeto, item.tipo, pat) : null
+  const filhosAbertos = TIPOS_QUE_FECHAM_SEM_FILHO_ABERTO.includes(item.tipo) ? (await filhosAbertosDe(id, pat)).slice(0, 50) : []
   return responder(req, 200, {
     ok: true,
     id,
@@ -693,6 +707,7 @@ async function estadosDoItem(req: Request, acesso: Acesso, corpo: Json, pat: str
     fechado: ESTADOS_FECHADOS.includes(item.estado),
     estados: brutos ? estadosDoTipo(brutos) : [],
     concluido: brutos ? estadoConcluido(brutos) : null,
+    filhosAbertos,
   })
 }
 
@@ -717,7 +732,8 @@ async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Jso
     })
   }
 
-  const decidido = destinoDoEncerrar(tipo, pedido, await lerEstadosDoTipo(projeto, tipo, pat))
+  const estadosBrutos = await lerEstadosDoTipo(projeto, tipo, pat)
+  const decidido = destinoDoEncerrar(tipo, pedido, estadosBrutos)
   if (!decidido.ok) {
     return responder(req, 400, {
       ok: false,
@@ -727,6 +743,21 @@ async function concluir(req: Request, userId: string, acesso: Acesso, corpo: Jso
   }
   const destino = decidido.destino
   if (!destino || destino === estado) return responder(req, 200, { ok: true, mudou: false, motivo: 'mesmo_estado', estado })
+
+  // PBI e Bug só fecham sem filho aberto (regra do Igor, 26/11/2026). Vale
+  // aqui, no servidor: a tela mostra o Done barrado, mas quem barra é a edge.
+  if (TIPOS_QUE_FECHAM_SEM_FILHO_ABERTO.includes(tipo) && ehConclusao(destino, estadosBrutos)) {
+    const abertos = await filhosAbertosDe(id, pat)
+    if (abertos.length > 0) {
+      return responder(req, 409, {
+        ok: false,
+        motivo: 'filhos_abertos',
+        abertos: abertos.slice(0, 50),
+        mensagem: mensagemFilhosAbertos(id, destino, abertos),
+      })
+    }
+  }
+
   // Escrita: SEM repetir 5xx (como no criar).
   const resp = await escreverNoAzure(
     userId,

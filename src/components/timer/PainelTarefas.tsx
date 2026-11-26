@@ -22,12 +22,13 @@ import { ordenarPorAbertura, soAbertos, type OrdemTasks } from '@/lib/ordemAbert
 import { BotaoOrdemAbertura } from '@/components/atividades/BotaoOrdemAbertura';
 import { SeletorTags } from '@/components/timer/SeletorTags';
 import { PlacarDemandas } from '@/components/timer/PlacarDemandas';
+import { MenuEstado } from '@/components/timer/MenuEstado';
 import { bateFiltro, type FiltroPlacar } from '@/lib/timerPlacar';
 import { avisoTagsDescartadas, classificacaoCompleta, classificacaoVazia, type Classificacao } from '@/lib/timerTags';
 import { agruparPorHierarquia, chavesRecolhiveis, filtrarAtividades, type ItemDevops } from '@/lib/minhasAtividades';
 import { hojeISO, prazoSprint } from '@/lib/prazoSprint';
 import { getCurrentOfficialSprintCode } from '@/lib/sprintCalendar';
-import { caminhoDe, TIPOS_SELECIONAVEIS, type TarefaSelecionada } from '@/lib/timerSelecao';
+import { caminhoDe, TIPOS_QUE_RODAM, type TarefaSelecionada } from '@/lib/timerSelecao';
 import {
   ErroTimer,
   useBuscaTimer,
@@ -161,7 +162,8 @@ export function PainelTarefas({
         onCancelar={() => setCriando(null)}
         onCriado={(novo) => {
           setCriando(null);
-          if (novo && TIPOS_SELECIONAVEIS.has(novo.work_item_type ?? '')) selecionar(novo);
+          // a Task nova já começa a rodar; o PBI novo não tem play
+          if (novo && TIPOS_QUE_RODAM.has(novo.work_item_type ?? '')) selecionar(novo);
         }}
       />
     ) : null;
@@ -344,19 +346,23 @@ function AcoesItem({
   const tipo = item.work_item_type ?? '';
   const fechado = ['Done', 'Closed', 'Removed'].includes(item.state ?? '');
   const podeIniciar = useContext(PodeIniciar);
+  const pbiOuBug = tipo === 'Product Backlog Item' || tipo === 'Bug';
   return (
     <span className="flex shrink-0 items-center gap-1">
-      {(tipo === 'Product Backlog Item' || tipo === 'Bug') && !fechado && (
+      {pbiOuBug && !fechado && (
         <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-[11px]" onClick={() => onNovo('Task')} title="Nova Task neste item">
           <Plus className="h-3 w-3" /> Task
         </Button>
       )}
+      {/* PBI e Bug não têm play (decisão do Igor, 26/11/2026): neles cabe a
+          Task filha ou o estado, que é controle da atividade e não hora. */}
+      {pbiOuBug && !fechado && podeIniciar && <MenuEstado id={item.id} estadoAtual={item.state ?? null} />}
       {tipo === 'Feature' && !fechado && (
         <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-[11px]" onClick={() => onNovo('PBI')} title="Novo PBI nesta Feature">
           <Plus className="h-3 w-3" /> PBI
         </Button>
       )}
-      {podeIniciar && TIPOS_SELECIONAVEIS.has(tipo) && (
+      {podeIniciar && TIPOS_QUE_RODAM.has(tipo) && (
         <Button
           variant={selecionada ? 'default' : 'outline'}
           size="sm"
