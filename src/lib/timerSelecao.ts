@@ -16,8 +16,13 @@ export interface TarefaSelecionada {
 
 const CHAVE = 'timer-flag:tarefa-selecionada';
 
-/** Só Task, PBI e Bug recebem hora (Epic e Feature são guarda-chuva). */
-export const TIPOS_SELECIONAVEIS = new Set(['Task', 'Product Backlog Item', 'Bug']);
+/**
+ * Onde o timer RODA: só na Task (decisão do Igor, 26/11/2026). PBI e Bug não
+ * têm play: neles cabe criar a Task filha ou mudar o estado, que é controle da
+ * atividade e não passa pelo timer. PBI/Bug que já estavam em espera seguem
+ * lá até serem lançados e encerrados.
+ */
+export const TIPOS_QUE_RODAM = new Set(['Task']);
 
 export function lerSelecao(storage: Pick<Storage, 'getItem'> | null = local()): TarefaSelecionada | null {
   try {

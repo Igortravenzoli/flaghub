@@ -30,6 +30,24 @@ export function opcoesDeDestino(info: InfoEstados): string[] {
   return nomes;
 }
 
+/**
+ * Por que este destino não pode ser escolhido agora, ou null se pode. PBI e
+ * Bug só vão para um estado de conclusão sem filho aberto (regra do Igor,
+ * 26/11/2026); os passos intermediários seguem livres. A edge barra de novo.
+ */
+export function bloqueioDoDestino(
+  info: { estados: { nome: string; categoria: string }[]; filhosAbertos?: number[] | null },
+  destino: string,
+): string | null {
+  const abertos = info.filhosAbertos ?? [];
+  if (abertos.length === 0) return null;
+  const alvo = destino.trim().toLowerCase();
+  const conclui = info.estados.some((e) => e.categoria === 'Completed' && e.nome.trim().toLowerCase() === alvo);
+  if (!conclui) return null;
+  const lista = abertos.slice(0, 4).map((id) => `#${id}`).join(', ') + (abertos.length > 4 ? ` e mais ${abertos.length - 4}` : '');
+  return abertos.length === 1 ? `1 filho aberto (${lista})` : `${abertos.length} filhos abertos (${lista})`;
+}
+
 /** O destino sugerido: o estado de conclusão; sem ele entre as opções, manter. */
 export function destinoPadrao(info: InfoEstados): string {
   const opcoes = opcoesDeDestino(info);

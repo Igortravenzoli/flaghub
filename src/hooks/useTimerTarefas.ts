@@ -112,6 +112,8 @@ export interface EstadosDoItem {
   estados: { nome: string; categoria: string }[];
   /** o estado de conclusão (Done/Closed) */
   concluido: string | null;
+  /** PBI/Bug: ids dos filhos abertos, que seguram o estado de conclusão (edge v25+) */
+  filhosAbertos?: number[];
 }
 
 /**
@@ -128,6 +130,29 @@ export function useEstadosItemTimer(id: number | null) {
     staleTime: 0,
     gcTime: 0,
     queryFn: () => chamar<EstadosDoItem>({ op: 'estados', id }),
+  });
+}
+
+export interface EstadoMudado {
+  ok: boolean;
+  mudou?: boolean;
+  estado?: string;
+  motivo?: string;
+}
+
+/**
+ * Muda o estado de um PBI/Bug no DevOps SEM timer (26/11/2026): é controle da
+ * atividade, não hora. A edge confere que o item é da pessoa, que o estado
+ * existe no tipo e que não há filho aberto quando o destino é a conclusão.
+ */
+export function useMudarEstadoTimer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: { id: number; estado: string }) => chamar<EstadoMudado>({ op: 'concluir', id: p.id, estado: p.estado }),
+    onSuccess: () => {
+      // a árvore mostra o estado: relê (a edge já limpou o cache dela)
+      void qc.invalidateQueries({ queryKey: ['timer-tarefas', 'minhas'] });
+    },
   });
 }
 

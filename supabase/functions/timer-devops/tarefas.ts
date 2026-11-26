@@ -303,6 +303,26 @@ export function destinoDoEncerrar(
   return achado ? { ok: true, destino: achado.nome } : { ok: false, motivo: 'estado_invalido' }
 }
 
+// 26/11/2026 (regra do Igor): PBI e Bug só vão para o estado de conclusão
+// quando não têm filho aberto. Os passos intermediários (Em desenvolvimento,
+// Aguardando Teste…) seguem livres; a Task não tem a regra.
+
+/** Tipos que só fecham sem filho aberto. */
+export const TIPOS_QUE_FECHAM_SEM_FILHO_ABERTO = ['Product Backlog Item', 'Bug']
+
+/** O destino é um estado de conclusão do tipo (categoria Completed)? */
+export function ehConclusao(destino: string, estados: unknown): boolean {
+  const alvo = destino.trim().toLowerCase()
+  return estadosDoTipo(estados).some((e) => e.categoria === 'Completed' && e.nome.toLowerCase() === alvo)
+}
+
+/** O aviso de quem tentou fechar um PBI/Bug com filho aberto: diz quais são. */
+export function mensagemFilhosAbertos(id: number, destino: string, abertos: number[]): string {
+  const n = abertos.length
+  const lista = abertos.slice(0, 5).map((f) => `#${f}`).join(', ') + (n > 5 ? ` e mais ${n - 5}` : '')
+  return `O item #${id} tem ${n} ${n === 1 ? 'filho aberto' : 'filhos abertos'} (${lista}). Conclua ${n === 1 ? 'ele' : 'eles'} antes de levar o item para ${destino}.`
+}
+
 // 26/11/2026 (pedido do Igor): deu play, a Task sai de To Do e vai para In
 // Progress. Só Task: o PBI e o Bug têm mais de um passo e seguem andando só no
 // encerrar, com o destino escolhido na tela.
